@@ -52,7 +52,6 @@ Spellcross-Reloaded-Win64-YYYYMMDD-HHMMSS/
     data/                 # editor auxiliary archives, contexts and fonts
   LICENSE-Reloaded.txt
   LICENSE-Map-Editor.txt
-  Import-PreviousSaves.ps1  # Optional migration of personal saves
   README-FIRST.txt
 ~~~
 
@@ -61,27 +60,6 @@ On first use, Spellcross.exe creates/configures config.ini at the package root. 
 The editor maintains its own Editor/config.ini. It can find the game root and use original game archives from game_data/DATA or game root [FILES] configuration. Its own Editor/data/COMMON.fs is distinct from the retail COMMON.FS.
 
 The packager deliberately whitelists support assets. It does not copy game_data/, saves, earlier config.ini files, the upstream editor's old hard-coded INI, or retail archives.
-
-## Existing saved games
-
-A clean public ZIP does not include somebody else's saved games or overwrite
-an existing installation. To bring your own saved games from v0.8.0 into the
-newly extracted combined build, exit Spellcross and run the migration helper
-included at the root of the combined ZIP:
-
-~~~powershell
-.\Import-PreviousSaves.ps1 -PreviousFolder "D:\Games\Spellcross-v0.8.0"
-~~~
-
-This only copies strategic JSON/SAV files from save/strategic and tactical
-SCSAVE files from temp, while preserving relative paths. Existing destination
-files are left untouched. The import does not move original game archives,
-settings, or files from the old installation.
-
-The game load dialog initially looks under save/strategic or temp within the
-current portable installation. If the game **rejects** a selected existing save
-rather than simply showing an empty directory, capture the exact error text:
-that would be a loader compatibility bug, not a packaging omission.
 
 ## Acceptance test before publishing
 
