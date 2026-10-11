@@ -4,7 +4,7 @@
 
 # Spellcross Reloaded
 
-**Version 0.8.0** — a fan-made restoration, modernization and reverse-engineering project for **Spellcross (1997)**.
+**Version 0.8.1** — a fan-made restoration, modernization and reverse-engineering project for **Spellcross (1997)**.
 
 Spellcross Reloaded started years ago as a collection of tools for decoding and editing the original game data. It has since grown into a playable restoration of the game itself while keeping the map/resource editing and reverse-engineering tools that made the project possible.
 
@@ -14,7 +14,22 @@ The goal is deliberately conservative: **use the original Spellcross data, graph
 
 ---
 
-## What works in 0.8.0
+## What's new in v0.8.1
+
+**The playable restoration and Stanislav Mašláň's original map editor are now available together in one portable Windows x64 release.** See the [v0.8.1 release and download](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1), or download the file **Spellcross_Reloaded_v0.8.1.zip**.
+
+- **Standalone map editor included:** \`Editor/spellcross_map_editor.exe\`, maintained in the separate [Reloaded editor fork](https://github.com/luboshorak/spellcross-reloaded-editor) and brought into this repository as a pinned Git submodule.
+- **Shared original game data:** the game and editor can reuse original Spellcross archive files without maintaining two installations. The editor can locate Reloaded's imported \`game_data/DATA\` archives and read its \`[FILES]\` configuration.
+- **Portable setup:** both applications have executable-local configuration files. They can work from an extracted package outside the development checkout; the original CD / mounted ISO \`INSTALL.DTA\` importer is supported by both.
+- **Restored tactical save loading from the menu:** a \`.scsave\` no longer requires a tactical map to be open first. The loader can recover a relocated map file by its filename when an older save contains a developer-machine path.
+- **All 37 MP4 fallback cutscenes included:** conversions already shipped in v0.8.0 remain part of the combined package; the build script checks their SHA-256 hashes before packaging them.
+- **Reproducible combined packaging:** Windows x64 build scripts gather both executables, support assets and runtime dependencies into the versioned ZIP, with a separate tool for cleaning old build folders.
+
+The editor integration preserves **Stanislav Mašláň's original editing functionality and authorship**. It is an additional application, not a replacement for the game's strategic or tactical interfaces.
+
+---
+
+## What works in 0.8.1
 
 ### Playable campaign and strategic layer
 
@@ -65,20 +80,18 @@ Version 0.8.0 restores the multi-unit movement feature that existed in the **ori
 - Can also use an existing installed/copied Spellcross `DATA` directory.
 - Support for loading original Czech/English strategic save data, with compatibility checks for mission sets.
 - Original sound effects and MIDI music playback.
-- Original DPK/DP2 video playback; the proprietary CAN video codec is not fully decoded (audio is supported).
+- Original DPK/DP2 video playback; the proprietary CAN video codec is not fully decoded (audio is supported). The Windows release also bundles **37 MP4 fallback videos** for cinematics that are not reliably decoded from the original files.
 
 ### Editor and reverse-engineering tools
 
-The original map-editor/tooling side of the project is still present:
+**Two distinct applications are now part of the project:**
 
-- Load and save tactical map `DTA`/`DEF` files.
-- Render all map layers at runtime.
-- Inspect and edit units.
-- Basic terrain editing/copy-paste tools.
-- Mission event/objective editing tools.
-- Resource, sprite, palette, sound, MIDI and video loaders/viewers used during restoration work.
+- **Spellcross Reloaded (`Spellcross.exe`)** is the playable game restoration, with its own strategic and tactical interfaces and the original reverse-engineering tools in its source tree.
+- **Spellcross Map Editor (`Editor/spellcross_map_editor.exe`)** is the separately maintained [integration fork](https://github.com/luboshorak/spellcross-reloaded-editor) of [Stanislav Mašláň's editor](https://github.com/smaslan/spellcross-map-edit). It provides map editing, map-layer inspection, unit/event editing, resource viewers and graphics/text import/export tools.
 
-Some editor functionality is still experimental and less polished than the playable game mode.
+The integrated editor is still experimental in places: terrain autotiling and some advanced mission-editing operations remain incomplete. See the [editor's README](https://github.com/luboshorak/spellcross-reloaded-editor#readme) and the [archived detailed original guide](https://github.com/luboshorak/spellcross-reloaded-editor/blob/main/doc/UPSTREAM_EDITOR_GUIDE.md) for its capabilities and usage.
+
+The two executables share the user's **original Spellcross game archives**, but each maintains its **own configuration**.
 
 ---
 
@@ -102,13 +115,34 @@ And, importantly, you need data from an **original copy of Spellcross**. Copyrig
 
 ## Installation
 
-1. Download the latest Windows x64 release from the GitHub **Releases** page.
-2. Extract the archive to a normal writable directory. Do **not** run the game directly from inside the ZIP file.
+1. Download **[Spellcross_Reloaded_v0.8.1.zip](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1)**.
+2. Extract the ZIP to a normal **writable folder**. Do **not** run the game from inside the ZIP.
 3. Install the Microsoft Visual C++ Redistributable x64 linked above if it is not already installed.
-4. Run `Spellcross.exe`.
-5. On first launch, configure the original Spellcross game data when prompted.
+4. Run **`Spellcross.exe`** and configure or import the original Spellcross game archives when prompted.
+5. To use the separate editor, run **`Editor/spellcross_map_editor.exe`** from the same extracted folder. It should find the game's configured archives automatically.
 
-There is no installer and no registry setup is required for the game itself. The release is intended to be portable.
+There is no installer or registry setup required for the game. The release is intended to be portable.
+
+### What is inside v0.8.1?
+
+~~~text
+Spellcross_Reloaded_v0.8.1.zip
+├── Spellcross.exe                    playable restoration
+├── data/                             game support files and MP4 fallbacks
+│   └── movie_fallback/               37 converted cutscenes
+├── Editor/
+│   ├── spellcross_map_editor.exe    original editor, Reloaded-integrated fork
+│   └── data/                         editor support files
+├── README-FIRST.txt
+└── LICENSE-*.txt
+
+After first import:
+├── config.ini                        game configuration
+├── game_data/DATA/                   your original retail archives
+└── Editor/config.ini                 separate editor configuration
+~~~
+
+**The editor's `Editor/data/COMMON.fs` is auxiliary editor metadata; it is not the original game's `COMMON.FS`.** Keep the supplied support files with their respective executables. You do not need to copy the original retail archives into the editor directory.
 
 ### First launch: importing original game data
 
@@ -161,7 +195,7 @@ A unit can belong to only one group. Firing is disabled while group mode is acti
 
 ## Save-game notes
 
-Spellcross Reloaded uses its own restoration save-state format for data that the original files cannot represent safely. The loader remains backward-compatible with older restoration saves where possible.
+Spellcross Reloaded uses its own restoration save-state format for data that the original files cannot represent safely. The loader remains backward-compatible with older restoration saves where possible. As of v0.8.1, tactical saves can also be opened from the main or strategic menu without first loading a map; missing old absolute map paths can be resolved against the configured game data when the map file is available there.
 
 The project also contains compatibility code for original retail strategic saves. Czech and English editions do not contain exactly the same mission set, so incompatible retail saves are rejected instead of silently loading the wrong missions.
 
@@ -187,7 +221,7 @@ That approach is why some seemingly small details — enemy-turn HUDs, entrenchm
 - The project is still under active development; unusual mission scripts and AI edge cases may still expose bugs.
 - Some map-editor functions remain crude or incomplete compared with the playable restoration.
 - Mission-event/objective editing is not yet a polished general-purpose editor workflow.
-- The original proprietary CAN video codec is not fully implemented; CAN audio can be handled, while DPK/DP2 playback is implemented.
+- The original proprietary CAN video codec is not fully implemented; CAN audio can be handled, DPK/DP2 playback is implemented and the distributed MP4 fallback pack covers supported converted cinematics.
 - Behaviour recovered from reverse engineering is continuously being checked against the original game, so small corrections are still expected.
 - Only the Windows x64 builds listed above are currently tested for release use.
 
@@ -197,9 +231,21 @@ If you find a reproducible problem, a save made immediately before/after the fai
 
 ## Building from source
 
-The source tree contains the Visual Studio solution in `source/spellcross_map_editor.sln` and uses C++17 together with wxWidgets. The current project files target the MSVC toolchain and provide Win32/x64 configurations; release testing is currently focused on x64.
+The repository contains **two separate C++ projects**, both built for Windows x64 using MSVC and wxWidgets:
 
-The project grew from older experimental reverse-engineering utilities originally written around 2007–2013. The current codebase progressively replaces those old mixed ANSI C/C++ and VCL-era experiments with reusable C++ loaders, decoders, renderers and gameplay systems.
+- **Game:** `spellcross-map-edit-main/source/spellcross_map_editor.sln` (C++17), producing `Spellcross.exe`.
+- **Editor:** `external/map-editor/source/spellcross_map_editor.sln` (C++20), producing `spellcross_map_editor.exe`. The editor directory is a **Git submodule** linked to the [separate fork](https://github.com/luboshorak/spellcross-reloaded-editor).
+
+The current integrated projects use the **v145 MSVC toolset** for their Windows Release x64 builds. Visual Studio C++ build tools, a compatible wxWidgets installation and its runtime libraries are required. Run the following commands from the repository root in Windows PowerShell:
+
+~~~powershell
+git submodule update --init --recursive
+.\packaging\Build-CombinedRelease.ps1 -WxRoot "$HOME\vcpkg\installed\x64-windows"
+~~~
+
+The script builds both executables and produces `dist/Spellcross_Reloaded_v0.8.1.zip`. If your wxWidgets path differs, supply it through `-WxRoot`. The original video fallback MP4 files are not tracked in Git: the packager needs local copies (for example from v0.8.0) and verifies all 37 against their SHA-256 manifest. See **[combined packaging instructions](./packaging/README.md)** for video source options, a build-only/packaging-only workflow and safe cleanup of old build folders.
+
+The project grew from older experimental reverse-engineering utilities written around 2007–2013. Its restoration increasingly builds on reusable C++ loaders, decoders, renderers and gameplay systems.
 
 ---
 
@@ -207,7 +253,7 @@ The project grew from older experimental reverse-engineering utilities originall
 
 Spellcross Reloaded is an independent fan project and is not an official release by the original developer or publisher.
 
-This repository does **not** grant rights to redistribute the original Spellcross retail data. You are expected to provide the required game files from your own copy of Spellcross.
+This repository does **not** grant rights to redistribute the original Spellcross retail archives; you must provide those from your own copy. The packaged MP4 conversions of original-game cinematics are **not** covered by the source-code MIT license and should not be treated as freely reusable assets.
 
 The restoration/source code in this repository is distributed under the [MIT License](./LICENSE).
 
@@ -218,3 +264,9 @@ The restoration/source code in this repository is distributed under the [MIT Lic
 Project home: https://github.com/luboshorak/spellcross-reloaded
 
 Releases: https://github.com/luboshorak/spellcross-reloaded/releases
+
+Latest version: [v0.8.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1)
+
+Integrated editor fork: https://github.com/luboshorak/spellcross-reloaded-editor
+
+Original editor (Stanislav Mašláň): https://github.com/smaslan/spellcross-map-edit
