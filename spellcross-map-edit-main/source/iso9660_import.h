@@ -15,6 +15,7 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace spellcross_iso
 {
