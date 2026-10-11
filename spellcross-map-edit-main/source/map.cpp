@@ -1303,8 +1303,13 @@ static bool ExtractQuotedField(const std::string& text, const char* key, std::st
 
 int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 {
-	if (!saves)
+	// Loading a save from the main/strategic menu does not require a tactical
+	// map to be active. Load() below constructs the Saves object.
+	if (!spelldata)
+	{
+		last_error = "Original game resources are not initialized.";
 		return 1;
+	}
 
 	std::ifstream f(std::filesystem::path(path), std::ios::in | std::ios::binary);
 	if (!f.good())
@@ -1338,9 +1343,46 @@ int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 	}
 
 	std::wstring map_path_w(map_path_s.begin(), map_path_s.end());
+	// Older *.scsave files persist an absolute development/install path.
+	// In a portable release the same map may be extracted under temp/COMMON
+	// or live beside the configured original data. Do not rewrite the save:
+	// recover the source map using its basename when the old path is gone.
+	{
+		namespace fs = std::filesystem;
+		std::error_code ec;
+		const fs::path original(map_path_w);
+		if (!fs::is_regular_file(original, ec))
+		{
+			const fs::path filename = original.filename();
+			const fs::path root(spelldata->spell_data_root);
+			const fs::path cwd = fs::current_path(ec);
+			if (!filename.empty())
+			{
+				const std::vector<fs::path> folders = {
+					cwd / "temp" / "COMMON",
+					cwd / "temp",
+					root,
+					root / "COMMON",
+					root / "DATA",
+					root / "DATA" / "COMMON"
+				};
+				for (const auto& folder : folders)
+				{
+					ec.clear();
+					const fs::path found = folder / filename;
+					if (fs::is_regular_file(found, ec) && !ec)
+					{
+						map_path_w = found.wstring();
+						break;
+					}
+				}
+			}
+		}
+	}
 	if (Load(map_path_w, spelldata))
 	{
-		last_error = "Failed to load base map from map_path.";
+		const std::string mapError = last_error;
+		last_error = "Failed to load base map for tactical save: " + mapError;
 		return 4;
 	}
 

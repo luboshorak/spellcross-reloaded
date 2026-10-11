@@ -3029,7 +3029,11 @@ bool MainFrame::LoadGameStateFromDialog()
 
     if (!LoadTacticalGameWithCampaignContext(wpath))
     {
-        wxMessageBox(wxString::Format("Load failed: %s", spell_map->GetLastError()),
+        const std::string reason = spell_map ? spell_map->GetLastError() : std::string();
+        const wxString detail = reason.empty()
+            ? wxString("The tactical save loader failed without a diagnostic.")
+            : wxString::FromUTF8(reason.c_str());
+        wxMessageBox(wxString("Load failed:\n") + detail,
             "Load error", wxICON_ERROR | wxOK, this);
         return false;
     }
@@ -3106,7 +3110,13 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
 
     if (!LoadTacticalGameWithCampaignContext(loadPath.wstring()))
     {
-        wxMessageBox(wxString::Format("Load failed: %s", spell_map ? spell_map->GetLastError() : "unknown error"),
+        // wxString::Format("%s", std::string) can silently lose the diagnostic.
+        // Convert explicitly and never show a blank "Load failed:" dialog.
+        const std::string reason = spell_map ? spell_map->GetLastError() : std::string();
+        const wxString detail = reason.empty()
+            ? wxString("The tactical save loader failed without a diagnostic.")
+            : wxString::FromUTF8(reason.c_str());
+        wxMessageBox(wxString("Load failed:\n") + detail,
             "Load error", wxICON_ERROR | wxOK, dialogOwner);
         return false;
     }
@@ -3277,8 +3287,13 @@ bool MainFrame::SaveTacticalGameWithCampaignContext(const std::wstring& path)
 
 bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
 {
-    if (!spell_map)
+    if (!spell_map || !spell_data)
         return false;
+
+    // On the main/strategic menu, no tactical map has been loaded yet.
+    // SpellMap's constructor leaves spelldata null; supply the resources
+    // before the tactical save loader initializes its map and save slots.
+    spell_map->spelldata = spell_data;
 
     TacticalCampaignContext ctx;
     const bool hasEmbeddedContext = ReadTacticalCampaignContext(path, ctx);

@@ -29,3 +29,8 @@ spellcross-map-edit-main.7z
 *.7z
 *.zip
 *.mp4
+
+# Local release staging and user-owned retail archives
+/dist/
+/game_data/
+/spellcross-map-edit-main/game_data/
