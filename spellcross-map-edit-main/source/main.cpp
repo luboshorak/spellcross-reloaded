@@ -1031,7 +1031,7 @@ namespace
                     return false;
                 }
 
-                wxString summary = "Imported " +
+                wxString summary = wxString("Imported ") +
                     wxString::Format("%lu", static_cast<unsigned long>(extracted.size())) +
                     " game-data files into:\n" + wxString(localDataDir.wstring()) +
                     "\n\nYou do not need to keep the disc inserted or the ISO mounted.";
