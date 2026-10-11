@@ -77,7 +77,7 @@ Spellcross_Reloaded_v0.8.2.zip  (files at ZIP root)
   README-FIRST.txt
 ~~~
 
-On first use, Spellcross.exe creates/configures config.ini at the package root. It can import DATA/INSTALL.DTA from the user's original **mounted** CD/ISO into game_data/DATA/.
+On first use, Spellcross.exe creates/configures config.ini at the package root. It can import original game data from a raw ISO file (ISO 9660), a mounted CD/ISO folder, an existing DATA directory or original archives into game_data/DATA/.
 
 The editor maintains its own Editor/config.ini. It can find the game root and use original game archives from game_data/DATA or game root [FILES] configuration. Its own Editor/data/COMMON.fs is distinct from the retail COMMON.FS.
 
