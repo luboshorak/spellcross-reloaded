@@ -16,22 +16,30 @@ The goal is deliberately conservative: **use the original Spellcross data, graph
 
 ---
 
-## Unreleased v0.8.2 candidate — custom maps and editor workflow
+## What's new in v0.8.2 (merged into `main`, not yet released)
 
-The v0.8.2 candidate integrated into `main` adds **File → Load custom map...** to the playable tactical window. Choose a standalone tactical **`.DEF`** mission saved by the editor; keep its referenced **`.DTA`** data alongside it. The normal battle loader initializes units, mission events, HUD and game mode. When replacing an already running tactical mission, the game offers **Save and load / Load without saving / Cancel**. Custom battles are detached from the strategic campaign and are intended for testing/user-created missions; **`LEVEL_XX.DEF` strategic definitions are not custom tactical missions**.
+The v0.8.2 integration is in the main branches of both repositories: [Reloaded PR #43](https://github.com/luboshorak/spellcross-reloaded/pull/43) and [editor PR #3](https://github.com/luboshorak/spellcross-reloaded-editor/pull/3). **This is a source/build candidate, not a published or Windows-validated release.** The latest downloadable release remains [v0.8.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1).
 
-The integrated editor also adds drag-and-drop moves of existing **L2 map objects** (with Undo and destination collision checks) and rotates flat single-/multi-cell terrain/road brushes using `R` / `Shift+R`. Layer-L1 buildings are not yet draggable because the original ground underneath cannot be restored reliably. Maps containing newly generated rotated sprites require a matching Reloaded build and cannot be opened by the original 1997 game or upstream v0.90 editor.
+- **Direct ISO import:** on first launch the v0.8.2 game can read a raw ISO 9660 `.iso` file without mounting it. Existing CD / mounted-ISO folders, extracted `DATA` directories and individual original archives are also supported. The standalone editor still relies on shared imported archives or its mounted-CD/`INSTALL.DTA` flow.
+- **Version and project links:** About and the Windows executable version resource report 0.8.2; repository and update links point to this Reloaded project.
+- **Launch editor from the game:** **Main Menu → Map Editor → Open Map Editor...** starts the separate editor without closing the game. In a tactical mission, **Game → Open mission in Map Editor...** offers **Save and open / Open without saving / Cancel**. The editor receives the **original DEF mission**, not a live battle or `.scsave` file. A canceled or failed save must leave the game running.
+- **Test custom tactical maps:** the playable tactical window adds **File → Load custom map...** (`Ctrl+Alt+O`). Select a standalone **`.DEF`** mission and retain its referenced **`.DTA`**. Replacing an active battle offers **Save and load / Load without saving / Cancel**; the custom battle is detached from campaign progression. **`LEVEL_XX.DEF` strategic definitions are not standalone tactical missions.**
+- **Editor brush fixes and diagnostics:** improved ribbon-tool selection, brush/placement status messages and a fix for null mission-marker sprite comparisons that previously suppressed some L1 terrain and building graphics.
+- **Flat terrain/road rotation:** editor `R` and `Shift+R` rotate supported flat **L1** one-cell and multi-cell brushes in 90° steps, including their position on the staggered map grid. `Ctrl+mouse wheel` continues cycling original predefined brush variants. Rotated tiles use deterministic virtual sprite names (`R0Axxxxx`) recognized by matching v0.8.2 game and editor code.
+- **Drag-and-drop L2 objects:** with no active painting brush, the editor can move eligible placed **L2** objects (and recognized multi-cell L2 prefabs) with a drag preview, collision checks and Undo. **L1-embedded buildings, sloped/raised or animated rotation cases are not supported.**
 
-These features have been merged into `main` (game PR #43 and editor PR #3), but have **not** been published as a release. Windows x64 compilation and runtime acceptance testing are still required before publishing v0.8.2.
+**Compatibility warning:** maps using virtual rotated sprites need a matching Reloaded/editor build; the original 1997 game, upstream editor v0.90 and older Reloaded releases do not understand those names. Back up original maps before editing.
+
+**Release gate:** build both Windows x64 projects and test ISO import, editor launch/save/cancel, terrain and building painting, single-/multi-cell rotation, L2 drag/drop, Undo, save/reopen and custom map load in the playable game. The changes are merged, **but runtime acceptance is still outstanding**.
 
 ## What's new in v0.8.1
 
 **The playable restoration and Stanislav Mašláň's original map editor are now available together in one portable Windows x64 release.** See the [v0.8.1 release and download](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1), or download the file **Spellcross_Reloaded_v0.8.1.zip**.
 
-- **Standalone map editor included:** \`Editor/spellcross_map_editor.exe\`, maintained in the separate [Reloaded editor fork](https://github.com/luboshorak/spellcross-reloaded-editor) and brought into this repository as a pinned Git submodule.
-- **Shared original game data:** the game and editor can reuse original Spellcross archive files without maintaining two installations. The editor can locate Reloaded's imported \`game_data/DATA\` archives and read its \`[FILES]\` configuration.
-- **Portable setup:** both applications have executable-local configuration files. They can work from an extracted package outside the development checkout; the original CD / mounted ISO \`INSTALL.DTA\` importer is supported by both.
-- **Restored tactical save loading from the menu:** a \`.scsave\` no longer requires a tactical map to be open first. The loader can recover a relocated map file by its filename when an older save contains a developer-machine path.
+- **Standalone map editor included:** `Editor/spellcross_map_editor.exe`, maintained in the separate [Reloaded editor fork](https://github.com/luboshorak/spellcross-reloaded-editor) and brought into this repository as a pinned Git submodule.
+- **Shared original game data:** the game and editor can reuse original Spellcross archive files without maintaining two installations. The editor can locate Reloaded's imported `game_data/DATA` archives and read its `[FILES]` configuration.
+- **Portable setup:** both applications have executable-local configuration files. They can work from an extracted package outside the development checkout; the original CD / mounted ISO `INSTALL.DTA` importer is supported by both.
+- **Restored tactical save loading from the menu:** a `.scsave` no longer requires a tactical map to be open first. The loader can recover a relocated map file by its filename when an older save contains a developer-machine path.
 - **All 37 MP4 fallback cutscenes included:** conversions already shipped in v0.8.0 remain part of the combined package; the build script checks their SHA-256 hashes before packaging them.
 - **Reproducible combined packaging:** Windows x64 build scripts gather both executables, support assets and runtime dependencies into the versioned ZIP, with a separate tool for cleaning old build folders.
 
@@ -156,7 +164,7 @@ After first import:
 
 ### First launch: importing original game data
 
-If required Spellcross resources are not configured, the game offers two paths:
+If required Spellcross resources are not configured, the **published v0.8.1** game offers these paths. The **v0.8.2 source candidate** additionally supports selecting an unmounted raw ISO 9660 `.iso` file directly:
 
 **Original CD / mounted ISO — recommended**
 
@@ -253,7 +261,7 @@ git submodule update --init --recursive
 .\packaging\Build-CombinedRelease.ps1 -WxRoot "$HOME\vcpkg\installed\x64-windows"
 ~~~
 
-The script builds both executables and produces `dist/Spellcross_Reloaded_v0.8.1.zip`. If your wxWidgets path differs, supply it through `-WxRoot`. The original video fallback MP4 files are not tracked in Git: the packager needs local copies (for example from v0.8.0) and verifies all 37 against their SHA-256 manifest. See **[combined packaging instructions](./packaging/README.md)** for video source options, a build-only/packaging-only workflow and safe cleanup of old build folders.
+The current `main` build script builds both executables and produces `dist/Spellcross_Reloaded_v0.8.2.zip` (unreleased test candidate). If your wxWidgets path differs, supply it through `-WxRoot`. The original video fallback MP4 files are not tracked in Git: the packager needs local copies (for example from v0.8.0) and verifies all 37 against their SHA-256 manifest. See **[combined packaging instructions](./packaging/README.md)** for video source options, a build-only/packaging-only workflow and safe cleanup of old build folders.
 
 The project grew from older experimental reverse-engineering utilities written around 2007–2013. Its restoration increasingly builds on reusable C++ loaders, decoders, renderers and gameplay systems.
 
@@ -275,7 +283,7 @@ Project home: https://github.com/luboshorak/spellcross-reloaded
 
 Releases: https://github.com/luboshorak/spellcross-reloaded/releases
 
-Latest version: [v0.8.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1)
+Latest published version: [v0.8.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1) (v0.8.2 integrated into `main`, pending release testing)
 
 Integrated editor fork: https://github.com/luboshorak/spellcross-reloaded-editor
 
