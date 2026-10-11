@@ -6,6 +6,7 @@ param(
     [switch]$SkipBuild,
     [string]$WxRoot = '',
     [string]$OutputDirectory = '',
+    [string]$MovieSource = '',
     [switch]$NoZip
 )
 Set-StrictMode -Version Latest
@@ -101,6 +102,270 @@ foreach ($f in @('README.md','MANIFEST.tsv')) {
         Copy-Item -LiteralPath $src -Destination $movieDir -Force
     }
 }
+# The MP4 fallback videos were part of v0.8.0, but are gitignored and
+# therefore cannot be obtained from GitHub source checkouts. Locate the
+# existing locally owned assets (or supply -MovieSource from the old release).
+# Fail visibly instead of producing a ZIP with only the MP4 manifest.
+$manifest = Join-Path $movieDir 'MANIFEST.tsv'
+Assert-File $manifest
+$movieCandidates = @()
+if ($MovieSource) {
+    $provided = (Resolve-Path -LiteralPath $MovieSource).Path
+    $movieCandidates += $provided
+    $movieCandidates += (Join-Path $provided 'data\movie_fallback')
+    $movieCandidates += (Join-Path $provided 'movie_fallback')
+}
+$movieCandidates += (Join-Path $game 'builds\x64\Release\data\movie_fallback')
+$movieCandidates += (Join-Path $gameAssets 'movie_fallback')
+$movieCount = 0
+foreach ($line in (Get-Content -LiteralPath $manifest -Encoding UTF8 | Select-Object -Skip 1)) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    $fields = $line.Split([char]9)
+    if ($fields.Count -lt 11) { throw "Malformed MP4 manifest entry: $line" }
+    $movieFile = $fields[1].Trim()
+    $expectedSha = $fields[10].Trim()
+    if ([System.IO.Path]::GetFileName($movieFile) -ne $movieFile -or
+        $movieFile -notmatch '^[A-Za-z0-9_-]+\.mp4
+foreach ($f in @('COMMON.fs','DEVAST.con','DEVAST.fs','PUST.con',
+    'PUST.fs','T11.FS','T11.con','font_spellcross_7pix.fnt',
+    'font_spellcross_14pix.fnt','units.fsa')) {
+    Copy-Required (Join-Path $editorAssets $f) (Join-Path $editorData $f)
+}
+Copy-Item -LiteralPath (Join-Path $editorAssets 'tree_randomizer') -Destination $editorData -Recurse -Force
+
+# Follow actual PE imports, including transitive vcpkg DLL dependencies.
+if (-not $dumpbin) { throw 'dumpbin.exe not found. Required for safe runtime DLL bundling.' }
+if (-not $WxRoot) { throw 'Supply -WxRoot pointing to x64 wxWidgets/vcpkg installation.' }
+$wxBin = Join-Path $WxRoot 'bin'
+if (-not (Test-Path -LiteralPath $wxBin -PathType Container)) {
+    throw "Missing runtime DLL folder: $wxBin"
+}
+$copiedDlls = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+function Copy-DllImports([string]$InitialBinary, [string]$Destination) {
+    $queue = New-Object 'System.Collections.Generic.Queue[string]'
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $queue.Enqueue($InitialBinary)
+    while ($queue.Count -gt 0) {
+        $binary = $queue.Dequeue()
+        if (-not $seen.Add($binary)) { continue }
+        $imports = & $dumpbin '/nologo' '/dependents' $binary 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "dumpbin failed: $binary" }
+        foreach ($line in $imports) {
+            if ([string]$line -notmatch '^\s*([a-zA-Z0-9_.-]+\.dll)\s*$') { continue }
+            $dllName = $Matches[1]
+            $src = Join-Path $wxBin $dllName
+            if (-not (Test-Path -LiteralPath $src -PathType Leaf)) {
+                if ($dllName -match '^wx(base|msw|expat|zlib|png|jpeg)') {
+                    throw "wxWidgets dependency missing: $dllName in $wxBin"
+                }
+                continue # System DLL or system-installed MSVC redistributable
+            }
+            Copy-Item -LiteralPath $src -Destination (Join-Path $Destination $dllName) -Force
+            [void]$copiedDlls.Add($dllName)
+            $queue.Enqueue($src)
+        }
+    }
+}
+Copy-DllImports (Join-Path $stage 'Spellcross.exe') $stage
+Copy-DllImports (Join-Path $stageEditor 'spellcross_map_editor.exe') $stageEditor
+
+Copy-Required (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE-Reloaded.txt')
+Copy-Required (Join-Path $editor 'LICENSE') (Join-Path $stage 'LICENSE-Map-Editor.txt')
+$wxLicense = Join-Path $WxRoot 'share\wxwidgets\copyright'
+if (Test-Path -LiteralPath $wxLicense -PathType Leaf) {
+    $licenseDir = Join-Path $stage 'third-party-licenses'
+    New-Item -ItemType Directory -Path $licenseDir -Force | Out-Null
+    Copy-Item -LiteralPath $wxLicense -Destination (Join-Path $licenseDir 'wxwidgets.txt') -Force
+}
+# Bundle copyright notices for DLLs copied from vcpkg.
+$info = Join-Path $WxRoot 'vcpkg\info'
+if (Test-Path -LiteralPath $info -PathType Container) {
+    $licenseDir = Join-Path $stage 'third-party-licenses'
+    New-Item -ItemType Directory -Path $licenseDir -Force | Out-Null
+    foreach ($manifest in (Get-ChildItem -LiteralPath $info -Filter '*_x64-windows.list' -File)) {
+        $providesDll = $false
+        foreach ($line in [System.IO.File]::ReadLines($manifest.FullName)) {
+            if ($line -match '/bin/([^/]+\.dll)$' -and $copiedDlls.Contains($Matches[1])) {
+                $providesDll = $true
+                break
+            }
+        }
+        if (-not $providesDll) { continue }
+        if ($manifest.BaseName -notmatch '^(.+?)_[0-9]') { continue }
+        $port = $Matches[1]
+        $copyright = Join-Path $WxRoot ('share\' + $port + '\copyright')
+        if (Test-Path -LiteralPath $copyright -PathType Leaf) {
+            Copy-Item -LiteralPath $copyright -Destination (Join-Path $licenseDir ($port + '.txt')) -Force
+        } else {
+            Write-Warning "License notice missing for vcpkg package $port"
+        }
+    }
+}
+@'
+SPELLCROSS RELOADED - WINDOWS X64 COMBINED TEST BUILD
+
+Game:       Spellcross.exe
+Map editor: Editor\spellcross_map_editor.exe
+
+1. Unpack the whole ZIP into a writable folder.
+2. Launch Spellcross.exe first. Configure your own original Spellcross
+   game archives, or import them from an original CD / MOUNTED ISO image.
+3. The game can place imported archives in game_data\DATA.
+4. Launch Editor\spellcross_map_editor.exe. It locates that game-data folder.
+5. Game and editor have SEPARATE config.ini files in their executable folders.
+MP4 fallback videos: 37 files, verified against MANIFEST.tsv.
+Old personal saves are not in the public ZIP. To migrate a previous install,
+copy its save\strategic directory and any *.scsave files from temp\
+into the same folders here (while both applications are closed).
+
+Original retail game archives are NOT included. Do not confuse editor's
+Editor\data\COMMON.fs with the original game's COMMON.FS archive.
+
+Requires Microsoft Visual C++ Redistributable x64 on systems without it:
+https://aka.ms/vc14/vc_redist.x64.exe
+
+DEVELOPMENT BUILD: still requires testing on a clean Windows machine.
+'@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8
+if (-not $NoZip) {
+    $zip = Join-Path $OutputDirectory ($name + '.zip')
+    Compress-Archive -LiteralPath $stage -DestinationPath $zip -CompressionLevel Optimal
+    Write-Host "Package created: $zip" -ForegroundColor Green
+}
+Write-Host "Staged release: $stage; copied $($copiedDlls.Count) distinct DLLs." -ForegroundColor Green
+ -or
+        $expectedSha -notmatch '^[a-fA-F0-9]{64}
+foreach ($f in @('COMMON.fs','DEVAST.con','DEVAST.fs','PUST.con',
+    'PUST.fs','T11.FS','T11.con','font_spellcross_7pix.fnt',
+    'font_spellcross_14pix.fnt','units.fsa')) {
+    Copy-Required (Join-Path $editorAssets $f) (Join-Path $editorData $f)
+}
+Copy-Item -LiteralPath (Join-Path $editorAssets 'tree_randomizer') -Destination $editorData -Recurse -Force
+
+# Follow actual PE imports, including transitive vcpkg DLL dependencies.
+if (-not $dumpbin) { throw 'dumpbin.exe not found. Required for safe runtime DLL bundling.' }
+if (-not $WxRoot) { throw 'Supply -WxRoot pointing to x64 wxWidgets/vcpkg installation.' }
+$wxBin = Join-Path $WxRoot 'bin'
+if (-not (Test-Path -LiteralPath $wxBin -PathType Container)) {
+    throw "Missing runtime DLL folder: $wxBin"
+}
+$copiedDlls = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+function Copy-DllImports([string]$InitialBinary, [string]$Destination) {
+    $queue = New-Object 'System.Collections.Generic.Queue[string]'
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $queue.Enqueue($InitialBinary)
+    while ($queue.Count -gt 0) {
+        $binary = $queue.Dequeue()
+        if (-not $seen.Add($binary)) { continue }
+        $imports = & $dumpbin '/nologo' '/dependents' $binary 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "dumpbin failed: $binary" }
+        foreach ($line in $imports) {
+            if ([string]$line -notmatch '^\s*([a-zA-Z0-9_.-]+\.dll)\s*$') { continue }
+            $dllName = $Matches[1]
+            $src = Join-Path $wxBin $dllName
+            if (-not (Test-Path -LiteralPath $src -PathType Leaf)) {
+                if ($dllName -match '^wx(base|msw|expat|zlib|png|jpeg)') {
+                    throw "wxWidgets dependency missing: $dllName in $wxBin"
+                }
+                continue # System DLL or system-installed MSVC redistributable
+            }
+            Copy-Item -LiteralPath $src -Destination (Join-Path $Destination $dllName) -Force
+            [void]$copiedDlls.Add($dllName)
+            $queue.Enqueue($src)
+        }
+    }
+}
+Copy-DllImports (Join-Path $stage 'Spellcross.exe') $stage
+Copy-DllImports (Join-Path $stageEditor 'spellcross_map_editor.exe') $stageEditor
+
+Copy-Required (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE-Reloaded.txt')
+Copy-Required (Join-Path $editor 'LICENSE') (Join-Path $stage 'LICENSE-Map-Editor.txt')
+$wxLicense = Join-Path $WxRoot 'share\wxwidgets\copyright'
+if (Test-Path -LiteralPath $wxLicense -PathType Leaf) {
+    $licenseDir = Join-Path $stage 'third-party-licenses'
+    New-Item -ItemType Directory -Path $licenseDir -Force | Out-Null
+    Copy-Item -LiteralPath $wxLicense -Destination (Join-Path $licenseDir 'wxwidgets.txt') -Force
+}
+# Bundle copyright notices for DLLs copied from vcpkg.
+$info = Join-Path $WxRoot 'vcpkg\info'
+if (Test-Path -LiteralPath $info -PathType Container) {
+    $licenseDir = Join-Path $stage 'third-party-licenses'
+    New-Item -ItemType Directory -Path $licenseDir -Force | Out-Null
+    foreach ($manifest in (Get-ChildItem -LiteralPath $info -Filter '*_x64-windows.list' -File)) {
+        $providesDll = $false
+        foreach ($line in [System.IO.File]::ReadLines($manifest.FullName)) {
+            if ($line -match '/bin/([^/]+\.dll)$' -and $copiedDlls.Contains($Matches[1])) {
+                $providesDll = $true
+                break
+            }
+        }
+        if (-not $providesDll) { continue }
+        if ($manifest.BaseName -notmatch '^(.+?)_[0-9]') { continue }
+        $port = $Matches[1]
+        $copyright = Join-Path $WxRoot ('share\' + $port + '\copyright')
+        if (Test-Path -LiteralPath $copyright -PathType Leaf) {
+            Copy-Item -LiteralPath $copyright -Destination (Join-Path $licenseDir ($port + '.txt')) -Force
+        } else {
+            Write-Warning "License notice missing for vcpkg package $port"
+        }
+    }
+}
+@'
+SPELLCROSS RELOADED - WINDOWS X64 COMBINED TEST BUILD
+
+Game:       Spellcross.exe
+Map editor: Editor\spellcross_map_editor.exe
+
+1. Unpack the whole ZIP into a writable folder.
+2. Launch Spellcross.exe first. Configure your own original Spellcross
+   game archives, or import them from an original CD / MOUNTED ISO image.
+3. The game can place imported archives in game_data\DATA.
+4. Launch Editor\spellcross_map_editor.exe. It locates that game-data folder.
+5. Game and editor have SEPARATE config.ini files in their executable folders.
+
+Original retail game archives are NOT included. Do not confuse editor's
+Editor\data\COMMON.fs with the original game's COMMON.FS archive.
+
+Requires Microsoft Visual C++ Redistributable x64 on systems without it:
+https://aka.ms/vc14/vc_redist.x64.exe
+
+DEVELOPMENT BUILD: still requires testing on a clean Windows machine.
+'@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8
+if (-not $NoZip) {
+    $zip = Join-Path $OutputDirectory ($name + '.zip')
+    Compress-Archive -LiteralPath $stage -DestinationPath $zip -CompressionLevel Optimal
+    Write-Host "Package created: $zip" -ForegroundColor Green
+}
+Write-Host "Staged release: $stage; copied $($copiedDlls.Count) distinct DLLs." -ForegroundColor Green
+) {
+        throw "Invalid movie filename or SHA-256 in manifest: $movieFile"
+    }
+    $movieSrc = $null
+    foreach ($candidate in $movieCandidates) {
+        $p = Join-Path $candidate $movieFile
+        if (Test-Path -LiteralPath $p -PathType Leaf) {
+            $movieSrc = $p
+            break
+        }
+    }
+    if (-not $movieSrc) {
+        throw ("Missing fallback movie " + $movieFile + ". Copy the 37 MP4 files from your v0.8.0 release to spellcross-map-edit-main\data\movie_fallback, or pass -MovieSource pointing at the old release folder.")
+    }
+    $actualSha = (Get-FileHash -LiteralPath $movieSrc -Algorithm SHA256).Hash
+    if (-not [string]::Equals($actualSha, $expectedSha, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "MP4 integrity check failed: $movieSrc (does not match MANIFEST.tsv)"
+    }
+    Copy-Item -LiteralPath $movieSrc -Destination (Join-Path $movieDir $movieFile) -Force
+    $movieCount++
+}
+if ($movieCount -ne 37) {
+    throw "Expected 37 fallback videos, found $movieCount entries in MANIFEST.tsv"
+}
+Write-Host "Bundled and SHA-256 verified all $movieCount MP4 cutscenes." -ForegroundColor Green
+
+# Keep save directories in a fresh package, but do not distribute the build
+# machine owner's private saved games. The user may migrate old saves locally.
+New-Item -ItemType Directory -Path (Join-Path $stage 'save\strategic'), (Join-Path $stage 'temp') -Force | Out-Null
+
 $editorAssets = Join-Path $editor 'data'
 foreach ($f in @('COMMON.fs','DEVAST.con','DEVAST.fs','PUST.con',
     'PUST.fs','T11.FS','T11.con','font_spellcross_7pix.fnt',
