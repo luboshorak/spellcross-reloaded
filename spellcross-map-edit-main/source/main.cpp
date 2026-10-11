@@ -3549,6 +3549,7 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
 bool MainFrame::LaunchStandaloneMapEditor(const std::filesystem::path& sourceMission)
 {
     namespace fs = std::filesystem;
+    wxWindow* dialogParent = IsShown() ? static_cast<wxWindow*>(this) : nullptr;
     const fs::path exeDir =
         fs::path(wxStandardPaths::Get().GetExecutablePath().ToStdWstring()).parent_path();
 
@@ -3581,7 +3582,7 @@ bool MainFrame::LaunchStandaloneMapEditor(const std::filesystem::path& sourceMis
         wxMessageBox("The Map Editor was not found.\n\n"
             "Expected Editor/spellcross_map_editor.exe beside Spellcross.exe.\n"
             "Please extract the complete combined Reloaded ZIP.",
-            "Map Editor unavailable", wxOK | wxICON_ERROR, this);
+            "Map Editor unavailable", wxOK | wxICON_ERROR, dialogParent);
         return false;
     }
 
@@ -3606,7 +3607,7 @@ bool MainFrame::LaunchStandaloneMapEditor(const std::filesystem::path& sourceMis
             wxMessageBox(wxString("The original mission file was not found:\n") +
                 wxString(sourceMission.wstring()) +
                 "\n\nThe running game is unchanged.",
-                "Missing mission", wxOK | wxICON_WARNING, this);
+                "Missing mission", wxOK | wxICON_WARNING, dialogParent);
             return false;
         }
         args.Add("--open-map");
@@ -3619,7 +3620,7 @@ bool MainFrame::LaunchStandaloneMapEditor(const std::filesystem::path& sourceMis
     {
         wxMessageBox("Could not launch the Map Editor.\n\n"
             "The running game has not been closed.",
-            "Map Editor startup failed", wxOK | wxICON_ERROR, this);
+            "Map Editor startup failed", wxOK | wxICON_ERROR, dialogParent);
         return false;
     }
     return true;
