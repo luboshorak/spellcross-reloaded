@@ -4,7 +4,9 @@
 
 # Spellcross Reloaded
 
-**Latest published release: v0.8.1; `main` contains the unreleased v0.8.2 integration candidate.** — a fan-made restoration, modernization and reverse-engineering project for **Spellcross (1997)**.
+**Latest published release:** v0.8.1. **Current `main`:** unreleased v0.8.2 integration candidate (Windows acceptance testing pending).
+
+Spellcross Reloaded is a fan-made restoration, modernization and reverse-engineering project for **Spellcross (1997)**.
 
 Spellcross Reloaded started years ago as a collection of tools for decoding and editing the original game data. It has since grown into a playable restoration of the game itself while keeping the map/resource editing and reverse-engineering tools that made the project possible.
 
