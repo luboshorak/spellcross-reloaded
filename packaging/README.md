@@ -19,6 +19,19 @@ For a typical vcpkg installation:
 .\packaging\Build-CombinedRelease.ps1 -WxRoot "$HOME\vcpkg\installed\x64-windows"
 ~~~
 
+The 37 MP4 cutscenes present in v0.8.0 are intentionally ignored by Git
+source control and must be supplied from an existing local installation.
+The packager automatically looks in the game build output and game data
+source directory. If absent, unpack v0.8.0 and pass its root directory:
+
+~~~powershell
+.\packaging\Build-CombinedRelease.ps1 -WxRoot "$HOME\vcpkg\installed\x64-windows" -MovieSource "D:\Games\Spellcross-v0.8.0"
+~~~
+
+Every MP4 is SHA-256 verified against data/movie_fallback/MANIFEST.tsv.
+A missing/mismatched file causes the build to stop instead of silently
+shipping an incomplete video pack.
+
 To package two already-built Release executables without compiling:
 
 ~~~powershell
@@ -39,6 +52,7 @@ Spellcross-Reloaded-Win64-YYYYMMDD-HHMMSS/
     data/                 # editor auxiliary archives, contexts and fonts
   LICENSE-Reloaded.txt
   LICENSE-Map-Editor.txt
+  Import-PreviousSaves.ps1  # Optional migration of personal saves
   README-FIRST.txt
 ~~~
 
@@ -47,6 +61,27 @@ On first use, Spellcross.exe creates/configures config.ini at the package root. 
 The editor maintains its own Editor/config.ini. It can find the game root and use original game archives from game_data/DATA or game root [FILES] configuration. Its own Editor/data/COMMON.fs is distinct from the retail COMMON.FS.
 
 The packager deliberately whitelists support assets. It does not copy game_data/, saves, earlier config.ini files, the upstream editor's old hard-coded INI, or retail archives.
+
+## Existing saved games
+
+A clean public ZIP does not include somebody else's saved games or overwrite
+an existing installation. To bring your own saved games from v0.8.0 into the
+newly extracted combined build, exit Spellcross and run the migration helper
+included at the root of the combined ZIP:
+
+~~~powershell
+.\Import-PreviousSaves.ps1 -PreviousFolder "D:\Games\Spellcross-v0.8.0"
+~~~
+
+This only copies strategic JSON/SAV files from save/strategic and tactical
+SCSAVE files from temp, while preserving relative paths. Existing destination
+files are left untouched. The import does not move original game archives,
+settings, or files from the old installation.
+
+The game load dialog initially looks under save/strategic or temp within the
+current portable installation. If the game **rejects** a selected existing save
+rather than simply showing an empty directory, capture the exact error text:
+that would be a loader compatibility bug, not a packaging omission.
 
 ## Acceptance test before publishing
 
