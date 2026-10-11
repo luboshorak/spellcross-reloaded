@@ -27,6 +27,7 @@
 #include "iso9660_import.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
+#include <wx/utils.h>
 #include <wx/event.h>
 
 #include <filesystem>
@@ -2218,6 +2219,8 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuGame->AppendSeparator();
     menuGame->Append(ID_mmSaveGameState, "Save game state...\tCtrl+Shift+S", "Save current game snapshot to file.");
 	menuGame->Append(ID_mmLoadGameState, "Load game state...\tCtrl+Shift+L", "Load game snapshot from file.");
+    menuGame->Append(ID_mmOpenMapEditor, "Open mission in Map Editor...",
+        "Save the current battle and edit the original mission.");
     menuGame->AppendSeparator();
     menuGame->Append(ID_mmResetViewMap,"Reset view map","");
     menuGame->Append(ID_mmUnitViewMode,"View unit move/attack range (Space)","");
@@ -2438,6 +2441,7 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnSwitchGameMode,this,ID_mmGameMode);
     Bind(wxEVT_MENU,&MainFrame::OnSaveGameState,this,ID_mmSaveGameState);
 	Bind(wxEVT_MENU,&MainFrame::OnLoadGameState,this,ID_mmLoadGameState);
+    Bind(wxEVT_MENU,&MainFrame::OnOpenMapEditorFromBattle,this,ID_mmOpenMapEditor);
     Bind(wxEVT_MENU,&MainFrame::OnResetUnitView,this,ID_mmResetViewMap);
     Bind(wxEVT_MENU,&MainFrame::OnSelectUnitView,this,ID_mmUnitViewMode);
 
@@ -3541,11 +3545,136 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
     return true;
 }
 
+// The packaged editor is a separate process. No live tactical state is sent.
+bool MainFrame::LaunchStandaloneMapEditor(const std::filesystem::path& sourceMission)
+{
+    namespace fs = std::filesystem;
+    const fs::path exeDir =
+        fs::path(wxStandardPaths::Get().GetExecutablePath().ToStdWstring()).parent_path();
+
+    // Portable: ./Editor/; development: ./external/map-editor/builds/x64/.
+    fs::path editorExecutable;
+    fs::path ancestor = exeDir;
+    for (int depth = 0; depth < 8 && !ancestor.empty(); ++depth)
+    {
+        const std::vector<fs::path> candidates = {
+            ancestor / "Editor" / "spellcross_map_editor.exe",
+            ancestor / "external" / "map-editor" / "builds" / "x64" / "Release" / "spellcross_map_editor.exe",
+            ancestor / "external" / "map-editor" / "builds" / "x64" / "Debug" / "spellcross_map_editor.exe"
+        };
+        for (const auto& candidate : candidates)
+        {
+            std::error_code ec;
+            if (fs::is_regular_file(candidate, ec) && !ec)
+            {
+                editorExecutable = candidate;
+                break;
+            }
+        }
+        if (!editorExecutable.empty() || ancestor == ancestor.parent_path())
+            break;
+        ancestor = ancestor.parent_path();
+    }
+
+    if (editorExecutable.empty())
+    {
+        wxMessageBox("The Map Editor was not found.\n\n"
+            "Expected Editor/spellcross_map_editor.exe beside Spellcross.exe.\n"
+            "Please extract the complete combined Reloaded ZIP.",
+            "Map Editor unavailable", wxOK | wxICON_ERROR, this);
+        return false;
+    }
+
+    wxArrayString args;
+    args.Add(wxString(editorExecutable.wstring()));
+    if (!sourceMission.empty())
+    {
+        fs::path missionPath = sourceMission;
+        std::error_code ec;
+        if (!fs::is_regular_file(missionPath, ec) || ec)
+        {
+            // Older saves may reference a moved DEF. Look up by original
+            // filename; never pass the .scsave or the live tactical map.
+            missionPath = spell_data
+                ? FindSpellDataFile(fs::path(spell_data->spell_data_root),
+                                   sourceMission.filename().string())
+                : fs::path{};
+        }
+        ec.clear();
+        if (missionPath.empty() || !fs::is_regular_file(missionPath, ec) || ec)
+        {
+            wxMessageBox(wxString("The original mission file was not found:\n") +
+                wxString(sourceMission.wstring()) +
+                "\n\nThe running game is unchanged.",
+                "Missing mission", wxOK | wxICON_WARNING, this);
+            return false;
+        }
+        args.Add("--open-map");
+        args.Add(wxString(fs::absolute(missionPath).wstring()));
+    }
+
+    // The argv overload quotes filenames with spaces for us.
+    const long pid = wxExecute(args, wxEXEC_ASYNC);
+    if (pid <= 0)
+    {
+        wxMessageBox("Could not launch the Map Editor.\n\n"
+            "The running game has not been closed.",
+            "Map Editor startup failed", wxOK | wxICON_ERROR, this);
+        return false;
+    }
+    return true;
+}
+
+void MainFrame::OnOpenMapEditorFromBattle(wxCommandEvent&)
+{
+    namespace fs = std::filesystem;
+    if (!spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode())
+    {
+        wxMessageBox("Open a tactical mission first.",
+            "Map Editor", wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+    const fs::path originalMission(spell_map->GetTopPath());
+    if (originalMission.empty())
+    {
+        wxMessageBox("The original mission file could not be identified.",
+            "Map Editor", wxOK | wxICON_WARNING, this);
+        return;
+    }
+
+    wxMessageDialog prompt(this,
+        "Exit the current battle and open its ORIGINAL mission in Map Editor?\n\n"
+        "The editor will load the default mission from disk, not the "
+        "units, damage or turns of your current game.\n\n"
+        "Save your progress before leaving?",
+        "Open current mission in Map Editor",
+        wxYES_NO | wxCANCEL | wxICON_QUESTION);
+    prompt.SetYesNoCancelLabels("Save and open", "Open without saving", "Cancel");
+    const int answer = prompt.ShowModal();
+    if (answer != wxID_YES && answer != wxID_NO)
+        return;
+
+    // Cancelling or failing the save does not leave the tactical game.
+    if (answer == wxID_YES && !ShowUnifiedSaveGameDialog(this))
+        return;
+
+    // Only exit after the external editor process launched successfully.
+    if (LaunchStandaloneMapEditor(originalMission))
+        RequestApplicationExit();
+}
+
 void MainFrame::OnMainMenuAction(FormMainMenuAction action)
 {
     // Defer the actual work so that the mouse-click event handler in
     // FormMainMenu finishes before we destroy the menu (avoids use-after-free).
     CallAfter([this, action]() {
+
+        // Launch the external editor without closing this menu or a paused game.
+        if (action == FormMainMenuAction::OpenEditor)
+        {
+            LaunchStandaloneMapEditor();
+            return;
+        }
 
         // Close the menu first (triggers ID_MMENU_WIN close handler which does delete).
         if(form_mmenu)
