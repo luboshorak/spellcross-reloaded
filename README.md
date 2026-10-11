@@ -14,6 +14,14 @@ The goal is deliberately conservative: **use the original Spellcross data, graph
 
 ---
 
+## Unreleased v0.8.2 candidate — custom maps and editor workflow
+
+The in-development v0.8.2 branch adds **File → Load custom map...** to the playable tactical window. Choose a standalone tactical **`.DEF`** mission saved by the editor; keep its referenced **`.DTA`** data alongside it. The normal battle loader initializes units, mission events, HUD and game mode. When replacing an already running tactical mission, the game offers **Save and load / Load without saving / Cancel**. Custom battles are detached from the strategic campaign and are intended for testing/user-created missions; **`LEVEL_XX.DEF` strategic definitions are not custom tactical missions**.
+
+The integrated editor also adds drag-and-drop moves of existing **L2 map objects** (with Undo and destination collision checks) and rotates flat single-/multi-cell terrain/road brushes using `R` / `Shift+R`. Layer-L1 buildings are not yet draggable because the original ground underneath cannot be restored reliably. Maps containing newly generated rotated sprites require a matching Reloaded build and cannot be opened by the original 1997 game or upstream v0.90 editor.
+
+These features remain in draft PRs, have not been released in v0.8.1 and require Windows compilation and runtime acceptance testing.
+
 ## What's new in v0.8.1
 
 **The playable restoration and Stanislav Mašláň's original map editor are now available together in one portable Windows x64 release.** See the [v0.8.1 release and download](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1), or download the file **Spellcross_Reloaded_v0.8.1.zip**.
