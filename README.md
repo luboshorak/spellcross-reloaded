@@ -4,7 +4,7 @@
 
 # Spellcross Reloaded
 
-**Version 0.8.1** — a fan-made restoration, modernization and reverse-engineering project for **Spellcross (1997)**.
+**Latest published release: v0.8.1; `main` contains the unreleased v0.8.2 integration candidate.** — a fan-made restoration, modernization and reverse-engineering project for **Spellcross (1997)**.
 
 Spellcross Reloaded started years ago as a collection of tools for decoding and editing the original game data. It has since grown into a playable restoration of the game itself while keeping the map/resource editing and reverse-engineering tools that made the project possible.
 
@@ -16,11 +16,11 @@ The goal is deliberately conservative: **use the original Spellcross data, graph
 
 ## Unreleased v0.8.2 candidate — custom maps and editor workflow
 
-The in-development v0.8.2 branch adds **File → Load custom map...** to the playable tactical window. Choose a standalone tactical **`.DEF`** mission saved by the editor; keep its referenced **`.DTA`** data alongside it. The normal battle loader initializes units, mission events, HUD and game mode. When replacing an already running tactical mission, the game offers **Save and load / Load without saving / Cancel**. Custom battles are detached from the strategic campaign and are intended for testing/user-created missions; **`LEVEL_XX.DEF` strategic definitions are not custom tactical missions**.
+The v0.8.2 candidate integrated into `main` adds **File → Load custom map...** to the playable tactical window. Choose a standalone tactical **`.DEF`** mission saved by the editor; keep its referenced **`.DTA`** data alongside it. The normal battle loader initializes units, mission events, HUD and game mode. When replacing an already running tactical mission, the game offers **Save and load / Load without saving / Cancel**. Custom battles are detached from the strategic campaign and are intended for testing/user-created missions; **`LEVEL_XX.DEF` strategic definitions are not custom tactical missions**.
 
 The integrated editor also adds drag-and-drop moves of existing **L2 map objects** (with Undo and destination collision checks) and rotates flat single-/multi-cell terrain/road brushes using `R` / `Shift+R`. Layer-L1 buildings are not yet draggable because the original ground underneath cannot be restored reliably. Maps containing newly generated rotated sprites require a matching Reloaded build and cannot be opened by the original 1997 game or upstream v0.90 editor.
 
-These features remain in draft PRs, have not been released in v0.8.1 and require Windows compilation and runtime acceptance testing.
+These features have been merged into `main` (game PR #43 and editor PR #3), but have **not** been published as a release. Windows x64 compilation and runtime acceptance testing are still required before publishing v0.8.2.
 
 ## What's new in v0.8.1
 
