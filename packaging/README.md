@@ -1,12 +1,17 @@
 # Combined Windows x64 release (game + map editor)
 
+**Current status:** the v0.8.2 game and editor integrations have been merged into `main`, but the Windows Release x64 build and runtime acceptance remain to be verified. **No v0.8.2 GitHub release has been published yet; [v0.8.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1) remains the latest released package.**
+
 This build produces **one portable ZIP** containing the playable Spellcross Reloaded and the latest standalone map editor. Original retail Spellcross archives are **not** included.
 
 ## Build
 
-From the repository root on Windows (PowerShell 5.1+):
+From the repository root on Windows (PowerShell 5.1+), use the merged `main` branch and **update the pinned editor submodule**:
 
 ~~~powershell
+git switch main
+git pull --ff-only origin main
+git submodule sync --recursive
 git submodule update --init --recursive
 .\packaging\Build-CombinedRelease.ps1
 ~~~
@@ -87,16 +92,19 @@ The packager deliberately whitelists support assets. It does not copy game_data/
 
 1. Build **both** Release x64 projects.
 2. Extract the ZIP to a different writable directory **outside** the source checkout.
-3. Run Spellcross.exe and supply legal original Spellcross archives or import from a mounted ISO/CD.
+3. Run Spellcross.exe and supply original Spellcross archives; specifically test a **raw ISO 9660 `.iso` file without mounting**, a mounted CD/ISO directory, an existing `DATA` folder and individual original archive selection.
 4. Exit and restart the game; verify graphics, audio and settings.
 5. Launch Editor/spellcross_map_editor.exe without any prior Editor/config.ini.
 6. Open a map, edit it, save under a different filename, and reopen it.
-7. Test on clean Windows 10/11 x64 with the VC++ Redistributable, but without Visual Studio or wxWidgets.
-8. Don't merge or publish the draft until these tests pass.
+7. From the main menu launch the standalone editor; it should open without terminating the game. From an active tactical mission test **Game → Open mission in Map Editor...**, including Save and open, Open without saving, Cancel, failed/missing editor and canceled Save As.
+8. In the editor test **Land/Road/Bridges/Houses/Alliance/OS Objects** painting, preview and Undo; compare with Trees/Walls/Special. Test 90° rotation of one-cell and multi-cell flat L1 brushes (R/Shift+R), save/reopen and play the modified DEF/DTA in Reloaded; test L2 drag/drop, collision rejection and Undo.
+9. In the game's tactical File menu use **Load custom map...** (`Ctrl+Alt+O`) and test DEF+DTA loading, save/cancel flow, mission events and independence from the strategic campaign.
+10. Test on clean Windows 10/11 x64 with the VC++ Redistributable, but without Visual Studio or wxWidgets.
+11. **Do not tag or publish v0.8.2 until these tests pass.** The PRs are already merged into `main`; merging is no longer an outstanding step.
 
 ## Scope and cautions
 
 - Windows x64 test ZIP, not a signed installer or automatic GitHub release.
 - Runtime DLLs from vcpkg carry upstream licenses; review all third-party notices before public redistribution.
-- The importer accepts a mounted ISO / original CD directory; it does not mount raw .iso files.
+- The **v0.8.2 game** directly reads standard ISO 9660 `.iso` files without mounting them. The **editor's independent importer** continues to use mounted CD/ISO folders or shared archives already imported by the game.
 - The code has not been compiled in the assistant environment. Build and portability testing remain necessary.
