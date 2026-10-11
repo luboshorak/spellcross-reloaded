@@ -7,7 +7,8 @@ param(
     [string]$WxRoot = '',
     [string]$OutputDirectory = '',
     [string]$MovieSource = '',
-    [switch]$NoZip
+    [switch]$NoZip,
+    [switch]$PruneOldBuilds
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -253,3 +254,7 @@ if (-not $NoZip) {
     Write-Host "Package created: $zip" -ForegroundColor Green
 }
 Write-Host "Staged release: $stage; copied $($copiedDlls.Count) distinct DLLs." -ForegroundColor Green
+if ($PruneOldBuilds) {
+    # The release is complete. Keep 3 most recent dated ZIP+stage pairs.
+    & (Join-Path $PSScriptRoot 'Clean-OldBuilds.ps1') -DistDirectory $OutputDirectory -Keep 3 -Apply
+}
