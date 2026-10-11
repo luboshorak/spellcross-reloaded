@@ -58,8 +58,7 @@ namespace spellcross_flat_rotation
             sprite->name.size() >= 3 && sprite->name[2] == 'A' &&
             sprite->x_size == kWidth &&
             sprite->x_ofs == 0 && sprite->y_ofs == 0 &&
-            sprite->y_size >= 1 && sprite->y_size <= kHeight &&
-            !sprite->is_dummy;
+            sprite->y_size >= 1 && sprite->y_size <= kHeight;
     }
 
     // Create the actual palette-indexed 80x48 diamond. Rotation is performed
@@ -90,8 +89,6 @@ namespace spellcross_flat_rotation
         rotated->y_ofs = 0;
         rotated->y_size = kHeight;
         rotated->x_size = kWidth;
-        rotated->is_dummy = false;
-        rotated->is_removed = false;
         rotated->data.clear();
         rotated->data.reserve(kHeight * (8 + kWidth));
 
