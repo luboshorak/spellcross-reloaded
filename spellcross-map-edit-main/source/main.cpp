@@ -3586,8 +3586,9 @@ bool MainFrame::LaunchStandaloneMapEditor(const std::filesystem::path& sourceMis
         return false;
     }
 
-    wxArrayString args;
-    args.Add(wxString(editorExecutable.wstring()));
+    // Keep all argument strings alive until wxExecute has started the process.
+    std::vector<std::wstring> args;
+    args.push_back(editorExecutable.wstring());
     if (!sourceMission.empty())
     {
         fs::path missionPath = sourceMission;
@@ -3610,12 +3611,19 @@ bool MainFrame::LaunchStandaloneMapEditor(const std::filesystem::path& sourceMis
                 "Missing mission", wxOK | wxICON_WARNING, dialogParent);
             return false;
         }
-        args.Add("--open-map");
-        args.Add(wxString(fs::absolute(missionPath).wstring()));
+        args.emplace_back(L"--open-map");
+        args.push_back(fs::absolute(missionPath).wstring());
     }
 
-    // The argv overload quotes filenames with spaces for us.
-    const long pid = wxExecute(args, wxEXEC_ASYNC);
+    // wxWidgets has no wxExecute(wxArrayString, ...) overload. Use its
+    // documented, null-terminated wide-character argv form instead; this
+    // also preserves paths containing spaces without manual quoting.
+    std::vector<const wchar_t*> argv;
+    argv.reserve(args.size() + 1);
+    for (const auto& arg : args)
+        argv.push_back(arg.c_str());
+    argv.push_back(nullptr);
+    const long pid = wxExecute(argv.data(), wxEXEC_ASYNC);
     if (pid <= 0)
     {
         wxMessageBox("Could not launch the Map Editor.\n\n"
