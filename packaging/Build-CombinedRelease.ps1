@@ -13,6 +13,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$releaseVersion = '0.8.1'
 $game = Join-Path $root 'spellcross-map-edit-main'
 $editor = Join-Path $root 'external\map-editor'
 $gameProject = Join-Path $game 'source\spellcross_map_editor.vcxproj'
@@ -249,8 +250,10 @@ https://aka.ms/vc14/vc_redist.x64.exe
 DEVELOPMENT BUILD: still requires testing on a clean Windows machine.
 '@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8
 if (-not $NoZip) {
-    $zip = Join-Path $OutputDirectory ($name + '.zip')
-    Compress-Archive -LiteralPath $stage -DestinationPath $zip -CompressionLevel Optimal
+    # Stable asset name for GitHub Releases. Build folders retain timestamps
+    # for troubleshooting, but the ZIP itself contains files at its root.
+    $zip = Join-Path $OutputDirectory ("Spellcross_Reloaded_v$releaseVersion.zip")
+    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
     Write-Host "Package created: $zip" -ForegroundColor Green
 }
 Write-Host "Staged release: $stage; copied $($copiedDlls.Count) distinct DLLs." -ForegroundColor Green
