@@ -1935,8 +1935,15 @@ void MainFrame::UpdateMenuForGameMode()
     // Console command GAMEMODEOFF unlocks it.
     bool restricted = !m_editor_unlocked;
 
-    // File menu = index 0: disable entirely
-    bar->EnableTop(0, !restricted);
+    // File menu remains available in the shipped locked/game mode for
+    // "Load custom map", Main menu and Exit. Individual editor actions
+    // stay disabled; enabling the whole File menu would expose Save DTA/DEF.
+    bar->EnableTop(0, true);
+    for (int id : { ID_OpenMap, ID_SaveMap, ID_SaveDTA, ID_SaveDEF,
+                    ID_NewMap, ID_OpenLevelDef })
+        bar->Enable(id, !restricted);
+    bar->Enable(ID_LoadCustomMap, true);
+    bar->Enable(ID_MainMenu, true);
 
     // Game menu = index 1: disable individual items except Save/Load game state
     bar->Enable(ID_mmGameMode, !restricted);
@@ -1958,6 +1965,82 @@ void MainFrame::UpdateMenuForGameMode()
     // Help menu = index 6: always enabled
 }
 
+
+// File > Load custom map: treat a user-provided DEF as a standalone tactical
+// mission (not a strategic LEVEL_XX.DEF). The normal mission loader resolves
+// its referenced DTA, scripts, event units and sidecar resources.
+void MainFrame::OnLoadCustomMap(wxCommandEvent&)
+{
+    namespace fs = std::filesystem;
+    if (!spell_map || !spell_data)
+        return;
+
+    fs::path start = fs::current_path() / "temp";
+    std::error_code ec;
+    if (spell_map->IsLoaded())
+    {
+        const fs::path previous(spell_map->GetTopPath());
+        if (!previous.empty() && fs::is_directory(previous.parent_path(), ec))
+            start = previous.parent_path();
+    }
+    ec.clear();
+    if (!fs::is_directory(start, ec))
+        start = fs::current_path();
+
+    wxFileDialog dialog(this, "Load custom Spellcross tactical mission",
+        wxString(start.wstring()), wxEmptyString,
+        "Spellcross tactical mission (*.def)|*.def",
+        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() != wxID_OK)
+        return;
+
+    const fs::path path(dialog.GetPath().ToStdWstring());
+    if (!fs::is_regular_file(path, ec) || ec ||
+        to_lower(path.extension().string()) != ".def")
+    {
+        wxMessageBox("Please select a valid tactical mission .DEF file.",
+            "Load custom map", wxOK | wxICON_WARNING, this);
+        return;
+    }
+
+    if (spell_map->IsLoaded() && spell_map->isGameMode())
+    {
+        wxMessageDialog confirm(this,
+            "Replace the current tactical battle with the selected custom map?\n\n"
+            "Unsaved progress in the current battle will be lost.\n"
+            "Would you like to save it first?",
+            "Load custom map", wxYES_NO | wxCANCEL | wxICON_QUESTION);
+        confirm.SetYesNoCancelLabels("Save and load", "Load without saving", "Cancel");
+        const int choice = confirm.ShowModal();
+        if (choice != wxID_YES && choice != wxID_NO)
+            return;
+        if (choice == wxID_YES && !ShowUnifiedSaveGameDialog(this))
+            return;
+    }
+
+    // Loading the custom map intentionally detaches from the campaign.
+    // Destroy its strategic frame only after the new DEF is accepted.
+    if (!LoadMapFromDefPath(path.wstring(), {}))
+        return;
+
+    if (m_strategicLevel)
+    {
+        auto* old = m_strategicLevel;
+        m_strategicLevel = nullptr;
+        old->Hide();
+        old->Destroy();
+    }
+
+    m_mission_end_flow = false;
+    m_mission_result_pending_show = false;
+    m_mission_result_visible = false;
+    m_mission_result_stage = MissionResultStage::None;
+    m_mission_end_req = SpellMap::MissionEndRequest();
+    m_mainMenuReturnToTactical = false;
+
+    SetGameModeUI(true); // mission start events, HUD and view ranges
+    ShowTacticalWindow();
+}
 
 void MainFrame::OnOpenLevelDef(wxCommandEvent& ev)
 {
@@ -2201,6 +2284,8 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     // File menu
     wxMenu* menuFile = new wxMenu;
     menuFile->Append(ID_OpenMap, "&Open Map\tCtrl-O", "Open new Spellcross map file.");
+    menuFile->Append(ID_LoadCustomMap, "Load &custom map...\tCtrl+Alt+O",
+        "Choose a custom tactical mission .DEF and start playing it.");
     menuFile->Append(ID_SaveMap,"&Save Map\tCtrl-S","Save Spellcross map file(s).");
     menuFile->Append(ID_SaveDTA,"&Save DTA map file","Save Spellcross map DTA file.");
     menuFile->Append(ID_SaveDEF,"&Save DEF map file","Save Spellcross map DEF file.");
@@ -2403,6 +2488,7 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     Bind(wxEVT_CLOSE_WINDOW, &MainFrame::OnClose, this);
     
     Bind(wxEVT_MENU,&MainFrame::OnOpenMap,this,ID_OpenMap);
+    Bind(wxEVT_MENU,&MainFrame::OnLoadCustomMap,this,ID_LoadCustomMap);
     Bind(wxEVT_MENU,&MainFrame::OnSaveMap,this,ID_SaveMap);
     Bind(wxEVT_MENU,&MainFrame::OnSaveDTA,this,ID_SaveDTA);
     Bind(wxEVT_MENU,&MainFrame::OnSaveDEF,this,ID_SaveDEF);
