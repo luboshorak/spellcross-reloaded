@@ -215,6 +215,6 @@ The restoration/source code in this repository is distributed under the [MIT Lic
 
 ## Repository
 
-Project home: https://github.com/luboshorak/spellcross_restoration_tools
+Project home: https://github.com/luboshorak/spellcross-reloaded
 
-Releases: https://github.com/luboshorak/spellcross_restoration_tools/releases
+Releases: https://github.com/luboshorak/spellcross-reloaded/releases
