@@ -1,110 +1,107 @@
-# Combined Windows x64 release (game + map editor)
+# Building Spellcross Reloaded for Windows
 
-**Current status:** the v0.8.2 game and editor integrations have been merged into `main`, but the Windows Release x64 build and runtime acceptance remain to be verified. **No v0.8.2 GitHub release has been published yet; [v0.8.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.1) remains the latest released package.**
+This is the build guide for the **game and its standalone map editor**. If you just want to play, you don't need any of this: **[download v0.8.2](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.2)** and follow the [main README](../README.md).
 
-This build produces **one portable ZIP** containing the playable Spellcross Reloaded and the latest standalone map editor. Original retail Spellcross archives are **not** included.
+The build produces one portable Windows x64 ZIP. It includes both applications and their support files, but **not the original commercial Spellcross archives**.
 
-## Build
+## Build the game and editor
 
-From the repository root on Windows (PowerShell 5.1+), use the merged `main` branch and **update the pinned editor submodule**:
+You'll need Windows, Visual Studio/MSVC C++ build tools, and a compatible wxWidgets installation (the integrated projects currently use the v145 MSVC toolset). Run these commands in PowerShell from your existing repository checkout:
 
-~~~powershell
+```powershell
 git switch main
 git pull --ff-only origin main
 git submodule sync --recursive
 git submodule update --init --recursive
 .\packaging\Build-CombinedRelease.ps1
-~~~
+```
 
-The script builds both C++ projects in Release x64 through MSBuild, finds MSVC dumpbin.exe, bundles the dynamic DLL imports from the configured wxWidgets/vcpkg x64 installation, and writes **dist/Spellcross_Reloaded_v0.8.2.zip**. Rebuilding this version replaces the previous ZIP of the same name; dated staging directories remain eligible for cleanup.
+If you're starting from scratch, first clone with submodules:
 
-For a typical vcpkg installation:
+```powershell
+git clone --recurse-submodules https://github.com/luboshorak/spellcross-reloaded.git
+cd spellcross-reloaded
+```
 
-~~~powershell
+If the build can't find wxWidgets, specify the path to your vcpkg x64 installation:
+
+```powershell
 .\packaging\Build-CombinedRelease.ps1 -WxRoot "$HOME\vcpkg\installed\x64-windows"
-~~~
+```
 
-The 37 MP4 cutscenes present in v0.8.0 are intentionally ignored by Git
-source control and must be supplied from an existing local installation.
-The packager automatically looks in the game build output and game data
-source directory. If absent, unpack v0.8.0 and pass its root directory:
+The output is:
 
-~~~powershell
-.\packaging\Build-CombinedRelease.ps1 -WxRoot "$HOME\vcpkg\installed\x64-windows" -MovieSource "D:\Games\Spellcross-v0.8.0"
-~~~
+```text
+dist/Spellcross_Reloaded_v0.8.2.zip
+```
 
-Every MP4 is SHA-256 verified against data/movie_fallback/MANIFEST.tsv.
-A missing/mismatched file causes the build to stop instead of silently
-shipping an incomplete video pack.
+The build also leaves dated staging folders in `dist/`. The same versioned ZIP name is reused when you rebuild.
 
-To package two already-built Release executables without compiling:
+### About the video files
 
-~~~powershell
-.\packaging\Build-CombinedRelease.ps1 -SkipBuild
-~~~
+The project uses **37 MP4 fallback cutscenes**, which aren't stored in Git. The packager looks for existing local copies and verifies their SHA-256 hashes against the manifest. If you have them in an older extracted build, supply that directory:
 
-The package needs the Microsoft Visual C++ Redistributable x64 on a clean system:
-https://aka.ms/vc14/vc_redist.x64.exe
+```powershell
+.\packaging\Build-CombinedRelease.ps1 -MovieSource "D:\Games\Spellcross-v0.8.0"
+```
 
-## Cleaning old builds in dist/
+Missing or mismatched clips cause packaging to stop, rather than producing an incomplete release.
 
-Older packaging runs created dated ZIPs and matching uncompressed staging
-directories. The new stable filename Spellcross_Reloaded_v0.8.2.zip is always
-protected by the cleanup script. Clean older builds safely:
+## Useful build options
 
-~~~powershell
-.\packaging\Clean-OldBuilds.ps1 -Keep 3             # preview
-.\packaging\Clean-OldBuilds.ps1 -Keep 3 -Apply      # delete only eligible old builds
-~~~
+| Option | When to use it |
+| --- | --- |
+| `-WxRoot <path>` | wxWidgets/vcpkg isn't detected automatically |
+| `-MovieSource <path>` | Point to existing copies of the fallback videos |
+| `-SkipBuild` | Repackage the already compiled Release executables |
+| `-NoZip` | Prepare the staged files without creating the ZIP |
+| `-PruneOldBuilds` | Remove eligible old staging outputs after a successful build |
 
-The three newest timestamped builds are always preserved. An older staging
-folder containing user configuration, imported game archives, save or temp
-data will be **protected**, not deleted. Unrelated files in dist are ignored.
+You can preview safe cleanup without deleting anything:
 
-To opt in to automatically pruning old outputs after a **successful** future
-build:
+```powershell
+.\packaging\Clean-OldBuilds.ps1 -Keep 3
+```
 
-~~~powershell
-.\packaging\Build-CombinedRelease.ps1 -SkipBuild -WxRoot "$HOME\vcpkg\installed\x64-windows" -PruneOldBuilds
-~~~
+To perform that cleanup:
 
-## Layout
+```powershell
+.\packaging\Clean-OldBuilds.ps1 -Keep 3 -Apply
+```
 
-~~~text
-Spellcross_Reloaded_v0.8.2.zip  (files at ZIP root)
-  Spellcross.exe
-  data/                   # Reloaded auxiliary assets and menus
-  Editor/
-    spellcross_map_editor.exe
-    data/                 # editor auxiliary archives, contexts and fonts
-  LICENSE-Reloaded.txt
-  LICENSE-Map-Editor.txt
-  README-FIRST.txt
-~~~
+The cleanup script keeps the newest three dated builds, protects user data and ignores unrelated files.
 
-On first use, Spellcross.exe creates/configures config.ini at the package root. It can import original game data from a raw ISO file (ISO 9660), a mounted CD/ISO folder, an existing DATA directory or original archives into game_data/DATA/.
+## What's in the ZIP?
 
-The editor maintains its own Editor/config.ini. It can find the game root and use original game archives from game_data/DATA or game root [FILES] configuration. Its own Editor/data/COMMON.fs is distinct from the retail COMMON.FS.
+```text
+Spellcross.exe                 playable game
+data/                          game support files and video fallbacks
+Editor/
+  spellcross_map_editor.exe   standalone editor
+  data/                        editor support files
+README-FIRST.txt
+LICENSE-Reloaded.txt
+LICENSE-Map-Editor.txt
+```
 
-The packager deliberately whitelists support assets. It does not copy game_data/, saves, earlier config.ini files, the upstream editor's old hard-coded INI, or retail archives.
+The game creates its `config.ini` and imported `game_data/DATA/` on first use. The editor keeps a separate `Editor/config.ini`. Its own `Editor/data/COMMON.fs` supplies editor resources and is different from the original retail `COMMON.FS`.
 
-## Acceptance test before publishing
+The packager intentionally leaves out your saves, settings, imported commercial archives and other local/private files. Keep those separately.
 
-1. Build **both** Release x64 projects.
-2. Extract the ZIP to a different writable directory **outside** the source checkout.
-3. Run Spellcross.exe and supply original Spellcross archives; specifically test a **raw ISO 9660 `.iso` file without mounting**, a mounted CD/ISO directory, an existing `DATA` folder and individual original archive selection.
-4. Exit and restart the game; verify graphics, audio and settings.
-5. Launch Editor/spellcross_map_editor.exe without any prior Editor/config.ini.
-6. Open a map, edit it, save under a different filename, and reopen it.
-7. From the main menu launch the standalone editor; it should open without terminating the game. From an active tactical mission test **Game → Open mission in Map Editor...**, including Save and open, Open without saving, Cancel, failed/missing editor and canceled Save As.
-8. In the editor test **Land/Road/Bridges/Houses/Alliance/OS Objects** painting, preview and Undo; compare with Trees/Walls/Special. Test 90° rotation of one-cell and multi-cell flat L1 brushes (R/Shift+R), save/reopen and play the modified DEF/DTA in Reloaded; test L2 drag/drop, collision rejection and Undo.
-9. In the game's tactical File menu use **Load custom map...** (`Ctrl+Alt+O`) and test DEF+DTA loading, save/cancel flow, mission events and independence from the strategic campaign.
-10. Test on clean Windows 10/11 x64 with the VC++ Redistributable, but without Visual Studio or wxWidgets.
-11. **Do not tag or publish v0.8.2 until these tests pass.** The PRs are already merged into `main`; merging is no longer an outstanding step.
+## Check a build before distributing it
 
-## Scope and cautions
+A successful compile is a good start, but a portable release needs a quick hands-on test:
 
-- Windows x64 test ZIP, not a signed installer or automatic GitHub release.
-- Runtime DLLs from vcpkg carry upstream licenses; review all third-party notices before public redistribution.
-- The **v0.8.2 game** directly reads standard ISO 9660 `.iso` files without mounting them. The **editor's independent importer** continues to use mounted CD/ISO folders or shared archives already imported by the game.
-- The code has not been compiled in the assistant environment. Build and portability testing remain necessary.
+1. Extract the ZIP **outside** your source checkout and launch `Spellcross.exe` without Visual Studio installed.
+2. Import original data from a **raw ISO file**, or try an existing `DATA` directory. Check that the game still works after restarting.
+3. Open a tactical mission, check graphics, sound and a save/load cycle.
+4. Launch the map editor from the game. Test the save/open/cancel prompts and what happens if the editor executable or mission file is missing.
+5. In the editor, paint terrain, roads and buildings; test Undo, flat tile rotation, L2 object dragging and save/reopen.
+6. Load a standalone `.DEF` + `.DTA` mission in the playable game and check that it starts correctly.
+7. On a clean Windows 10/11 x64 machine, confirm that the portable package needs only the [VC++ Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), not your development environment.
+
+The v0.8.2 release is already published; use this list for checking rebuilt packages and future updates, not as an instruction to hold up that release.
+
+## Notes
+
+The program and support files are distributed separately from the original commercial game archives, which users must supply themselves. Review third-party runtime licenses before redistribution. Original game cinematics and other retail assets are not covered by the project's source-code MIT license.
