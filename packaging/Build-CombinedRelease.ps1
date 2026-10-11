@@ -153,8 +153,7 @@ if (Test-Path -LiteralPath $wxLicense -PathType Leaf) {
     New-Item -ItemType Directory -Path $licenseDir -Force | Out-Null
     Copy-Item -LiteralPath $wxLicense -Destination (Join-Path $licenseDir 'wxwidgets.txt') -Force
 }
-# Bundle copyright notices for every DLL actually copied from vcpkg.
-# The file manifest maps bin/*.dll to its originating package/port.
+# Bundle copyright notices for DLLs copied from vcpkg.
 $info = Join-Path $WxRoot 'vcpkg\info'
 if (Test-Path -LiteralPath $info -PathType Container) {
     $licenseDir = Join-Path $stage 'third-party-licenses'
@@ -162,33 +161,7 @@ if (Test-Path -LiteralPath $info -PathType Container) {
     foreach ($manifest in (Get-ChildItem -LiteralPath $info -Filter '*_x64-windows.list' -File)) {
         $providesDll = $false
         foreach ($line in [System.IO.File]::ReadLines($manifest.FullName)) {
-            if ($line -match '/bin/([^/]+\.dll)
-
-Game:       Spellcross.exe
-Map editor: Editor\spellcross_map_editor.exe
-
-1. Unpack the whole ZIP into a writable folder.
-2. Launch Spellcross.exe first. Configure your own original Spellcross
-   game archives, or import them from an original CD / MOUNTED ISO image.
-3. The game can place imported archives in game_data\DATA.
-4. Launch Editor\spellcross_map_editor.exe. It locates that game-data folder.
-5. Game and editor have SEPARATE config.ini files in their executable folders.
-
-Original retail game archives are NOT included. Do not confuse editor's
-Editor\data\COMMON.fs with the original game's COMMON.FS archive.
-
-Requires Microsoft Visual C++ Redistributable x64 on systems without it:
-https://aka.ms/vc14/vc_redist.x64.exe
-
-DEVELOPMENT BUILD: still requires testing on a clean Windows machine.
-'@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8
-if (-not $NoZip) {
-    $zip = Join-Path $OutputDirectory ($name + '.zip')
-    Compress-Archive -LiteralPath $stage -DestinationPath $zip -CompressionLevel Optimal
-    Write-Host "Package created: $zip" -ForegroundColor Green
-}
-Write-Host "Staged release: $stage; copied $($copiedDlls.Count) distinct DLLs." -ForegroundColor Green
- -and $copiedDlls.Contains($Matches[1])) {
+            if ($line -match '/bin/([^/]+\.dll)$' -and $copiedDlls.Contains($Matches[1])) {
                 $providesDll = $true
                 break
             }
