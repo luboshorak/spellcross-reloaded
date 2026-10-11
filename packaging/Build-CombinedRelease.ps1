@@ -242,8 +242,8 @@ Map editor: Editor\spellcross_map_editor.exe
 4. Launch Editor\spellcross_map_editor.exe. It locates that game-data folder.
 5. Game and editor have SEPARATE config.ini files in their executable folders.
 MP4 fallback videos: 37 files, verified against MANIFEST.tsv.
-Older user save games are not in this ZIP. With Spellcross closed, copy
-save\strategic and temp\*.scsave from an older installation to this folder.
+Old user saves are not distributed. With Spellcross closed, run:
+  .\Import-PreviousSaves.ps1 -PreviousFolder "C:\path\to\v0.8.0"
 
 Original retail game archives are NOT included. Do not confuse editor's
 Editor\data\COMMON.fs with the original game's COMMON.FS archive.
@@ -253,6 +253,7 @@ https://aka.ms/vc14/vc_redist.x64.exe
 
 DEVELOPMENT BUILD: still requires testing on a clean Windows machine.
 '@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8
+Copy-Required (Join-Path $PSScriptRoot 'Import-PreviousSaves.ps1') (Join-Path $stage 'Import-PreviousSaves.ps1')
 if (-not $NoZip) {
     $zip = Join-Path $OutputDirectory ($name + '.zip')
     Compress-Archive -LiteralPath $stage -DestinationPath $zip -CompressionLevel Optimal
