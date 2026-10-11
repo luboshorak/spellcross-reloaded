@@ -14,7 +14,7 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
-// »eötina (»esk· republika) resources
+// √àe≈°tina (√àesk√° republika) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CSY)
 LANGUAGE LANG_CZECH, SUBLANG_DEFAULT
@@ -148,11 +148,11 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "Spellcross Reloaded\0"
-            VALUE "FileVersion", "0.8.0\0"
+            VALUE "FileVersion", "0.8.2\0"
             VALUE "InternalName", "Spellcross\0"
             VALUE "OriginalFilename", "Spellcross.exe\0"
             VALUE "ProductName", "Spellcross Reloaded\0"
-            VALUE "ProductVersion", "0.8.0\0"
+            VALUE "ProductVersion", "0.8.2\0"
             VALUE "Comments", "Fan-made Spellcross restoration project\0"
         END
     END
@@ -186,7 +186,7 @@ IDI_SPR_OBJ             BITMAP                  "ico/spr_obj.bmp"
 
 IDB_PNG1                PNG                     "ico/multi.png"
 
-#endif    // »eötina (»esk· republika) resources
+#endif    // √àe≈°tina (√àesk√° republika) resources
 /////////////////////////////////////////////////////////////////////////////
 
 
