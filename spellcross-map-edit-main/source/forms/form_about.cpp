@@ -321,7 +321,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     grid->AddGrowableCol(1, 1);
     AddInfoRow(content, grid, "Author", wxString::FromUTF8("Luboš Horák"));
     AddInfoRow(content, grid, "Version", spellcross_app::VersionLabel());
-    AddInfoRow(content, grid, "Repository", "github.com/luboshorak/spellcross_restoration_tools");
+    AddInfoRow(content, grid, "Repository", "github.com/luboshorak/spellcross-reloaded");
     AddInfoRow(content, grid, "Based on", wxString::FromUTF8("Spellcross Map Editor by Stanislav Mašláň"));
     AddInfoRow(content, grid, "License", "MIT License");
     projectBox->Add(grid, 0, wxEXPAND | wxALL, 10);
