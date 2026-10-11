@@ -13,7 +13,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$releaseVersion = '0.8.1'
+$releaseVersion = '0.8.2'
 $game = Join-Path $root 'spellcross-map-edit-main'
 $editor = Join-Path $root 'external\map-editor'
 $gameProject = Join-Path $game 'source\spellcross_map_editor.vcxproj'
