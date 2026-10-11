@@ -1,0 +1,4 @@
+[submodule "external/map-editor"]
+	path = external/map-editor
+	url = https://github.com/luboshorak/spellcross-reloaded-editor.git
+	branch = main
