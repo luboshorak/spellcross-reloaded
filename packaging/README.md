@@ -41,6 +41,27 @@ To package two already-built Release executables without compiling:
 The package needs the Microsoft Visual C++ Redistributable x64 on a clean system:
 https://aka.ms/vc14/vc_redist.x64.exe
 
+## Cleaning old builds in dist/
+
+Older packaging runs create a dated ZIP and a matching uncompressed staging
+directory. Clean them safely without touching non-release files:
+
+~~~powershell
+.\packaging\Clean-OldBuilds.ps1 -Keep 3             # preview
+.\packaging\Clean-OldBuilds.ps1 -Keep 3 -Apply      # delete only eligible old builds
+~~~
+
+The three newest timestamped builds are always preserved. An older staging
+folder containing user configuration, imported game archives, save or temp
+data will be **protected**, not deleted. Unrelated files in dist are ignored.
+
+To opt in to automatically pruning old outputs after a **successful** future
+build:
+
+~~~powershell
+.\packaging\Build-CombinedRelease.ps1 -SkipBuild -WxRoot "$HOME\vcpkg\installed\x64-windows" -PruneOldBuilds
+~~~
+
 ## Layout
 
 ~~~text
