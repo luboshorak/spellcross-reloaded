@@ -21,7 +21,8 @@ enum class FormMainMenuAction
     Credits,
     Intro,
     Exit,
-    GameModeOff
+    GameModeOff,
+    OpenEditor
 };
 
 class FormMainMenu
@@ -75,7 +76,9 @@ private:
     void OnConsoleCommand();
     void OnOptionsAudio(wxCommandEvent& ev);
     void OnOptionsScreen(wxCommandEvent& ev);
+    void OnOpenEditor(wxCommandEvent& ev);
 
     static constexpr int ID_MMENU_OPTIONS_AUDIO  = 9901;
     static constexpr int ID_MMENU_OPTIONS_SCREEN = 9902;
+    static constexpr int ID_MMENU_OPEN_EDITOR = 9903;
 };
