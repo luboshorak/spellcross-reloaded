@@ -269,9 +269,13 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     optMenu->Append(ID_MMENU_OPTIONS_AUDIO, L"&Audio...\tCtrl+A");
     optMenu->Append(ID_MMENU_OPTIONS_SCREEN, L"&Screen...\tCtrl+S");
     bar->Append(optMenu, "&Options");
+    auto* editorMenu = new wxMenu();
+    editorMenu->Append(ID_MMENU_OPEN_EDITOR, "Open Map Editor...", "Launch the standalone Spellcross map editor");
+    bar->Append(editorMenu, "&Map Editor");
     form->SetMenuBar(bar);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsAudio, this, ID_MMENU_OPTIONS_AUDIO);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsScreen, this, ID_MMENU_OPTIONS_SCREEN);
+    form->Bind(wxEVT_MENU, &FormMainMenu::OnOpenEditor, this, ID_MMENU_OPEN_EDITOR);
 
     LayoutMenuItems(wxSize(640, 480));
 
@@ -301,6 +305,7 @@ FormMainMenu::~FormMainMenu()
         form->Unbind(wxEVT_KEY_DOWN, &FormMainMenu::OnKeyDown, this);
         form->Unbind(wxEVT_MENU, &FormMainMenu::OnOptionsAudio,  this, ID_MMENU_OPTIONS_AUDIO);
         form->Unbind(wxEVT_MENU, &FormMainMenu::OnOptionsScreen, this, ID_MMENU_OPTIONS_SCREEN);
+        form->Unbind(wxEVT_MENU, &FormMainMenu::OnOpenEditor, this, ID_MMENU_OPEN_EDITOR);
         form->Destroy();
         form = nullptr;
     }
@@ -845,4 +850,11 @@ void FormMainMenu::OnOptionsScreen(wxCommandEvent& ev)
         if (m_spell_map)
             m_spell_map->SetGamma(oldGamma);
     }
+}
+
+void FormMainMenu::OnOpenEditor(wxCommandEvent&)
+{
+    // Keep the main menu visible; this is a separate standalone application.
+    if (m_action_cb)
+        m_action_cb(FormMainMenuAction::OpenEditor);
 }

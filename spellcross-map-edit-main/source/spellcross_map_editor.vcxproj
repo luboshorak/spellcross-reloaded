@@ -126,6 +126,7 @@
     <ClInclude Include="fsu_archive.h" />
     <ClInclude Include="fs_archive.h" />
     <ClInclude Include="level.h" />
+    <ClInclude Include="iso9660_import.h" />
     <ClInclude Include="wx_other.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="riff_loader.h" />

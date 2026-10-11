@@ -194,8 +194,11 @@ private:
     void OnSaveDEF(wxCommandEvent& event);
     void OnNewMap(wxCommandEvent& event);
     void OnOpenLevelDef(wxCommandEvent& ev);
+    void OnLoadCustomMap(wxCommandEvent& ev);
     void OnOpenMainMenu(wxCommandEvent& event);
     void OnMainMenuAction(FormMainMenuAction action);
+    bool LaunchStandaloneMapEditor(const std::filesystem::path& sourceMission = {});
+    void OnOpenMapEditorFromBattle(wxCommandEvent& event);
     bool LoadGameStateFromDialog();
     bool SaveTacticalGameWithCampaignContext(const std::wstring& path);
     bool LoadTacticalGameWithCampaignContext(const std::wstring& path);
@@ -424,6 +427,7 @@ enum
 {
     ID_OpenMap = 100,
     ID_OpenLevelDef,
+    ID_LoadCustomMap,
     ID_SaveMap,
     ID_SaveMapAs,
     ID_SaveDTA,
@@ -494,7 +498,8 @@ enum
     ID_OptionsScreen,
     ID_OptionsDifficultyEasy,
     ID_OptionsDifficultyNormal,
-    ID_OptionsDifficultyHard
+    ID_OptionsDifficultyHard,
+    ID_mmOpenMapEditor
 };
 
 

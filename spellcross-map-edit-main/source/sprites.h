@@ -504,6 +504,8 @@ public:
 	~Terrain();
 	int Load(FSarchive *terrain_fs, uint8_t map_pal[][3], SpellGraphics *gres, SpellL2classes* L2=NULL,std::function<void(std::string)> status_item=NULL);
 	Sprite* GetSprite(const char* name);
+	// On-demand rotated flat L1 sprite; original FS archives are untouched.
+	Sprite* GetFlatRotatedSprite(Sprite* current, int quarterTurns);
 	Sprite* GetSprite(int index);
 	int GetSpriteID(Sprite *spr);
 	int GetSpriteID(const char* name);
