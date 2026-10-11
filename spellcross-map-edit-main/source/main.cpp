@@ -23,6 +23,8 @@
 #include <wx/timer.h>
 #include <wx/filedlg.h>
 #include <wx/dirdlg.h>
+#include <wx/choicdlg.h>
+#include "iso9660_import.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
 #include <wx/event.h>
@@ -929,10 +931,9 @@ namespace
         }
         saveNow();
 
-        // Fresh original-CD path: the DOS installer keeps the installed DATA files
-        // inside DATA\INSTALL.DTA rather than exposing COMMON.FS etc. directly on
-        // the disc. Offer to import that payload once before asking for individual
-        // files. A mounted ISO works exactly like a physical CD.
+        // An original Spellcross installation can be supplied as a raw ISO,
+        // a physical/mounted/extracted CD directory or already installed
+        // archives. Never imply that we detect or mount an ISO automatically.
         bool missingRequired = false;
         for (const auto& req : reqs)
         {
@@ -945,94 +946,211 @@ namespace
 
         if (missingRequired)
         {
-            const int importCd = wxMessageBox(
-                "Some required Spellcross game data is missing.\n\n"
-                "If you have the original Spellcross CD, or a mounted ISO image, "
-                "Spellcross can import the installed game archives directly from "
-                "DATA\\INSTALL.DTA.\n\n"
-                "Import from the original CD / mounted ISO now?\n\n"
-                "Choose No to locate the individual files manually.",
-                "Spellcross original CD", wxYES_NO | wxICON_QUESTION);
+            const fs::path localDataDir = runtime_root / "game_data" / "DATA";
 
-            if (importCd == wxYES)
+            // Preserve the old INSTALL.DTA decoder. Both the physical-CD and
+            // raw-ISO entry points feed the same importer and config discovery.
+            auto importInstaller = [&](const fs::path& installDta,
+                                       spellcross_iso::Reader* iso) -> bool
             {
-                wxDirDialog cdDialog(nullptr,
-                    "Select the Spellcross CD root or its DATA folder",
-                    wxString(), wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
-
-                if (cdDialog.ShowModal() == wxID_OK)
+                std::vector<fs::path> extracted;
+                std::string importError;
+                bool extractedOk = false;
                 {
-                    const fs::path selected = cdDialog.GetPath().ToStdWstring();
+                    wxBusyCursor busy;
+                    extractedOk = ExtractInstallDtaDataFiles(
+                        installDta, localDataDir, extracted, importError);
+                }
+                if (!extractedOk)
+                {
+                    wxMessageBox(
+                        wxString("Importing INSTALL.DTA failed:\n\n") +
+                        wxString::FromUTF8(importError.c_str()),
+                        "Spellcross game data", wxOK | wxICON_ERROR);
+                    return false;
+                }
+
+                // Sidecar resources live directly in CD /DATA, outside the
+                // installer's payload. A raw ISO exposes them by directory
+                // records, while a mounted/extracted CD uses normal paths.
+                auto copyIsoSidecar = [&](const std::string& source,
+                                          const std::string& target) -> bool
+                {
+                    if (!iso || !iso->HasDataFile(source))
+                        return false;
+
+                    const fs::path destination = localDataDir / target;
+                    fs::path partial = destination;
+                    partial += ".iso-import.partial";
+                    std::string err;
+                    std::error_code ec;
+                    if (!iso->ExtractDataFile(source, partial, err))
+                    {
+                        fs::remove(partial, ec);
+                        wxMessageBox(wxString("Could not import ") +
+                            wxString::FromUTF8(source.c_str()) + ":\n" +
+                            wxString::FromUTF8(err.c_str()),
+                            "Spellcross game data", wxOK | wxICON_WARNING);
+                        return false;
+                    }
+                    fs::remove(destination, ec);
+                    ec.clear();
+                    fs::rename(partial, destination, ec);
+                    if (ec)
+                    {
+                        fs::remove(partial, ec);
+                        wxMessageBox(wxString("Could not finish importing ") +
+                            wxString::FromUTF8(source.c_str()) + ".",
+                            "Spellcross game data", wxOK | wxICON_WARNING);
+                        return false;
+                    }
+                    return true;
+                };
+
+                if (iso)
+                {
+                    copyIsoSidecar("INFO.FS", "INFO.FS");
+                    if (!copyIsoSidecar("MOVIE.FS", "MOVIE.FS"))
+                        copyIsoSidecar("MOVIES.FS", "MOVIE.FS");
+                    copyIsoSidecar("SPEAKER.FS", "SPEAKER.FS");
+                }
+                else
+                {
+                    const fs::path cdDataDir = installDta.parent_path();
+                    CopyCdArchiveIfPresent(cdDataDir, localDataDir, "INFO.FS", "INFO.FS");
+                    if (!CopyCdArchiveIfPresent(cdDataDir, localDataDir, "MOVIE.FS", "MOVIE.FS"))
+                        CopyCdArchiveIfPresent(cdDataDir, localDataDir, "MOVIES.FS", "MOVIE.FS");
+                    CopyCdArchiveIfPresent(cdDataDir, localDataDir, "SPEAKER.FS", "SPEAKER.FS");
+                }
+
+                autoDiscoverFrom(localDataDir);
+                if (!saveNow())
+                {
+                    wxMessageBox("The imported paths could not be saved in config.ini.",
+                        "Spellcross game data", wxOK | wxICON_ERROR);
+                    return false;
+                }
+
+                wxString summary = "Imported " +
+                    wxString::Format("%lu", static_cast<unsigned long>(extracted.size())) +
+                    " game-data files into:\n" + wxString(localDataDir.wstring()) +
+                    "\n\nYou do not need to keep the disc inserted or the ISO mounted.";
+                if (!IsValidSourceFile(configuredPath(reqs[6]), reqs[6].filename))
+                    summary += "\n\nINFO.FS was not found. Select it when prompted.";
+                wxMessageBox(summary, "Spellcross game data",
+                    wxOK | wxICON_INFORMATION);
+                return true;
+            };
+
+            for (;;)
+            {
+                wxArrayString options;
+                options.Add("Select an ISO image file (*.iso) - no mounting needed");
+                options.Add("Use a CD, mounted ISO or extracted ISO folder");
+                options.Add("Use an existing Spellcross DATA folder");
+                options.Add("Select individual game archives manually");
+
+                wxSingleChoiceDialog choice(nullptr,
+                    "Spellcross needs files from your original game.\n\n"
+                    "Choose how to locate them. The ISO option opens the image "
+                    "directly; you do not need to extract it first.",
+                    "Spellcross - game data setup", options);
+                choice.SetSelection(0);
+                if (choice.ShowModal() != wxID_OK)
+                    return false;
+
+                const int option = choice.GetSelection();
+                if (option == 3)
+                    break; // use the existing per-file fallback below
+
+                if (option == 0)
+                {
+                    wxFileDialog imageDialog(nullptr,
+                        "Select the original Spellcross ISO image",
+                        wxEmptyString, wxEmptyString,
+                        "ISO images (*.iso)|*.iso|All files (*.*)|*.*",
+                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+                    if (imageDialog.ShowModal() != wxID_OK)
+                        continue;
+
+                    const fs::path imagePath(imageDialog.GetPath().ToStdWstring());
+                    spellcross_iso::Reader iso;
+                    std::string isoError;
+                    {
+                        wxBusyCursor busy;
+                        if (!iso.Open(imagePath, isoError))
+                        {
+                            wxMessageBox(wxString::FromUTF8(isoError.c_str()) +
+                                "\n\nYou can also use the mounted/extracted ISO folder option.",
+                                "ISO import", wxOK | wxICON_WARNING);
+                            continue;
+                        }
+                    }
+
+                    const fs::path temporary = localDataDir / "INSTALL.DTA.iso-import.partial";
+                    bool staged = false;
+                    {
+                        wxBusyCursor busy;
+                        staged = iso.ExtractDataFile("INSTALL.DTA", temporary, isoError);
+                    }
+                    if (!staged)
+                    {
+                        std::error_code cleanupError;
+                        fs::remove(temporary, cleanupError);
+                        wxMessageBox(wxString("Cannot read INSTALL.DTA from the ISO:\n\n") +
+                            wxString::FromUTF8(isoError.c_str()), "ISO import",
+                            wxOK | wxICON_ERROR);
+                        continue;
+                    }
+                    const bool imported = importInstaller(temporary, &iso);
+                    std::error_code cleanupError;
+                    fs::remove(temporary, cleanupError);
+                    if (imported) break;
+                    continue;
+                }
+
+                wxDirDialog folderDialog(nullptr,
+                    option == 1
+                        ? "Select the CD root, mounted ISO or extracted ISO folder (with DATA/INSTALL.DTA)"
+                        : "Select the installed Spellcross DATA folder (containing COMMON.FS)",
+                    wxEmptyString, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+                if (folderDialog.ShowModal() != wxID_OK)
+                    continue;
+                const fs::path selected(folderDialog.GetPath().ToStdWstring());
+
+                if (option == 1)
+                {
                     const fs::path installDta = FindInstallDtaFromCdSelection(selected);
                     if (installDta.empty())
                     {
                         wxMessageBox(
-                            "INSTALL.DTA was not found.\n\n"
-                            "Select either the root of the original Spellcross CD / mounted ISO, "
-                            "or its DATA folder. Manual file selection will continue.",
-                            "Spellcross original CD", wxOK | wxICON_WARNING);
+                            "INSTALL.DTA was not found in the selected folder or its DATA subfolder.\n\n"
+                            "Please select the root folder of the CD/extracted ISO, "
+                            "or the DATA folder itself.",
+                            "Spellcross game data", wxOK | wxICON_WARNING);
+                        continue;
                     }
-                    else
-                    {
-                        const fs::path localDataDir = runtime_root / "game_data" / "DATA";
-                        std::vector<fs::path> extracted;
-                        std::string importError;
-
-                        bool extractedOk = false;
-                        {
-                            wxBusyCursor busy;
-                            extractedOk = ExtractInstallDtaDataFiles(
-                                installDta, localDataDir, extracted, importError);
-                        }
-
-                        if (!extractedOk)
-                        {
-                            wxMessageBox(
-                                wxString("Reading INSTALL.DTA failed:\n\n") + wxString::FromUTF8(importError.c_str()),
-                                "Spellcross original CD", wxOK | wxICON_ERROR);
-                        }
-                        else
-                        {
-                            // These archives are CD-side resources, not part of the
-                            // installed INSTALL.DTA payload. Copy them locally when
-                            // the particular CD edition contains them so the disc is
-                            // not needed on subsequent runs.
-                            const fs::path cdDataDir = installDta.parent_path();
-                            CopyCdArchiveIfPresent(cdDataDir, localDataDir, "INFO.FS", "INFO.FS");
-                            if (!CopyCdArchiveIfPresent(cdDataDir, localDataDir, "MOVIE.FS", "MOVIE.FS"))
-                                CopyCdArchiveIfPresent(cdDataDir, localDataDir, "MOVIES.FS", "MOVIE.FS");
-                            CopyCdArchiveIfPresent(cdDataDir, localDataDir, "SPEAKER.FS", "SPEAKER.FS");
-
-                            // The imported folder now behaves like a normal installed
-                            // Spellcross DATA directory. Re-use the normal discovery
-                            // path so [FILES] and the legacy directory keys stay in one
-                            // place and remain portable/relative where possible.
-                            autoDiscoverFrom(localDataDir);
-                            if (!saveNow())
-                            {
-                                wxMessageBox(
-                                    "The imported paths could not be written to config.ini.",
-                                    "Spellcross original CD", wxOK | wxICON_ERROR);
-                                return false;
-                            }
-
-                            wxString importMessage("Imported ");
-                            const std::string importedCount = std::to_string(extracted.size());
-                            importMessage += wxString::FromUTF8(importedCount.c_str());
-                            importMessage += " installed game-data files from INSTALL.DTA.\n\n";
-                            importMessage += "Local data folder:\n";
-                            importMessage += wxString(localDataDir.wstring());
-
-                            if (!IsValidSourceFile(configuredPath(reqs[6]), reqs[6].filename))
-                            {
-                                importMessage +=
-                                    "\n\nINFO.FS was not present in the selected CD DATA folder. "
-                                    "You will be asked for it separately.";
-                            }
-                            wxMessageBox(importMessage, "Spellcross original CD", wxOK | wxICON_INFORMATION);
-                        }
-                    }
+                    if (importInstaller(installDta, nullptr))
+                        break;
+                    continue;
                 }
+
+                // The user can select an installed game's root or its DATA
+                // directory. Select one location, then discover sibling files.
+                const fs::path dataPath =
+                    !FindFileCaseInsensitive(selected, "COMMON.FS").empty()
+                        ? selected : selected / "DATA";
+                if (FindFileCaseInsensitive(dataPath, "COMMON.FS").empty())
+                {
+                    wxMessageBox(
+                        "COMMON.FS was not found here. Choose the installed game's "
+                        "DATA folder, or the game installation root containing DATA.",
+                        "Spellcross game data", wxOK | wxICON_WARNING);
+                    continue;
+                }
+                autoDiscoverFrom(dataPath);
+                saveNow();
+                break;
             }
         }
 
