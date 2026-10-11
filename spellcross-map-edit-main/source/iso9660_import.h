@@ -151,7 +151,8 @@ namespace spellcross_iso
             }
             stream_.clear();
             stream_.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
-            std::array<char, 1024 * 1024> buffer{};
+            // Keep large transfer buffers off the default Windows thread stack.
+            std::vector<char> buffer(256 * 1024);
             std::uint64_t remaining = found->size;
             while (remaining)
             {
