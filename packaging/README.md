@@ -11,7 +11,7 @@ git submodule update --init --recursive
 .\packaging\Build-CombinedRelease.ps1
 ~~~
 
-The script builds both C++ projects in Release x64 through MSBuild, finds MSVC dumpbin.exe, bundles the dynamic DLL imports from the configured wxWidgets/vcpkg x64 installation, and writes a timestamped ZIP under dist/.
+The script builds both C++ projects in Release x64 through MSBuild, finds MSVC dumpbin.exe, bundles the dynamic DLL imports from the configured wxWidgets/vcpkg x64 installation, and writes **dist/Spellcross_Reloaded_v0.8.1.zip**. Rebuilding this version replaces the previous ZIP of the same name; dated staging directories remain eligible for cleanup.
 
 For a typical vcpkg installation:
 
@@ -43,8 +43,9 @@ https://aka.ms/vc14/vc_redist.x64.exe
 
 ## Cleaning old builds in dist/
 
-Older packaging runs create a dated ZIP and a matching uncompressed staging
-directory. Clean them safely without touching non-release files:
+Older packaging runs created dated ZIPs and matching uncompressed staging
+directories. The new stable filename Spellcross_Reloaded_v0.8.1.zip is always
+protected by the cleanup script. Clean older builds safely:
 
 ~~~powershell
 .\packaging\Clean-OldBuilds.ps1 -Keep 3             # preview
@@ -65,7 +66,7 @@ build:
 ## Layout
 
 ~~~text
-Spellcross-Reloaded-Win64-YYYYMMDD-HHMMSS/
+Spellcross_Reloaded_v0.8.1.zip  (files at ZIP root)
   Spellcross.exe
   data/                   # Reloaded auxiliary assets and menus
   Editor/
