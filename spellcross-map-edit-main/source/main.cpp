@@ -5650,11 +5650,22 @@ void MainFrame::OnMapConsoleCommand()
 
 void MainFrame::OnUnitClick_cb(int option)
 {
-    if(option & SpellMap::UNIT_OPT_SELECT)
+    if (option & SpellMap::UNIT_OPT_SELECT_UPPER ||
+        option & SpellMap::UNIT_OPT_SELECT_LOWER)
+    {
+        // Native I_UPPER / I_LOWER selector for two friendly units on
+        // one hex. Do not reinterpret these as attack commands.
+        const bool air = (option & SpellMap::UNIT_OPT_SELECT_UPPER) != 0;
+        auto* unit = spell_map->GetSelectableUnit(select_pos, air, true);
+        if (unit)
+            spell_map->SelectUnit(unit);
+    }
+    else if(option & SpellMap::UNIT_OPT_SELECT)
     {
         // select unit
         auto unit = spell_map->CanSelectUnit(select_pos);
-        spell_map->SelectUnit(unit);
+        if (unit)
+            spell_map->SelectUnit(unit);
     }
     else if(option & SpellMap::UNIT_OPT_MOVE)
     {
