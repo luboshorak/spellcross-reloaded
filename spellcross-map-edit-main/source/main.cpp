@@ -5596,6 +5596,38 @@ void MainFrame::OnMapConsoleCommand()
             if (canvas) canvas->Refresh();
         }
     }
+    else if (cmd == "AGAINAGAIN")
+    {
+        // Original tactical cheat: refill AP for every living Alliance company.
+        // Do not touch enemy units, deployment, or the enemy's running turn.
+        if (!spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode() ||
+            m_deployment_active || m_mission_end_flow || spell_map->enemy_turn_running)
+        {
+            wxMessageBox("AGAINAGAIN can only be used during your tactical turn.",
+                         "Console", wxOK | wxICON_INFORMATION, this);
+            return;
+        }
+        spell_map->HaltUnitRanging(true);
+        spell_map->LockMap();
+        for (MapUnit* unit : spell_map->units)
+        {
+            if (unit && !unit->is_enemy && !unit->isDead())
+            {
+                unit->ResetAP();
+                unit->was_moved = true; // update range information after refill
+            }
+        }
+        spell_map->ReleaseMap();
+        spell_map->ResumeUnitRanging(true);
+        spell_map->InvalidateUnitsView();
+        if (canvas) canvas->Refresh();
+    }
+    else if (cmd == "CASHIUP")
+    {
+        wxMessageBox("CASHIUP adds 100 credits in the strategic screen.\\n"
+                     "Open Research or Buy Units and use the console there.",
+                     "Console", wxOK | wxICON_INFORMATION, this);
+    }
     else if (!cmd.empty())
     {
         wxMessageBox("Unknown command: " + dlg.GetValue(), "Console", wxOK | wxICON_WARNING, this);
