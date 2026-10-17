@@ -64,16 +64,21 @@ Source references (studied, not redistributed):
    TUTMNU.LZ (copyrighted English assets must not be silently bundled).
 5. John Alexander introductory escape mission: starts immediately,
    **without** the deployment UI.
-6. From strategy, launch a selected company force: gameplay remains frozen
-   before confirmation; START crosses are visible; no modal/auxiliary
-   deployment panel is displayed. Click friendly units or use the original
-   two top HUD cycling buttons to select a company. Click an empty START
-   cross to place it (Shift-click swaps two companies); invalid/occupied
-   squares cannot silently reposition the unit.
-7. Confirm ONLY with the original flashing **UKONCEN** glyph in the EMPTY
-   THIRD top HUD slot (the regular end-turn icon must not appear there).
-   Verify MissionStart events, AI, movement and objectives begin only after
-   confirmation, and the initial state/save matches the chosen deployment.
+6. Start a strategic mission with several assigned companies. None of
+   those companies should be rendered on the map initially. The original
+   left unit HUD should preview the FIRST assigned, still-unplaced company.
+   Click a START cross: only that company appears there, and the next
+   unplaced company becomes the HUD preview. Repeat until all are placed.
+   Test the native top HUD cycle controls before and after placement,
+   reselecting/repositioning already placed companies and Shift-click swap.
+   Enemy/scenario troops must remain unaffected. Unplaced troops must not
+   block START squares or count toward tactical visibility. No popup/listbox.
+7. The flashing original **UKONCEN** glyph appears in the THIRD top HUD
+   slot (not the end-turn button). Confirming while any roster company is
+   unplaced must be rejected; after ALL companies are on legal START
+   crosses confirmation initiates mission events, AI, fog, and gameplay.
+   Repeat with mixed air/ground units and an interrupted deployment/exit.
+   Verify mission saves/stats reflect the selected final placement.
 8. Repeat with a generated DTA-only defensive/counterattack mission, with
    mixed ground/air unit types, a save/load, RETREAT and mission-end stats.
 
@@ -90,3 +95,18 @@ retains its own existing placement.
 The DOS original deployment confirmation graphic is `UKONCEN`, already
 exposed as `wm_glyph_end_placement` by SpellData. The correct position is
 the third top HUD button, not the right-side end-turn slot.
+
+## 2026-10-17: sequential original-style deployment
+
+The earlier refactor pre-placed selected strategic units via
+`SpellMap::PlaceUnit()`, which made deployment a mere map-repositioning
+step. This implementation now keeps strategic companies in an off-map,
+MainFrame-owned pending roster and transfers them to SpellMap via
+`AddUnit()` only when the player clicks a valid START cross. The left
+native HUD previews the next pending company without adding it to the
+map. Gameplay remains frozen through this phase; pending units are
+cleaned up on abort/exit. It is possible to reselect and adjust companies
+already placed before using the original UKONCEN confirmation icon.
+
+Windows build and in-game interaction have not been checked in this
+remote editing environment. Verify before merging.
