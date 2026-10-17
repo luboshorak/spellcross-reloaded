@@ -768,6 +768,53 @@ namespace
         }
     };
 
+    static wxRect OriginalScrollbarThumb(const OriginalStrategicScrollbarGeometry& g,
+        int position, int maxScroll, int visibleRows)
+    {
+        const int full = g.trackH();
+        const int thumbH = maxScroll > 0
+            ? std::clamp(static_cast<int>(std::lround(
+                static_cast<double>(full) * visibleRows / (maxScroll + visibleRows))), 20, full)
+            : full;
+        const int travel = full - thumbH;
+        const int offset = maxScroll > 0
+            ? static_cast<int>(std::lround(static_cast<double>(
+                std::clamp(position, 0, maxScroll)) * travel / maxScroll))
+            : 0;
+        return wxRect(g.x + 3, g.trackY() + offset, 16, thumbH);
+    }
+
+    static void OriginalDrawScrollbarThumb(wxImage& image,
+        const OriginalStrategicScrollbarGeometry& g, int position, int maxScroll, int visibleRows)
+    {
+        if (!image.IsOk() || g.x + 19 > image.GetWidth() || g.downY() > image.GetHeight())
+            return;
+        // The original SB_BAR artwork is a *full track* (16px wide); darken
+        // its shaft and restore a proportional native-textured thumb on top.
+        // Previously the bright shaft occupied 100% of the track regardless
+        // of the contents, making it look like an immovable scrollbar.
+        const wxRect thumb = OriginalScrollbarThumb(g, position, maxScroll, visibleRows);
+        const int y0 = g.trackY();
+        const int h = g.trackH();
+        std::vector<wxColour> original;
+        original.reserve(static_cast<size_t>(h * 16));
+        for (int y = y0; y < y0 + h; ++y)
+            for (int x = g.x + 3; x < g.x + 19; ++x)
+            {
+                const wxColour clr(image.GetRed(x, y), image.GetGreen(x, y), image.GetBlue(x, y));
+                original.push_back(clr);
+                image.SetRGB(x, y, static_cast<unsigned char>(clr.Red() * 0.35),
+                    static_cast<unsigned char>(clr.Green() * 0.35),
+                    static_cast<unsigned char>(clr.Blue() * 0.35));
+            }
+        for (int y = thumb.y; y < thumb.y + thumb.height; ++y)
+            for (int x = thumb.x; x < thumb.x + thumb.width; ++x)
+            {
+                const wxColour& src = original[static_cast<size_t>((y - y0) * 16 + (x - (g.x + 3)))];
+                image.SetRGB(x, y, src.Red(), src.Green(), src.Blue());
+            }
+    }
+
     static int OriginalScrollbarArrowDelta(const OriginalStrategicScrollbarGeometry& g, int px, int py)
     {
         if (g.HitUp(px, py)) return -1;
@@ -2925,6 +2972,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         return;
 
     m_originalStrategicError.clear();
+    m_originalScrollbarValue = nullptr;
 
     if (!m_spellData)
     {
@@ -3157,6 +3205,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         const int visibleUnitRows = std::max(1, (432 - unitRowsY) / kOriginalUnitRowH);
         const int maxScroll = std::max(0, totalRows - visibleUnitRows);
         m_originalUnitScroll = std::clamp(m_originalUnitScroll, 0, maxScroll);
+        m_originalScrollbarValue = &m_originalUnitScroll;
+        m_originalScrollbarMax = maxScroll;
+        m_originalScrollbarVisible = visibleUnitRows;
+        m_originalScrollbarHeight = 429;
 
         const wxColour& selectedRed = colours.selected;
         OriginalDrawSpellText(image, font, L"Speci\u00E1ln\u00ED", 420, 8, heading, 132, true);
@@ -3308,7 +3360,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         constexpr int maxUnitRows = 18;
         const int hierarchyMaxScroll = std::max(0, static_cast<int>(hierarchyFlatUnits.size()) - maxUnitRows);
         m_originalHierarchyUnitScroll = std::clamp(m_originalHierarchyUnitScroll, 0, hierarchyMaxScroll);
-
+        m_originalScrollbarValue = &m_originalHierarchyUnitScroll;
+        m_originalScrollbarMax = hierarchyMaxScroll;
+        m_originalScrollbarVisible = maxUnitRows;
+        m_originalScrollbarHeight = 472;
 
         OriginalDrawSpellText(image, font, L"Jednotky", 420, 12, heading, 132, true);
         const int unitTextH = std::max(1, font->GetHeight());
@@ -3791,6 +3846,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         const int visibleOptionRows = std::max(1, OriginalStrategicListVisibleRows(font, unitsOptionContent, optionY, optionRowH));
         const int maxOptionScroll = std::max(0, static_cast<int>(optionRows.size()) - visibleOptionRows);
         m_originalUnitsOptionScroll = std::clamp(m_originalUnitsOptionScroll, 0, maxOptionScroll);
+        m_originalScrollbarValue = &m_originalUnitsOptionScroll;
+        m_originalScrollbarMax = maxOptionScroll;
+        m_originalScrollbarVisible = visibleOptionRows;
+        m_originalScrollbarHeight = 287;
 
         for (int vr = 0; vr < visibleOptionRows; ++vr)
         {
@@ -4202,6 +4261,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         const int buyVisibleRows = OriginalStrategicListVisibleRows(font, buyListViewport, buyListY, buyListRowH);
         const int buyMaxScroll = std::max(0, static_cast<int>(buyRows.size()) - buyVisibleRows);
         m_originalBuyListScroll = std::clamp(m_originalBuyListScroll, 0, buyMaxScroll);
+        m_originalScrollbarValue = &m_originalBuyListScroll;
+        m_originalScrollbarMax = buyMaxScroll;
+        m_originalScrollbarVisible = buyVisibleRows;
+        m_originalScrollbarHeight = 287;
 
         for (int visible = 0; visible < buyVisibleRows; ++visible)
         {
@@ -4385,6 +4448,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             }
         }
         m_originalResearchListScroll = std::clamp(m_originalResearchListScroll, 0, maxScroll);
+        m_originalScrollbarValue = &m_originalResearchListScroll;
+        m_originalScrollbarMax = maxScroll;
+        m_originalScrollbarVisible = visibleRows;
+        m_originalScrollbarHeight = 472;
         if (selectedRow >= 0)
         {
             if (selectedRow < m_originalResearchListScroll)
@@ -4569,6 +4636,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         const int visibleRows = OriginalStrategicListVisibleRows(font, infoListViewport, listY, rowH);
         const int maxListScroll = std::max(0, static_cast<int>(rows.size()) - visibleRows);
         m_originalInfoListScroll = std::clamp(m_originalInfoListScroll, 0, maxListScroll);
+        m_originalScrollbarValue = &m_originalInfoListScroll;
+        m_originalScrollbarMax = maxListScroll;
+        m_originalScrollbarVisible = visibleRows;
+        m_originalScrollbarHeight = 472;
         for (int vr = 0; vr < visibleRows; ++vr)
         {
             const int ri = m_originalInfoListScroll + vr;
@@ -5090,6 +5161,13 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         }
     }
 
+    if (image.IsOk() && m_originalScrollbarValue)
+    {
+        const OriginalStrategicScrollbarGeometry g{kOriginalRightScrollbarX, 5, m_originalScrollbarHeight};
+        OriginalDrawScrollbarThumb(image, g, *m_originalScrollbarValue,
+            m_originalScrollbarMax, m_originalScrollbarVisible);
+    }
+
     m_originalStrategicBitmap = image.IsOk() ? wxBitmap(image) : wxBitmap();
     if (!m_originalStrategicBitmap.IsOk())
         m_originalStrategicError = "Original UI: wxImage/wxBitmap creation failed after successful render.";
@@ -5252,6 +5330,33 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
         if (m_originalStrategicPanel)
             m_originalStrategicPanel->Refresh();
     };
+
+    // One native drag handler serves all strategic scrollable lists.
+    // The arrows are still handled by each screen's existing click logic.
+    if (m_originalScrollbarValue && m_originalScrollbarMax > 0)
+    {
+        const OriginalStrategicScrollbarGeometry g{kOriginalRightScrollbarX, 5, m_originalScrollbarHeight};
+        const wxRect thumb = OriginalScrollbarThumb(g, *m_originalScrollbarValue,
+            m_originalScrollbarMax, m_originalScrollbarVisible);
+        if (lx >= g.x + 3 && lx < g.x + 19 &&
+            ly >= g.trackY() && ly < g.downY())
+        {
+            if (thumb.Contains(lx, ly))
+            {
+                m_originalScrollbarDragging = true;
+                m_originalScrollbarDragOffset = ly - thumb.y;
+                m_originalStrategicPanel->CaptureMouse();
+            }
+            else
+            {
+                *m_originalScrollbarValue = std::clamp(*m_originalScrollbarValue +
+                    (ly < thumb.y ? -m_originalScrollbarVisible : m_originalScrollbarVisible),
+                    0, m_originalScrollbarMax);
+                refreshRestored();
+            }
+            return;
+        }
+    }
 
     if (m_originalStrategicScreen == OriginalStrategicScreen::Hierarchy)
     {
@@ -6873,6 +6978,28 @@ void StrategicLevelFrame::OnOriginalStrategicMouseMove(wxMouseEvent& ev)
     }
 
     const wxPoint p = ev.GetPosition();
+    if (m_originalScrollbarDragging && m_originalScrollbarValue)
+    {
+        const OriginalStrategicScrollbarGeometry g{kOriginalRightScrollbarX, 5, m_originalScrollbarHeight};
+        const wxRect thumb = OriginalScrollbarThumb(g, *m_originalScrollbarValue,
+            m_originalScrollbarMax, m_originalScrollbarVisible);
+        const int usableTravel = std::max(1, g.trackH() - thumb.height);
+        const int nativeY = static_cast<int>(
+            (static_cast<long long>(p.y - m_originalStrategicDrawRect.y) *
+                StrategicOriginalRenderer::kScreenH) / m_originalStrategicDrawRect.height);
+        const int offset = std::clamp(nativeY - m_originalScrollbarDragOffset -
+            g.trackY(), 0, usableTravel);
+        const int newScroll = std::clamp(static_cast<int>(
+            std::lround(static_cast<double>(offset) * m_originalScrollbarMax / usableTravel)),
+            0, m_originalScrollbarMax);
+        if (*m_originalScrollbarValue != newScroll)
+        {
+            *m_originalScrollbarValue = newScroll;
+            m_originalStrategicDirty = true;
+            m_originalStrategicPanel->Refresh(false);
+        }
+        return;
+    }
     int newToolbar = -1;
     int newAction = -1;
     bool newEndTurn = false;
@@ -8589,6 +8716,14 @@ void StrategicLevelFrame::BuildUI()
     m_originalStrategicPanel->SetBackgroundStyle(wxBG_STYLE_PAINT);
     m_originalStrategicPanel->Bind(wxEVT_PAINT, &StrategicLevelFrame::OnOriginalStrategicPaint, this);
     m_originalStrategicPanel->Bind(wxEVT_LEFT_DOWN, &StrategicLevelFrame::OnOriginalStrategicLeftDown, this);
+    m_originalStrategicPanel->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
+        m_originalScrollbarDragging = false;
+        if (m_originalStrategicPanel && m_originalStrategicPanel->HasCapture())
+            m_originalStrategicPanel->ReleaseMouse();
+    });
+    m_originalStrategicPanel->Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) {
+        m_originalScrollbarDragging = false;
+    });
     m_originalStrategicPanel->Bind(wxEVT_RIGHT_DOWN, &StrategicLevelFrame::OnOriginalStrategicRightDown, this);
     m_originalStrategicPanel->Bind(wxEVT_MOUSEWHEEL, &StrategicLevelFrame::OnOriginalStrategicMouseWheel, this);
     m_originalStrategicPanel->Bind(wxEVT_MOTION, &StrategicLevelFrame::OnOriginalStrategicMouseMove, this);
