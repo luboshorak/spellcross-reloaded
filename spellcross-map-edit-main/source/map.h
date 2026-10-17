@@ -911,6 +911,7 @@ public:
 		tuple<int,int> GetSurfPos(MapXY &pos);
 
 		bool deployment_mode = false;
+		bool deployment_blink_visible = true;
 		
 		MapXY GetSelection(TScroll* scroll=NULL);
 		vector<MapXY> &GetSelections(TScroll* scroll=NULL);
@@ -1110,7 +1111,8 @@ public:
 			HUD_ACTION_UNITS,
 			HUD_ACTION_MAP_OPTIONS,
 			HUD_ACTION_RETREAT,
-			HUD_ACTION_DEPLOY_FINISH
+			HUD_ACTION_DEPLOY_FINISH,
+			HUD_ACTION_DEPLOY_NEXT_UNIT
 		};
 
 		MapSound* GetRandomSound(double* left=NULL,double* right=NULL);
