@@ -16,8 +16,8 @@ alone does not establish runtime or visual parity.
 | 2 | Single enemy ground unit in range; no MOVE | One click fires at ground target; no popup |
 | 3 | Single enemy aircraft in range; no MOVE | One click fires at air target; no popup |
 | 4 | Friendly unit on other layer, with no other valid action | Single click SELECTs that unit |
-| 5 | Friendly ground and friendly aircraft stacked; select via layer switch | HUD changes active unit to the chosen layer; AP/weapon range matches selected unit |
-| 6 | Same stacked friendly tile; click the other unit | SELECT changes to the unselected friendly unit, never an enemy |
+| 5 | Friendly MLRS + helicopter stacked, MLRS selected; **first click** on their common hex | Native **I_TAB** appears with **UPPER/LOWER** glyphs, not an immediate implicit swap |
+| 6 | In that I_TAB choose UPPER, then click the same stack again and choose LOWER | UPPER selects helicopter; LOWER selects MLRS; both choices always appear, including the currently selected layer |
 | 7 | Aircraft can MOVE onto an enemy **ground** unit tile and ATTACK it | Native MOVE/ATTACK choices; MOVE shares hex on different layer, ATTACK engages ground |
 | 8 | Ground unit can MOVE into a tile with an enemy **aircraft** and ATTACK it | Native MOVE/ATTACK choices; MOVE shares hex on different layer, ATTACK engages aircraft |
 | 9 | Enemy ground and enemy aircraft on same tile; both can be attacked | Native LOWER/UPPER choices; each attacks *only* its own layer |
@@ -44,3 +44,8 @@ Implementation notes:
 - Keep the game-only refactor isolated; do not merge into Maslan's upstream editor.
 
 Validation required: **Windows MSVC Rebuild Solution** and in-game test cases above.
+
+Native popup distinction: UPPER/LOWER for target attacks uses UNIT_OPT_UPPER/
+UNIT_OPT_LOWER. UPPER/LOWER for friendly unit selection uses
+UNIT_OPT_SELECT_UPPER/UNIT_OPT_SELECT_LOWER; the two sets **must not** share
+attack callbacks. A lone selectable target still uses I_SELECT where appropriate.
