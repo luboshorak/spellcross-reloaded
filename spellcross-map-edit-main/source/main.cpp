@@ -5184,7 +5184,9 @@ void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
             return;
         }
     }
-    spell_map->SetUnitRangeViewMode(event.RightIsDown()
+    // During deployment RMB is only map scrolling, never a tactical
+    // move-range/attack command.
+    spell_map->SetUnitRangeViewMode((!m_deployment_active && event.RightIsDown())
         ? SpellMap::UNIT_RANGE_MOVE : SpellMap::UNIT_RANGE_NONE);
     if (canvas) canvas->Refresh();
 }
@@ -5300,6 +5302,17 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
     {
         spell_map->scroller.Move(event.GetX(), event.GetY());
         last_in_hud = false;
+        // Show the original placement cursor instead of tactical attack
+        // cursors, which would misleadingly suggest combat is already live.
+        if (m_deployment_active)
+        {
+            MapXY at = spell_map->GetSelection(nullptr);
+            wxCursor* cur = IsDeploymentSquare(at)
+                ? spell_data->gres.cur_move : spell_data->gres.cur_pointer;
+            SetCursor(*cur);
+            if (canvas) canvas->Refresh();
+            return;
+        }
         const int options = spell_map->GetUnitOptions();
         wxCursor* cur = spell_data->gres.cur_pointer;
         if (options == SpellMap::UNIT_OPT_MOVE) cur = spell_data->gres.cur_move;
