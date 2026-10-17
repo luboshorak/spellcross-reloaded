@@ -59,6 +59,7 @@ public:
         const std::vector<int>& enemy_unit_ids);
     // Switch between editor/game mode (also updates UI + resets game state when entering).
     void StartTacticalGame();
+    bool StartTutorialStage(int stage);
     // Access the current tactical map (used by strategic level for battle results)
     SpellMap* GetSpellMap() const { return spell_map; }
     SpellMap::GameDifficulty GetGameDifficulty() const { return spell_map ? spell_map->GetGameDifficulty() : SpellMap::GameDifficulty::NORMAL; }
@@ -127,6 +128,7 @@ public:
 
 private:
     bool m_applicationExitInProgress = false;
+    int m_tutorial_stage = 0; // 0 = normal campaign, 1..4 = original tutorial missions
     bool m_rangeMoveKeyDown = false;
     bool m_rangeAttackKeyDown = false;
 
