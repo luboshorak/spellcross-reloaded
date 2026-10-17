@@ -1494,8 +1494,8 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
     if (!spell_map || !spell_data)
         return false;
 
-    // A newly loaded battle owns a new result lifecycle. Never let persistent
-    // units captured from the previous mission leak into this one.
+    // A newly loaded battle owns a new result lifecycle.
+    ResetDeploymentUI();
     m_mission_earned_units.clear();
 
     wstring path = def_path;
@@ -1589,6 +1589,8 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
             }
 
             spell_map->AssignUnitID(unit);
+            m_deployment_units.push_back(unit);
+            m_deployment_requested = true;
             if (!first_deployed_player_unit)
                 first_deployed_player_unit = unit;
             start_idx++;
@@ -1615,6 +1617,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
     if (!spell_map || !spell_data || dta_path.empty())
         return false;
 
+    ResetDeploymentUI();
     m_mission_earned_units.clear();
 
     // Starting/recaptured territories in the original campaign intentionally
@@ -1831,6 +1834,8 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
             }
 
             spell_map->AssignUnitID(unit);
+            m_deployment_units.push_back(unit);
+            m_deployment_requested = true;
             if (!first_deployed_player_unit)
                 first_deployed_player_unit = unit;
             ++start_idx;
@@ -3125,6 +3130,7 @@ static bool StrategicContextMatchesLoadedMission(const StrategicLevelFrame* stra
 
 void MainFrame::SyncUiAfterTacticalLoad()
 {
+    ResetDeploymentUI();
     if (!spell_map || !spell_map->isGameMode()) return;
     SetTitle(BuildSpellcrossWindowTitle(spell_map));
     wxCommandEvent ignored;
@@ -4079,7 +4085,7 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     // allowed the rescued ArmyUnit Commando to be killed after the mission had
     // already been declared complete, so it intermittently vanished before
     // LEVEL_02 was created.
-    if (m_mission_end_flow)
+    if (m_mission_end_flow || m_deployment_active)
         return;
 
     if (spell_map->Tick())
@@ -4701,6 +4707,7 @@ void MainFrame::OnHUDbuttonsLeave(wxMouseEvent& event)
 }
 void MainFrame::OnHUDbuttonsClick(wxMouseEvent& event)
 {
+    if (m_deployment_active) return;
     wxPanel* pan = (wxPanel*)event.GetEventObject();
     auto* btn = spell_map->GetHUDbutton(pan->GetId());
     if(btn && !btn->is_disabled)
@@ -5060,6 +5067,11 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
         return;
     }
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions() || !event.LeftDown()) return;
+    if (m_deployment_active)
+    {
+        PlaceDeploymentUnit(spell_map->GetSelection(nullptr));
+        return;
+    }
     if (form_minimap && form_minimap->form)
         wxQueueEvent(form_minimap->form, new wxCloseEvent(wxEVT_CLOSE_WINDOW, ID_MINIMAP_WIN));
     select_pos = spell_map->GetSelection(nullptr);
@@ -5159,6 +5171,20 @@ void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
     }
 
     int key = event.GetKeyCode();
+
+    if (m_deployment_active)
+    {
+        if (key == WXK_RETURN || key == WXK_NUMPAD_ENTER)
+            FinishDeployment();
+        else if (key == WXK_ESCAPE)
+        {
+            wxCommandEvent evt;
+            OnOpenMainMenu(evt);
+        }
+        else
+            event.Skip();
+        return;
+    }
 
     // ~ key (backtick/tilde) opens in-game console
     if (key == '`' || key == '~' || event.GetRawKeyCode() == 0xC0)
@@ -5310,7 +5336,7 @@ void MainFrame::OnMapConsoleCommand()
 
     if (cmd == "ALLDONE")
     {
-        if (spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && spell_map->events)
+        if (!m_deployment_active && spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && spell_map->events)
         {
             for (auto* evt : spell_map->events->GetEvents())
             {
