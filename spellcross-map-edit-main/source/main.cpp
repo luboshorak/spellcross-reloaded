@@ -1922,8 +1922,8 @@ void MainFrame::ShowDeploymentUI()
     title->SetFont(title->GetFont().Bold());
     layout->Add(title, 0, wxALL, 9);
     auto* help = new wxStaticText(m_deployment_panel, wxID_ANY,
-        "Select a unit below (or on the map), then click\n"
-        "a marked START square to position it.\n"
+        "Select a unit and click a START square to place it.\n"
+        "Shift-click another company to swap positions.\n"
         "All companies must remain on START squares.");
     help->SetForegroundColour(*wxWHITE);
     layout->Add(help, 0, wxLEFT | wxRIGHT | wxBOTTOM, 9);
@@ -1960,33 +1960,62 @@ void MainFrame::ShowDeploymentUI()
     m_deployment_panel->Raise();
 }
 
-void MainFrame::PlaceDeploymentUnit(MapXY tile)
+void MainFrame::PlaceDeploymentUnit(MapXY tile, bool swap)
 {
     if (!m_deployment_active || !spell_map || !tile.IsSelected()) return;
     if (tile.x < 0 || tile.y < 0 ||
         tile.x >= spell_map->x_size || tile.y >= spell_map->y_size)
         return;
 
-    // Clicking a friendly company selects it without executing a move/attack.
+    if (m_deployment_selection < 0 ||
+        m_deployment_selection >= static_cast<int>(m_deployment_units.size()))
+        return;
+    MapUnit* selected = m_deployment_units[static_cast<size_t>(m_deployment_selection)];
+    if (!selected || !selected->unit) return;
+
+    // Clicking another company selects it; Shift-click swaps the positions
+    // of two companies in the same ground/air category.
     for (size_t i = 0; i < m_deployment_units.size(); ++i)
     {
         MapUnit* unit = m_deployment_units[i];
-        if (unit && unit->coor.x == tile.x && unit->coor.y == tile.y)
+        if (!unit || unit->coor.x != tile.x || unit->coor.y != tile.y)
+            continue;
+        if (swap && unit != selected && unit->unit &&
+            unit->unit->isAir() == selected->unit->isAir() &&
+            IsDeploymentSquare(unit->coor) && IsDeploymentSquare(selected->coor))
         {
-            m_deployment_selection = static_cast<int>(i);
-            if (m_deployment_list)
-                m_deployment_list->SetSelection(m_deployment_selection);
-            spell_map->SelectUnit(unit);
-            if (canvas) canvas->Refresh();
+            const MapXY first = selected->coor;
+            const MapXY second = unit->coor;
+            auto validTerrain = [this](const MapUnit* candidate, MapXY at) {
+                if (candidate->unit->isAir()) return true;
+                const uint8_t flags = spell_map->tiles[
+                    static_cast<size_t>(spell_map->ConvXY(at))].flags;
+                return (flags == 0 || flags == 0x60 || flags == 0x90) &&
+                    (flags != 0x90 || candidate->unit->isWalk()) &&
+                    (flags != 0x60 || candidate->unit->isHover());
+            };
+            if (validTerrain(selected, second) && validTerrain(unit, first))
+            {
+                selected->coor = second;
+                unit->coor = first;
+                spell_map->SortUnits();
+                spell_map->RecalculateTacticalFormations();
+                spell_map->InvalidateUnitsView();
+                spell_map->SelectUnit(selected);
+                if (canvas) canvas->Refresh();
+            }
             return;
         }
+        m_deployment_selection = static_cast<int>(i);
+        if (m_deployment_list) m_deployment_list->SetSelection(m_deployment_selection);
+        spell_map->SelectUnit(unit);
+        if (canvas) canvas->Refresh();
+        return;
     }
 
-    if (!IsDeploymentSquare(tile) || m_deployment_selection < 0 ||
-        m_deployment_selection >= static_cast<int>(m_deployment_units.size()))
+    if (!IsDeploymentSquare(tile))
         return;
-    MapUnit* unit = m_deployment_units[static_cast<size_t>(m_deployment_selection)];
-    if (!unit || !unit->unit) return;
+    MapUnit* unit = selected;
 
     // Legal ground/air stacking follows the same rules as PlaceUnit(), but no
     // auto-search may silently put a company outside the allowed start area.
@@ -5215,7 +5244,7 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions() || !event.LeftDown()) return;
     if (m_deployment_active)
     {
-        PlaceDeploymentUnit(spell_map->GetSelection(nullptr));
+        PlaceDeploymentUnit(spell_map->GetSelection(nullptr), event.ShiftDown());
         return;
     }
     if (form_minimap && form_minimap->form)
