@@ -7159,11 +7159,14 @@ int SpellMap::CanUnitMove(MapXY target)
 	if (unit_range->ap_left[npos] < 0)
 		return(false);
 
-	// check if target position is not blocked?
+	// Match the A* pathfinder's layer collision rule exactly. An air and
+	// a ground unit may occupy the same tile regardless of their allegiance.
+	// Only another unit on the SAME layer blocks this destination.
 	auto other = Lunit[npos];
 	while (other)
 	{
-		if (unit->unit->isAir() == other->unit->isAir() || unit->unit->isLand() == other->unit->isLand())
+		if (other != unit && other->unit &&
+			(unit->unit->isAir() == other->unit->isAir()))
 			return(false);
 		other = other->next;
 	}
