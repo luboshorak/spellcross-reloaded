@@ -970,10 +970,11 @@ namespace
         if (httpOk)
             output.open(part, std::ios::binary | std::ios::trunc);
 
-        wxProgressDialog progress("Downloading Spellcross ISO",
+        auto progress = std::make_unique<wxProgressDialog>("Downloading Spellcross ISO",
             czech ? "Downloading Czech Spellcross ISO..." : "Downloading English Spellcross ISO...",
             100, nullptr, wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_AUTO_HIDE);
         bool ok = httpOk && output.is_open();
+        bool cancelled = false;
         unsigned long long received = 0;
         std::vector<char> chunk(256 * 1024);
         DWORD read = 0;
@@ -992,14 +993,16 @@ namespace
                 break;
             }
             received += read;
-            if (!progress.Pulse(wxString::Format("Downloaded %.1f MiB",
+            if (!progress->Pulse(wxString::Format("Downloaded %.1f MiB",
                 static_cast<double>(received) / (1024.0 * 1024.0))))
             {
-                ok = false; // user cancelled
+                ok = false;
+                cancelled = true;
                 break;
             }
         }
         output.close();
+        progress.reset(); // release the modal window before showing fallback UI
         InternetCloseHandle(request);
         InternetCloseHandle(session);
         if (ok && hasLength && expectedBytes != received)
@@ -1017,9 +1020,11 @@ namespace
         if (!ok)
         {
             fs::remove(part, ec);
+            if (cancelled)
+                return false;
             return browserFallback(
-                "The ISO transfer was cancelled, incomplete, or did not contain "
-                "a valid ISO9660 image. The existing ISO cache was not replaced.");
+                "The ISO transfer was incomplete or did not contain a valid "
+                "ISO9660 image. The existing ISO cache was not replaced.");
         }
         return true;
 #endif
