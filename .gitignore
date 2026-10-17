@@ -34,3 +34,15 @@ spellcross-map-edit-main.7z
 /dist/
 /game_data/
 /spellcross-map-edit-main/game_data/
+
+# Visual Studio state/build output and abandoned editor source snapshots
+/.vs/
+/spellcross-map-edit-main/.vs/
+/spellcross-map-edit-main/source/.vs/
+/spellcross-map-edit-main/source/Debug/
+/spellcross-map-edit-main/source/Release/
+/spellcross-map-edit-main/source/_backup/
+/spellcross-map-edit-main/source/forms/_backup/
+/spellcross-map-edit-main/wxFormsBuilder/form_sprites.fbp
+/spellcross-map-edit-main/wxFormsBuilder/form_sprite_view.cpp
+/spellcross-map-edit-main/wxFormsBuilder/form_sprite_view.h
