@@ -12,6 +12,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include <wx/listbox.h>
 #include "simpleini.h"
 #include "spellcross.h"
 #include "map.h"
@@ -127,6 +128,19 @@ public:
     SpellData* spell_data;
 
 private:
+    // Pre-battle placement belongs to gameplay, not the removed map editor.
+    bool m_deployment_requested = false;
+    bool m_deployment_active = false;
+    std::vector<MapUnit*> m_deployment_units;
+    int m_deployment_selection = 0;
+    wxPanel* m_deployment_panel = nullptr;
+    wxListBox* m_deployment_list = nullptr;
+    void ResetDeploymentUI();
+    void ShowDeploymentUI();
+    void PlaceDeploymentUnit(MapXY tile);
+    void FinishDeployment();
+    bool IsDeploymentSquare(const MapXY& tile) const;
+
     bool m_applicationExitInProgress = false;
     int m_tutorial_stage = 0; // 0 = normal campaign, 1..4 = original tutorial missions
     bool m_rangeMoveKeyDown = false;
