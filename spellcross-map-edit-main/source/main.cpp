@@ -1582,14 +1582,11 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
             }
             unit->wounded = 0;
 
-            if (spell_map->PlaceUnit(unit))
-            {
-                delete unit;
-                continue;
-            }
-
-            spell_map->AssignUnitID(unit);
+            // The DOS player placed these companies one at a time. Keep
+            // this unit OFF the tactical map until the player picks a START
+            // square, so it cannot render, count as vision, or block a tile.
             m_deployment_units.push_back(unit);
+            m_deployment_placed.push_back(false);
             m_deployment_requested = true;
             if (!first_deployed_player_unit)
                 first_deployed_player_unit = unit;
@@ -1604,7 +1601,7 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
     // A strategic attack should open on the deployed Alliance force, not on
     // the map origin or an enemy that happened to be first in the DEF unit list.
     if (first_deployed_player_unit)
-        spell_map->SelectUnit(first_deployed_player_unit, true);
+        spell_map->ScrollToTile(first_deployed_player_unit->coor);
 
     return true;
 }
@@ -1827,14 +1824,11 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
             }
             unit->wounded = 0;
 
-            if (spell_map->PlaceUnit(unit))
-            {
-                delete unit;
-                continue;
-            }
-
-            spell_map->AssignUnitID(unit);
+            // The DOS player placed these companies one at a time. Keep
+            // this unit OFF the tactical map until the player picks a START
+            // square, so it cannot render, count as vision, or block a tile.
             m_deployment_units.push_back(unit);
+            m_deployment_placed.push_back(false);
             m_deployment_requested = true;
             if (!first_deployed_player_unit)
                 first_deployed_player_unit = unit;
@@ -1849,7 +1843,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
     spell_map->InvalidateUnitsView();
 
     if (first_deployed_player_unit)
-        spell_map->SelectUnit(first_deployed_player_unit, true);
+        spell_map->ScrollToTile(first_deployed_player_unit->coor);
 
     return first_deployed_player_unit != nullptr;
 }
@@ -1861,8 +1855,9 @@ void MainFrame::StartTacticalGame()
     if (spell_map->saves) spell_map->saves->Clear(spell_map->GetTacticalSaveLimit());
     if (spell_map->events) spell_map->events->ResetEvents();
 
-    // The campaign gives the player control over start-square placement.
-    // Freeze AI, objectives and the initial snapshot until deployment ends.
+    // Pending strategic companies are not on the map. During deployment
+    // enemies/AI and mission-start scripts are paused, and no initial
+    // tactical save is produced before the roster has been placed.
     m_deployment_active = m_deployment_requested && !m_deployment_units.empty();
     spell_map->SetDeploymentMode(m_deployment_active);
     if (!m_deployment_active)
@@ -1878,16 +1873,9 @@ void MainFrame::StartTacticalGame()
     }
     if (m_deployment_active)
     {
-        // No pop-up: the map and its original HUD are the deployment UI.
-        // The player selects a visible company or cycles with the two
-        // native top buttons, then clicks another START cross.
-        m_deployment_selection = 0;
         m_deployment_blink_ticks = 0;
         spell_map->deployment_blink_visible = true;
-        MapUnit* first = m_deployment_units.front();
-        if (first)
-            spell_map->SelectUnit(first, true);
-        spell_map->InvalidateHUDbuttons();
+        SelectDeploymentUnit(0);
     }
     if (canvas) canvas->Refresh();
 }
@@ -1907,11 +1895,45 @@ void MainFrame::ResetDeploymentUI()
 {
     if (spell_map)
         spell_map->SetDeploymentMode(false);
+
+    // Until clicked onto a START square the queued MapUnit belongs to
+    // MainFrame, not SpellMap. Delete only those remaining in the queue.
+    for (size_t i = 0; i < m_deployment_units.size(); ++i)
+        if (i >= m_deployment_placed.size() || !m_deployment_placed[i])
+            delete m_deployment_units[i];
+
     m_deployment_units.clear();
+    m_deployment_placed.clear();
     m_deployment_requested = false;
     m_deployment_active = false;
     m_deployment_selection = 0;
     m_deployment_blink_ticks = 0;
+}
+
+void MainFrame::SelectDeploymentUnit(size_t index)
+{
+    if (!m_deployment_active || !spell_map || index >= m_deployment_units.size())
+        return;
+    MapUnit* selected = m_deployment_units[index];
+    if (!selected)
+        return;
+
+    m_deployment_selection = static_cast<int>(index);
+    if (m_deployment_placed[index])
+    {
+        // Already on battlefield: show this company and allow repositioning.
+        spell_map->deployment_preview_unit = nullptr;
+        spell_map->SelectUnit(selected);
+    }
+    else
+    {
+        // Native left HUD shows the unplaced company's type/stats, without
+        // exposing it as an active battlefield entity.
+        spell_map->SelectUnit(nullptr);
+        spell_map->deployment_preview_unit = selected;
+    }
+    spell_map->InvalidateHUDbuttons();
+    if (canvas) canvas->Refresh();
 }
 
 // No extra widgets: the original unit HUD and START crosses provide all
@@ -1919,98 +1941,107 @@ void MainFrame::ResetDeploymentUI()
 
 void MainFrame::PlaceDeploymentUnit(MapXY tile, bool swap)
 {
-    if (!m_deployment_active || !spell_map || !tile.IsSelected()) return;
-    if (tile.x < 0 || tile.y < 0 ||
-        tile.x >= spell_map->x_size || tile.y >= spell_map->y_size)
+    if (!m_deployment_active || !spell_map || !tile.IsSelected())
         return;
-
+    if (tile.x < 0 || tile.y < 0 || tile.x >= spell_map->x_size ||
+        tile.y >= spell_map->y_size || !IsDeploymentSquare(tile))
+        return;
     if (m_deployment_selection < 0 ||
         m_deployment_selection >= static_cast<int>(m_deployment_units.size()))
         return;
-    MapUnit* selected = m_deployment_units[static_cast<size_t>(m_deployment_selection)];
-    if (!selected || !selected->unit) return;
+    const size_t selectedIndex = static_cast<size_t>(m_deployment_selection);
+    MapUnit* selected = m_deployment_units[selectedIndex];
+    if (!selected || !selected->unit)
+        return;
 
-    // Clicking another company selects it; Shift-click swaps the positions
-    // of two companies in the same ground/air category.
+    const auto goodTerrain = [this](const MapUnit* unit, MapXY pos) {
+        if (unit->unit->isAir()) return true;
+        const uint8_t flags = spell_map->tiles[
+            static_cast<size_t>(spell_map->ConvXY(pos))].flags;
+        return (flags == 0 || flags == 0x60 || flags == 0x90) &&
+            (flags != 0x90 || unit->unit->isWalk()) &&
+            (flags != 0x60 || unit->unit->isHover());
+    };
+
+    // Clicking a company already present selects it. Shift-click swaps two
+    // deployed companies on legal START squares.
     for (size_t i = 0; i < m_deployment_units.size(); ++i)
     {
-        MapUnit* unit = m_deployment_units[i];
-        if (!unit || unit->coor.x != tile.x || unit->coor.y != tile.y)
+        if (!m_deployment_placed[i]) continue;
+        MapUnit* other = m_deployment_units[i];
+        if (!other || other->coor.x != tile.x || other->coor.y != tile.y)
             continue;
-        if (swap && unit != selected && unit->unit &&
-            unit->unit->isAir() == selected->unit->isAir() &&
-            IsDeploymentSquare(unit->coor) && IsDeploymentSquare(selected->coor))
+        if (swap && m_deployment_placed[selectedIndex] && other != selected &&
+            other->unit && other->unit->isAir() == selected->unit->isAir() &&
+            goodTerrain(other, selected->coor) && goodTerrain(selected, tile))
         {
-            const MapXY first = selected->coor;
-            const MapXY second = unit->coor;
-            auto validTerrain = [this](const MapUnit* candidate, MapXY at) {
-                if (candidate->unit->isAir()) return true;
-                const uint8_t flags = spell_map->tiles[
-                    static_cast<size_t>(spell_map->ConvXY(at))].flags;
-                return (flags == 0 || flags == 0x60 || flags == 0x90) &&
-                    (flags != 0x90 || candidate->unit->isWalk()) &&
-                    (flags != 0x60 || candidate->unit->isHover());
-            };
-            if (validTerrain(selected, second) && validTerrain(unit, first))
-            {
-                selected->coor = second;
-                unit->coor = first;
-                spell_map->SortUnits();
-                spell_map->RecalculateTacticalFormations();
-                spell_map->InvalidateUnitsView();
-                spell_map->SelectUnit(selected);
-                if (canvas) canvas->Refresh();
-            }
-            return;
+            const MapXY previous = selected->coor;
+            selected->coor = other->coor;
+            other->coor = previous;
+            spell_map->SortUnits();
+            spell_map->RecalculateTacticalFormations();
+            spell_map->InvalidateUnitsView();
+            SelectDeploymentUnit(selectedIndex);
         }
-        m_deployment_selection = static_cast<int>(i);
-        spell_map->SelectUnit(unit);
-        if (canvas) canvas->Refresh();
+        else
+        {
+            SelectDeploymentUnit(i);
+        }
         return;
     }
 
-    if (!IsDeploymentSquare(tile))
+    // Never let a queued company overlap an enemy/scenario unit of the
+    // same ground/air category. The original map placement routine searches
+    // elsewhere automatically; that would violate the selected START tile.
+    for (MapUnit* existing : spell_map->units)
+        if (existing && existing != selected && existing->unit &&
+            existing->coor.x == tile.x && existing->coor.y == tile.y &&
+            existing->unit->isAir() == selected->unit->isAir())
+            return;
+    if (!goodTerrain(selected, tile))
         return;
-    MapUnit* unit = selected;
 
-    // Legal ground/air stacking follows the same rules as PlaceUnit(), but no
-    // auto-search may silently put a company outside the allowed start area.
-    const int index = spell_map->ConvXY(tile);
-    for (MapUnit* occupant : spell_map->units)
+    if (!m_deployment_placed[selectedIndex])
     {
-        if (!occupant || occupant == unit || !occupant->unit ||
-            occupant->coor.x != tile.x || occupant->coor.y != tile.y)
-            continue;
-        if (occupant->unit->isAir() == unit->unit->isAir())
-            return;
+        // Transfer ownership of this company to SpellMap only NOW.
+        selected->coor = tile;
+        selected->ActivateUnit();
+        selected->ResetAP();
+        selected->was_moved = true;
+        spell_map->AddUnit(selected);
+        spell_map->AssignUnitID(selected);
+        m_deployment_placed[selectedIndex] = true;
     }
-    if (!unit->unit->isAir())
+    else
     {
-        const uint8_t flags = spell_map->tiles[static_cast<size_t>(index)].flags;
-        if ((!unit->unit->isWalk() && flags == 0x90) ||
-            (!unit->unit->isHover() && flags == 0x60) ||
-            (flags != 0x00 && flags != 0x60 && flags != 0x90))
-            return;
+        selected->coor = tile;
     }
 
-    unit->coor = tile;
     spell_map->SortUnits();
     spell_map->RecalculateTacticalFormations();
     spell_map->InvalidateUnitsView();
-    spell_map->SelectUnit(unit);
-    if (canvas) canvas->Refresh();
+
+    // Automatically offer the next unplaced company, in roster order.
+    for (size_t i = 0; i < m_deployment_placed.size(); ++i)
+        if (!m_deployment_placed[i])
+        {
+            SelectDeploymentUnit(i);
+            return;
+        }
+    SelectDeploymentUnit(selectedIndex); // all companies now deployed
 }
 
 void MainFrame::FinishDeployment()
 {
     if (!m_deployment_active || !spell_map) return;
-    for (MapUnit* unit : m_deployment_units)
+    for (size_t i = 0; i < m_deployment_units.size(); ++i)
     {
-        if (!unit || !IsDeploymentSquare(unit->coor))
+        if (i >= m_deployment_placed.size() || !m_deployment_placed[i] ||
+            !m_deployment_units[i] || !IsDeploymentSquare(m_deployment_units[i]->coor))
         {
-            wxMessageBox("Every selected company must be placed on a START square.\n"
-                         "Choose a company and click a valid starting cross.",
-                         "Deployment incomplete", wxOK | wxICON_WARNING, this);
+            wxMessageBox("Place every assigned company on a marked START "
+                         "square before confirming the formation.",
+                         "Deployment incomplete", wxOK | wxICON_INFORMATION, this);
             return;
         }
     }
@@ -2018,11 +2049,12 @@ void MainFrame::FinishDeployment()
     m_deployment_active = false;
     m_deployment_requested = false;
     m_deployment_blink_ticks = 0;
-    spell_map->SetDeploymentMode(false);
+    spell_map->SetDeploymentMode(false); // clears preview pointer
     m_deployment_units.clear();
+    m_deployment_placed.clear();
 
-    // Only now fire MissionStart and save the battle's initial state. That
-    // prevents enemies acting before the player confirms the deployment.
+    // The first real battlefield state is captured only after every unit
+    // has been placed; mission AI/events can start from this point onward.
     if (spell_map->saves) spell_map->saves->SaveInitial();
     spell_map->MissionStartEvent();
     if (spell_map->unit_view)
@@ -4860,6 +4892,730 @@ void MainFrame::OnHUDbuttonsClick(wxMouseEvent& event)
                     break;
                 }
             if (canvas) canvas->Refresh();
+        }
+        return;
+    }
+    wxPanel* pan = (wxPanel*)event.GetEventObject();
+    auto* btn = spell_map->GetHUDbutton(pan->GetId());
+    if(btn && !btn->is_disabled)
+    {
+        btn->is_press = (event.GetEventType() == wxEVT_LEFT_DOWN);        
+        pan->Refresh();
+        // play click sound        
+        if(!btn->is_press && !btn->is_disabled)
+        {
+            if (spell_data && spell_data->sounds && spell_data->sounds->aux_samples.btn_end_turn)
+            {
+                auto* click_sound = new SpellSound(*spell_data->sounds->aux_samples.btn_end_turn);
+                click_sound->Play(true);
+            }
+        }
+        // click event callback?
+        if(!btn->is_press && btn->cb_press)
+            btn->cb_press();
+        if(btn->is_press)
+            return;
+        if(btn->action_id == SpellMap::HUD_ACTION_MINIMAP)
+        {
+            // show minimap
+            wxCommandEvent cmd(wxEVT_MENU);
+            OnViewMiniMap(cmd);
+        }
+        if(btn->action_id == SpellMap::HUD_ACTION_UNITS && !form_units_list)
+        {
+            // show units list            
+            form_units_list = new FormMapUnits(canvas,ID_MAP_UNITS_WIN, spell_data, spell_map);
+        }
+        if(btn->action_id == SpellMap::HUD_ACTION_MAP_OPTIONS && !form_map_options)
+        {
+            // show map options
+            form_map_options = new FormMapOptions(canvas,ID_MAP_OPT_WIN,spell_map);
+        }
+        if(btn->action_id == SpellMap::HUD_ACTION_RETREAT)
+        {
+            OnTacticalRetreat();
+        }
+    }
+}
+
+void MainFrame::OnTacticalRetreat()
+{
+    if (!spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode())
+        return;
+
+    if (spell_map->start.empty())
+    {
+        wxMessageBox(
+            "This mission has no starting cross squares, so a safe retreat cannot be resolved.",
+            "Retreat", wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    auto isStartSquare = [this](const MapXY& pos) -> bool
+    {
+        for (const auto& start : spell_map->start)
+            if (start.x == pos.x && start.y == pos.y)
+                return true;
+        return false;
+    };
+
+    std::vector<MapUnit*> retreatLosses;
+    std::map<std::string, int> lossNames;
+    for (auto* unit : spell_map->units)
+    {
+        if (!unit || !unit->unit || unit->is_enemy || unit->isDead())
+            continue;
+        if (isStartSquare(unit->coor))
+            continue;
+
+        retreatLosses.push_back(unit);
+        std::string name = !unit->name.empty() ? unit->name : std::string(unit->unit->name);
+        if (name.empty())
+            name = string_format("Unit #%d", unit->id);
+        lossNames[name]++;
+    }
+
+    wxString message =
+        "Do you really want to retreat?\n\n"
+        "Only units standing on the starting cross squares will survive.";
+
+    if (!lossNames.empty())
+    {
+        message += "\n\nUnits that will be lost:";
+        for (const auto& entry : lossNames)
+        {
+            message += "\n  - " + wxString::FromUTF8(entry.first.c_str());
+            if (entry.second > 1)
+                message += wxString::Format(" x%d", entry.second);
+        }
+    }
+    else
+    {
+        message += "\n\nAll surviving Alliance units are already on starting cross squares; "
+                   "no additional units will be lost.";
+    }
+
+    wxMessageDialog confirm(this, message, "Retreat",
+        wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+    if (confirm.ShowModal() != wxID_YES)
+        return;
+
+    // Keep retreat casualties in the tactical unit list as dead units until
+    // strategic result collection runs.  That preserves normal loss statistics
+    // and lets the existing strategic UID synchronisation remove exactly the
+    // companies that did not reach a starting cross square.
+    for (auto* unit : retreatLosses)
+    {
+        unit->man = 0;
+        unit->wounded = 0;
+        unit->action_points = 0;
+        unit->was_moved = true;
+    }
+
+    spell_map->SelectUnit(nullptr);
+    spell_map->InvalidateUnitsView();
+
+    // Use the existing mission-end/strategic return pipeline, but without the
+    // generic tactical MISSION_FAILED message.
+    if (!spell_map->RequestRetreatMissionEnd())
+        return;
+
+    if (canvas)
+        canvas->Refresh();
+}
+
+
+// on change of map layer view
+void MainFrame::OnViewLayer(wxCommandEvent&)
+{
+    if (!spell_map)
+        return;
+
+    // Normal game display. Editor layer checkboxes are gone.
+    // Preserve default terrain, object, animation, start/target and unit layers.
+    spell_map->SetRender(true, true, true, true, true, true,
+                         false, false, false, false);
+    if (canvas)
+        canvas->Refresh();
+}
+
+// enable disable unit view debug mode
+
+
+// open new map
+
+
+// save map data files
+
+
+// save map DTA file
+
+
+// save map DEF file
+
+
+// create new map
+
+
+// set gamma correction
+
+
+// open sprite viewer
+
+
+// open ANM viewer
+
+
+// open PNM viewer
+
+
+// open sounds viewer
+
+
+// update tiles context from map selection
+
+
+// generate DMAx_xxx tiles objects from this map
+
+
+// generate DMAx_xxx tiles objects from all maps
+
+
+// update tiles context from all maps
+
+
+
+// open objects viewer
+
+
+// open palette viewer
+
+
+// open graphics viewer
+
+
+// open units viewer/editor
+
+
+// open events viewer/editor
+
+
+// open video viewer
+
+
+// open MIDI player
+
+
+// tile flags editor
+
+
+
+
+
+
+// export voxel map elevation raster
+
+
+// view minimap
+void MainFrame::OnViewMiniMap(wxCommandEvent& event)
+{
+    if (!spell_map || !spell_map->IsLoaded())
+        return;
+
+    // TOGGLE: pokud minimapa existuje, zavøi ji stejným zpùsobem jako jinde v kódu
+    // (tj. pøes wxCloseEvent s ID_MINIMAP_WIN, aby se spustil správný cleanup:
+    //  delete form_minimap; form_minimap = NULL;)
+    if (form_minimap)
+    {
+        if (form_minimap->form)
+        {
+            wxCloseEvent evt(wxEVT_CLOSE_WINDOW, ID_MINIMAP_WIN);
+            wxQueueEvent(form_minimap->form, new wxCloseEvent(evt));
+        }
+        else
+        {
+            // fallback: kdyby wrapper existoval, ale okno už ne
+            delete form_minimap;
+            form_minimap = NULL;
+        }
+        return;
+    }
+
+    // make local scroll object with zero scroll state
+    TScroll scrl;
+    scrl.Reset();
+
+    // obtain render surface range
+    auto [pic_x, pic_y] = spell_map->GetMapSurfaceSize();
+    int hud_state = spell_map->SetHUDstate(false);
+
+    // NOTE: tenhle 1x1 bitmap "buf" se tu jen vytváøí a hned maže,
+    // ale render prepare ho reálnì nepoužívá (RenderPrepare bere scroll, ne bitmap).
+    // Nechávám to tak, aby se nerozbilo nic navázaného.
+    wxBitmap* buf = new wxBitmap(1, 1, 24);
+
+    scrl.SetPos(0, 0);
+    scrl.SetSurface(1, 1);
+    spell_map->RenderPrepare(&scrl);
+    auto [x1, y1] = scrl.GetScroll();
+
+    scrl.SetPos(pic_x, pic_y);
+    spell_map->RenderPrepare(&scrl);
+    auto [x2, y2] = scrl.GetScroll();
+
+    delete buf;
+
+    // make local render buffer for entire map size
+    buf = new wxBitmap(x2 - x1, y2 - y1, 24);
+    scrl.SetSurface(x2 - x1, y2 - y1);
+    scrl.SetPos(0, 0);
+
+    spell_map->Render(*buf, &scrl);
+    spell_map->SetHUDstate(hud_state);
+
+    // restore scroll surface to canvas size
+    scrl.SetSurface(canvas->GetClientSize().GetWidth(), canvas->GetClientSize().GetHeight());
+
+    // create panel
+    TMiniMap minimap = { buf, &spell_map->scroller, spell_map, x1, y1, x2 - x1, y2 - y1 };
+    form_minimap = new FormMiniMap(canvas, ID_MINIMAP_WIN, spell_data, minimap);
+}
+
+
+// edit mission parameters
+
+
+
+// create new object
+
+
+// add new unit
+
+
+
+
+// unit popup menu
+
+
+
+
+// --- scrolling control ---
+void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
+{
+    if (m_tutorial_stage == 1 && m_tutorial_command == 4 && event.RightUp())
+        m_tutorial_pressed_rmb = true;
+    if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
+    if (event.RightDown()) spell_map->scroller.SetRef(event.GetX(), event.GetY());
+    else if (event.RightUp())
+    {
+        const int moved = spell_map->scroller.Idle();
+        if (!moved && spell_map->isGameMode() && spell_map->IsGroupMode())
+        {
+            spell_map->SetActiveGroup(0);
+            if (canvas) canvas->Refresh();
+            return;
+        }
+    }
+    // During deployment RMB is only map scrolling, never a tactical
+    // move-range/attack command.
+    spell_map->SetUnitRangeViewMode((!m_deployment_active && event.RightIsDown())
+        ? SpellMap::UNIT_RANGE_MOVE : SpellMap::UNIT_RANGE_NONE);
+    if (canvas) canvas->Refresh();
+}
+
+
+// select all tiles
+
+// deselect all tiles
+
+// select or deselect tiles
+
+
+// copy map selection to copy buffer
+
+// clear map copy buffer
+
+// try place copy buffer to map
+
+
+// try place copy buffer to map
+
+
+// invalidate map region (retexturing)
+
+
+// delete object or stuff
+
+
+
+
+// canvas left click
+void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
+{
+    if (m_mission_end_flow)
+    {
+        if (m_mission_result_visible && event.LeftDown()) DismissMissionResultOverlay();
+        return;
+    }
+    if (!spell_map || !spell_map->IsLoaded() || inUnitOptions() || !event.LeftDown()) return;
+    if (m_deployment_active)
+    {
+        PlaceDeploymentUnit(spell_map->GetSelection(nullptr), event.ShiftDown());
+        return;
+    }
+    if (form_minimap && form_minimap->form)
+        wxQueueEvent(form_minimap->form, new wxCloseEvent(wxEVT_CLOSE_WINDOW, ID_MINIMAP_WIN));
+    select_pos = spell_map->GetSelection(nullptr);
+    if (m_tutorial_stage == 1 && m_tutorial_command == 7 &&
+        select_pos.IsSelected() && spell_map->ConvXY(select_pos) == 868)
+        m_tutorial_clicked_square = true;
+    if (spell_map->IsGroupMode())
+    {
+        if (!spell_map->IsActiveGroupMoving())
+        {
+            MapUnit* unit = spell_map->GetGroupCursorUnit(event.ShiftDown());
+            if (unit) spell_map->SelectUnit(unit);
+            else if (!event.ShiftDown()) spell_map->MoveUnit(select_pos, event.AltDown());
+        }
+    }
+    else
+    {
+        int options = spell_map->GetUnitOptions();
+        if (!!(options & SpellMap::UNIT_OPT_LOWER) != !!(options & SpellMap::UNIT_OPT_UPPER))
+            options = (options & ~(SpellMap::UNIT_OPT_LOWER | SpellMap::UNIT_OPT_UPPER)) | SpellMap::UNIT_OPT_ATTACK;
+        if (options)
+        {
+            wxPoint pos = event.GetPosition();
+            pos.x -= 15;
+            pos.y -= 15;
+            form_unit_opts = new FormUnitOpts(canvas, ID_UNIT_MODE_WIN, pos,
+                spell_data, options, bind(&MainFrame::OnUnitClick_cb, this, placeholders::_1));
+        }
+    }
+    if (canvas) canvas->Refresh();
+}
+
+// on canvas mouse enter
+void MainFrame::OnCanvasMouseEnter(wxMouseEvent& event)
+{
+    if(inSubForm())
+        return;
+
+    canvas->SetFocus();
+}
+// on canvas mouse leave
+void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
+{
+    SetCursor(*wxSTANDARD_CURSOR);
+
+    if(!spell_map->IsLoaded())
+        return;
+    if(inUnitOptions())
+        return;
+
+    spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
+    spell_map->scroller.Idle();
+}
+// on canvas mouse move
+void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
+{
+    if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
+    static bool last_in_hud = false;
+    if (event.GetY() >= spell_map->GetHUDtop(event.GetX()))
+    {
+        spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
+        if (!last_in_hud) spell_map->InvalidateHUDbuttons();
+        spell_map->scroller.Idle();
+        last_in_hud = true;
+        spell_map->ClearSelections();
+        SetCursor(*spell_data->gres.cur_pointer);
+    }
+    else
+    {
+        spell_map->scroller.Move(event.GetX(), event.GetY());
+        last_in_hud = false;
+        // Show the original placement cursor instead of tactical attack
+        // cursors, which would misleadingly suggest combat is already live.
+        if (m_deployment_active)
+        {
+            MapXY at = spell_map->GetSelection(nullptr);
+            wxCursor* cur = IsDeploymentSquare(at)
+                ? spell_data->gres.cur_move : spell_data->gres.cur_pointer;
+            SetCursor(*cur);
+            if (canvas) canvas->Refresh();
+            return;
+        }
+        const int options = spell_map->GetUnitOptions();
+        wxCursor* cur = spell_data->gres.cur_pointer;
+        if (options == SpellMap::UNIT_OPT_MOVE) cur = spell_data->gres.cur_move;
+        else if (options == SpellMap::UNIT_OPT_SELECT) cur = spell_data->gres.cur_select;
+        else if (options == SpellMap::UNIT_OPT_LOWER) cur = spell_data->gres.cur_attack_down;
+        else if (options == SpellMap::UNIT_OPT_UPPER) cur = spell_data->gres.cur_attack_up;
+        else if (options == (SpellMap::UNIT_OPT_UPPER | SpellMap::UNIT_OPT_LOWER))
+            cur = spell_data->gres.cur_attack_up_down;
+        else if (options) cur = spell_data->gres.cur_question;
+        SetCursor(*cur);
+    }
+    if (GetStatusBar() && GetStatusBar()->IsShown()) GetStatusBar()->Hide();
+    if (canvas) canvas->Refresh();
+}
+// on canvas wheel
+void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
+{
+    if (!spell_map || !spell_map->IsLoaded() || !event.GetWheelDelta()) return;
+    spell_map->scroller.ResizeSelection(event.GetWheelRotation()/event.GetWheelDelta());
+    if (canvas) canvas->Refresh();
+}
+// on canvas key down
+void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
+{
+    if(!spell_map)
+    {
+        event.Skip();
+        return;
+    }
+
+    int key = event.GetKeyCode();
+
+    if (m_tutorial_stage == 1 && m_tutorial_command == 4 &&
+        (key == 'M' || key == 'm'))
+        m_tutorial_pressed_m = true;
+
+    if (m_deployment_active)
+    {
+        if (key == WXK_RETURN || key == WXK_NUMPAD_ENTER)
+            FinishDeployment();
+        else if (key == WXK_ESCAPE)
+        {
+            wxCommandEvent evt;
+            OnOpenMainMenu(evt);
+        }
+        else
+            event.Skip();
+        return;
+    }
+
+    // ~ key (backtick/tilde) opens in-game console
+    if (key == '`' || key == '~' || event.GetRawKeyCode() == 0xC0)
+    {
+        OnMapConsoleCommand();
+        return;
+    }
+
+    // ESC opens the main menu only when no tactical overlay is active.
+    // In EN group mode it belongs to group control instead.
+    if(key == WXK_ESCAPE)
+    {
+        if (form_unit_opts || form_message || form_video_box ||
+            form_map_options || form_minimap || form_units_list)
+        {
+            event.Skip();
+            return;
+        }
+
+        if (spell_map->isGameMode() && spell_map->IsGroupMode())
+        {
+            spell_map->SetActiveGroup(0);
+            if(canvas) canvas->Refresh();
+            return;
+        }
+
+        wxCommandEvent evt;
+        OnOpenMainMenu(evt);
+        return;
+    }
+
+    // EN group-mode shortcuts. Process these before ordinary M/A range keys,
+    // otherwise ALT+A would be swallowed by temporary attack-range display.
+    if(spell_map->isGameMode())
+    {
+        int group_slot = 0;
+        const int raw = (int)event.GetRawKeyCode();
+        if(key >= '1' && key <= '8')
+            group_slot = key - '0';
+        else if(key >= WXK_NUMPAD1 && key <= WXK_NUMPAD8)
+            group_slot = key - WXK_NUMPAD0;
+        else if(raw >= 0x31 && raw <= 0x38)
+            group_slot = raw - 0x30;
+
+        if(group_slot != 0)
+        {
+            spell_map->SetActiveGroup(group_slot);
+            if(canvas) { canvas->SetFocus(); canvas->Refresh(); }
+            return;
+        }
+
+        if(spell_map->IsGroupMode() && event.AltDown() && (key == 'A' || key == 'a'))
+        {
+            spell_map->AddAllUnitsToActiveGroup();
+            if(canvas) canvas->Refresh();
+            return;
+        }
+    }
+
+    // Original tactical range hotkeys.
+    // SPACE cycles persistent modes: Normal -> Move -> Attack -> Normal.
+    // M/A temporarily override the current mode only while the key is held.
+    // Group mode owns its own controls and intentionally suppresses these.
+    if(spell_map->isGameMode() && !spell_map->IsGroupMode())
+    {
+        if(key == WXK_SPACE)
+        {
+            spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_INCREMENT);
+            if(canvas) canvas->Refresh();
+            return;
+        }
+
+        if(key == 'M' || key == 'm')
+        {
+            if(!m_rangeMoveKeyDown)
+            {
+                m_rangeMoveKeyDown = true;
+                spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_MOVE);
+            }
+            if(canvas) canvas->Refresh();
+            return;
+        }
+
+        if(key == 'A' || key == 'a')
+        {
+            if(!m_rangeAttackKeyDown)
+            {
+                m_rangeAttackKeyDown = true;
+                spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_ATTACK);
+            }
+            if(canvas) canvas->Refresh();
+            return;
+        }
+    }
+
+    // keep existing controls working
+    event.Skip();
+}
+
+void MainFrame::OnCanvasKeyUp(wxKeyEvent& event)
+{
+    if(!spell_map || !spell_map->isGameMode())
+    {
+        event.Skip();
+        return;
+    }
+
+    int key = event.GetKeyCode();
+    bool handled = false;
+
+    if(key == 'M' || key == 'm')
+    {
+        m_rangeMoveKeyDown = false;
+        handled = true;
+    }
+    else if(key == 'A' || key == 'a')
+    {
+        m_rangeAttackKeyDown = false;
+        handled = true;
+    }
+
+    if(!handled)
+    {
+        event.Skip();
+        return;
+    }
+
+    // If the other temporary key is still held, keep its mode active.
+    if(m_rangeAttackKeyDown)
+        spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_ATTACK);
+    else if(m_rangeMoveKeyDown)
+        spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_MOVE);
+    else
+        spell_map->EndTemporaryUnitRangeViewMode();
+
+    if(canvas) canvas->Refresh();
+}
+
+void MainFrame::OnMapConsoleCommand()
+{
+    wxTextEntryDialog dlg(this, "Enter command:", "Console", "");
+    if (dlg.ShowModal() != wxID_OK)
+        return;
+
+    std::string cmd = dlg.GetValue().ToStdString();
+    while (!cmd.empty() && cmd.front() == ' ') cmd.erase(cmd.begin());
+    while (!cmd.empty() && cmd.back() == ' ') cmd.pop_back();
+    for (char& c : cmd) c = (char)std::toupper((unsigned char)c);
+
+    if (cmd == "ALLDONE")
+    {
+        if (!m_deployment_active && spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && spell_map->events)
+        {
+            for (auto* evt : spell_map->events->GetEvents())
+            {
+                if (!evt) continue;
+                if (evt->is_objective && !evt->is_done)
+                    evt->is_done = true;
+            }
+            spell_map->CheckAndTriggerMissionEnd();
+            if (canvas) canvas->Refresh();
+        }
+    }
+    else if (!cmd.empty())
+    {
+        wxMessageBox("Unknown command: " + dlg.GetValue(), "Console", wxOK | wxICON_WARNING, this);
+    }
+}
+
+
+void MainFrame::OnUnitClick_cb(int option)
+{
+    if(option & SpellMap::UNIT_OPT_SELECT)
+    {
+        // select unit
+        auto unit = spell_map->CanSelectUnit(select_pos);
+        spell_map->SelectUnit(unit);
+    }
+    else if(option & SpellMap::UNIT_OPT_MOVE)
+    {
+        // move
+        spell_map->MoveUnit(select_pos);
+    }
+    else if(option & SpellMap::UNIT_OPT_ATTACK || option & SpellMap::UNIT_OPT_LOWER || option & SpellMap::UNIT_OPT_UPPER)
+    {
+        // attack (unit or object)
+        int is_upper = option & SpellMap::UNIT_OPT_UPPER;
+        spell_map->Attack(select_pos, is_upper);
+    }
+}
+
+
+//--------------------------------------------------------------------------------------------------------------------
+// Message display stuff
+//--------------------------------------------------------------------------------------------------------------------
+// show message function wrapper
+void MainFrame::ShowMessage(SpellTextRec *message,bool is_yesno,std::function<void(bool)> exit_cb)
+{
+    //auto text = spell_data->texts->GetText("u0101_07");
+    form_message = new FormMsgBox(canvas, ID_MSG_WIN, spell_data, spell_map, message, (is_yesno)?(FormMsgBox::SpellMsgOptions::YESNO):(FormMsgBox::SpellMsgOptions::NONE), exit_cb);
+}
+// return true if some message still exist or a video is playing
+bool MainFrame::CheckMessageState()
+{
+    return(form_message != NULL || form_video_box != NULL);    
+}
+
+
+//--------------------------------------------------------------------------------------------------------------------
+// Tool bar stuff
+//--------------------------------------------------------------------------------------------------------------------
+// tool selected
+
+// tool page selected
+
+// fill toolset ribbon        else if (action->action_id == SpellMap::HUD_ACTION_DEPLOY_NEXT_UNIT)
+        {
+            // Native arrows cycle the entire assigned roster, including the
+            // queued company not yet on the map.
+            if (!m_deployment_units.empty())
+                SelectDeploymentUnit((static_cast<size_t>(m_deployment_selection) + 1)
+                                     % m_deployment_units.size());
         }
         return;
     }
