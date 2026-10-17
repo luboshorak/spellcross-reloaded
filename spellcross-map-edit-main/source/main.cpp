@@ -1864,6 +1864,7 @@ void MainFrame::StartTacticalGame()
     // The campaign gives the player control over start-square placement.
     // Freeze AI, objectives and the initial snapshot until deployment ends.
     m_deployment_active = m_deployment_requested && !m_deployment_units.empty();
+    spell_map->SetDeploymentMode(m_deployment_active);
     if (!m_deployment_active)
     {
         if (spell_map->saves) spell_map->saves->SaveInitial();
@@ -1893,6 +1894,8 @@ bool MainFrame::IsDeploymentSquare(const MapXY& tile) const
 
 void MainFrame::ResetDeploymentUI()
 {
+    if (spell_map)
+        spell_map->SetDeploymentMode(false);
     if (m_deployment_panel)
     {
         m_deployment_panel->Destroy();
@@ -2029,6 +2032,7 @@ void MainFrame::FinishDeployment()
 
     m_deployment_active = false;
     m_deployment_requested = false;
+    spell_map->SetDeploymentMode(false);
     if (m_deployment_panel)
     {
         m_deployment_panel->Destroy();
@@ -4837,7 +4841,17 @@ void MainFrame::OnHUDbuttonsLeave(wxMouseEvent& event)
 }
 void MainFrame::OnHUDbuttonsClick(wxMouseEvent& event)
 {
-    if (m_deployment_active) return;
+    // The retail game's end-turn glyph also confirms the initial deployment.
+    // All combat/turn buttons remain inactive until the formation is accepted.
+    if (m_deployment_active)
+    {
+        auto* panel = static_cast<wxPanel*>(event.GetEventObject());
+        auto* action = spell_map->GetHUDbutton(panel->GetId());
+        if (action && action->action_id == SpellMap::HUD_ACTION_DEPLOY_FINISH &&
+            event.GetEventType() == wxEVT_LEFT_UP)
+            FinishDeployment();
+        return;
+    }
     wxPanel* pan = (wxPanel*)event.GetEventObject();
     auto* btn = spell_map->GetHUDbutton(pan->GetId());
     if(btn && !btn->is_disabled)
