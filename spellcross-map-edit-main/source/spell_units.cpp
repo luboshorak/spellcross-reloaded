@@ -601,14 +601,13 @@ int SpellUnitRec::canAttackObject()
 // get maximum dig level
 int SpellUnitRec::GetMaxDig()
 {
-	if(isAir())
-		return(0);
-	if(!dig_turns)
-		return(0);
-	if(isLight())
-		return(6);
-	else
-		return(2);
+	if (isAir() || !dig_turns)
+		return 0;
+	// Infantry are light units with WALK movement and may dig six levels.
+	// Hummer (type 29) and Radar 1R/2R (30/31) are also LIGHT, but are
+	// vehicles (utype=0x10, no WALK bit): the original game caps them at 2.
+	// Classifying all LIGHT units as infantry incorrectly allowed six.
+	return isWalk() ? 6 : 2;
 }
 
 
