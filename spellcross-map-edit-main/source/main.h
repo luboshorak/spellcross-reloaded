@@ -130,10 +130,14 @@ private:
     // Pre-battle placement belongs to gameplay, not the removed map editor.
     bool m_deployment_requested = false;
     bool m_deployment_active = false;
+    // Ordered deployment roster. The map owns only entries marked placed;
+    // MainFrame owns remaining queued companies until placement/cancel.
     std::vector<MapUnit*> m_deployment_units;
+    std::vector<bool> m_deployment_placed;
     int m_deployment_selection = 0;
     int m_deployment_blink_ticks = 0;
     void ResetDeploymentUI();
+    void SelectDeploymentUnit(size_t index);
     void PlaceDeploymentUnit(MapXY tile, bool swap = false);
     void FinishDeployment();
     bool IsDeploymentSquare(const MapXY& tile) const;
