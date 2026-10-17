@@ -18,6 +18,7 @@ enum class FormMainMenuAction
     NewGame,
     Continue,
     LoadGame,
+    Tutorial,
     Credits,
     Intro,
     Exit,
