@@ -1849,9 +1849,9 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
     return first_deployed_player_unit != nullptr;
 }
 
-void MainFrame::SetGameModeUI(bool enable_game_mode)
+void MainFrame::StartTacticalGame()
 {
-    if (!enable_game_mode || !spell_map || !spell_map->IsLoaded()) return;
+    if (!spell_map || !spell_map->IsLoaded()) return;
     spell_map->SetGameMode(1);
     if (spell_map->saves) spell_map->saves->Clear(spell_map->GetTacticalSaveLimit());
     if (spell_map->events) spell_map->events->ResetEvents();
@@ -1941,7 +1941,7 @@ void MainFrame::OnLoadCustomMap(wxCommandEvent&)
     m_mission_end_req = SpellMap::MissionEndRequest();
     m_mainMenuReturnToTactical = false;
 
-    SetGameModeUI(true); // mission start events, HUD and view ranges
+    StartTacticalGame(); // mission start events, HUD and view ranges
     ShowTacticalWindow();
 }
 
@@ -2265,16 +2265,6 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnResetUnitView,this,ID_mmResetViewMap);
     Bind(wxEVT_MENU,&MainFrame::OnSelectUnitView,this,ID_mmUnitViewMode);
 
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewTer);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewObj);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewAnm);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewPnm);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewUnt);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewStTa);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewHUD);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewSounds);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewSoundLoops);
-    Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_ViewEvents);
     Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_HighlighObj);
 
     Bind(wxEVT_MENU,&MainFrame::OnViewMiniMap,this,ID_ViewMiniMap);
@@ -2629,7 +2619,6 @@ void MainFrame::StatusStringCallback(std::string info)
 void MainFrame::OnClose(wxCloseEvent& ev)
 {
     if(ev.GetId() == ID_MINIMAP_WIN)
-    else if(ev.GetId() == ID_MINIMAP_WIN)
     {
         delete form_minimap;
         form_minimap = NULL;
@@ -3349,7 +3338,7 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
 
                 if(LoadMapFromDefPath(def_path.wstring(), {}))
                 {
-                    SetGameModeUI(true);
+                    StartTacticalGame();
                     ShowTacticalWindow();
                 }
                 else
@@ -3756,8 +3745,6 @@ void MainFrame::StartMissionEndFlow()
     // 1) Pokud je video, přehraj ho a až pak pokračuj
     if (!m_mission_end_req.movie_path.empty())
     {
-
-        // zavři případný seznam videí
 
         // přehraj cutscénu
         bool video_ok = false;

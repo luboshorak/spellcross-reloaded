@@ -58,7 +58,7 @@ public:
         const std::vector<LevelData::PlayerUnitAdd>& player_units,
         const std::vector<int>& enemy_unit_ids);
     // Switch between editor/game mode (also updates UI + resets game state when entering).
-    void SetGameModeUI(bool enable_game_mode);
+    void StartTacticalGame();
     // Access the current tactical map (used by strategic level for battle results)
     SpellMap* GetSpellMap() const { return spell_map; }
     SpellMap::GameDifficulty GetGameDifficulty() const { return spell_map ? spell_map->GetGameDifficulty() : SpellMap::GameDifficulty::NORMAL; }
