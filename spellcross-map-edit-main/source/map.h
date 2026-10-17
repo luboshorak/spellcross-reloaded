@@ -1014,6 +1014,9 @@ public:
 		int SortUnitIDs();
 		void SortUnits();
 		MapUnit *GetCursorUnit(TScroll* scroll=NULL);
+		// Exact friendly unit on one tactical layer, including the selected unit
+		// when preparing the native UPPER/LOWER selection popup.
+		MapUnit* GetSelectableUnit(MapXY pos, bool air, bool include_current=false);
 		MapUnit* CanSelectUnit(MapXY pos);
 		MapUnit *SelectUnit(MapUnit* new_unit,bool scroll_to=false);
 		int UnitChanged(int clear=false);
@@ -1054,7 +1057,11 @@ public:
 			UNIT_OPT_LOWER = 2,
 			UNIT_OPT_MOVE = 4,
 			UNIT_OPT_SELECT = 8,
-			UNIT_OPT_ATTACK = 16
+			UNIT_OPT_ATTACK = 16,
+			// These select a friendly unit on a specific layer; unlike
+			// UPPER/LOWER above, they do not initiate an attack.
+			UNIT_OPT_SELECT_UPPER = 32,
+			UNIT_OPT_SELECT_LOWER = 64
 		};
 		int FinishUnits();
 		void CleanupDeadUnits();
