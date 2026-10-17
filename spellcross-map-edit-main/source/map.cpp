@@ -5720,7 +5720,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		// for each special sprite type
 		vector<MapXY>* spec[] = { &start, &escape, &targets };
 		Sprite* spec_sprite[] = { start_sprite, escape_sprite, target_sprite };
-		for (int sid = 0; sid < 3; sid++)
+		// During placement only the START crosses are meaningful;
+		// ESCAPE/TARGET markers belong to the battle that starts afterwards.
+		for (int sid = 0; sid < (deployment_mode ? 1 : 3); sid++)
 		{
 			if (!spec_sprite[sid])
 				continue;
@@ -5737,8 +5739,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				// game mode view range
 				uint8_t* fil = GetUnitRangeFilter(pos->x, pos->y);
 				if (deployment_tile_hidden(mxy))
-				continue;
-			if (use_view_mask && unit_view->view[mxy] == 0)
+					continue;
+				if (use_view_mask && unit_view->view[mxy] == 0)
 					continue;
 				else if (use_view_mask && unit_view->view[mxy] == 1)
 					fil = terrain->filter.darkpal;
