@@ -7212,20 +7212,17 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
 	if (unit->paralyze_turns > 0 || unit->freeze_turns > 0)
 		return(1);
 
-	// clear last move
+	// Reject blocked destinations before interrupting an existing command.
+	// Opposite-layer units do not block movement: an aircraft can fly over
+	// ground troops, including enemies, but never through another aircraft.
+	if (!CanUnitMove(target))
+		return(1);
+
+	// clear last move only after a legal destination is confirmed
 	LockMap();
 	unit->move_state = MapUnit::MOVE_STATE::IDLE;
 	unit->move_nodes.clear();
 	ReleaseMap();
-
-	//  check target
-	if (!target.IsSelected())
-		return(1);
-	int t_mxy = ConvXY(target);
-
-	// skip if outside move range
-	if (unit_range->ap_left[t_mxy] < 0)
-		return(1);
 
 	// find path
 	auto path = unit_range->FindPath(unit, target);
@@ -9456,18 +9453,30 @@ int SpellMap::Attack(MapXY pos, int prefer_air)
 		return(1);
 	auto pxy = ConvXY(pos);
 
-	// try select unit target
+	// A native UPPER/LOWER choice must never silently fire on the other
+	// layer if its target disappeared in the meantime. Only generic ATTACK
+	// (prefer_air == -1) is allowed to select an available layer.
 	MapUnit* target = NULL;
-	if (prefer_air && CanUnitAttackAir(pos))
+	if (prefer_air == 1)
+	{
 		target = CanUnitAttackAir(pos);
-	else if (!prefer_air && CanUnitAttackLand(pos))
+		if (!target)
+			return(1);
+	}
+	else if (prefer_air == 0)
+	{
 		target = CanUnitAttackLand(pos);
-	else if (CanUnitAttackLand(pos))
+		if (!target && !CanUnitAttackObject(pos))
+			return(1);
+	}
+	else
+	{
 		target = CanUnitAttackLand(pos);
-	else if (CanUnitAttackAir(pos))
-		target = CanUnitAttackAir(pos);
-	else if (!CanUnitAttackObject(pos))
-		return(1);
+		if (!target)
+			target = CanUnitAttackAir(pos);
+		if (!target && !CanUnitAttackObject(pos))
+			return(1);
+	}
 
 	// get attacking unit
 	auto* unit = GetSelectedUnit();
@@ -9581,28 +9590,40 @@ MapUnit* SpellMap::SelectUnit(MapUnit* new_unit, bool scroll_to)
 
 	if (unit_selection && unit_selection == new_unit)
 	{
-		// selection of already selected unit: detect if there is air-land pair and swap selection
-
-		// make full list of visible units
-		auto units_list = units;
-		units_list.reserve(100);
-		if (!isGameMode())
+		// Clicking the current unit again switches to its friendly unit on
+		// the opposite layer if one is stacked on the same hex. The old code
+		// assigned the alternate to unit_selection, then overwrote it below.
+		MapUnit* alternate = nullptr;
+		for (auto* candidate : units)
 		{
-			// in editor mode show event untis too!
-			for (auto& evt : events->GetEvents())
-				for (auto& unit : evt->units)
-					units_list.push_back(unit.unit);
+			if (!candidate || candidate == new_unit || !candidate->unit ||
+				candidate->isDead() || candidate->coor != new_unit->coor)
+				continue;
+			if (isGameMode() && (candidate->is_enemy || candidate->panic_turns > 0 ||
+				candidate->unit->isAir() == new_unit->unit->isAir()))
+				continue;
+			alternate = candidate;
+			break;
 		}
-
-		for (auto& unit : units_list)
+		if (!alternate && !isGameMode() && events)
 		{
-			if (unit != new_unit && unit->coor == new_unit->coor)
+			for (auto* evt : events->GetEvents())
 			{
-				// found: swap air-land selection
-				if (!isGameMode() || !unit->is_enemy)
-					unit_selection = unit;
+				for (auto& event_unit : evt->units)
+				{
+					if (event_unit.unit && event_unit.unit != new_unit &&
+						event_unit.unit->coor == new_unit->coor)
+					{
+						alternate = event_unit.unit;
+						break;
+					}
+				}
+				if (alternate) break;
 			}
 		}
+		if (!alternate)
+			return unit_selection;
+		new_unit = alternate;
 	}
 	unit_selection = new_unit;
 	// v8: selection changed -> mark attack_map dirty for this unit
@@ -9614,8 +9635,12 @@ MapUnit* SpellMap::SelectUnit(MapUnit* new_unit, bool scroll_to)
 	if (isGameMode() && unit_selection)
 	{
 		unit_selection->in_placement = false;
-		if (!unit_selection->is_enemy)
+		if (!unit_selection->is_enemy && unit_selection->unit)
+		{
 			unit_selection->ActivateUnit();
+			// Keep cursor picking and the air/ground HUD layer in sync.
+			unit_sel_land_preference = !unit_selection->unit->isAir();
+		}
 	}
 
 	if (new_unit && new_unit->unit->sound_report)
@@ -10243,7 +10268,26 @@ void SpellMap::OnHUDnextUnfinishedUnit()
 }
 void SpellMap::OnHUDswitchAirLand()
 {
+	if (enemy_turn_running || panic_turn_running || reaction_fire_active ||
+		!reaction_fire_queue.empty() || group_move_active)
+		return;
 	unit_sel_land_preference = !unit_sel_land_preference;
+	// The original air/ground switch controls which layer is picked. On a
+	// stacked friendly hex, switch the current unit immediately as well.
+	if (isGameMode() && unit_selection && !unit_selection->is_enemy &&
+		unit_selection->coor.IsSelected())
+	{
+		for (auto* candidate = Lunit[ConvXY(unit_selection->coor)]; candidate; candidate = candidate->next)
+		{
+			if (candidate != unit_selection && candidate->unit && !candidate->is_enemy &&
+				!candidate->isDead() && candidate->panic_turns <= 0 &&
+				candidate->unit->isAir() != static_cast<bool>(unit_sel_land_preference))
+			{
+				SelectUnit(candidate);
+				break;
+			}
+		}
+	}
 	InvalidateHUDbuttons();
 }
 void SpellMap::OnHUDswitchUnitHUD()
