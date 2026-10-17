@@ -125,3 +125,25 @@ verify normal mission fog returns immediately after UKONCEN.
 
 The Czech main menu stays in its original six-item state (no fabricated
 Tutorial control). The original English version retains seven items.
+
+## Original unit deployment report and restoration cheats
+
+- After placing an assigned company on a valid START square, the unit's
+  original `MapUnit::PlayReport()` selection/report sample plays. On the
+  final placement, the existing `SpellMap::SelectUnit()` path plays it;
+  avoid playing that last report twice. Repositioning remains possible.
+- Tactical console (`~`): `AGAINAGAIN` refills action points to maximum
+  for **living player/Alliance** companies, without healing them, helping
+  enemies, or triggering a new turn. Repeat use is allowed. Reject use
+  before deployment ends or while the enemy owns the turn.
+- Strategic console (`~`, including native Buy/Research pages): `CASHIUP`
+  adds exactly **100 credits** to `m_money`, leaves research points alone,
+  refreshes both restored and wx strategic UI, and saves immediately.
+  Test it repeatedly and verify the balance survives closing/reloading
+  the strategic save.
+- Tactical `ALLDONE` must still complete mission objectives unchanged.
+- The strategic screen should reject battle-only cheats; the tactical
+  screen should explain that `CASHIUP` belongs to the strategic console.
+
+Windows Visual Studio build and in-game validation are required before
+merging into the main branch.
