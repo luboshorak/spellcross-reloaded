@@ -6523,7 +6523,7 @@ int SpellMap::GetEffectiveFireRange(const MapUnit* shooter, MapXY target) const
     if (static_cast<size_t>(from) >= tiles.size() ||
         static_cast<size_t>(to) >= tiles.size())
         return base;
-    return base + std::max(0, tiles[from].elev - tiles[to].elev);
+    return base + (std::max)(0, tiles[from].elev - tiles[to].elev);
 }
 
 // scroll map so tile is in center
@@ -8753,7 +8753,7 @@ bool SpellMap::MoveEnemyToward(MapUnit* enemy, MapXY goal, bool stop_in_attack_r
             {
                 const double d = advance.Distance(goal);
                 const bool min_ok = !(enemy->unit->isIndirectFire() && d <= 2.0);
-                const int heightBonus = std::max(0,
+                const int heightBonus = (std::max)(0,
                     tiles[ConvXY(advance)].elev - tiles[ConvXY(goal)].elev);
                 if (d <= fire_range + heightBonus && min_ok)
                     break;
@@ -11224,7 +11224,8 @@ bool SpellMap::ViewRange::HasDirectSight(MapUnit* unit, MapXY pos)
 	// ever combines radar with a weapon.
 	if (unit->radar_up && unit->unit->isActionToggleRadar())
 	{
-		const int radar_range = unit->unit->action_params[2];
+		const int radar_range = unit->unit->action_params[2] +
+			(std::max)(ref_alt - next_alt, 0);
 		return((pos.Distance(ref_pos) - 0.5) <= radar_range);
 	}
 
@@ -11583,12 +11584,10 @@ void SpellMap::ViewRange::Worker()
 
 			// next tile elevation
 			int next_alt = map->tiles[next_mxy].elev;
-			// Original manual explicitly grants downhill bonus to BOTH direct
-			// visibility and weapon distance: +1 tile per elevation level.
-			// Radar pulses are a separate fixed-radius ability.
-			int view = ref_view;
-			if (!is_radar)
-				view += (std::max)(ref_alt - next_alt, 0);
+			// Original manual: +1 tile of sight or firing distance for each
+			// elevation level above the target, including deployed radar sight.
+			// Radar still ignores intervening terrain rays (unlike normal sight).
+			const int view = ref_view + (std::max)(ref_alt - next_alt, 0);
 
 			// visible?
 			if ((next_pos.Distance(ref_pos) - 0.5) > view)
