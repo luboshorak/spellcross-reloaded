@@ -90,6 +90,15 @@ FormUnitOpts::FormUnitOpts(wxPanel *parent, wxWindowID win_id, wxPoint position,
 
     form->Bind(wxEVT_CLOSE_WINDOW, &FormUnitOpts::OnClose, this);
     form->Bind(wxEVT_PAINT, &FormUnitOpts::OnPaintTab, this);
+    form->Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent& event) {
+        if (event.GetKeyCode() == WXK_ESCAPE)
+        {
+            form->Close();
+            return;
+        }
+        event.Skip();
+    });
+    form->SetFocus();
 }
 
 FormUnitOpts::~FormUnitOpts()
