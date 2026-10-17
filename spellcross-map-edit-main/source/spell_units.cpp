@@ -1414,7 +1414,7 @@ int MapUnit::UpdateFireAP()
 int MapUnit::GetWalkAP()
 {
 	// JEDNOTKY.DEF +0x3D gives *action points per normal movement step*
-	// (all 86 mobile EN unit records have 7; immobile Destructor #73 has 0).
+	// (EN: 83 cost 7, three Orc/Undead types cost 6, Destructor #73 has 0).
 	// The old formula GetMaxAP() / (apw + bonuses - 1) incorrectly turned
 	// e.g. Light infantry's original cost of 7 AP into 9, Hummer's into 16,
 	// and an immobile unit's zero cost into a negative path cost.
