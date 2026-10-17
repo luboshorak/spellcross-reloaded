@@ -40,6 +40,9 @@ public:
     void OnMapPaint(wxPaintEvent& ev);
     void OnMapLeftDown(wxMouseEvent& ev);
     void OnActivate(wxActivateEvent& ev);
+    // Original console cheat input on the strategic screen (~ key).
+    void OnConsoleKeyDown(wxKeyEvent& ev);
+    void OnConsoleCommand();
 
     void RebuildTerritoryCentroids();
 
