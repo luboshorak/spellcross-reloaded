@@ -2750,6 +2750,10 @@ void MainFrame::RequestApplicationExit()
     if (spell_data && spell_data->midi)
         spell_data->midi->Stop();
 
+    // Delete still-unplaced strategic units before SpellMap is closed.
+    // Placed companies belong to the map and will be freed by Close().
+    ResetDeploymentUI();
+
     if (spell_map)
     {
         wxLogDebug("[SHUTDOWN] stopping tactical map/workers");
