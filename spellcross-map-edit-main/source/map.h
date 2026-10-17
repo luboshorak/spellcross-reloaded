@@ -897,6 +897,7 @@ public:
 		~SpellMap();
 		int SetGameMode(int new_mode);
 		int isGameMode();
+		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
 		void SetGameDifficulty(GameDifficulty difficulty);
 		GameDifficulty GetGameDifficulty() const { return game_difficulty; };
 		int GetTacticalSaveLimit() const;
@@ -911,6 +912,10 @@ public:
 		tuple<int,int> GetSurfPos(MapXY &pos);
 
 		bool deployment_mode = false;
+		bool deployment_blink_visible = true;
+        // A not-yet-placed player company for the original left HUD roster
+        // preview. It is not in the tactical map unit list until placed.
+        MapUnit* deployment_preview_unit = nullptr;
 		
 		MapXY GetSelection(TScroll* scroll=NULL);
 		vector<MapXY> &GetSelections(TScroll* scroll=NULL);
@@ -992,7 +997,6 @@ public:
 		int  GetActiveGroup() const { return active_group; }
 		bool IsGroupMode() const { return active_group != 0; }
 		bool IsUnitInActiveGroup(const MapUnit* u) const;
-		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
 		bool IsActiveGroupMoving() const { return group_move_active; }
 		void CancelActiveGroupMovement();
 		void AddAllUnitsToActiveGroup();
@@ -1010,6 +1014,9 @@ public:
 		int SortUnitIDs();
 		void SortUnits();
 		MapUnit *GetCursorUnit(TScroll* scroll=NULL);
+		// Exact friendly unit on one tactical layer, including the selected unit
+		// when preparing the native UPPER/LOWER selection popup.
+		MapUnit* GetSelectableUnit(MapXY pos, bool air, bool include_current=false);
 		MapUnit* CanSelectUnit(MapXY pos);
 		MapUnit *SelectUnit(MapUnit* new_unit,bool scroll_to=false);
 		int UnitChanged(int clear=false);
@@ -1050,7 +1057,11 @@ public:
 			UNIT_OPT_LOWER = 2,
 			UNIT_OPT_MOVE = 4,
 			UNIT_OPT_SELECT = 8,
-			UNIT_OPT_ATTACK = 16
+			UNIT_OPT_ATTACK = 16,
+			// These select a friendly unit on a specific layer; unlike
+			// UPPER/LOWER above, they do not initiate an attack.
+			UNIT_OPT_SELECT_UPPER = 32,
+			UNIT_OPT_SELECT_LOWER = 64
 		};
 		int FinishUnits();
 		void CleanupDeadUnits();
@@ -1109,7 +1120,9 @@ public:
 			HUD_ACTION_MINIMAP = 1000,
 			HUD_ACTION_UNITS,
 			HUD_ACTION_MAP_OPTIONS,
-			HUD_ACTION_RETREAT
+			HUD_ACTION_RETREAT,
+			HUD_ACTION_DEPLOY_FINISH,
+			HUD_ACTION_DEPLOY_NEXT_UNIT
 		};
 
 		MapSound* GetRandomSound(double* left=NULL,double* right=NULL);

@@ -24,6 +24,39 @@ The project also includes a standalone **map editor**, so you can explore the or
 
 There's no installer or registry setup. You may need the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) on a fresh Windows installation.
 
+## Configuration when building from source
+
+The game **must not write settings into a file tracked by Git**. In a source
+checkout, the committed `spellcross-map-edit-main/source/config.example.ini`
+is a **read-only defaults template**. At first launch Spellcross creates its
+own, git-ignored `spellcross-map-edit-main/source/config.ini`. This single
+local file is shared by Debug and Release builds; it stores your imported
+ISO/CD archive paths, volumes, display options and other local settings.
+Rebuilding or pulling new commits will not overwrite it.
+
+Portable release ZIPs still create a separate `config.ini` alongside
+`Spellcross.exe`, exactly as before; the standalone editor has its own
+configuration.
+
+**One-time migration for checkouts that already contain the old tracked
+`source/config.ini`**: *before updating to this commit*, back up the file
+outside the repository, restore the tracked version, pull, and copy your
+backup back to `source/config.ini` (which is now ignored):
+
+```bash
+cd ~/spellcross-refactor-test
+cp spellcross-map-edit-main/source/config.ini ~/spellcross-config.ini.backup
+git restore -- spellcross-map-edit-main/source/config.ini
+git pull --ff-only
+cp ~/spellcross-config.ini.backup spellcross-map-edit-main/source/config.ini
+git status --short
+```
+
+This one-time backup is important: Git removes the previously tracked
+`config.ini` during the pull. **Do not use `git stash pop`** to migrate
+the old tracked file after the deletion. Once copied back, playing the game
+no longer dirties Git and no `stash` is needed for future pulls.
+
 ## The game
 
 Reloaded keeps Spellcross's two connected parts:

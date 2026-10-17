@@ -451,8 +451,10 @@ static bool scsave_read_unit(std::istream& is, uint32_t version, SpellMap* map, 
 	return true;
 }
 
-// --- v8: track when attack_map needs a synchronous refresh for current selected unit
+// A click can follow a selection change before the next tactical Tick.
+// The pointer-driven chooser must use both range maps for the new unit.
 static MapUnit* g_attack_map_dirty_for = nullptr;
+static MapUnit* g_move_range_dirty_for = nullptr;
 
 //=============================================================================
 // Map scroller class
@@ -1143,6 +1145,18 @@ void SpellMap::CheckAndTriggerMissionEnd()
 		return;
 
 	// --- success condition ---
+	// Check live positions even if an extraction unit spawned on a START tile,
+	// a save was loaded with the unit already there, or its movement finished
+	// without the normal per-step trigger. SaveUnit uses START squares while
+	// TransportUnit uses ESCAPE squares, per the original mission DEF format.
+	if (events)
+	{
+		for (auto* objective : events->GetEvents())
+		{
+			if (objective && objective->is_objective && objective->isTransportSave())
+				objective->CheckUnitInPos(true);
+		}
+	}
 	bool success = AreAllObjectivesDone();
 
 	// Special: po první misi dovol success i bez objective, když velitel dojede na EscapeSquare (transport)
@@ -1858,6 +1872,21 @@ int SpellMap::SetGameMode(int new_mode)
 }
 
 // game mode
+void SpellMap::SetDeploymentMode(bool on)
+{
+    if (deployment_mode == on) return;
+    deployment_mode = on;
+    deployment_blink_visible = true;
+    if (!on)
+        deployment_preview_unit = nullptr;
+    InvalidateHUDbuttons();
+}
+
+bool SpellMap::IsDeploymentMode() const
+{
+    return deployment_mode;
+}
+
 int SpellMap::isGameMode()
 {
 	return(game_mode);
@@ -1978,6 +2007,9 @@ void SpellMap::Close()
 	// loose start/ciel
 	start.clear();
 	escape.clear();
+	// Queued company previews are owned by MainFrame, not this map.
+	deployment_mode = false;
+	deployment_preview_unit = nullptr;
 	// loose units layer
 	Lunit.clear();
 	// loose units list
@@ -5547,7 +5579,25 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		PasteBuffer(tiles, L3, L4, start, escape, targets, msel[0]);
 	}
 
-	int use_view_mask = game_mode || units_view_debug_mode;
+	// Before battle reveal ONLY the valid START tiles where a company can
+	// actually be placed. All other terrain, objects, effects and units stay
+	// black. Do not mutate the real fog-of-war view: the battle will calculate
+	// it normally once the player finishes deploying.
+	std::vector<uint8_t> deployment_allowed;
+	if (deployment_mode)
+	{
+		deployment_allowed.assign(static_cast<size_t>(x_size) * y_size, 0);
+		for (const MapXY& pos : start)
+			if (pos.x >= 0 && pos.x < x_size && pos.y >= 0 && pos.y < y_size)
+				deployment_allowed[static_cast<size_t>(ConvXY(pos.x, pos.y))] = 1;
+	}
+	const auto deployment_tile_hidden = [&](int index) -> bool {
+		return deployment_mode &&
+			(index < 0 || static_cast<size_t>(index) >= deployment_allowed.size() ||
+			 !deployment_allowed[static_cast<size_t>(index)]);
+	};
+
+	int use_view_mask = !deployment_mode && (game_mode || units_view_debug_mode);
 
 	// FIX: v game mode se renderuje jen to, co je ve view masce.
 	// U nkterch map je view mask po startu przdn (vude 0) => ern obrazovka + HUD.
@@ -5584,6 +5634,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			uint8_t* fil = GetUnitRangeFilter(n + xs_ofs, m + ys_ofs * 2);
 
 			// game mode view range
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5652,6 +5704,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 			// game mode view range
 			uint8_t* fil = GetUnitRangeFilter(anm->x_pos, anm->y_pos);
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5680,7 +5734,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		// for each special sprite type
 		vector<MapXY>* spec[] = { &start, &escape, &targets };
 		Sprite* spec_sprite[] = { start_sprite, escape_sprite, target_sprite };
-		for (int sid = 0; sid < 3; sid++)
+		// During placement only the START crosses are meaningful;
+		// ESCAPE/TARGET markers belong to the battle that starts afterwards.
+		for (int sid = 0; sid < (deployment_mode ? 1 : 3); sid++)
 		{
 			if (!spec_sprite[sid])
 				continue;
@@ -5696,6 +5752,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 				// game mode view range
 				uint8_t* fil = GetUnitRangeFilter(pos->x, pos->y);
+				if (deployment_tile_hidden(mxy))
+					continue;
 				if (use_view_mask && unit_view->view[mxy] == 0)
 					continue;
 				else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5727,6 +5785,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			int y_pos = m + ys_ofs * 2;
 			int mxy = ConvXY(x_pos, y_pos);
 
+			// Suppress selection overlays on non-deployment terrain too.
+			if (deployment_tile_hidden(mxy))
+				continue;
 			// skip if not selected
 			if (!select[mxy])
 				continue;
@@ -5762,6 +5823,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 			// game mode view range
 			uint8_t* fil = GetUnitRangeFilter(n + xs_ofs, m + ys_ofs * 2);
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5801,6 +5864,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 			// game mode view range
 			uint8_t* fil = GetUnitRangeFilter(pnm->x_pos, pnm->y_pos);
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5862,6 +5927,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 			// game mode view range
 			int hide_units = use_view_mask && unit_view->view[mxy] < 1;
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (hide_units)
@@ -5877,6 +5944,13 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				// units render:
 				while (wUnits && unit && !hide_units)
 				{
+					// Pre-battle placement does not reveal enemy/scenario troops
+					// hidden behind the normal tactical fog of war.
+					if (deployment_mode && unit->is_enemy)
+					{
+						unit = unit->next;
+						continue;
+					}
 					if ((pass == 0 && unit->unit->isAir()) || pass == 2)
 					{
 						if (unit->is_visible < 2 && use_view_mask)
@@ -7097,11 +7171,14 @@ int SpellMap::CanUnitMove(MapXY target)
 	if (unit_range->ap_left[npos] < 0)
 		return(false);
 
-	// check if target position is not blocked?
+	// Match the A* pathfinder's layer collision rule exactly. An air and
+	// a ground unit may occupy the same tile regardless of their allegiance.
+	// Only another unit on the SAME layer blocks this destination.
 	auto other = Lunit[npos];
 	while (other)
 	{
-		if (unit->unit->isAir() == other->unit->isAir() || unit->unit->isLand() == other->unit->isLand())
+		if (other != unit && other->unit &&
+			(unit->unit->isAir() == other->unit->isAir()))
 			return(false);
 		other = other->next;
 	}
@@ -7152,20 +7229,17 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
 	if (unit->paralyze_turns > 0 || unit->freeze_turns > 0)
 		return(1);
 
-	// clear last move
+	// Reject blocked destinations before interrupting an existing command.
+	// Opposite-layer units do not block movement: an aircraft can fly over
+	// ground troops, including enemies, but never through another aircraft.
+	if (!CanUnitMove(target))
+		return(1);
+
+	// clear last move only after a legal destination is confirmed
 	LockMap();
 	unit->move_state = MapUnit::MOVE_STATE::IDLE;
 	unit->move_nodes.clear();
 	ReleaseMap();
-
-	//  check target
-	if (!target.IsSelected())
-		return(1);
-	int t_mxy = ConvXY(target);
-
-	// skip if outside move range
-	if (unit_range->ap_left[t_mxy] < 0)
-		return(1);
 
 	// find path
 	auto path = unit_range->FindPath(unit, target);
@@ -7213,7 +7287,15 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 		return select_pos.IsSelected() ? UNIT_OPT_MOVE : 0;
 	}
 
-	// v8: make sure attack_map corresponds to the currently selected unit (avoid stale target selection on stacked tiles)
+	// A user may click immediately after switching between a ground and an
+	// aircraft on one tile. Flush the pending movement range before computing
+	// MOVE/ATTACK choices: the old range may belong to the other layer.
+	if (unit_selection && g_move_range_dirty_for == unit_selection)
+	{
+		unit_range->FindRange(unit_selection);
+		unit_range->WaitIdle();
+		g_move_range_dirty_for = nullptr;
+	}
 	if (unit_selection && g_attack_map_dirty_for == unit_selection)
 	{
 		unit_view->CalcAttackRange(unit_selection, true);
@@ -7234,9 +7316,23 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 		options |= UNIT_OPT_LOWER;
 	}
 
-	if (select_pos.IsSelected() && CanSelectUnit(select_pos))
+	if (select_pos.IsSelected())
 	{
-		options |= UNIT_OPT_SELECT;
+		// Two friendly occupants represent two distinct SELECT actions.
+		// Never collapse a ground+air stack to a single SELECT option,
+		// otherwise clicking a stacked square immediately switches layers
+		// without showing the original I_TAB choice.
+		MapUnit* select_ground = GetSelectableUnit(select_pos, false, true);
+		MapUnit* select_air = GetSelectableUnit(select_pos, true, true);
+		if (select_ground && select_air)
+		{
+			options |= UNIT_OPT_SELECT_LOWER | UNIT_OPT_SELECT_UPPER;
+		}
+		else if ((select_ground && select_ground != unit_selection) ||
+			(select_air && select_air != unit_selection))
+		{
+			options |= UNIT_OPT_SELECT;
+		}
 	}
 
 	if (IsGroupMode() && select_pos.IsSelected())
@@ -9396,18 +9492,30 @@ int SpellMap::Attack(MapXY pos, int prefer_air)
 		return(1);
 	auto pxy = ConvXY(pos);
 
-	// try select unit target
+	// A native UPPER/LOWER choice must never silently fire on the other
+	// layer if its target disappeared in the meantime. Only generic ATTACK
+	// (prefer_air == -1) is allowed to select an available layer.
 	MapUnit* target = NULL;
-	if (prefer_air && CanUnitAttackAir(pos))
+	if (prefer_air == 1)
+	{
 		target = CanUnitAttackAir(pos);
-	else if (!prefer_air && CanUnitAttackLand(pos))
+		if (!target)
+			return(1);
+	}
+	else if (prefer_air == 0)
+	{
 		target = CanUnitAttackLand(pos);
-	else if (CanUnitAttackLand(pos))
+		if (!target && !CanUnitAttackObject(pos))
+			return(1);
+	}
+	else
+	{
 		target = CanUnitAttackLand(pos);
-	else if (CanUnitAttackAir(pos))
-		target = CanUnitAttackAir(pos);
-	else if (!CanUnitAttackObject(pos))
-		return(1);
+		if (!target)
+			target = CanUnitAttackAir(pos);
+		if (!target && !CanUnitAttackObject(pos))
+			return(1);
+	}
 
 	// get attacking unit
 	auto* unit = GetSelectedUnit();
@@ -9472,43 +9580,39 @@ int SpellMap::Attack(MapXY pos, int prefer_air)
 }
 
 
-// check if some selectable unit is at postion (game mode only!)
-MapUnit* SpellMap::CanSelectUnit(MapXY pos)
+// Find the live, controllable Alliance unit on an exact air/ground layer.
+// Include-current is used by the native two-choice selection popup: both
+// occupants must remain available even if one is already selected.
+MapUnit* SpellMap::GetSelectableUnit(MapXY pos, bool air, bool include_current)
 {
-	if (!isGameMode())
-		return(NULL);
-	if (enemy_turn_running || panic_turn_running || reaction_fire_active || !reaction_fire_queue.empty())
-		return(NULL);
-	if (!pos.IsSelected())
-		return(NULL);
-	auto pxy = ConvXY(pos);
+	if (!isGameMode() || enemy_turn_running || panic_turn_running ||
+		reaction_fire_active || !reaction_fire_queue.empty() || !pos.IsSelected() ||
+		pos.x < 0 || pos.y < 0 || pos.x >= x_size || pos.y >= y_size)
+		return nullptr;
 
-	// get candidates (alinace only)
-	MapUnit* land_unit = NULL;
-	MapUnit* air_unit = NULL;
-	auto unit = Lunit[pxy];
-	while (unit)
+	for (auto* candidate = Lunit[ConvXY(pos)]; candidate; candidate = candidate->next)
 	{
-		if (unit->unit->isLand() && !unit->is_enemy && unit != unit_selection && unit->panic_turns <= 0)
-			land_unit = unit;
-		if (unit->unit->isAir() && !unit->is_enemy && unit != unit_selection && unit->panic_turns <= 0)
-			air_unit = unit;
-		unit = unit->next;
+		if (!candidate->unit || candidate->is_enemy || candidate->isDead() ||
+			candidate->panic_turns > 0 || (!include_current && candidate == unit_selection))
+			continue;
+		if (candidate->unit->isAir() == static_cast<int>(air))
+			return candidate;
 	}
-
-	// pick some with selected preference
-	if (unit_sel_land_preference && land_unit)
-		return(land_unit);
-	if (!unit_sel_land_preference && air_unit)
-		return(air_unit);
-	if (land_unit)
-		return(land_unit);
-	if (air_unit)
-		return(air_unit);
-	return(NULL);
+	return nullptr;
 }
 
-// select unit, if currently selected at the same position, switch between air-land
+// Prefer the selected HUD layer for simple SELECT, but fall back to the
+// other layer if this is the only unit which can actually be selected.
+MapUnit* SpellMap::CanSelectUnit(MapXY pos)
+{
+	MapUnit* land = GetSelectableUnit(pos, false);
+	MapUnit* air = GetSelectableUnit(pos, true);
+	if (unit_sel_land_preference)
+		return land ? land : air;
+	return air ? air : land;
+}
+
+// Select the exact requested unit. Air/ground ambiguity is handled by I_TAB before this call.
 MapUnit* SpellMap::SelectUnit(MapUnit* new_unit, bool scroll_to)
 {
 	// group mode: clicking player unit toggles membership; keep single selection unchanged
@@ -9519,34 +9623,14 @@ MapUnit* SpellMap::SelectUnit(MapUnit* new_unit, bool scroll_to)
 	}
 
 
-	if (unit_selection && unit_selection == new_unit)
-	{
-		// selection of already selected unit: detect if there is air-land pair and swap selection
-
-		// make full list of visible units
-		auto units_list = units;
-		units_list.reserve(100);
-		if (!isGameMode())
-		{
-			// in editor mode show event untis too!
-			for (auto& evt : events->GetEvents())
-				for (auto& unit : evt->units)
-					units_list.push_back(unit.unit);
-		}
-
-		for (auto& unit : units_list)
-		{
-			if (unit != new_unit && unit->coor == new_unit->coor)
-			{
-				// found: swap air-land selection
-				if (!isGameMode() || !unit->is_enemy)
-					unit_selection = unit;
-			}
-		}
-	}
+	// Explicit native layer selection must not toggle to the other layer
+	// when the user chooses the already-selected unit.
+	if (unit_selection == new_unit)
+		return unit_selection;
 	unit_selection = new_unit;
-	// v8: selection changed -> mark attack_map dirty for this unit
+	// Selection changed: neither cursor-action map may use the previous unit.
 	g_attack_map_dirty_for = unit_selection;
+	g_move_range_dirty_for = unit_selection;
 	// unit selected
 	unit_selection_mod = true;
 
@@ -9554,8 +9638,12 @@ MapUnit* SpellMap::SelectUnit(MapUnit* new_unit, bool scroll_to)
 	if (isGameMode() && unit_selection)
 	{
 		unit_selection->in_placement = false;
-		if (!unit_selection->is_enemy)
+		if (!unit_selection->is_enemy && unit_selection->unit)
+		{
 			unit_selection->ActivateUnit();
+			// Keep cursor picking and the air/ground HUD layer in sync.
+			unit_sel_land_preference = !unit_selection->unit->isAir();
+		}
 	}
 
 	if (new_unit && new_unit->unit->sound_report)
@@ -9765,14 +9853,19 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 	}
 	last_enemy_turn_hud = false;
 
+	// During placement, the left panel is the next queued company,
+	// even though that company has not appeared on the battlefield yet.
+	MapUnit* hud_selected_unit = (deployment_mode && deployment_preview_unit)
+		? deployment_preview_unit : unit_selection;
+
 	// for left and right panels
 	for (int pid = 0; pid < 2; pid++)
 	{
 		MapUnit* unit;
 		int px_ref = 0;
 		int ix_ref = 0;
-		if (pid == 0 && unit_selection)
-			unit = unit_selection;
+		if (pid == 0 && hud_selected_unit)
+			unit = hud_selected_unit;
 		else if (pid == 1 && cursor_unit && !destructible)
 		{
 			unit = cursor_unit;
@@ -9972,7 +10065,7 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 
 		// render state text
 		// pos: 244,77  size: 150,16
-		if ((pid == 0 && !cursor_unit) || (pid == 1 && unit_selection))
+		if ((pid == 0 && !cursor_unit) || (pid == 1 && hud_selected_unit))
 			font->Render(buf, buf_end, buf_x_size, hud_left + 244, hud_top + 77, 150, 16, string_format("ab: %d / attack: %d", ap_left, fire_count), 232, 254, SpellFont::DIAG2);
 
 		// render unit icon
@@ -10038,11 +10131,11 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 
 	// can unit heal?
 	int can_heal = 0;
-	if (unit_selection)
-		can_heal = unit_selection->HasMaxAP() && unit_selection->HasWounded();
+	if (hud_selected_unit)
+		can_heal = hud_selected_unit->HasMaxAP() && hud_selected_unit->HasWounded();
 
 	// modify HUD buttons?
-	int state_changed = isRenderSurfModified() || cursor_unit != last_cursor_unit || unit_selection != last_selected_unit || hud_enabled != last_hud_state ||
+	int state_changed = isRenderSurfModified() || cursor_unit != last_cursor_unit || hud_selected_unit != last_selected_unit || hud_enabled != last_hud_state ||
 		last_can_heal != can_heal || last_destructible != destructible;
 
 	if (state_changed && hud_buttons_cb)
@@ -10054,26 +10147,42 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		// invalidate but keep old buttons
 		ClearHUDbuttons(true);
 
-		CreateHUDbutton(gres.wm_glyph_next_unused, hud_origin, btn_top[0], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnfinishedUnit, this), NULL);
-		CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnit, this), NULL);
-
-		if (unit_selection && unit_selection->unit->hasSpecAction())
+		if (deployment_mode)
 		{
-			// render middle buttons (unit actions)
-			int can_do_action = unit_selection->CanSpecAction();
-			if (unit_selection->unit->isActionTurretDown() || unit_selection->unit->isActionTurretUp())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDturretToggle, this), NULL, !can_do_action);
-			else if (unit_selection->unit->isActionToggleRadar())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(unit_selection->radar_up), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDradarToggle, this), NULL, !can_do_action);
-			else if (unit_selection->unit->isActionLand() || unit_selection->unit->isActionTakeOff())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDairLandTakeOff, this), NULL, !can_do_action);
-			else if (unit_selection->unit->isActionToFortres() || unit_selection->unit->isActionFromFortres())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDfortresToggle, this), NULL, !can_do_action);
-			else if (unit_selection->unit->isActionCreateUnit())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDcreateUnit, this), NULL, !can_do_action);
+			// In the DOS game the third TOP slot (normally a special action) is
+			// the flashing "UKONCEN" button. It is NOT the end-turn icon in
+			// the right-side panel. Keep the first two native cycling glyphs.
+			CreateHUDbutton(gres.wm_glyph_next_unused, hud_origin, btn_top[0],
+				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_NEXT_UNIT, NULL, NULL);
+			CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1],
+				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_NEXT_UNIT, NULL, NULL);
+			if (deployment_blink_visible && gres.wm_glyph_end_placement)
+				CreateHUDbutton(gres.wm_glyph_end_placement, hud_origin, btn_top[2],
+					buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
+		}
+		else
+		{
+			CreateHUDbutton(gres.wm_glyph_next_unused, hud_origin, btn_top[0], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnfinishedUnit, this), NULL);
+			CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnit, this), NULL);
 		}
 
-		if (unit_selection)
+		if (!deployment_mode && hud_selected_unit && hud_selected_unit->unit->hasSpecAction())
+		{
+			// render middle buttons (unit actions)
+			int can_do_action = hud_selected_unit->CanSpecAction();
+			if (hud_selected_unit->unit->isActionTurretDown() || hud_selected_unit->unit->isActionTurretUp())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDturretToggle, this), NULL, !can_do_action);
+			else if (hud_selected_unit->unit->isActionToggleRadar())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(hud_selected_unit->radar_up), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDradarToggle, this), NULL, !can_do_action);
+			else if (hud_selected_unit->unit->isActionLand() || hud_selected_unit->unit->isActionTakeOff())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDairLandTakeOff, this), NULL, !can_do_action);
+			else if (hud_selected_unit->unit->isActionToFortres() || hud_selected_unit->unit->isActionFromFortres())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDfortresToggle, this), NULL, !can_do_action);
+			else if (hud_selected_unit->unit->isActionCreateUnit())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDcreateUnit, this), NULL, !can_do_action);
+		}
+
+		if (!deployment_mode && hud_selected_unit)
 			CreateHUDbutton(gres.wm_glyph_heal, hud_origin, btn_top[3], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDhealUnit, this), NULL, !can_heal);
 
 		if (!cursor_unit && !destructible)
@@ -10082,7 +10191,9 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 			CreateHUDbutton(gres.wm_glyph_map, hud_origin, btn_right[0], buf, buf_end, buf_x_size, HUD_ACTION_MINIMAP, NULL, NULL);
 			CreateHUDbutton((unit_sel_land_preference) ? (gres.wm_glyph_ground) : (gres.wm_glyph_air), hud_origin, btn_right[1], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchAirLand, this), NULL);
 			CreateHUDbutton(gres.wm_glyph_goto_unit, hud_origin, btn_right[2], buf, buf_end, buf_x_size, HUD_ACTION_UNITS, NULL, NULL);
-			CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchEndTurn, this), NULL);
+			if (!deployment_mode)
+				CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3],
+					buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchEndTurn, this), NULL);
 
 			CreateHUDbutton(gres.wm_glyph_unit_info, hud_origin, btn_right[4], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchUnitHUD, this), NULL);
 			CreateHUDbutton(gres.wm_glyph_info, hud_origin, btn_right[5], buf, buf_end, buf_x_size, 0, NULL, NULL);
@@ -10100,7 +10211,7 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 	// store last units for change detection
 	last_hud_state = hud_enabled;
 	last_cursor_unit = cursor_unit;
-	last_selected_unit = unit_selection;
+	last_selected_unit = hud_selected_unit;
 	last_can_heal = can_heal;
 	last_destructible = destructible;
 
@@ -10160,7 +10271,26 @@ void SpellMap::OnHUDnextUnfinishedUnit()
 }
 void SpellMap::OnHUDswitchAirLand()
 {
+	if (enemy_turn_running || panic_turn_running || reaction_fire_active ||
+		!reaction_fire_queue.empty() || group_move_active)
+		return;
 	unit_sel_land_preference = !unit_sel_land_preference;
+	// The original air/ground switch controls which layer is picked. On a
+	// stacked friendly hex, switch the current unit immediately as well.
+	if (isGameMode() && unit_selection && !unit_selection->is_enemy &&
+		unit_selection->coor.IsSelected())
+	{
+		for (auto* candidate = Lunit[ConvXY(unit_selection->coor)]; candidate; candidate = candidate->next)
+		{
+			if (candidate != unit_selection && candidate->unit && !candidate->is_enemy &&
+				!candidate->isDead() && candidate->panic_turns <= 0 &&
+				candidate->unit->isAir() != static_cast<bool>(unit_sel_land_preference))
+			{
+				SelectUnit(candidate);
+				break;
+			}
+		}
+	}
 	InvalidateHUDbuttons();
 }
 void SpellMap::OnHUDswitchUnitHUD()
@@ -14235,6 +14365,7 @@ int SpellMap::MissionStartEvent()
 	// Older code always selected the first MissionStart event unit, which could
 	// replace the player's deployed company with an enemy selection.
 	int is_selected = (unit_selection && !unit_selection->is_enemy && !unit_selection->isDead()) ? 1 : 0;
+	bool spawned_units = false;
 	for (auto& evt : list)
 	{
 		if (evt->units.empty())
@@ -14253,6 +14384,7 @@ int SpellMap::MissionStartEvent()
 			}
 			AdjustEnemyExperienceForDifficulty(new_unit);
 			unit.is_placed = true;
+			spawned_units = true;
 			if (!is_selected && !new_unit->is_enemy)
 			{
 				// Stand-alone missions may still create the first Alliance unit via
@@ -14265,6 +14397,11 @@ int SpellMap::MissionStartEvent()
 		// check if everything is done and mark it as done eventually
 		evt->isDone();
 	}
+
+	// The DEF objective initially points at a MissionStart template.
+	// Bind by ID again after playable copies are inserted into map->units.
+	if (spawned_units)
+		events->RelinkUnits();
 
 	// Queue MissionStartText to be shown on first available Tick (after video etc.)
 	if (!params.start_text.empty())
@@ -14282,6 +14419,7 @@ int SpellMap::ProcEventsList(SpellMapEventsList& list)
 	while (!list.empty())
 	{
 		auto evt = list.back();
+		bool spawned_units = false;
 
 		// place units:
 		for (auto& unit : evt->units)
@@ -14299,7 +14437,14 @@ int SpellMap::ProcEventsList(SpellMapEventsList& list)
 				continue;
 			}
 			AdjustEnemyExperienceForDifficulty(new_unit);
+			spawned_units = true;
 		}
+
+		// A SeePlace/SeeUnit event (such as the colonel rescue in M07_03A)
+		// spawns a new live instance, not the unit template held in EventData.
+		// Rebuild trigger pointers now: the template cannot walk to START squares.
+		if (spawned_units)
+			events->RelinkUnits();
 
 		// show messages
 		for (auto& text : evt->texts)

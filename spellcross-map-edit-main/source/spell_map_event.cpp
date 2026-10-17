@@ -200,24 +200,28 @@ int SpellMapEventRec::SetType(int type_id)
 // check if trigger-source unit is in target position (TransportUnit or SaveUnit)
 int SpellMapEventRec::CheckUnitInPos(bool clear)
 {
-	if(!isTransportSave())
+	if (!isTransportSave())
 		return(false);
-	
-	if(!trig_unit)
+
+	// SaveUnit and TransportUnit are one-shot objectives. Once the living
+	// protected unit reaches its extraction square, later movement must not
+	// undo completion while a mission-end message is still on screen.
+	if (is_done)
+		return(true);
+
+	if (!trig_unit || trig_unit->isDead())
 		return(false);
-		
-	vector<MapXY> &list = (evt_type == EVT_SAVE_UNIT)?(map->start):(map->escape);
-	for(auto & pos : list)
-		if(trig_unit->coor == pos)
+
+	const vector<MapXY>& list = (evt_type == EVT_SAVE_UNIT) ? map->start : map->escape;
+	for (const auto& pos : list)
+	{
+		if (trig_unit->coor == pos)
 		{
-			if(clear)
+			if (clear)
 				is_done = true;
 			return(true);
 		}
-	
-	// not in target position
-	if(clear)
-		is_done = false;
+	}
 	return(false);
 }
 // get position of event either from its position or trigger unit position or return noselection
@@ -403,12 +407,12 @@ std::string SpellMapEvents::GetLastError()
 }
 
 // parse and add mission objectives (they are treated as events for simplicity)
-//AddMissionObjective(DestroyAllUnits,Zni‡en¡ v¨ech jednotek)
-//AddMissionObjective(TransportUnit,48,Probojovat se na z kladnu)
-//AddMissionObjective(SaveUnit,48,Zachr nit mjr.Davidsona)
-//AddMissionObjective(DestroyUnit,50,Zabít Daertora)
-//AddMissionObjective(SeePlace,648,Lokalizovat sklad ‡.1)
-//AddMissionObjective(DestroyObject,1966,Zni‡it vchod do jeskynˆ)
+//AddMissionObjective(DestroyAllUnits,ZniÂ‡enÂ¡ vÂ¨ech jednotek)
+//AddMissionObjective(TransportUnit,48,Probojovat se na zÂ kladnu)
+//AddMissionObjective(SaveUnit,48,ZachrÂ nit mjr.Davidsona)
+//AddMissionObjective(DestroyUnit,50,ZabÃ­t Daertora)
+//AddMissionObjective(SeePlace,648,Lokalizovat sklad Â‡.1)
+//AddMissionObjective(DestroyObject,1966,ZniÂ‡it vchod do jeskynÂˆ)
 int SpellMapEvents::AddMissionObjective(SpellData* data,SpellDEF* def,SpellDefCmd* cmd)
 {
 	last_error = "";
@@ -1042,14 +1046,20 @@ int SpellMapEvents::RelinkUnits(vector<MapUnit*> *map_units)
 		}
 		else if(evt->hasTargetUnit())
 		{
-			// look for target unit and assign ref
-			for(auto& unit : units_list)
-				if(unit->id == evt->trig_unit_id)
+			// Runtime map units are first in units_list, event templates last.
+			// The original loop kept scanning after a match, so a deferred
+			// SpecUnit (e.g. M07_03A's colonel, ID 48) replaced the live
+			// unit as the objective target. Bind exactly once, prioritising
+			// the playable instance over its identical-ID spawn template.
+			for (auto* unit : units_list)
+			{
+				if (unit && unit->id == evt->trig_unit_id)
 				{
-					// target unit found
 					evt->trig_unit = unit;
-					unit->trig_events.push_back(evt);					
+					unit->trig_events.push_back(evt);
+					break;
 				}
+			}
 		}
 	}
 

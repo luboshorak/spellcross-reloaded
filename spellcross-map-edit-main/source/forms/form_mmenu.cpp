@@ -239,7 +239,7 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
 
     LoadBackground();
     LoadPanel();
-    BuildMenuItems();
+    BuildMenuItems(); // native TUTMNU.LZ is loaded on demand
 
     // Match the strategic-level window footprint and scale the original
     // 640x480 menu inside it. The frame is intentionally independent from the
@@ -492,18 +492,75 @@ bool FormMainMenu::LoadPanel()
     const int bgw = m_bg_size.x > 0 ? m_bg_size.x : 640;
     const int bgh = m_bg_size.y > 0 ? m_bg_size.y : 480;
 
-    int x = (bgw - m_panel_size.x) / 2;
-    int y = (bgh - m_panel_size.y) / 2;
-    
-    // Shift left and down
-    x -= 20;  // posun doleva (snížení x)
-    y += 79;  // posun dolů (zvýšení y)
-    
+    int x = (bgw - m_panel_size.x) / 2 - 20;
+    int y = (bgh - m_panel_size.y) / 2 + 79;
+
+    // The English MAINMENU.LZ has an actual 255x272 black cutout at
+    // logical (172,165). The earlier arbitrary +79 offset placed the
+    // panel at Y=183, leaving an 18-pixel black stripe above the buttons.
+    // Position the matching original artwork exactly over its opening.
+    // Leave the six-slot Czech variant's established layout unchanged.
+    if (m_bg_size == wxSize(640, 480) &&
+        m_panel_size == wxSize(255, 272))
+    {
+        x = 172;
+        y = 165;
+    }
+
     x = std::max(0, x);
     y = std::max(0, y);
 
     m_panel_pos = wxPoint(x, y);
     return true;
+}
+
+bool FormMainMenu::LoadTutorialPanel()
+{
+    if (m_tutorial_panel.IsOk())
+        return true;
+    if (!m_spelldata || !m_pal256_ok)
+        return false;
+
+    // Retail English COMMON.FS: TUTMNU.LZ decodes to a 250 x 214 indexed
+    // graphic with BASIC / FIRST CONTACT / MISSION 1 / MISSION 2 buttons.
+    std::vector<unsigned char> pixels;
+    bool found = LoadBytesFromFS(m_spelldata->GetCommonFS(), "TUTMNU.LZ", pixels);
+    if (!found)
+    {
+        const auto source = FindMenuFile(std::filesystem::path(m_spelldata->spell_data_root),
+                                         "TUTMNU.LZ");
+        if (!source.empty())
+            found = LoadFileBytes(source, pixels);
+    }
+    if (!found)
+        return false;
+
+    constexpr size_t expected = 250u * 214u;
+    if (pixels.size() != expected)
+    {
+        LZWexpand lzw(128 * 1024);
+        const auto decompressed = lzw.Decode(pixels.data(), pixels.data() + pixels.size());
+        if (decompressed.size() != expected)
+            return false;
+        pixels.assign(decompressed.begin(), decompressed.end());
+    }
+
+    DecodedIndexed image;
+    image.w = 250;
+    image.h = 214;
+    image.pixels = std::move(pixels);
+    m_tutorial_panel = MakeBitmapFromIndexed(image, m_pal256, true);
+    m_tutorial_panel_pos = wxPoint((640 - 250) / 2, (480 - 214) / 2);
+    return m_tutorial_panel.IsOk();
+}
+
+void FormMainMenu::BuildTutorialItems()
+{
+    m_items.clear();
+    m_items.push_back({ "BASIC", FormMainMenuAction::TutorialBasic, wxRect() });
+    m_items.push_back({ "FIRST CONTACT", FormMainMenuAction::TutorialFirstContact, wxRect() });
+    m_items.push_back({ "MISSION 1", FormMainMenuAction::TutorialMission1, wxRect() });
+    m_items.push_back({ "MISSION 2", FormMainMenuAction::TutorialMission2, wxRect() });
 }
 
 void FormMainMenu::BuildMenuItems()
@@ -513,6 +570,10 @@ void FormMainMenu::BuildMenuItems()
     m_items.push_back({ "nová hra", FormMainMenuAction::NewGame, wxRect() });
     m_items.push_back({ "pokračovat", FormMainMenuAction::Continue, wxRect() });
     m_items.push_back({ "načíst hru", FormMainMenuAction::LoadGame, wxRect() });
+    // Respect the original editions: the English retail menu has Tutorial,
+    // while the Czech retail artwork has exactly six entries and NO tutorial.
+    if (m_panel_size.y >= 255)
+        m_items.push_back({ "tutorial", FormMainMenuAction::Tutorial, wxRect() });
     m_items.push_back({ "credits", FormMainMenuAction::Credits, wxRect() });
     m_items.push_back({ "intro", FormMainMenuAction::Intro, wxRect() });
     m_items.push_back({ "konec", FormMainMenuAction::Exit, wxRect() });
@@ -522,6 +583,18 @@ void FormMainMenu::LayoutMenuItems(const wxSize& clientSize)
 {
     if (m_items.empty())
         return;
+
+    if (m_tutorial_visible && m_tutorial_panel.IsOk())
+    {
+        const int centers[4] = { 84, 116, 148, 179 };
+        for (size_t i = 0; i < m_items.size() && i < 4; ++i)
+        {
+            m_items[i].rect = wxRect(m_tutorial_panel_pos.x + 60,
+                                     m_tutorial_panel_pos.y + centers[i] - 14,
+                                     160, 28);
+        }
+        return;
+    }
 
     if (m_panel.IsOk() && m_panel_size.x > 0 && m_panel_size.y > 0)
     {
@@ -533,12 +606,13 @@ void FormMainMenu::LayoutMenuItems(const wxSize& clientSize)
         const int btn_h = 26;
         const int btn_x = panel_x + 45;
 
-        // Y-centers of the 6 button slots within the panel image
-        const int centers_y[6] = { 30, 66, 100, 136, 170, 206 };
-
-        for (size_t i = 0; i < m_items.size() && i < 6; ++i)
+        const bool englishSevenSlots = m_panel_size.y >= 255;
+        const int sixCenters[6] = { 30, 66, 100, 136, 170, 206 };
+        const int sevenCenters[7] = { 30, 66, 100, 136, 170, 206, 242 };
+        const size_t nativeCount = englishSevenSlots ? 7 : 6;
+        for (size_t i = 0; i < m_items.size() && i < nativeCount; ++i)
         {
-            const int cy = panel_y + centers_y[i];
+            const int cy = panel_y + (englishSevenSlots ? sevenCenters[i] : sixCenters[i]);
             m_items[i].rect = wxRect(btn_x, cy - btn_h / 2, btn_w, btn_h);
         }
         return;
@@ -573,8 +647,18 @@ void FormMainMenu::TriggerAction(int index)
     if (index < 0 || index >= (int)m_items.size())
         return;
 
+    const FormMainMenuAction action = m_items[static_cast<size_t>(index)].action;
+    if (action == FormMainMenuAction::Tutorial && LoadTutorialPanel())
+    {
+        m_tutorial_visible = true;
+        m_hover_index = -1;
+        BuildTutorialItems();
+        LayoutMenuItems(wxSize(640, 480));
+        if (form) form->Refresh(false);
+        return;
+    }
     if (m_action_cb)
-        m_action_cb(m_items[(size_t)index].action);
+        m_action_cb(action);
 }
 
 void FormMainMenu::OnClose(wxCloseEvent& ev)
@@ -638,7 +722,18 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
 
     LayoutMenuItems(wxSize(logicalW, logicalH));
 
-    if (m_panel.IsOk() && m_panel_size.x > 0 && m_panel_size.y > 0)
+    if (m_tutorial_visible && m_tutorial_panel.IsOk())
+    {
+        const int px = drawX + static_cast<int>(std::lround(m_tutorial_panel_pos.x * scale));
+        const int py = drawY + static_cast<int>(std::lround(m_tutorial_panel_pos.y * scale));
+        const int pw = std::max(1, static_cast<int>(std::lround(250 * scale)));
+        const int ph = std::max(1, static_cast<int>(std::lround(214 * scale)));
+        wxBitmap menu = m_tutorial_panel;
+        if (pw != 250 || ph != 214)
+            menu = wxBitmap(m_tutorial_panel.ConvertToImage().Scale(pw, ph, wxIMAGE_QUALITY_NEAREST));
+        if (menu.IsOk()) dc.DrawBitmap(menu, px, py, true);
+    }
+    else if (m_panel.IsOk() && m_panel_size.x > 0 && m_panel_size.y > 0)
     {
         const int px = drawX + static_cast<int>(std::lround(m_panel_pos.x * scale));
         const int py = drawY + static_cast<int>(std::lround(m_panel_pos.y * scale));
@@ -726,7 +821,16 @@ void FormMainMenu::OnKeyDown(wxKeyEvent& event)
 {
     if (event.GetKeyCode() == WXK_ESCAPE)
     {
-        if (form) form->Close();
+        if (m_tutorial_visible)
+        {
+            m_tutorial_visible = false;
+            m_hover_index = -1;
+            BuildMenuItems();
+            LayoutMenuItems(wxSize(640, 480));
+            if (form) form->Refresh(false);
+        }
+        else if (form)
+            form->Close();
         return;
     }
     // ~ key (backtick/tilde) opens console
@@ -752,12 +856,7 @@ void FormMainMenu::OnConsoleCommand()
     // to upper
     for (char& c : cmd) c = (char)std::toupper((unsigned char)c);
 
-    if (cmd == "GAMEMODEOFF")
-    {
-        if (m_action_cb)
-            m_action_cb(FormMainMenuAction::GameModeOff);
-    }
-    else if (!cmd.empty())
+    if (!cmd.empty())
     {
         wxMessageBox("Unknown command: " + dlg.GetValue(), "Console", wxOK | wxICON_WARNING, form);
     }

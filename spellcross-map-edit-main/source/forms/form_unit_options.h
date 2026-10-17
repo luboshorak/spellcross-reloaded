@@ -11,15 +11,18 @@ private:
     SpellData* m_spelldata;    
     std::function<void(int)> m_sel_cb;
     vector<uint8_t> m_back_buff;
-    wxBitmap* m_bmp_btn[2];
-    wxBitmap* m_bmp_btn_hover[2];
+    vector<wxBitmap*> m_bmp_btn;
+    vector<wxBitmap*> m_bmp_btn_hover;
     vector<string> m_labels;
     vector<int> m_actions;
     vector<int> m_hovers;
-    int m_action;
+    int m_action = 0;
+    bool m_confirmed = false;
+    int m_hovered_action = -1;
+    int m_tab_height = 0;
 
-    wxWindow* form;
-    wxPanel* buttons[2];
+    wxWindow* form = nullptr;
+    vector<wxPanel*> buttons;
 
     string info_label;
 
