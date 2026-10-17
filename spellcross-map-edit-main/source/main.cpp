@@ -851,6 +851,45 @@ namespace
             return stream && std::memcmp(magic, "CD001", sizeof(magic)) == 0;
         };
 
+        // Some Cloudflare configurations allow a human browser download but
+        // challenge WinINet clients even when the ISO URL is a direct link.
+        // Keep the original source wizard usable on HTTP 403/503/TLS errors:
+        // the browser downloads the file, then our normal importer reads it.
+        auto browserFallback = [&](const wxString& diagnosis) -> bool
+        {
+            wxMessageDialog message(nullptr,
+                diagnosis + "\n\nThe host may require a browser (Cloudflare). "
+                "Open the same direct ISO link in your default browser and "
+                "then select the downloaded file for automatic import?",
+                "Spellcross ISO download", wxYES_NO | wxICON_WARNING);
+            message.SetYesNoLabels("Open browser", "Back to setup");
+            if (message.ShowModal() != wxID_YES)
+                return false;
+            if (!wxLaunchDefaultBrowser(wxString(url)))
+            {
+                wxMessageBox("Could not open the web browser. "
+                    "Please choose Select an ISO image file in the setup.",
+                    "ISO download", wxOK | wxICON_WARNING);
+                return false;
+            }
+            wxFileDialog select(nullptr, "Select the ISO downloaded by your browser",
+                wxEmptyString, czech ? "Spellcross_CS.iso" : "Spellcross_EN.iso",
+                "ISO images (*.iso)|*.iso|All files (*.*)|*.*",
+                wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+            if (select.ShowModal() != wxID_OK)
+                return false;
+            const fs::path selected(select.GetPath().ToStdWstring());
+            if (!validIsoFile(selected))
+            {
+                wxMessageBox("The selected file is not a complete ISO9660 image. "
+                    "Check that the download is finished and select the actual ISO.",
+                    "ISO download", wxOK | wxICON_ERROR);
+                return false;
+            }
+            iso_path = selected;
+            return true;
+        };
+
         if (validIsoFile(iso_path))
         {
             wxMessageDialog cached(nullptr,
@@ -862,10 +901,7 @@ namespace
         }
 
 #ifndef _WIN32
-        wxMessageBox("Direct ISO download is supported by the Windows build. "
-            "Please use the manual ISO selection option.", "ISO download",
-            wxOK | wxICON_WARNING);
-        return false;
+        return browserFallback("Automatic ISO download is not supported on this platform.");
 #else
         std::error_code ec;
         fs::create_directories(cache, ec);
@@ -880,32 +916,48 @@ namespace
         fs::remove(part, ec);
 
         // WinINet performs HTTPS verification and follows normal HTTP redirects.
-        HINTERNET session = InternetOpenW(L"Spellcross Reloaded", INTERNET_OPEN_TYPE_PRECONFIG,
+        HINTERNET session = InternetOpenW(
+            L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            L"(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            INTERNET_OPEN_TYPE_PRECONFIG,
             nullptr, nullptr, 0);
         if (!session)
         {
-            wxMessageBox("Cannot initialize HTTPS download.", "ISO download",
-                wxOK | wxICON_ERROR);
-            return false;
+            return browserFallback(wxString::Format(
+                "Cannot initialize HTTPS download (Windows error %lu).",
+                static_cast<unsigned long>(GetLastError())));
         }
         DWORD timeout = 30000;
         InternetSetOptionW(session, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
         InternetSetOptionW(session, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
-        HINTERNET request = InternetOpenUrlW(session, url, nullptr, 0,
-            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+        const wchar_t* headers =
+            L"Accept: */*\r\n"
+            L"Accept-Language: cs-CZ,cs;q=0.9,en;q=0.8\r\n"
+            L"Referer: https://spellcross.czech-games.net/\r\n";
+        HINTERNET request = InternetOpenUrlW(session, url, headers,
+            static_cast<DWORD>(-1), INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD |
+            INTERNET_FLAG_NO_CACHE_WRITE, 0);
         if (!request)
         {
+            const DWORD winError = GetLastError();
             InternetCloseHandle(session);
-            wxMessageBox("Could not connect to the ISO download server. "
-                "Please check your network connection or select a local ISO.",
-                "ISO download", wxOK | wxICON_ERROR);
-            return false;
+            return browserFallback(wxString::Format(
+                "Windows could not open the ISO URL (WinINet error %lu).",
+                static_cast<unsigned long>(winError)));
         }
 
         DWORD statusCode = 0;
         DWORD statusSize = sizeof(statusCode);
         const bool httpOk = HttpQueryInfoW(request, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
             &statusCode, &statusSize, nullptr) && statusCode >= 200 && statusCode < 300;
+        if (!httpOk)
+        {
+            InternetCloseHandle(request);
+            InternetCloseHandle(session);
+            return browserFallback(wxString::Format(
+                "The ISO server refused the automatic download (HTTP %lu).",
+                static_cast<unsigned long>(statusCode)));
+        }
         // Content-Length may be absent for chunked transfers. When supplied,
         // validate the exact byte count to catch a prematurely closed socket.
         wchar_t sizeText[48] = {};
@@ -965,11 +1017,11 @@ namespace
         if (!ok)
         {
             fs::remove(part, ec);
-            wxMessageBox("Download was cancelled or failed validation. "
-                "No existing ISO was replaced.", "ISO download",
-                wxOK | wxICON_WARNING);
+            return browserFallback(
+                "The ISO transfer was cancelled, incomplete, or did not contain "
+                "a valid ISO9660 image. The existing ISO cache was not replaced.");
         }
-        return ok;
+        return true;
 #endif
     }
 
