@@ -1145,6 +1145,18 @@ void SpellMap::CheckAndTriggerMissionEnd()
 		return;
 
 	// --- success condition ---
+	// Check live positions even if an extraction unit spawned on a START tile,
+	// a save was loaded with the unit already there, or its movement finished
+	// without the normal per-step trigger. SaveUnit uses START squares while
+	// TransportUnit uses ESCAPE squares, per the original mission DEF format.
+	if (events)
+	{
+		for (auto* objective : events->GetEvents())
+		{
+			if (objective && objective->is_objective && objective->isTransportSave())
+				objective->CheckUnitInPos(true);
+		}
+	}
 	bool success = AreAllObjectivesDone();
 
 	// Special: po první misi dovol success i bez objective, když velitel dojede na EscapeSquare (transport)
@@ -14353,6 +14365,7 @@ int SpellMap::MissionStartEvent()
 	// Older code always selected the first MissionStart event unit, which could
 	// replace the player's deployed company with an enemy selection.
 	int is_selected = (unit_selection && !unit_selection->is_enemy && !unit_selection->isDead()) ? 1 : 0;
+	bool spawned_units = false;
 	for (auto& evt : list)
 	{
 		if (evt->units.empty())
@@ -14371,6 +14384,7 @@ int SpellMap::MissionStartEvent()
 			}
 			AdjustEnemyExperienceForDifficulty(new_unit);
 			unit.is_placed = true;
+			spawned_units = true;
 			if (!is_selected && !new_unit->is_enemy)
 			{
 				// Stand-alone missions may still create the first Alliance unit via
@@ -14383,6 +14397,11 @@ int SpellMap::MissionStartEvent()
 		// check if everything is done and mark it as done eventually
 		evt->isDone();
 	}
+
+	// The DEF objective initially points at a MissionStart template.
+	// Bind by ID again after playable copies are inserted into map->units.
+	if (spawned_units)
+		events->RelinkUnits();
 
 	// Queue MissionStartText to be shown on first available Tick (after video etc.)
 	if (!params.start_text.empty())
@@ -14400,6 +14419,7 @@ int SpellMap::ProcEventsList(SpellMapEventsList& list)
 	while (!list.empty())
 	{
 		auto evt = list.back();
+		bool spawned_units = false;
 
 		// place units:
 		for (auto& unit : evt->units)
@@ -14417,7 +14437,14 @@ int SpellMap::ProcEventsList(SpellMapEventsList& list)
 				continue;
 			}
 			AdjustEnemyExperienceForDifficulty(new_unit);
+			spawned_units = true;
 		}
+
+		// A SeePlace/SeeUnit event (such as the colonel rescue in M07_03A)
+		// spawns a new live instance, not the unit template held in EventData.
+		// Rebuild trigger pointers now: the template cannot walk to START squares.
+		if (spawned_units)
+			events->RelinkUnits();
 
 		// show messages
 		for (auto& text : evt->texts)
