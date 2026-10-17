@@ -570,16 +570,13 @@ void FormMainMenu::BuildMenuItems()
     m_items.push_back({ "nová hra", FormMainMenuAction::NewGame, wxRect() });
     m_items.push_back({ "pokračovat", FormMainMenuAction::Continue, wxRect() });
     m_items.push_back({ "načíst hru", FormMainMenuAction::LoadGame, wxRect() });
-    // English retail MAINM_BG contains seven native slots, Czech art only six.
-    // Keep the native art/order in each edition; paint the extra Czech Tutorial
-    // control separately so the six original Czech labels stay aligned.
+    // Respect the original editions: the English retail menu has Tutorial,
+    // while the Czech retail artwork has exactly six entries and NO tutorial.
     if (m_panel_size.y >= 255)
         m_items.push_back({ "tutorial", FormMainMenuAction::Tutorial, wxRect() });
     m_items.push_back({ "credits", FormMainMenuAction::Credits, wxRect() });
     m_items.push_back({ "intro", FormMainMenuAction::Intro, wxRect() });
     m_items.push_back({ "konec", FormMainMenuAction::Exit, wxRect() });
-    if (m_panel_size.y < 255)
-        m_items.push_back({ "tutoriál", FormMainMenuAction::Tutorial, wxRect() });
 }
 
 void FormMainMenu::LayoutMenuItems(const wxSize& clientSize)
@@ -617,12 +614,6 @@ void FormMainMenu::LayoutMenuItems(const wxSize& clientSize)
         {
             const int cy = panel_y + (englishSevenSlots ? sevenCenters[i] : sixCenters[i]);
             m_items[i].rect = wxRect(btn_x, cy - btn_h / 2, btn_w, btn_h);
-        }
-        if (!englishSevenSlots && m_items.size() == 7)
-        {
-            // The Czech menu graphic has no seventh button. Add Tutorial above
-            // the metal panel without shifting/relabeling existing raster art.
-            m_items.back().rect = wxRect(btn_x, panel_y - 37, btn_w, btn_h);
         }
         return;
     }
@@ -753,31 +744,6 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
             panel = wxBitmap(m_panel.ConvertToImage().Scale(pw, ph, wxIMAGE_QUALITY_NEAREST));
         if (panel.IsOk())
             dc.DrawBitmap(panel, px, py, true);
-    }
-
-    // The Czech 6-slot panel has no Tutorial artwork. Draw a complementary
-    // clickable button in the unused space above it, at its actual hitbox.
-    if (!m_tutorial_visible && m_panel.IsOk() && m_panel_size.y < 255 && m_items.size() == 7)
-    {
-        const wxRect& l = m_items.back().rect;
-        wxRect r(drawX + static_cast<int>(std::lround(l.x * scale)),
-                 drawY + static_cast<int>(std::lround(l.y * scale)),
-                 std::max(1, static_cast<int>(std::lround(l.width * scale))),
-                 std::max(1, static_cast<int>(std::lround(l.height * scale))));
-        wxGCDC gdc(dc);
-        wxGraphicsContext* gc = gdc.GetGraphicsContext();
-        if (gc)
-        {
-            gc->SetBrush(wxBrush(wxColour(21, 55, 24)));
-            gc->SetPen(wxPen(wxColour(157, 159, 155), std::max(1, static_cast<int>(scale * 2))));
-            gc->DrawRoundedRectangle(r.x, r.y, r.width, r.height, 6.0 * scale);
-        }
-        dc.SetFont(wxFont(wxFontInfo(std::max(9, static_cast<int>(std::lround(13 * scale)))).Bold()));
-        dc.SetTextForeground(wxColour(65, 200, 59));
-        const wxString title = "TUTORIAL";
-        const wxSize txtSize = dc.GetTextExtent(title);
-        dc.DrawText(title, r.x + (r.width - txtSize.x) / 2,
-                    r.y + (r.height - txtSize.y) / 2);
     }
 
     // Hover rectangle is stored in logical 640x480 coordinates and transformed
