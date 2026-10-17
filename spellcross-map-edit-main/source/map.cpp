@@ -13880,11 +13880,14 @@ int SpellMap::Tick()
 
 	ReleaseMap();
 
-	// range/attack recalculation (outside lock - these are async and use their own locks)
-	if (unit && (units_moved || unit_changed) && !unit->isMoving())
+	// Ranges belong to the *actual selection*, not an off-selection unit
+	// whose deferred death/attack animation we advanced in this Tick.
+	// Never switch the HUD's MOVE/ATTACK preview to the background animator.
+	MapUnit* selected_for_range = GetSelectedUnit();
+	if (selected_for_range && (units_moved || unit_changed) && !selected_for_range->isMoving())
 	{
-		unit_range->FindRange(unit);
-		unit_view->CalcAttackRange(unit);
+		unit_range->FindRange(selected_for_range);
+		unit_view->CalcAttackRange(selected_for_range);
 	}
 
 	// try fetch unread view events
