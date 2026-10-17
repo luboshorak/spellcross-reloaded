@@ -64,14 +64,29 @@ Source references (studied, not redistributed):
    TUTMNU.LZ (copyrighted English assets must not be silently bundled).
 5. John Alexander introductory escape mission: starts immediately,
    **without** the deployment UI.
-6. From strategic screen, launch a selected company force: gameplay is
-   frozen before confirming placement, START crosses are visible, units can
-   be selected by list/click, placed on legal START positions and Shift-click
-   swaps units; empty/invalid/occupied tiles do not silently reposition units.
-7. Confirm with the original end-turn HUD icon or the Start Battle button.
+6. From strategy, launch a selected company force: gameplay remains frozen
+   before confirmation; START crosses are visible; no modal/auxiliary
+   deployment panel is displayed. Click friendly units or use the original
+   two top HUD cycling buttons to select a company. Click an empty START
+   cross to place it (Shift-click swaps two companies); invalid/occupied
+   squares cannot silently reposition the unit.
+7. Confirm ONLY with the original flashing **UKONCEN** glyph in the EMPTY
+   THIRD top HUD slot (the regular end-turn icon must not appear there).
    Verify MissionStart events, AI, movement and objectives begin only after
    confirmation, and the initial state/save matches the chosen deployment.
 8. Repeat with a generated DTA-only defensive/counterattack mission, with
    mixed ground/air unit types, a save/load, RETREAT and mission-end stats.
 
 Windows/MSVC compile and retail-game runtime testing are still required.
+
+## Menu image alignment (English)
+
+The original `MAINMENU.LZ` black cutout begins at (172,165) and spans
+255x272 native pixels. `MAINM_BG.LZ` matches it exactly. Previous code
+positioned the menu panel at Y=183, leaving an 18-pixel black band above it.
+Now English artwork is positioned at (172,165); the six-slot Czech artwork
+retains its own existing placement.
+
+The DOS original deployment confirmation graphic is `UKONCEN`, already
+exposed as `wm_glyph_end_placement` by SpellData. The correct position is
+the third top HUD button, not the right-side end-turn slot.
