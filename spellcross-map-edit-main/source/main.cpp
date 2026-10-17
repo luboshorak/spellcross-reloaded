@@ -3173,6 +3173,12 @@ void MainFrame::SyncUiAfterTacticalLoad()
 
 bool MainFrame::SaveTacticalGameWithCampaignContext(const std::wstring& path)
 {
+    if (m_deployment_active)
+    {
+        wxMessageBox("Confirm your initial unit placement before saving the battle.",
+                     "Deployment", wxOK | wxICON_INFORMATION, this);
+        return false;
+    }
     if (!spell_map || !spell_map->IsLoaded())
         return false;
 
@@ -3613,8 +3619,15 @@ void MainFrame::UpdateTutorialGuide()
                                          518 / spell_map->x_size))
                 ++m_tutorial_command;
             break;
-        case 15: // TutorialEnd()
+        case 15: // TutorialEnd() explicitly completes the training lesson.
             m_tutorial_command = 16;
+            if (spell_map->events)
+            {
+                for (auto* objective : spell_map->events->GetEvents())
+                    if (objective && objective->is_objective)
+                        objective->is_done = true;
+                spell_map->CheckAndTriggerMissionEnd();
+            }
             break;
         default: break;
     }
@@ -4482,34 +4495,20 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
 
 void MainFrame::OpenStrategicAndLoadNext()
 {
-    // Tutorial missions are standalone training maps, not campaign levels.
-    // Never allow their completion to create/advance a strategic campaign.
+    // The original TUTORIAL.DEF specifies EndOKMission(none) and
+    // EndBadMission(none) for all four lessons. Never advance the campaign
+    // or silently force the next tutorial map.
     if (m_tutorial_stage > 0)
     {
-        const int completed = m_tutorial_stage;
-        const bool won = m_mission_end_req.success;
+        const bool success = m_mission_end_req.success;
+        m_tutorial_stage = 0;
+        m_tutorial_command = 0;
         m_mission_end_flow = false;
         m_mission_earned_units.clear();
         m_mission_end_req = SpellMap::MissionEndRequest();
-        if (won && completed < 4)
-        {
-            if (StartTutorialStage(completed + 1))
-                return;
-        }
-        else if (!won)
-        {
-            const int reply = wxMessageBox(
-                "Training mission failed. Retry this lesson?",
-                "Tutorial", wxYES_NO | wxICON_QUESTION, this);
-            if (reply == wxYES && StartTutorialStage(completed))
-                return;
-        }
-        else if (won)
-        {
-            wxMessageBox("All four original tutorial missions completed.",
-                         "Tutorial", wxOK | wxICON_INFORMATION, this);
-        }
-        m_tutorial_stage = 0;
+        if (success)
+            wxMessageBox("Training lesson completed.", "Tutorial",
+                         wxOK | wxICON_INFORMATION, this);
         HideTacticalWindow();
         ShowMainMenuWindow();
         return;
