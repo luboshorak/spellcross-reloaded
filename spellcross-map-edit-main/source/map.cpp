@@ -12677,6 +12677,28 @@ int SpellMap::Tick()
 		unit = GetSelectedUnit();
 	}
 
+	// The tactical animator historically ticks only the selected unit. If the
+	// player changes selection after a lethal shot, the old attacker stays in
+	// HIT/DIE/UPDATE forever. CleanupDeadUnits() correctly protects its target
+	// against use-after-free, but the corpse then remains visible for arbitrary
+	// turns. Resume a pending lethal attack even if its owner is not selected.
+	// Never preempt another unit mid-action; the pending sequence completes as
+	// soon as the current animation is idle. Selection/HUD remain unchanged.
+	if (isGameMode() && (!unit || !IsUnitBusy(unit)))
+	{
+		for (auto* owner : units)
+		{
+			if (!owner || owner == unit || !owner->attack_target ||
+				owner->attack_state == MapUnit::ATTACK_STATE::IDLE)
+				continue;
+			if (!_ptr_in_units_list(units, owner->attack_target) ||
+				!owner->attack_target->isDead())
+				continue;
+			unit = owner;
+			break;
+		}
+	}
+
 	if (!unit)
 	{
 		// A finished objective must be allowed to advance the mission even when
