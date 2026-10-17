@@ -451,8 +451,10 @@ static bool scsave_read_unit(std::istream& is, uint32_t version, SpellMap* map, 
 	return true;
 }
 
-// --- v8: track when attack_map needs a synchronous refresh for current selected unit
+// A click can follow a selection change before the next tactical Tick.
+// The pointer-driven chooser must use both range maps for the new unit.
 static MapUnit* g_attack_map_dirty_for = nullptr;
+static MapUnit* g_move_range_dirty_for = nullptr;
 
 //=============================================================================
 // Map scroller class
@@ -7270,7 +7272,15 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 		return select_pos.IsSelected() ? UNIT_OPT_MOVE : 0;
 	}
 
-	// v8: make sure attack_map corresponds to the currently selected unit (avoid stale target selection on stacked tiles)
+	// A user may click immediately after switching between a ground and an
+	// aircraft on one tile. Flush the pending movement range before computing
+	// MOVE/ATTACK choices: the old range may belong to the other layer.
+	if (unit_selection && g_move_range_dirty_for == unit_selection)
+	{
+		unit_range->FindRange(unit_selection);
+		unit_range->WaitIdle();
+		g_move_range_dirty_for = nullptr;
+	}
 	if (unit_selection && g_attack_map_dirty_for == unit_selection)
 	{
 		unit_view->CalcAttackRange(unit_selection, true);
@@ -9626,8 +9636,9 @@ MapUnit* SpellMap::SelectUnit(MapUnit* new_unit, bool scroll_to)
 		new_unit = alternate;
 	}
 	unit_selection = new_unit;
-	// v8: selection changed -> mark attack_map dirty for this unit
+	// Selection changed: neither cursor-action map may use the previous unit.
 	g_attack_map_dirty_for = unit_selection;
+	g_move_range_dirty_for = unit_selection;
 	// unit selected
 	unit_selection_mod = true;
 
