@@ -1855,15 +1855,194 @@ void MainFrame::StartTacticalGame()
     spell_map->SetGameMode(1);
     if (spell_map->saves) spell_map->saves->Clear(spell_map->GetTacticalSaveLimit());
     if (spell_map->events) spell_map->events->ResetEvents();
-    if (spell_map->saves) spell_map->saves->SaveInitial();
-    spell_map->MissionStartEvent();
+
+    // The campaign gives the player control over start-square placement.
+    // Freeze AI, objectives and the initial snapshot until deployment ends.
+    m_deployment_active = m_deployment_requested && !m_deployment_units.empty();
+    if (!m_deployment_active)
+    {
+        if (spell_map->saves) spell_map->saves->SaveInitial();
+        spell_map->MissionStartEvent();
+    }
     if (spell_map->unit_view)
     {
         spell_map->unit_view->ClearEvents();
         spell_map->unit_view->ClearUnitsView(SpellMap::ViewRange::ClearMode::RESET);
         spell_map->unit_view->AddUnitsView();
     }
+    if (m_deployment_active)
+        ShowDeploymentUI();
     if (canvas) canvas->Refresh();
+}
+
+// The original Spellcross allowed placement only on START crosses. Neither
+// enemy nor mission/event units may be moved during this phase.
+bool MainFrame::IsDeploymentSquare(const MapXY& tile) const
+{
+    if (!spell_map || !tile.IsSelected()) return false;
+    for (const MapXY& start : spell_map->start)
+        if (start.x == tile.x && start.y == tile.y)
+            return true;
+    return false;
+}
+
+void MainFrame::ResetDeploymentUI()
+{
+    if (m_deployment_panel)
+    {
+        m_deployment_panel->Destroy();
+        m_deployment_panel = nullptr;
+    }
+    m_deployment_list = nullptr;
+    m_deployment_units.clear();
+    m_deployment_requested = false;
+    m_deployment_active = false;
+    m_deployment_selection = 0;
+}
+
+void MainFrame::ShowDeploymentUI()
+{
+    if (!canvas || m_deployment_panel || m_deployment_units.empty()) return;
+
+    m_deployment_panel = new wxPanel(canvas, wxID_ANY, wxPoint(12, 12),
+                                     wxSize(320, 340), wxBORDER_SIMPLE);
+    m_deployment_panel->SetBackgroundColour(wxColour(30, 38, 38));
+    auto* layout = new wxBoxSizer(wxVERTICAL);
+    auto* title = new wxStaticText(m_deployment_panel, wxID_ANY,
+                                  "DEPLOY UNITS - BEFORE BATTLE");
+    title->SetForegroundColour(wxColour(110, 224, 105));
+    title->SetFont(title->GetFont().Bold());
+    layout->Add(title, 0, wxALL, 9);
+    auto* help = new wxStaticText(m_deployment_panel, wxID_ANY,
+        "Select a unit below (or on the map), then click\n"
+        "a marked START square to position it.\n"
+        "All companies must remain on START squares.");
+    help->SetForegroundColour(*wxWHITE);
+    layout->Add(help, 0, wxLEFT | wxRIGHT | wxBOTTOM, 9);
+    m_deployment_list = new wxListBox(m_deployment_panel, wxID_ANY);
+    for (size_t i = 0; i < m_deployment_units.size(); ++i)
+    {
+        MapUnit* unit = m_deployment_units[i];
+        const wxString name = unit && unit->unit
+            ? wxString::FromUTF8(unit->unit->name)
+            : wxString("Company");
+        m_deployment_list->Append(wxString::Format("%02d. ", static_cast<int>(i + 1)) + name);
+    }
+    layout->Add(m_deployment_list, 1, wxEXPAND | wxLEFT | wxRIGHT, 9);
+    auto* finish = new wxButton(m_deployment_panel, wxID_ANY,
+                                "START BATTLE (Enter)");
+    layout->Add(finish, 0, wxEXPAND | wxALL, 9);
+    m_deployment_panel->SetSizer(layout);
+
+    m_deployment_selection = 0;
+    m_deployment_list->SetSelection(0);
+    if (spell_map && m_deployment_units.front())
+        spell_map->SelectUnit(m_deployment_units.front(), true);
+
+    m_deployment_list->Bind(wxEVT_LISTBOX, [this](wxCommandEvent&) {
+        if (!m_deployment_list || !spell_map) return;
+        const int selected = m_deployment_list->GetSelection();
+        if (selected < 0 || selected >= static_cast<int>(m_deployment_units.size()))
+            return;
+        m_deployment_selection = selected;
+        spell_map->SelectUnit(m_deployment_units[static_cast<size_t>(selected)], true);
+        if (canvas) canvas->Refresh();
+    });
+    finish->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { FinishDeployment(); });
+    m_deployment_panel->Raise();
+}
+
+void MainFrame::PlaceDeploymentUnit(MapXY tile)
+{
+    if (!m_deployment_active || !spell_map || !tile.IsSelected()) return;
+    if (tile.x < 0 || tile.y < 0 ||
+        tile.x >= spell_map->x_size || tile.y >= spell_map->y_size)
+        return;
+
+    // Clicking a friendly company selects it without executing a move/attack.
+    for (size_t i = 0; i < m_deployment_units.size(); ++i)
+    {
+        MapUnit* unit = m_deployment_units[i];
+        if (unit && unit->coor.x == tile.x && unit->coor.y == tile.y)
+        {
+            m_deployment_selection = static_cast<int>(i);
+            if (m_deployment_list)
+                m_deployment_list->SetSelection(m_deployment_selection);
+            spell_map->SelectUnit(unit);
+            if (canvas) canvas->Refresh();
+            return;
+        }
+    }
+
+    if (!IsDeploymentSquare(tile) || m_deployment_selection < 0 ||
+        m_deployment_selection >= static_cast<int>(m_deployment_units.size()))
+        return;
+    MapUnit* unit = m_deployment_units[static_cast<size_t>(m_deployment_selection)];
+    if (!unit || !unit->unit) return;
+
+    // Legal ground/air stacking follows the same rules as PlaceUnit(), but no
+    // auto-search may silently put a company outside the allowed start area.
+    const int index = spell_map->ConvXY(tile);
+    for (MapUnit* occupant : spell_map->units)
+    {
+        if (!occupant || occupant == unit || !occupant->unit ||
+            occupant->coor.x != tile.x || occupant->coor.y != tile.y)
+            continue;
+        if (occupant->unit->isAir() == unit->unit->isAir())
+            return;
+    }
+    if (!unit->unit->isAir())
+    {
+        const uint8_t flags = spell_map->tiles[static_cast<size_t>(index)].flags;
+        if ((!unit->unit->isWalk() && flags == 0x90) ||
+            (!unit->unit->isHover() && flags == 0x60) ||
+            (flags != 0x00 && flags != 0x60 && flags != 0x90))
+            return;
+    }
+
+    unit->coor = tile;
+    spell_map->SortUnits();
+    spell_map->RecalculateTacticalFormations();
+    spell_map->InvalidateUnitsView();
+    spell_map->SelectUnit(unit);
+    if (canvas) canvas->Refresh();
+}
+
+void MainFrame::FinishDeployment()
+{
+    if (!m_deployment_active || !spell_map) return;
+    for (MapUnit* unit : m_deployment_units)
+    {
+        if (!unit || !IsDeploymentSquare(unit->coor))
+        {
+            wxMessageBox("Every selected company must be placed on a START square.\n"
+                         "Choose a company and click a valid starting cross.",
+                         "Deployment incomplete", wxOK | wxICON_WARNING, this);
+            return;
+        }
+    }
+
+    m_deployment_active = false;
+    m_deployment_requested = false;
+    if (m_deployment_panel)
+    {
+        m_deployment_panel->Destroy();
+        m_deployment_panel = nullptr;
+        m_deployment_list = nullptr;
+    }
+    m_deployment_units.clear();
+
+    // Only now fire MissionStart and save the battle's initial state. That
+    // prevents enemies acting before the player confirms the deployment.
+    if (spell_map->saves) spell_map->saves->SaveInitial();
+    spell_map->MissionStartEvent();
+    if (spell_map->unit_view)
+    {
+        spell_map->unit_view->ClearUnitsView(SpellMap::ViewRange::ClearMode::RESET);
+        spell_map->unit_view->AddUnitsView();
+    }
+    spell_map->InvalidateUnitsView();
+    if (canvas) { canvas->SetFocus(); canvas->Refresh(); }
 }
 
 
