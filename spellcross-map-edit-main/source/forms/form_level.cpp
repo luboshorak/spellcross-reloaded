@@ -15674,7 +15674,7 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
     // current application/window size unchanged when entering a battle.
 
     // jump directly into game mode and hide the strategic-level window (keep alive for result callback)
-    m_main->SetGameModeUI(true);
+    m_main->StartTacticalGame();
     m_main->ShowTacticalWindow();
 
     Hide();
