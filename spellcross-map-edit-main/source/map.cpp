@@ -7304,9 +7304,23 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 		options |= UNIT_OPT_LOWER;
 	}
 
-	if (select_pos.IsSelected() && CanSelectUnit(select_pos))
+	if (select_pos.IsSelected())
 	{
-		options |= UNIT_OPT_SELECT;
+		// Two friendly occupants represent two distinct SELECT actions.
+		// Never collapse a ground+air stack to a single SELECT option,
+		// otherwise clicking a stacked square immediately switches layers
+		// without showing the original I_TAB choice.
+		MapUnit* select_ground = GetSelectableUnit(select_pos, false, true);
+		MapUnit* select_air = GetSelectableUnit(select_pos, true, true);
+		if (select_ground && select_air)
+		{
+			options |= UNIT_OPT_SELECT_LOWER | UNIT_OPT_SELECT_UPPER;
+		}
+		else if ((select_ground && select_ground != unit_selection) ||
+			(select_air && select_air != unit_selection))
+		{
+			options |= UNIT_OPT_SELECT;
+		}
 	}
 
 	if (IsGroupMode() && select_pos.IsSelected())
@@ -9554,40 +9568,36 @@ int SpellMap::Attack(MapXY pos, int prefer_air)
 }
 
 
-// check if some selectable unit is at postion (game mode only!)
+// Find the live, controllable Alliance unit on an exact air/ground layer.
+// Include-current is used by the native two-choice selection popup: both
+// occupants must remain available even if one is already selected.
+MapUnit* SpellMap::GetSelectableUnit(MapXY pos, bool air, bool include_current)
+{
+	if (!isGameMode() || enemy_turn_running || panic_turn_running ||
+		reaction_fire_active || !reaction_fire_queue.empty() || !pos.IsSelected() ||
+		pos.x < 0 || pos.y < 0 || pos.x >= x_size || pos.y >= y_size)
+		return nullptr;
+
+	for (auto* candidate = Lunit[ConvXY(pos)]; candidate; candidate = candidate->next)
+	{
+		if (!candidate->unit || candidate->is_enemy || candidate->isDead() ||
+			candidate->panic_turns > 0 || (!include_current && candidate == unit_selection))
+			continue;
+		if (candidate->unit->isAir() == static_cast<int>(air))
+			return candidate;
+	}
+	return nullptr;
+}
+
+// Prefer the selected HUD layer for simple SELECT, but fall back to the
+// other layer if this is the only unit which can actually be selected.
 MapUnit* SpellMap::CanSelectUnit(MapXY pos)
 {
-	if (!isGameMode())
-		return(NULL);
-	if (enemy_turn_running || panic_turn_running || reaction_fire_active || !reaction_fire_queue.empty())
-		return(NULL);
-	if (!pos.IsSelected())
-		return(NULL);
-	auto pxy = ConvXY(pos);
-
-	// get candidates (alinace only)
-	MapUnit* land_unit = NULL;
-	MapUnit* air_unit = NULL;
-	auto unit = Lunit[pxy];
-	while (unit)
-	{
-		if (unit->unit->isLand() && !unit->is_enemy && unit != unit_selection && unit->panic_turns <= 0)
-			land_unit = unit;
-		if (unit->unit->isAir() && !unit->is_enemy && unit != unit_selection && unit->panic_turns <= 0)
-			air_unit = unit;
-		unit = unit->next;
-	}
-
-	// pick some with selected preference
-	if (unit_sel_land_preference && land_unit)
-		return(land_unit);
-	if (!unit_sel_land_preference && air_unit)
-		return(air_unit);
-	if (land_unit)
-		return(land_unit);
-	if (air_unit)
-		return(air_unit);
-	return(NULL);
+	MapUnit* land = GetSelectableUnit(pos, false);
+	MapUnit* air = GetSelectableUnit(pos, true);
+	if (unit_sel_land_preference)
+		return land ? land : air;
+	return air ? air : land;
 }
 
 // select unit, if currently selected at the same position, switch between air-land
@@ -9601,43 +9611,10 @@ MapUnit* SpellMap::SelectUnit(MapUnit* new_unit, bool scroll_to)
 	}
 
 
-	if (unit_selection && unit_selection == new_unit)
-	{
-		// Clicking the current unit again switches to its friendly unit on
-		// the opposite layer if one is stacked on the same hex. The old code
-		// assigned the alternate to unit_selection, then overwrote it below.
-		MapUnit* alternate = nullptr;
-		for (auto* candidate : units)
-		{
-			if (!candidate || candidate == new_unit || !candidate->unit ||
-				candidate->isDead() || candidate->coor != new_unit->coor)
-				continue;
-			if (isGameMode() && (candidate->is_enemy || candidate->panic_turns > 0 ||
-				candidate->unit->isAir() == new_unit->unit->isAir()))
-				continue;
-			alternate = candidate;
-			break;
-		}
-		if (!alternate && !isGameMode() && events)
-		{
-			for (auto* evt : events->GetEvents())
-			{
-				for (auto& event_unit : evt->units)
-				{
-					if (event_unit.unit && event_unit.unit != new_unit &&
-						event_unit.unit->coor == new_unit->coor)
-					{
-						alternate = event_unit.unit;
-						break;
-					}
-				}
-				if (alternate) break;
-			}
-		}
-		if (!alternate)
-			return unit_selection;
-		new_unit = alternate;
-	}
+	// Explicit native layer selection must not toggle to the other layer
+	// when the user chooses the already-selected unit.
+	if (unit_selection == new_unit)
+		return unit_selection;
 	unit_selection = new_unit;
 	// Selection changed: neither cursor-action map may use the previous unit.
 	g_attack_map_dirty_for = unit_selection;
