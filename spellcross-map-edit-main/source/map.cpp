@@ -6748,7 +6748,10 @@ void SpellMap::MoveRange::Worker()
 		unit_ap_left.assign(map->x_size * map->y_size, -1);
 		unit_fire_left.assign(map->x_size * map->y_size, -1);
 
-		if (!unit || !unit->coor.IsSelected() || unit->radar_up || !unit->isActive())
+		// JEDNOTKY.DEF movement cost 0 marks a stationary unit. Never
+		// let a zero-cost unit flood-fill the entire board for free.
+		if (!unit || !unit->unit || unit->GetWalkAP() <= 0 ||
+			!unit->coor.IsSelected() || unit->radar_up || !unit->isActive())
 		{
 			ResultLock(true);
 			ap_left = unit_ap_left;
@@ -6892,7 +6895,8 @@ vector<AStarNode> SpellMap::MoveRange::FindPathToward(MapUnit* unit, MapXY targe
 vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY target, int max_ap, bool return_best)
 {
 	vector<AStarNode> path;
-	if (!unit || !target.IsSelected() || !unit->coor.IsSelected())
+	if (!unit || !unit->unit || unit->GetWalkAP() <= 0 ||
+		!target.IsSelected() || !unit->coor.IsSelected())
 		return path;
 
 	// local nodes map
