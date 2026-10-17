@@ -3257,6 +3257,51 @@ void MainFrame::OnOpenMapEditorFromBattle(wxCommandEvent&)
         RequestApplicationExit();
 }
 
+// Launch the original English/Czech retail tutorial maps, not a fake
+// demonstration of the campaign's first mission. Each stage is the matching
+// TUT01..TUT04.DEF. TUT01.TUT contains additional scripted training gates
+// not yet interpreted by the tactical engine.
+bool MainFrame::StartTutorialStage(int stage)
+{
+    if (!spell_data || stage < 1 || stage > 4)
+        return false;
+    const wxString mission = wxString::Format("TUT%02d.DEF", stage);
+    const auto path = FindSpellDataFile(std::filesystem::path(spell_data->spell_data_root),
+                                       mission.ToStdString());
+    if (path.empty())
+    {
+        wxMessageBox("Original tutorial resources are missing: " + mission,
+                     "Tutorial", wxOK | wxICON_WARNING, this);
+        return false;
+    }
+    if (m_strategicLevel)
+    {
+        auto* previous = m_strategicLevel;
+        m_strategicLevel = nullptr;
+        previous->Hide();
+        previous->Destroy();
+    }
+    m_mission_end_flow = false;
+    m_mission_result_pending_show = false;
+    m_mission_result_visible = false;
+    m_mission_result_stage = MissionResultStage::None;
+    m_mission_end_req = SpellMap::MissionEndRequest();
+    m_mission_earned_units.clear();
+
+    if (!LoadMapFromDefPath(path.wstring(), {}))
+        return false;
+    m_tutorial_stage = stage;
+    StartTacticalGame();
+    ShowTacticalWindow();
+    if (stage == 1 && spell_data->texts)
+    {
+        // The original TUT01.TUT starts with EventText(TUT01_01).
+        if (SpellTextRec* help = spell_data->texts->GetText("TUT01_01"))
+            ShowMessage(help, false, nullptr);
+    }
+    return true;
+}
+
 void MainFrame::OnMainMenuAction(FormMainMenuAction action)
 {
     // Defer the actual work so that the mouse-click event handler in
@@ -3277,10 +3322,20 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
             form_mmenu = NULL;
         }
 
+        if (action != FormMainMenuAction::Tutorial &&
+            action != FormMainMenuAction::Continue)
+            m_tutorial_stage = 0;
         switch(action)
         {
+            case FormMainMenuAction::Tutorial:
+            {
+                if (!StartTutorialStage(1))
+                    ShowMainMenuWindow();
+                break;
+            }
             case FormMainMenuAction::NewGame:
             {
+                m_tutorial_stage = 0;
                 if(!spell_data)
                     break;
 
@@ -4079,6 +4134,38 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
 
 void MainFrame::OpenStrategicAndLoadNext()
 {
+    // Tutorial missions are standalone training maps, not campaign levels.
+    // Never allow their completion to create/advance a strategic campaign.
+    if (m_tutorial_stage > 0)
+    {
+        const int completed = m_tutorial_stage;
+        const bool won = m_mission_end_req.success;
+        m_mission_end_flow = false;
+        m_mission_earned_units.clear();
+        m_mission_end_req = SpellMap::MissionEndRequest();
+        if (won && completed < 4)
+        {
+            if (StartTutorialStage(completed + 1))
+                return;
+        }
+        else if (!won)
+        {
+            const int reply = wxMessageBox(
+                "Training mission failed. Retry this lesson?",
+                "Tutorial", wxYES_NO | wxICON_QUESTION, this);
+            if (reply == wxYES && StartTutorialStage(completed))
+                return;
+        }
+        else if (won)
+        {
+            wxMessageBox("All four original tutorial missions completed.",
+                         "Tutorial", wxOK | wxICON_INFORMATION, this);
+        }
+        m_tutorial_stage = 0;
+        HideTacticalWindow();
+        ShowMainMenuWindow();
+        return;
+    }
     const std::wstring nextW = m_mission_end_req.next_level_def;
 
     // Return to an existing strategic level only when it is the frame that
