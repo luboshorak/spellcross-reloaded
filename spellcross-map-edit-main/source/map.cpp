@@ -12319,7 +12319,8 @@ bool SpellMap::IsUnitProtectedFromCleanup(const MapUnit* candidate) const
 
 	for (auto* owner : units)
 	{
-		if (!owner || owner == candidate || owner->attack_target != candidate)
+		if (!owner || owner == candidate || owner->isDead() ||
+			owner->attack_target != candidate)
 			continue;
 
 		if (owner->attack_state != MapUnit::ATTACK_STATE::IDLE ||
@@ -12688,7 +12689,8 @@ int SpellMap::Tick()
 	{
 		for (auto* owner : units)
 		{
-			if (!owner || owner == unit || !owner->attack_target ||
+			if (!owner || owner == unit || owner->isDead() ||
+				!owner->attack_target ||
 				owner->attack_state == MapUnit::ATTACK_STATE::IDLE)
 				continue;
 			if (!_ptr_in_units_list(units, owner->attack_target) ||
@@ -12710,7 +12712,23 @@ int SpellMap::Tick()
 		// Keep the no-selection fast path, but run the presentation-independent
 		// mission finalisation first.  This is especially important after a
 		// message box closes and after loading a tactical save with no selection.
+		const size_t beforeCleanup = units.size();
 		CleanupDeadUnits();
+		if (units.size() != beforeCleanup)
+		{
+			update = true;
+			if (unit_view)
+			{
+				unit_view->PrepareUnitsViewMask(true);
+				if (isGameMode())
+				{
+					unit_view->ClearUnitsView(ViewRange::ClearMode::HIDE, true);
+					unit_view->AddUnitsView(UNIT_TYPE_ALIANCE, true);
+					unit_view->WaitIdle();
+					HideEnemiesOutsidePlayerView(this, unit_view);
+				}
+			}
+		}
 
 		if (m_start_text_pending && m_msg_creator && m_msg_checker && !m_msg_checker())
 		{
@@ -13879,9 +13897,27 @@ int SpellMap::Tick()
 	if (!new_events.empty())
 		event_list.insert(event_list.end(), new_events.begin(), new_events.end());
 
-	// Cleanup dead units that weren't removed during attack state machine
-	// (e.g. units killed by player attack whose die animation already finished)
+	// Cleanup dead units that weren't removed during attack state machine.
+	// If cleanup removes a corpse, force a repaint this tick. Previously Tick()
+	// could return false despite the roster having changed, leaving the last
+	// rendered dead sprite visible until an unrelated mouse/turn event.
+	const size_t beforeCleanup = units.size();
 	CleanupDeadUnits();
+	if (units.size() != beforeCleanup)
+	{
+		update = true;
+		if (unit_view)
+		{
+			unit_view->PrepareUnitsViewMask(true);
+			if (isGameMode())
+			{
+				unit_view->ClearUnitsView(ViewRange::ClearMode::HIDE, true);
+				unit_view->AddUnitsView(UNIT_TYPE_ALIANCE, true);
+				unit_view->WaitIdle();
+				HideEnemiesOutsidePlayerView(this, unit_view);
+			}
+		}
+	}
 
 	// Show MissionStartText briefing on first available tick (after video/message finishes)
 	if (m_start_text_pending && m_msg_creator && m_msg_checker && !m_msg_checker())
