@@ -5059,22 +5059,17 @@ void MainFrame::OnTacticalRetreat()
 
 
 // on change of map layer view
-void MainFrame::OnViewLayer(wxCommandEvent& event)
+void MainFrame::OnViewLayer(wxCommandEvent&)
 {
-    bool wL1 = GetMenuBar()->FindItem(ID_ViewTer)->IsChecked();
-    bool wL2 = GetMenuBar()->FindItem(ID_ViewObj)->IsChecked();
-    bool wL3 = GetMenuBar()->FindItem(ID_ViewAnm)->IsChecked();
-    bool wL4 = GetMenuBar()->FindItem(ID_ViewPnm)->IsChecked();
-    bool wL5 = GetMenuBar()->FindItem(ID_ViewUnt)->IsChecked();
-    bool wSS = GetMenuBar()->FindItem(ID_ViewStTa)->IsChecked();
-    bool wSound = GetMenuBar()->FindItem(ID_ViewSounds)->IsChecked();
-    bool wSoundLoop = GetMenuBar()->FindItem(ID_ViewSoundLoops)->IsChecked();
-    bool wEvents = GetMenuBar()->FindItem(ID_ViewEvents)->IsChecked();
-    bool wHobj = GetMenuBar()->FindItem(ID_HighlighObj)->IsChecked();
-    spell_map->SetRender(wL1,wL2,wL3,wL4,wSS,wL5,wSound,wSoundLoop,wEvents,wHobj);
-    bool hud = GetMenuBar()->FindItem(ID_ViewHUD)->IsChecked();
-    spell_map->SetHUDstate(hud);
-    Refresh();
+    if (!spell_map)
+        return;
+
+    // Normal game display. Editor layer checkboxes are gone.
+    // Preserve default terrain, object, animation, start/target and unit layers.
+    spell_map->SetRender(true, true, true, true, true, true,
+                         false, false, false, false);
+    if (canvas)
+        canvas->Refresh();
 }
 
 // enable disable unit view debug mode
