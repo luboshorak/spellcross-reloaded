@@ -11,6 +11,7 @@
 #include <wx/dcscreen.h>
 #include <wx/settings.h>
 #include <wx/stdpaths.h>
+#include <wx/textdlg.h>
 
 #include <filesystem>
 #include <functional>
@@ -2544,6 +2545,10 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
     CheckTimeouts();
 
     Bind(wxEVT_ACTIVATE, &StrategicLevelFrame::OnActivate, this);
+    // The tactical and main-menu consoles already use the ~ key.
+    // Route that same shortcut from the strategic frame (including its
+    // native CRT child panels) so CASHIUP works in Buy and Research.
+    Bind(wxEVT_CHAR_HOOK, &StrategicLevelFrame::OnConsoleKeyDown, this);
 
     // Closing the strategic layer must never expose a stale tactical map.
     // Return to the main menu instead; MainFrame remains hidden until a real
@@ -2559,6 +2564,58 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
             main->CallAfter([main]() { main->ShowMainMenuWindow(); });
     });
 
+}
+
+void StrategicLevelFrame::OnConsoleKeyDown(wxKeyEvent& ev)
+{
+    const int key = ev.GetKeyCode();
+    if (key == '`' || key == '~' || ev.GetRawKeyCode() == 0xC0)
+    {
+        OnConsoleCommand();
+        return;
+    }
+    ev.Skip();
+}
+
+void StrategicLevelFrame::OnConsoleCommand()
+{
+    wxTextEntryDialog dlg(this, "Enter command:", "Console", "");
+    if (dlg.ShowModal() != wxID_OK)
+        return;
+
+    std::string cmd = dlg.GetValue().ToStdString();
+    while (!cmd.empty() && std::isspace(static_cast<unsigned char>(cmd.front())))
+        cmd.erase(cmd.begin());
+    while (!cmd.empty() && std::isspace(static_cast<unsigned char>(cmd.back())))
+        cmd.pop_back();
+    for (char& ch : cmd)
+        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+
+    if (cmd == "CASHIUP")
+    {
+        // Original strategic cheat: +100 credits, not research points.
+        if (m_money > std::numeric_limits<int>::max() - 100)
+            m_money = std::numeric_limits<int>::max();
+        else
+            m_money += 100;
+
+        // Both the recreated DOS CRT pages and the optional native wx UI
+        // display and spend the same m_money value.
+        RefreshUI();
+        m_originalStrategicDirty = true;
+        RefreshOriginalStrategicView();
+        SaveStrategicState();
+    }
+    else if (cmd == "AGAINAGAIN" || cmd == "ALLDONE")
+    {
+        wxMessageBox("This command belongs to tactical combat.",
+                     "Console", wxOK | wxICON_INFORMATION, this);
+    }
+    else if (!cmd.empty())
+    {
+        wxMessageBox("Unknown command: " + dlg.GetValue(),
+                     "Console", wxOK | wxICON_WARNING, this);
+    }
 }
 
 void StrategicLevelFrame::StartFreshGameMode(const std::vector<LevelData::PlayerUnitAdd>& bonus_units)
