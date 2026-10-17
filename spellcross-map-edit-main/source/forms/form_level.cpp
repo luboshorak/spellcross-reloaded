@@ -4438,28 +4438,14 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         const wxRect researchListViewport(researchListX, researchListY, researchListW, researchListH);
         const int visibleRows = OriginalStrategicListVisibleRows(font, researchListViewport, listY, rowH);
         const int maxScroll = std::max(0, static_cast<int>(rows.size()) - visibleRows);
-        int selectedRow = -1;
-        for (int ri = 0; ri < static_cast<int>(rows.size()); ++ri)
-        {
-            if (!rows[static_cast<size_t>(ri)].heading && rows[static_cast<size_t>(ri)].index == m_researchBrowseIndex)
-            {
-                selectedRow = ri;
-                break;
-            }
-        }
+        // The selected research project must not snap the scroll position
+        // back on EVERY paint. Doing so made dragging/wheeling the native
+        // scrollbar impossible as soon as its selection left the viewport.
         m_originalResearchListScroll = std::clamp(m_originalResearchListScroll, 0, maxScroll);
         m_originalScrollbarValue = &m_originalResearchListScroll;
         m_originalScrollbarMax = maxScroll;
         m_originalScrollbarVisible = visibleRows;
         m_originalScrollbarHeight = 472;
-        if (selectedRow >= 0)
-        {
-            if (selectedRow < m_originalResearchListScroll)
-                m_originalResearchListScroll = selectedRow;
-            else if (selectedRow >= m_originalResearchListScroll + visibleRows)
-                m_originalResearchListScroll = selectedRow - visibleRows + 1;
-            m_originalResearchListScroll = std::clamp(m_originalResearchListScroll, 0, maxScroll);
-        }
         for (int vr = 0; vr < visibleRows; ++vr)
         {
             const int ri = m_originalResearchListScroll + vr;
