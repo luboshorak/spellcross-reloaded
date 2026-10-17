@@ -5601,7 +5601,7 @@ void MainFrame::OnMapConsoleCommand()
         // Original tactical cheat: refill AP for every living Alliance company.
         // Do not touch enemy units, deployment, or the enemy's running turn.
         if (!spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode() ||
-            m_deployment_active || m_mission_end_flow || spell_map->enemy_turn_running)
+            m_deployment_active || m_mission_end_flow || spell_map->IsEnemyTurnRunning())
         {
             wxMessageBox("AGAINAGAIN can only be used during your tactical turn.",
                          "Console", wxOK | wxICON_INFORMATION, this);
@@ -5624,7 +5624,7 @@ void MainFrame::OnMapConsoleCommand()
     }
     else if (cmd == "CASHIUP")
     {
-        wxMessageBox("CASHIUP adds 100 credits in the strategic screen.\\n"
+        wxMessageBox("CASHIUP adds 100 credits in the strategic screen.\n"
                      "Open Research or Buy Units and use the console there.",
                      "Console", wxOK | wxICON_INFORMATION, this);
     }
