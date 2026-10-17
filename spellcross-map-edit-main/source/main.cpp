@@ -72,6 +72,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iterator>
+#include <limits>
 
 namespace
 {
@@ -1774,8 +1775,7 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
 
     // A strategic attack should open on the deployed Alliance force, not on
     // the map origin or an enemy that happened to be first in the DEF unit list.
-    if (first_deployed_player_unit)
-        spell_map->ScrollToTile(first_deployed_player_unit->coor);
+    // Camera will move to the densest START cluster after ShowTacticalWindow.
 
     return true;
 }
@@ -2016,8 +2016,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
     spell_map->RecalculateTacticalFormations();
     spell_map->InvalidateUnitsView();
 
-    if (first_deployed_player_unit)
-        spell_map->ScrollToTile(first_deployed_player_unit->coor);
+    // Camera will move to the densest START cluster after ShowTacticalWindow.
 
     return first_deployed_player_unit != nullptr;
 }
@@ -2033,6 +2032,7 @@ void MainFrame::StartTacticalGame()
     // enemies/AI and mission-start scripts are paused, and no initial
     // tactical save is produced before the roster has been placed.
     m_deployment_active = m_deployment_requested && !m_deployment_units.empty();
+    m_deployment_camera_pending = m_deployment_active;
     spell_map->SetDeploymentMode(m_deployment_active);
     if (!m_deployment_active)
     {
@@ -2080,6 +2080,7 @@ void MainFrame::ResetDeploymentUI()
     m_deployment_placed.clear();
     m_deployment_requested = false;
     m_deployment_active = false;
+    m_deployment_camera_pending = false;
     m_deployment_selection = 0;
     m_deployment_blink_ticks = 0;
 }
@@ -2233,6 +2234,7 @@ void MainFrame::FinishDeployment()
     }
 
     m_deployment_active = false;
+    m_deployment_camera_pending = false;
     m_deployment_requested = false;
     m_deployment_blink_ticks = 0;
     spell_map->SetDeploymentMode(false); // clears preview pointer
@@ -3270,10 +3272,77 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
     return true;
 }
 
+void MainFrame::CenterDeploymentOnStartSquares()
+{
+    if (!m_deployment_camera_pending || !m_deployment_active ||
+        !spell_map || !spell_map->IsLoaded() || !canvas)
+        return;
+    const wxSize view = canvas->GetClientSize();
+    if (view.x <= 0 || view.y <= 0)
+        return;
+    m_deployment_camera_pending = false;
+
+    // Camera geometry from the visible viewport, not from the old map.
+    spell_map->scroller.SetSurface(view.x, view.y);
+    if (spell_map->RenderPrepare(&spell_map->scroller) != 0)
+        return;
+
+    struct StartPoint { int x, y; };
+    std::vector<StartPoint> starts;
+    starts.reserve(spell_map->start.size());
+    for (MapXY tile : spell_map->start)
+    {
+        if (tile.x < 0 || tile.y < 0 ||
+            tile.x >= spell_map->x_size || tile.y >= spell_map->y_size)
+            continue;
+        const auto [x, y] = spell_map->GetSurfPos(tile);
+        starts.push_back({x + 40, y});
+    }
+    if (starts.empty())
+        return;
+
+    // Find a screen-sized group containing the most deployment crosses.
+    // DEF order is not spatial: the first START tile can be a distant outlier.
+    const int halfW = std::max(80, view.x / 2 - 55);
+    const int halfH = std::max(70, view.y / 2 - 105);
+    size_t best = 0;
+    int bestCount = -1;
+    long long bestSpread = std::numeric_limits<long long>::max();
+    for (size_t i = 0; i < starts.size(); ++i)
+    {
+        int count = 0;
+        long long spread = 0;
+        for (const auto& p : starts)
+        {
+            const int dx = std::abs(p.x - starts[i].x);
+            const int dy = std::abs(p.y - starts[i].y);
+            if (dx <= halfW && dy <= halfH)
+            {
+                ++count;
+                spread += static_cast<long long>(dx) + dy;
+            }
+        }
+        if (count > bestCount || (count == bestCount && spread < bestSpread))
+        {
+            bestCount = count;
+            bestSpread = spread;
+            best = i;
+        }
+    }
+
+    // Direct world coordinates avoid stale surf_x_origin in ScrollToTile.
+    spell_map->scroller.SetPos(starts[best].x - view.x / 2,
+        starts[best].y - view.y / 2);
+    spell_map->RenderPrepare(&spell_map->scroller);
+    canvas->Refresh();
+}
+
 void MainFrame::ShowTacticalWindow()
 {
     Show(true);
     Raise();
+    if (m_deployment_camera_pending)
+        CenterDeploymentOnStartSquares();
     if (canvas)
         canvas->SetFocus();
 }
