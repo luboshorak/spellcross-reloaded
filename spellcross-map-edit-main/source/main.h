@@ -137,7 +137,7 @@ private:
     wxListBox* m_deployment_list = nullptr;
     void ResetDeploymentUI();
     void ShowDeploymentUI();
-    void PlaceDeploymentUnit(MapXY tile);
+    void PlaceDeploymentUnit(MapXY tile, bool swap = false);
     void FinishDeployment();
     bool IsDeploymentSquare(const MapXY& tile) const;
 
