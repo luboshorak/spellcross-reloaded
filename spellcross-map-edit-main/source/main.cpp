@@ -3612,16 +3612,27 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
             m_tutorial_stage = 0;
         switch(action)
         {
+            case FormMainMenuAction::TutorialBasic:
+            case FormMainMenuAction::TutorialFirstContact:
+            case FormMainMenuAction::TutorialMission1:
+            case FormMainMenuAction::TutorialMission2:
+            {
+                const int stage = 1 + static_cast<int>(action) -
+                                  static_cast<int>(FormMainMenuAction::TutorialBasic);
+                if (!StartTutorialStage(stage))
+                    ShowMainMenuWindow();
+                break;
+            }
             case FormMainMenuAction::Tutorial:
             {
                 // Retail TUTORIAL.DEF exposes four training missions. The
                 // original TUTMNU.LZ provides a separate tutorial menu image.
                 // Use a native dialog until that resource is rendered directly.
                 wxArrayString lessons;
-                lessons.Add("1 - Basic movement and controls (TUT01)");
-                lessons.Add("2 - Rescue and mission objectives (TUT02)");
-                lessons.Add("3 - Combat and unit tactics (TUT03)");
-                lessons.Add("4 - Combined operations (TUT04)");
+                lessons.Add("BASIC (TUT01)");
+                lessons.Add("FIRST CONTACT (TUT02)");
+                lessons.Add("MISSION 1 (TUT03)");
+                lessons.Add("MISSION 2 (TUT04)");
                 wxSingleChoiceDialog choose(this, "Select a tutorial mission",
                                             "Original Spellcross Tutorial", lessons);
                 if (choose.ShowModal() != wxID_OK ||
