@@ -2040,14 +2040,18 @@ void MainFrame::PlaceDeploymentUnit(MapXY tile, bool swap)
     spell_map->RecalculateTacticalFormations();
     spell_map->InvalidateUnitsView();
 
-    // Automatically offer the next unplaced company, in roster order.
+    // A newly deployed company reports in, just as in the DOS game.
+    // The final company is selected below (SelectUnit already plays its
+    // report), so play directly only when another company is still queued.
     for (size_t i = 0; i < m_deployment_placed.size(); ++i)
         if (!m_deployment_placed[i])
         {
+            if (selected->unit->sound_report)
+                selected->PlayReport();
             SelectDeploymentUnit(i);
             return;
         }
-    SelectDeploymentUnit(selectedIndex); // all companies now deployed
+    SelectDeploymentUnit(selectedIndex); // last unit reports via SelectUnit
 }
 
 void MainFrame::FinishDeployment()
