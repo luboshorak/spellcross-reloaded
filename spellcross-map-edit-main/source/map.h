@@ -912,6 +912,9 @@ public:
 
 		bool deployment_mode = false;
 		bool deployment_blink_visible = true;
+        // A not-yet-placed player company for the original left HUD roster
+        // preview. It is not in the tactical map unit list until placed.
+        MapUnit* deployment_preview_unit = nullptr;
 		
 		MapXY GetSelection(TScroll* scroll=NULL);
 		vector<MapXY> &GetSelections(TScroll* scroll=NULL);
