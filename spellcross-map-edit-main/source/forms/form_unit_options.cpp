@@ -13,6 +13,20 @@ FormUnitOpts::FormUnitOpts(wxPanel *parent, wxWindowID win_id, wxPoint position,
     // The original Spellcross uses the I_TAB background and I_* glyphs for
     // resolving ambiguous clicks. Retain their order and graphics.
     vector<SpellGraphicItem*> glyphs;
+    // Air/ground unit SELECTION is separate from attacking air/ground targets.
+    // Both cases reuse the actual original UPPER/LOWER icons in I_TAB.
+    if (flags & SpellMap::UNIT_OPT_SELECT_UPPER)
+    {
+        glyphs.push_back(m_spelldata->gres.wm_sel_upper);
+        m_labels.push_back("Select air");
+        m_actions.push_back(SpellMap::UNIT_OPT_SELECT_UPPER);
+    }
+    if (flags & SpellMap::UNIT_OPT_SELECT_LOWER)
+    {
+        glyphs.push_back(m_spelldata->gres.wm_sel_lower);
+        m_labels.push_back("Select ground");
+        m_actions.push_back(SpellMap::UNIT_OPT_SELECT_LOWER);
+    }
     if (flags & SpellMap::UNIT_OPT_UPPER)
     {
         glyphs.push_back(m_spelldata->gres.wm_sel_upper);
