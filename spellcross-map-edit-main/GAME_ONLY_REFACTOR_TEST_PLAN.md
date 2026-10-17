@@ -43,8 +43,9 @@ Source references (studied, not redistributed):
 - Czech game manual under "ÚVODNÍ ROZMÍSTĚNÍ JEDNOTEK": deployment
   on START squares is required for normal strategic attacks, confirmed via
   an icon; the initial John Alexander mission is the exception.
-- The Czech retail main-menu art has six slots, so Reloaded renders a
-  seventh Tutorial button without altering the original six bitmaps.
+- The Czech retail main-menu art has **six** slots and **no Tutorial**;
+  Reloaded does not add a custom seventh button. Tutorial belongs solely to
+  the original seven-slot English main menu.
 - No retail content (graphics, maps or scripts) is checked into this repo.
   Original tutorial resources are loaded from the configured user-supplied
   game data; editions without them show a missing-file warning.
@@ -59,9 +60,10 @@ Source references (studied, not redistributed):
 3. In TUT01 verify original text, M+RMB input gate, map click, movement,
    object destruction, sight and TutorialEnd; do not call this fully
    verified until playtested with retail data.
-4. Czech source: original six buttons remain aligned, supplemental Tutorial
-   click/hover works; check behavior when Czech files lack TUTxx.DEF and
-   TUTMNU.LZ (copyrighted English assets must not be silently bundled).
+4. Czech source: original six buttons remain aligned; **no Tutorial
+   button** is present and no custom artwork is rendered. English retains
+   its native Tutorial and selector. Copyrighted English assets must not
+   be silently bundled into the Czech edition.
 5. John Alexander introductory escape mission: starts immediately,
    **without** the deployment UI.
 6. Start a strategic mission with several assigned companies. None of
@@ -110,3 +112,16 @@ already placed before using the original UKONCEN confirmation icon.
 
 Windows build and in-game interaction have not been checked in this
 remote editing environment. Verify before merging.
+
+## 2026-10-17: visibility during deployment
+
+Render only the marked START deployment fields before battle. The rest of
+the tactical map stays black, including terrain, objects, animations,
+selection effects and enemy units. During placement only START markers
+are shown; ESCAPE and TARGET markers stay hidden. The deployment mask
+is render-only and does not modify the normal tactical fog-of-war array.
+Test this separately in both DEF-backed and generated DTA battles, then
+verify normal mission fog returns immediately after UKONCEN.
+
+The Czech main menu stays in its original six-item state (no fabricated
+Tutorial control). The original English version retains seven items.
