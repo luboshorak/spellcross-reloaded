@@ -10088,16 +10088,19 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		if (unit_selection)
 			CreateHUDbutton(gres.wm_glyph_heal, hud_origin, btn_top[3], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDhealUnit, this), NULL, !can_heal);
 
+		// Deployment confirmation remains visible even when the mouse is over
+		// a company. The normal end-turn button must stay inactive here.
+		if (deployment_mode)
+			CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3],
+				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
+
 		if (!cursor_unit && !destructible)
 		{
 			// no unit under cursor: render 8 buttons in the right panel
 			CreateHUDbutton(gres.wm_glyph_map, hud_origin, btn_right[0], buf, buf_end, buf_x_size, HUD_ACTION_MINIMAP, NULL, NULL);
 			CreateHUDbutton((unit_sel_land_preference) ? (gres.wm_glyph_ground) : (gres.wm_glyph_air), hud_origin, btn_right[1], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchAirLand, this), NULL);
 			CreateHUDbutton(gres.wm_glyph_goto_unit, hud_origin, btn_right[2], buf, buf_end, buf_x_size, HUD_ACTION_UNITS, NULL, NULL);
-			if (deployment_mode)
-				CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3],
-					buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
-			else
+			if (!deployment_mode)
 				CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3],
 					buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchEndTurn, this), NULL);
 
