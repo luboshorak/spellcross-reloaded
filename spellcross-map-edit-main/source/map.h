@@ -1043,6 +1043,10 @@ public:
 		static constexpr int UNIT_RANGE_MOVE = 0x01;
 		static constexpr int UNIT_RANGE_ATTACK = 0x02;
 		static constexpr int UNIT_RANGE_INCREMENT = -1;
+		// Original manual: each elevation level above the target increases
+		// effective firing distance; GetFireRange() remains the flat-terrain
+		// unit statistic shown in the info panel.
+		int GetEffectiveFireRange(const MapUnit* shooter, MapXY target) const;
 		int CanUnitAttack(MapUnit* target);
 		MapUnit* CanUnitAttackLand(MapXY pos);
 		MapUnit* CanUnitAttackAir(MapXY pos);
