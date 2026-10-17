@@ -70,6 +70,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 
 namespace
