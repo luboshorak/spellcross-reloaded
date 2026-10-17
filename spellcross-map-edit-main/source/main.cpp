@@ -5049,6 +5049,11 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
     if(!m_buffer.IsOk() || m_buffer.GetSize() != canvas->GetClientSize())
         m_buffer = wxBitmap(canvas->GetClientSize(),24);
     
+    // If wxWidgets had not assigned the canvas size during Show(), perform
+    // the one-time deployment camera placement on its first actual paint.
+    if (m_deployment_camera_pending && spell_map && spell_map->IsLoaded())
+        CenterDeploymentOnStartSquares();
+
     // render map    
     if(!spell_map->IsLoaded())
         canvas->ClearBackground();
