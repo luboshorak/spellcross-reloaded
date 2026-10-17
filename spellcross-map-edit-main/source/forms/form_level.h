@@ -859,6 +859,14 @@ public:
     int m_originalResearchBrowseTextScroll = 0;
     int m_originalInfoListScroll = 0;
     int m_originalInfoTextScroll = 0;
+    // The native SB_BAR sprites are track artwork, not full-height thumbs.
+    // Current painted list exposes its own scroll value for mouse dragging.
+    int* m_originalScrollbarValue = nullptr;
+    int m_originalScrollbarMax = 0;
+    int m_originalScrollbarVisible = 1;
+    int m_originalScrollbarHeight = 472;
+    bool m_originalScrollbarDragging = false;
+    int m_originalScrollbarDragOffset = 0;
     bool m_originalQuickHelp = true;
 
     // Native strategic-map interaction/animation state. These values are only

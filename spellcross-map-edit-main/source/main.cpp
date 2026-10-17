@@ -24,6 +24,11 @@
 #include <wx/filedlg.h>
 #include <wx/dirdlg.h>
 #include <wx/choicdlg.h>
+#include <wx/progdlg.h>
+#ifdef _WIN32
+#include <wininet.h>
+#pragma comment(lib, "wininet.lib")
+#endif
 #include "iso9660_import.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
@@ -65,7 +70,9 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
+#include <limits>
 
 namespace
 {
@@ -820,6 +827,209 @@ namespace
         return {};
     }
 
+    // Download a user-selected, public CZ/EN Spellcross ISO to a private cache.
+    // The same ISO9660/INSTALL.DTA import pipeline handles downloaded and local
+    // images; downloading must not bypass archive validation or per-file setup.
+    static bool DownloadOriginalSpellcrossIso(const std::filesystem::path& runtime_root,
+        bool czech, std::filesystem::path& iso_path)
+    {
+        namespace fs = std::filesystem;
+        const wchar_t* url = czech
+            ? L"https://spellcross.czech-games.net/wp-content/uploads/ISO/Spellcross_CS.iso"
+            : L"https://spellcross.czech-games.net/wp-content/uploads/ISO/Spellcross_EN.iso";
+        const fs::path cache = runtime_root / "game_data" / "downloads";
+        iso_path = cache / (czech ? L"Spellcross_CS.iso" : L"Spellcross_EN.iso");
+        auto validIsoFile = [](const fs::path& p) -> bool
+        {
+            std::error_code ec;
+            if (!fs::is_regular_file(p, ec) || ec || fs::file_size(p, ec) < 34816 || ec)
+                return false;
+            std::ifstream stream(p, std::ios::binary);
+            char magic[5] = {};
+            stream.seekg(32769); // ISO9660 primary volume descriptor signature
+            stream.read(magic, sizeof(magic));
+            return stream && std::memcmp(magic, "CD001", sizeof(magic)) == 0;
+        };
+
+        // Some Cloudflare configurations allow a human browser download but
+        // challenge WinINet clients even when the ISO URL is a direct link.
+        // Keep the original source wizard usable on HTTP 403/503/TLS errors:
+        // the browser downloads the file, then our normal importer reads it.
+        auto browserFallback = [&](const wxString& diagnosis) -> bool
+        {
+            wxMessageDialog message(nullptr,
+                diagnosis + "\n\nThe host may require a browser (Cloudflare). "
+                "Open the same direct ISO link in your default browser and "
+                "then select the downloaded file for automatic import?",
+                "Spellcross ISO download", wxYES_NO | wxICON_WARNING);
+            message.SetYesNoLabels("Open browser", "Back to setup");
+            if (message.ShowModal() != wxID_YES)
+                return false;
+            if (!wxLaunchDefaultBrowser(wxString(url)))
+            {
+                wxMessageBox("Could not open the web browser. "
+                    "Please choose Select an ISO image file in the setup.",
+                    "ISO download", wxOK | wxICON_WARNING);
+                return false;
+            }
+            wxFileDialog select(nullptr, "Select the ISO downloaded by your browser",
+                wxEmptyString, czech ? "Spellcross_CS.iso" : "Spellcross_EN.iso",
+                "ISO images (*.iso)|*.iso|All files (*.*)|*.*",
+                wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+            if (select.ShowModal() != wxID_OK)
+                return false;
+            const fs::path selected(select.GetPath().ToStdWstring());
+            if (!validIsoFile(selected))
+            {
+                wxMessageBox("The selected file is not a complete ISO9660 image. "
+                    "Check that the download is finished and select the actual ISO.",
+                    "ISO download", wxOK | wxICON_ERROR);
+                return false;
+            }
+            iso_path = selected;
+            return true;
+        };
+
+        if (validIsoFile(iso_path))
+        {
+            wxMessageDialog cached(nullptr,
+                "A previously downloaded Spellcross ISO is already available.\n\n"
+                "Use it without downloading again?",
+                "Spellcross ISO", wxYES_NO | wxICON_QUESTION);
+            if (cached.ShowModal() == wxID_YES)
+                return true;
+        }
+
+#ifndef _WIN32
+        return browserFallback("Automatic ISO download is not supported on this platform.");
+#else
+        std::error_code ec;
+        fs::create_directories(cache, ec);
+        if (ec)
+        {
+            wxMessageBox("Cannot create the ISO cache folder.", "ISO download",
+                wxOK | wxICON_ERROR);
+            return false;
+        }
+        fs::path part = iso_path;
+        part += L".part";
+        fs::remove(part, ec);
+
+        // WinINet performs HTTPS verification and follows normal HTTP redirects.
+        HINTERNET session = InternetOpenW(
+            L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            L"(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            INTERNET_OPEN_TYPE_PRECONFIG,
+            nullptr, nullptr, 0);
+        if (!session)
+        {
+            return browserFallback(wxString::Format(
+                "Cannot initialize HTTPS download (Windows error %lu).",
+                static_cast<unsigned long>(GetLastError())));
+        }
+        DWORD timeout = 30000;
+        InternetSetOptionW(session, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+        InternetSetOptionW(session, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
+        const wchar_t* headers =
+            L"Accept: */*\r\n"
+            L"Accept-Language: cs-CZ,cs;q=0.9,en;q=0.8\r\n"
+            L"Referer: https://spellcross.czech-games.net/\r\n";
+        HINTERNET request = InternetOpenUrlW(session, url, headers,
+            static_cast<DWORD>(-1), INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD |
+            INTERNET_FLAG_NO_CACHE_WRITE, 0);
+        if (!request)
+        {
+            const DWORD winError = GetLastError();
+            InternetCloseHandle(session);
+            return browserFallback(wxString::Format(
+                "Windows could not open the ISO URL (WinINet error %lu).",
+                static_cast<unsigned long>(winError)));
+        }
+
+        DWORD statusCode = 0;
+        DWORD statusSize = sizeof(statusCode);
+        const bool httpOk = HttpQueryInfoW(request, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
+            &statusCode, &statusSize, nullptr) && statusCode >= 200 && statusCode < 300;
+        if (!httpOk)
+        {
+            InternetCloseHandle(request);
+            InternetCloseHandle(session);
+            return browserFallback(wxString::Format(
+                "The ISO server refused the automatic download (HTTP %lu).",
+                static_cast<unsigned long>(statusCode)));
+        }
+        // Content-Length may be absent for chunked transfers. When supplied,
+        // validate the exact byte count to catch a prematurely closed socket.
+        wchar_t sizeText[48] = {};
+        DWORD sizeTextLength = sizeof(sizeText);
+        const bool hasLength = HttpQueryInfoW(request, HTTP_QUERY_CONTENT_LENGTH,
+            sizeText, &sizeTextLength, nullptr) != FALSE;
+        const unsigned long long expectedBytes = hasLength
+            ? _wcstoui64(sizeText, nullptr, 10) : 0;
+        std::ofstream output;
+        if (httpOk)
+            output.open(part, std::ios::binary | std::ios::trunc);
+
+        auto progress = std::make_unique<wxProgressDialog>("Downloading Spellcross ISO",
+            czech ? "Downloading Czech Spellcross ISO..." : "Downloading English Spellcross ISO...",
+            100, nullptr, wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_AUTO_HIDE);
+        bool ok = httpOk && output.is_open();
+        bool cancelled = false;
+        unsigned long long received = 0;
+        std::vector<char> chunk(256 * 1024);
+        DWORD read = 0;
+        while (ok)
+        {
+            if (!InternetReadFile(request, chunk.data(), static_cast<DWORD>(chunk.size()), &read))
+            {
+                ok = false;
+                break;
+            }
+            if (!read) break;
+            output.write(chunk.data(), read);
+            if (!output)
+            {
+                ok = false;
+                break;
+            }
+            received += read;
+            if (!progress->Pulse(wxString::Format("Downloaded %.1f MiB",
+                static_cast<double>(received) / (1024.0 * 1024.0))))
+            {
+                ok = false;
+                cancelled = true;
+                break;
+            }
+        }
+        output.close();
+        progress.reset(); // release the modal window before showing fallback UI
+        InternetCloseHandle(request);
+        InternetCloseHandle(session);
+        if (ok && hasLength && expectedBytes != received)
+            ok = false;
+
+        // A completed HTTP transfer is not proof of a valid ISO. Never pass
+        // a truncated/HTML error page to the importer, or replace a cached
+        // image before the new image has passed validation.
+        ok = ok && validIsoFile(part);
+        if (ok)
+        {
+            ok = MoveFileExW(part.c_str(), iso_path.c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+        }
+        if (!ok)
+        {
+            fs::remove(part, ec);
+            if (cancelled)
+                return false;
+            return browserFallback(
+                "The ISO transfer was incomplete or did not contain a valid "
+                "ISO9660 image. The existing ISO cache was not replaced.");
+        }
+        return true;
+#endif
+    }
+
     struct StartupSourceRequirement
     {
         const char* key;
@@ -1061,6 +1271,8 @@ namespace
                 options.Add("Use a CD, mounted ISO or extracted ISO folder");
                 options.Add("Use an existing Spellcross DATA folder");
                 options.Add("Select individual game archives manually");
+                options.Add("Download CZ ISO (Spellcross_CS.iso) and import");
+                options.Add("Download EN ISO (Spellcross_EN.iso) and import");
 
                 wxSingleChoiceDialog choice(nullptr,
                     "Spellcross needs files from your original game.\n\n"
@@ -1075,17 +1287,26 @@ namespace
                 if (option == 3)
                     break; // use the existing per-file fallback below
 
-                if (option == 0)
+                if (option == 0 || option == 4 || option == 5)
                 {
-                    wxFileDialog imageDialog(nullptr,
-                        "Select the original Spellcross ISO image",
-                        wxEmptyString, wxEmptyString,
-                        "ISO images (*.iso)|*.iso|All files (*.*)|*.*",
-                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-                    if (imageDialog.ShowModal() != wxID_OK)
-                        continue;
+                    fs::path imagePath;
+                    if (option == 0)
+                    {
+                        wxFileDialog imageDialog(nullptr,
+                            "Select the original Spellcross ISO image",
+                            wxEmptyString, wxEmptyString,
+                            "ISO images (*.iso)|*.iso|All files (*.*)|*.*",
+                            wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+                        if (imageDialog.ShowModal() != wxID_OK)
+                            continue;
+                        imagePath = fs::path(imageDialog.GetPath().ToStdWstring());
+                    }
+                    else if (!DownloadOriginalSpellcrossIso(runtime_root,
+                        option == 4, imagePath))
+                    {
+                        continue; // cancelled or failed: source wizard stays open
+                    }
 
-                    const fs::path imagePath(imageDialog.GetPath().ToStdWstring());
                     spellcross_iso::Reader iso;
                     std::string isoError;
                     {
@@ -1611,8 +1832,7 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
 
     // A strategic attack should open on the deployed Alliance force, not on
     // the map origin or an enemy that happened to be first in the DEF unit list.
-    if (first_deployed_player_unit)
-        spell_map->ScrollToTile(first_deployed_player_unit->coor);
+    // Camera will move to the densest START cluster after ShowTacticalWindow.
 
     return true;
 }
@@ -1853,8 +2073,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
     spell_map->RecalculateTacticalFormations();
     spell_map->InvalidateUnitsView();
 
-    if (first_deployed_player_unit)
-        spell_map->ScrollToTile(first_deployed_player_unit->coor);
+    // Camera will move to the densest START cluster after ShowTacticalWindow.
 
     return first_deployed_player_unit != nullptr;
 }
@@ -1870,6 +2089,7 @@ void MainFrame::StartTacticalGame()
     // enemies/AI and mission-start scripts are paused, and no initial
     // tactical save is produced before the roster has been placed.
     m_deployment_active = m_deployment_requested && !m_deployment_units.empty();
+    m_deployment_camera_pending = m_deployment_active;
     spell_map->SetDeploymentMode(m_deployment_active);
     if (!m_deployment_active)
     {
@@ -1917,6 +2137,7 @@ void MainFrame::ResetDeploymentUI()
     m_deployment_placed.clear();
     m_deployment_requested = false;
     m_deployment_active = false;
+    m_deployment_camera_pending = false;
     m_deployment_selection = 0;
     m_deployment_blink_ticks = 0;
 }
@@ -2070,6 +2291,7 @@ void MainFrame::FinishDeployment()
     }
 
     m_deployment_active = false;
+    m_deployment_camera_pending = false;
     m_deployment_requested = false;
     m_deployment_blink_ticks = 0;
     spell_map->SetDeploymentMode(false); // clears preview pointer
@@ -3107,10 +3329,77 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
     return true;
 }
 
+void MainFrame::CenterDeploymentOnStartSquares()
+{
+    if (!m_deployment_camera_pending || !m_deployment_active ||
+        !spell_map || !spell_map->IsLoaded() || !canvas)
+        return;
+    const wxSize view = canvas->GetClientSize();
+    if (view.x <= 0 || view.y <= 0)
+        return;
+    m_deployment_camera_pending = false;
+
+    // Camera geometry from the visible viewport, not from the old map.
+    spell_map->scroller.SetSurface(view.x, view.y);
+    if (spell_map->RenderPrepare(&spell_map->scroller) != 0)
+        return;
+
+    struct StartPoint { int x, y; };
+    std::vector<StartPoint> starts;
+    starts.reserve(spell_map->start.size());
+    for (MapXY tile : spell_map->start)
+    {
+        if (tile.x < 0 || tile.y < 0 ||
+            tile.x >= spell_map->x_size || tile.y >= spell_map->y_size)
+            continue;
+        const auto [x, y] = spell_map->GetSurfPos(tile);
+        starts.push_back({x + 40, y});
+    }
+    if (starts.empty())
+        return;
+
+    // Find a screen-sized group containing the most deployment crosses.
+    // DEF order is not spatial: the first START tile can be a distant outlier.
+    const int halfW = std::max(80, view.x / 2 - 55);
+    const int halfH = std::max(70, view.y / 2 - 105);
+    size_t best = 0;
+    int bestCount = -1;
+    long long bestSpread = std::numeric_limits<long long>::max();
+    for (size_t i = 0; i < starts.size(); ++i)
+    {
+        int count = 0;
+        long long spread = 0;
+        for (const auto& p : starts)
+        {
+            const int dx = std::abs(p.x - starts[i].x);
+            const int dy = std::abs(p.y - starts[i].y);
+            if (dx <= halfW && dy <= halfH)
+            {
+                ++count;
+                spread += static_cast<long long>(dx) + dy;
+            }
+        }
+        if (count > bestCount || (count == bestCount && spread < bestSpread))
+        {
+            bestCount = count;
+            bestSpread = spread;
+            best = i;
+        }
+    }
+
+    // Direct world coordinates avoid stale surf_x_origin in ScrollToTile.
+    spell_map->scroller.SetPos(starts[best].x - view.x / 2,
+        starts[best].y - view.y / 2);
+    spell_map->RenderPrepare(&spell_map->scroller);
+    canvas->Refresh();
+}
+
 void MainFrame::ShowTacticalWindow()
 {
     Show(true);
     Raise();
+    if (m_deployment_camera_pending)
+        CenterDeploymentOnStartSquares();
     if (canvas)
         canvas->SetFocus();
 }
@@ -4765,6 +5054,11 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
     if(!m_buffer.IsOk() || m_buffer.GetSize() != canvas->GetClientSize())
         m_buffer = wxBitmap(canvas->GetClientSize(),24);
     
+    // If wxWidgets had not assigned the canvas size during Show(), perform
+    // the one-time deployment camera placement on its first actual paint.
+    if (m_deployment_camera_pending && spell_map && spell_map->IsLoaded())
+        CenterDeploymentOnStartSquares();
+
     // render map    
     if(!spell_map->IsLoaded())
         canvas->ClearBackground();

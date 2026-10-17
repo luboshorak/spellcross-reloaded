@@ -601,14 +601,13 @@ int SpellUnitRec::canAttackObject()
 // get maximum dig level
 int SpellUnitRec::GetMaxDig()
 {
-	if(isAir())
-		return(0);
-	if(!dig_turns)
-		return(0);
-	if(isLight())
-		return(6);
-	else
-		return(2);
+	if (isAir() || !dig_turns)
+		return 0;
+	// Infantry are light units with WALK movement and may dig six levels.
+	// Hummer (type 29) and Radar 1R/2R (30/31) are also LIGHT, but are
+	// vehicles (utype=0x10, no WALK bit): the original game caps them at 2.
+	// Classifying all LIGHT units as infantry incorrectly allowed six.
+	return isWalk() ? 6 : 2;
 }
 
 
@@ -1414,10 +1413,16 @@ int MapUnit::UpdateFireAP()
 // get AP per walk
 int MapUnit::GetWalkAP()
 {
-	int move_range = unit->apw;
-	auto bonus = unit->bonuses->GetBonus(experience_level);
-	move_range += bonus->move + upgrade_move_bonus;
-	return(GetMaxAP()/(move_range-1));
+	// JEDNOTKY.DEF +0x3D gives *action points per normal movement step*
+	// (EN: 83 cost 7, three Orc/Undead types cost 6, Destructor #73 has 0).
+	// The old formula GetMaxAP() / (apw + bonuses - 1) incorrectly turned
+	// e.g. Light infantry's original cost of 7 AP into 9, Hummer's into 16,
+	// and an immobile unit's zero cost into a negative path cost.
+	//
+	// BONUSES.DEF Move and UPGRADES.DEF Move increase available movement
+	// through GetMaxAP() by complete step increments, NOT by changing
+	// the terrain cost of each individual step.
+	return unit && unit->apw > 0 ? unit->apw : 0;
 }
 
 // has unit wounded men?

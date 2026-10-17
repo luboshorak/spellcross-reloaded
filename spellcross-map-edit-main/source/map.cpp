@@ -6504,6 +6504,28 @@ tuple<int, int> SpellMap::GetSurfPos(MapXY& pos)
 	return tuple(mxx, myy);
 }
 
+// Original manual: a unit on higher terrain gains one tile of firing
+// distance per full elevation level above its target. The UI must still show
+// base range (without the height bonus), so compute this only for a target.
+int SpellMap::GetEffectiveFireRange(const MapUnit* shooter, MapXY target) const
+{
+    if (!shooter || !shooter->unit)
+        return 0;
+    const int base = shooter->GetFireRange();
+    if (!shooter->coor.IsSelected() || !target.IsSelected() ||
+        shooter->coor.x < 0 || shooter->coor.y < 0 ||
+        target.x < 0 || target.y < 0 ||
+        shooter->coor.x >= x_size || shooter->coor.y >= y_size ||
+        target.x >= x_size || target.y >= y_size)
+        return base;
+    const int from = shooter->coor.x + shooter->coor.y * x_size;
+    const int to = target.x + target.y * x_size;
+    if (static_cast<size_t>(from) >= tiles.size() ||
+        static_cast<size_t>(to) >= tiles.size())
+        return base;
+    return base + (std::max)(0, tiles[from].elev - tiles[to].elev);
+}
+
 // scroll map so tile is in center
 int SpellMap::ScrollToTile(MapXY& tile, TScroll* scroll)
 {
@@ -6748,7 +6770,10 @@ void SpellMap::MoveRange::Worker()
 		unit_ap_left.assign(map->x_size * map->y_size, -1);
 		unit_fire_left.assign(map->x_size * map->y_size, -1);
 
-		if (!unit || !unit->coor.IsSelected() || unit->radar_up || !unit->isActive())
+		// JEDNOTKY.DEF movement cost 0 marks a stationary unit. Never
+		// let a zero-cost unit flood-fill the entire board for free.
+		if (!unit || !unit->unit || unit->GetWalkAP() <= 0 ||
+			!unit->coor.IsSelected() || unit->radar_up || !unit->isActive())
 		{
 			ResultLock(true);
 			ap_left = unit_ap_left;
@@ -6892,7 +6917,8 @@ vector<AStarNode> SpellMap::MoveRange::FindPathToward(MapUnit* unit, MapXY targe
 vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY target, int max_ap, bool return_best)
 {
 	vector<AStarNode> path;
-	if (!unit || !target.IsSelected() || !unit->coor.IsSelected())
+	if (!unit || !unit->unit || unit->GetWalkAP() <= 0 ||
+		!target.IsSelected() || !unit->coor.IsSelected())
 		return path;
 
 	// local nodes map
@@ -8461,7 +8487,7 @@ void SpellMap::PlanEnemyAIGroups()
                         continue;
 
                     const double d = defender->coor.Distance(target->coor);
-                    const int range = defender->GetFireRange();
+                    const int range = GetEffectiveFireRange(defender, target->coor);
                     if (range <= 0 || d > (double)range)
                         continue;
                     if (defender->unit->isIndirectFire() && target->unit->isLand() && d <= 2.0)
@@ -8727,7 +8753,9 @@ bool SpellMap::MoveEnemyToward(MapUnit* enemy, MapXY goal, bool stop_in_attack_r
             {
                 const double d = advance.Distance(goal);
                 const bool min_ok = !(enemy->unit->isIndirectFire() && d <= 2.0);
-                if (d <= fire_range && min_ok)
+                const int heightBonus = (std::max)(0,
+                    tiles[ConvXY(advance)].elev - tiles[ConvXY(goal)].elev);
+                if (d <= fire_range + heightBonus && min_ok)
                     break;
             }
         }
@@ -9307,7 +9335,7 @@ bool SpellMap::EnemyTurnStep()
             if (goal.IsSelected())
             {
                 const double dist = enemy->coor.Distance(goal);
-                const int fire_range = (std::max)(1, enemy->GetFireRange());
+                const int fire_range = (std::max)(1, GetEffectiveFireRange(enemy, goal));
                 if (dist > fire_range)
                     moved = MoveEnemyToward(enemy, goal, true);
             }
@@ -10156,9 +10184,12 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_NEXT_UNIT, NULL, NULL);
 			CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1],
 				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_NEXT_UNIT, NULL, NULL);
-			if (deployment_blink_visible && gres.wm_glyph_end_placement)
-				CreateHUDbutton(gres.wm_glyph_end_placement, hud_origin, btn_top[2],
-					buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
+			// Keep the clickable control alive through both flashing phases.
+			// Only the native glyph changes; mouse-up must never be lost.
+			if (gres.wm_glyph_end_placement)
+				CreateHUDbutton(deployment_blink_visible ? gres.wm_glyph_end_placement : nullptr,
+					hud_origin, btn_top[2], buf, buf_end, buf_x_size,
+					HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
 		}
 		else
 		{
@@ -11193,7 +11224,8 @@ bool SpellMap::ViewRange::HasDirectSight(MapUnit* unit, MapXY pos)
 	// ever combines radar with a weapon.
 	if (unit->radar_up && unit->unit->isActionToggleRadar())
 	{
-		const int radar_range = unit->unit->action_params[2];
+		const int radar_range = unit->unit->action_params[2] +
+			(std::max)(ref_alt - next_alt, 0);
 		return((pos.Distance(ref_pos) - 0.5) <= radar_range);
 	}
 
@@ -11552,17 +11584,10 @@ void SpellMap::ViewRange::Worker()
 
 			// next tile elevation
 			int next_alt = map->tiles[next_mxy].elev;
-			int view;
-			if (is_fire)
-			{
-				// fire/attack range must NOT expand with elevation difference
-				view = ref_view;
-			}
-			else
-			{
-				// sight range can expand when looking downhill
-				view = ref_view + (std::max)(ref_alt - next_alt, 0);
-			}
+			// Original manual: +1 tile of sight or firing distance for each
+			// elevation level above the target, including deployed radar sight.
+			// Radar still ignores intervening terrain rays (unlike normal sight).
+			const int view = ref_view + (std::max)(ref_alt - next_alt, 0);
 
 			// visible?
 			if ((next_pos.Distance(ref_pos) - 0.5) > view)
@@ -12319,7 +12344,8 @@ bool SpellMap::IsUnitProtectedFromCleanup(const MapUnit* candidate) const
 
 	for (auto* owner : units)
 	{
-		if (!owner || owner == candidate || owner->attack_target != candidate)
+		if (!owner || owner == candidate || owner->isDead() ||
+			owner->attack_target != candidate)
 			continue;
 
 		if (owner->attack_state != MapUnit::ATTACK_STATE::IDLE ||
@@ -12677,6 +12703,29 @@ int SpellMap::Tick()
 		unit = GetSelectedUnit();
 	}
 
+	// The tactical animator historically ticks only the selected unit. If the
+	// player changes selection after a lethal shot, the old attacker stays in
+	// HIT/DIE/UPDATE forever. CleanupDeadUnits() correctly protects its target
+	// against use-after-free, but the corpse then remains visible for arbitrary
+	// turns. Resume a pending lethal attack even if its owner is not selected.
+	// Never preempt another unit mid-action; the pending sequence completes as
+	// soon as the current animation is idle. Selection/HUD remain unchanged.
+	if (isGameMode() && (!unit || !IsUnitBusy(unit)))
+	{
+		for (auto* owner : units)
+		{
+			if (!owner || owner == unit || owner->isDead() ||
+				!owner->attack_target ||
+				owner->attack_state == MapUnit::ATTACK_STATE::IDLE)
+				continue;
+			if (!_ptr_in_units_list(units, owner->attack_target) ||
+				!owner->attack_target->isDead())
+				continue;
+			unit = owner;
+			break;
+		}
+	}
+
 	if (!unit)
 	{
 		// A finished objective must be allowed to advance the mission even when
@@ -12688,7 +12737,23 @@ int SpellMap::Tick()
 		// Keep the no-selection fast path, but run the presentation-independent
 		// mission finalisation first.  This is especially important after a
 		// message box closes and after loading a tactical save with no selection.
+		const size_t beforeCleanup = units.size();
 		CleanupDeadUnits();
+		if (units.size() != beforeCleanup)
+		{
+			update = true;
+			if (unit_view)
+			{
+				unit_view->PrepareUnitsViewMask(true);
+				if (isGameMode())
+				{
+					unit_view->ClearUnitsView(ViewRange::ClearMode::HIDE, true);
+					unit_view->AddUnitsView(UNIT_TYPE_ALIANCE, true);
+					unit_view->WaitIdle();
+					HideEnemiesOutsidePlayerView(this, unit_view);
+				}
+			}
+		}
 
 		if (m_start_text_pending && m_msg_creator && m_msg_checker && !m_msg_checker())
 		{
@@ -13840,11 +13905,14 @@ int SpellMap::Tick()
 
 	ReleaseMap();
 
-	// range/attack recalculation (outside lock - these are async and use their own locks)
-	if (unit && (units_moved || unit_changed) && !unit->isMoving())
+	// Ranges belong to the *actual selection*, not an off-selection unit
+	// whose deferred death/attack animation we advanced in this Tick.
+	// Never switch the HUD's MOVE/ATTACK preview to the background animator.
+	MapUnit* selected_for_range = GetSelectedUnit();
+	if (selected_for_range && (units_moved || unit_changed) && !selected_for_range->isMoving())
 	{
-		unit_range->FindRange(unit);
-		unit_view->CalcAttackRange(unit);
+		unit_range->FindRange(selected_for_range);
+		unit_view->CalcAttackRange(selected_for_range);
 	}
 
 	// try fetch unread view events
@@ -13857,9 +13925,27 @@ int SpellMap::Tick()
 	if (!new_events.empty())
 		event_list.insert(event_list.end(), new_events.begin(), new_events.end());
 
-	// Cleanup dead units that weren't removed during attack state machine
-	// (e.g. units killed by player attack whose die animation already finished)
+	// Cleanup dead units that weren't removed during attack state machine.
+	// If cleanup removes a corpse, force a repaint this tick. Previously Tick()
+	// could return false despite the roster having changed, leaving the last
+	// rendered dead sprite visible until an unrelated mouse/turn event.
+	const size_t beforeCleanup = units.size();
 	CleanupDeadUnits();
+	if (units.size() != beforeCleanup)
+	{
+		update = true;
+		if (unit_view)
+		{
+			unit_view->PrepareUnitsViewMask(true);
+			if (isGameMode())
+			{
+				unit_view->ClearUnitsView(ViewRange::ClearMode::HIDE, true);
+				unit_view->AddUnitsView(UNIT_TYPE_ALIANCE, true);
+				unit_view->WaitIdle();
+				HideEnemiesOutsidePlayerView(this, unit_view);
+			}
+		}
+	}
 
 	// Show MissionStartText briefing on first available tick (after video/message finishes)
 	if (m_start_text_pending && m_msg_creator && m_msg_checker && !m_msg_checker())

@@ -140,6 +140,8 @@ private:
     void SelectDeploymentUnit(size_t index);
     void PlaceDeploymentUnit(MapXY tile, bool swap = false);
     void FinishDeployment();
+    void CenterDeploymentOnStartSquares();
+    bool m_deployment_camera_pending = false;
     bool IsDeploymentSquare(const MapXY& tile) const;
 
     bool m_applicationExitInProgress = false;
