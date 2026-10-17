@@ -143,6 +143,14 @@ private:
 
     bool m_applicationExitInProgress = false;
     int m_tutorial_stage = 0; // 0 = normal campaign, 1..4 = original tutorial missions
+    // Retail TUT01.TUT lesson sequence (text and gated actions).
+    int m_tutorial_command = 0;
+    int m_tutorial_command_shown = 0;
+    bool m_tutorial_pressed_m = false;
+    bool m_tutorial_pressed_rmb = false;
+    bool m_tutorial_clicked_square = false;
+    void UpdateTutorialGuide();
+
     bool m_rangeMoveKeyDown = false;
     bool m_rangeAttackKeyDown = false;
 
