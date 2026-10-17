@@ -1971,6 +1971,14 @@ void MainFrame::PlaceDeploymentUnit(MapXY tile, bool swap)
         MapUnit* other = m_deployment_units[i];
         if (!other || other->coor.x != tile.x || other->coor.y != tile.y)
             continue;
+
+        // The game's valid air/ground stacking must also work during initial
+        // placement. Clicking a ground company does not stop the pending air
+        // company from being placed on the same legal START square (or vice versa).
+        if (!m_deployment_placed[selectedIndex] && other->unit &&
+            other->unit->isAir() != selected->unit->isAir())
+            continue;
+
         if (swap && m_deployment_placed[selectedIndex] && other != selected &&
             other->unit && other->unit->isAir() == selected->unit->isAir() &&
             goodTerrain(other, selected->coor) && goodTerrain(selected, tile))
