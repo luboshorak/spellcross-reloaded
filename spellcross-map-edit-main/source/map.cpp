@@ -9600,7 +9600,7 @@ MapUnit* SpellMap::CanSelectUnit(MapXY pos)
 	return air ? air : land;
 }
 
-// select unit, if currently selected at the same position, switch between air-land
+// Select the exact requested unit. Air/ground ambiguity is handled by I_TAB before this call.
 MapUnit* SpellMap::SelectUnit(MapUnit* new_unit, bool scroll_to)
 {
 	// group mode: clicking player unit toggles membership; keep single selection unchanged
