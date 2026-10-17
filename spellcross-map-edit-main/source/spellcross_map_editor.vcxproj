@@ -28,11 +28,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="forms\form_about.cpp" />
-    <ClCompile Include="forms\form_anm.cpp" />
-    <ClCompile Include="forms\form_edit_toolset.cpp" />
-    <ClCompile Include="forms\form_events.cpp" />
-    <ClCompile Include="forms\form_flags.cpp" />
-    <ClCompile Include="forms\form_gr_view.cpp" />
     <ClCompile Include="forms\form_level.cpp" />
     <ClCompile Include="forms\form_loader.cpp" />
     <ClCompile Include="forms\form_map_options.cpp" />
@@ -41,15 +36,7 @@
     <ClCompile Include="forms\form_mmenu.cpp" />
     <ClCompile Include="forms\form_midi.cpp" />
     <ClCompile Include="forms\form_minimap.cpp" />
-    <ClCompile Include="forms\form_mission_params.cpp" />
-    <ClCompile Include="forms\form_new_object.cpp" />
-    <ClCompile Include="forms\form_objects.cpp" />
-    <ClCompile Include="forms\form_pal_view.cpp" />
-    <ClCompile Include="forms\form_sound.cpp" />
-    <ClCompile Include="forms\form_sprite_view.cpp" />
-    <ClCompile Include="forms\form_units.cpp" />
     <ClCompile Include="forms\form_unit_options.cpp" />
-    <ClCompile Include="forms\form_video.cpp" />
     <ClCompile Include="forms\form_video_box.cpp" />
     <ClCompile Include="fsu_archive.cpp" />
     <ClCompile Include="fs_archive.cpp" />
@@ -99,11 +86,6 @@
     <ClInclude Include="app_identity.h" />
     <ClInclude Include="app_version.h" />
     <ClInclude Include="forms\form_about.h" />
-    <ClInclude Include="forms\form_anm.h" />
-    <ClInclude Include="forms\form_edit_toolset.h" />
-    <ClInclude Include="forms\form_events.h" />
-    <ClInclude Include="forms\form_flags.h" />
-    <ClInclude Include="forms\form_gr_view.h" />
     <ClInclude Include="forms\form_level.h" />
     <ClInclude Include="forms\form_loader.h" />
     <ClInclude Include="forms\form_map_options.h" />
@@ -112,16 +94,8 @@
     <ClInclude Include="forms\form_mmenu.h" />
     <ClInclude Include="forms\form_midi.h" />
     <ClInclude Include="forms\form_minimap.h" />
-    <ClInclude Include="forms\form_mission_params.h" />
-    <ClInclude Include="forms\form_new_object.h" />
-    <ClInclude Include="forms\form_objects.h" />
-    <ClInclude Include="forms\form_pal_view.h" />
-    <ClInclude Include="forms\form_sound.h" />
-    <ClInclude Include="forms\form_sprite_view.h" />
     <ClInclude Include="forms\form_strategic.h" />
-    <ClInclude Include="forms\form_units.h" />
     <ClInclude Include="forms\form_unit_options.h" />
-    <ClInclude Include="forms\form_video.h" />
     <ClInclude Include="forms\form_video_box.h" />
     <ClInclude Include="fsu_archive.h" />
     <ClInclude Include="fs_archive.h" />

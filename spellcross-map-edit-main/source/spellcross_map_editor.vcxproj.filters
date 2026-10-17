@@ -93,12 +93,6 @@
     <ClCompile Include="riff_loader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="forms\form_events.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_gr_view.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
     <ClCompile Include="forms\form_loader.cpp">
       <Filter>Source Files\forms</Filter>
     </ClCompile>
@@ -108,25 +102,7 @@
     <ClCompile Include="forms\form_message_box.cpp">
       <Filter>Source Files\forms</Filter>
     </ClCompile>
-    <ClCompile Include="forms\form_new_object.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_objects.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_pal_view.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_sprite_view.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
     <ClCompile Include="forms\form_unit_options.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_units.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_video.cpp">
       <Filter>Source Files\forms</Filter>
     </ClCompile>
     <ClCompile Include="forms\form_video_box.cpp">
@@ -144,25 +120,10 @@
     <ClCompile Include="forms\form_map_units_list.cpp">
       <Filter>Source Files\forms</Filter>
     </ClCompile>
-    <ClCompile Include="forms\form_mission_params.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
     <ClCompile Include="forms\form_mmenu.cpp">
       <Filter>Source Files\forms</Filter>
     </ClCompile>
     <ClCompile Include="forms\form_about.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_anm.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_sound.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_flags.cpp">
-      <Filter>Source Files\forms</Filter>
-    </ClCompile>
-    <ClCompile Include="forms\form_edit_toolset.cpp">
       <Filter>Source Files\forms</Filter>
     </ClCompile>
     <ClCompile Include="level.cpp">
@@ -237,12 +198,6 @@
     <ClInclude Include="riff_loader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="forms\form_events.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_gr_view.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
     <ClInclude Include="forms\form_loader.h">
       <Filter>Header Files\forms</Filter>
     </ClInclude>
@@ -252,25 +207,7 @@
     <ClInclude Include="forms\form_message_box.h">
       <Filter>Header Files\forms</Filter>
     </ClInclude>
-    <ClInclude Include="forms\form_new_object.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_objects.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_pal_view.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_sprite_view.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
     <ClInclude Include="forms\form_unit_options.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_units.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_video.h">
       <Filter>Header Files\forms</Filter>
     </ClInclude>
     <ClInclude Include="forms\form_video_box.h">
@@ -351,22 +288,10 @@
     <ClInclude Include="forms\form_map_units_list.h">
       <Filter>Header Files\forms</Filter>
     </ClInclude>
-    <ClInclude Include="forms\form_mission_params.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
     <ClInclude Include="forms\form_mmenu.h">
       <Filter>Header Files\forms</Filter>
     </ClInclude>
     <ClInclude Include="forms\form_about.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_anm.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_sound.h">
-      <Filter>Header Files\forms</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_flags.h">
       <Filter>Header Files\forms</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
@@ -380,9 +305,6 @@
     </ClInclude>
     <ClInclude Include="wx_other.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="forms\form_edit_toolset.h">
-      <Filter>Header Files\forms</Filter>
     </ClInclude>
     <ClInclude Include="level.h">
       <Filter>Header Files</Filter>
