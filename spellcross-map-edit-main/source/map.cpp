@@ -1858,6 +1858,18 @@ int SpellMap::SetGameMode(int new_mode)
 }
 
 // game mode
+void SpellMap::SetDeploymentMode(bool on)
+{
+    if (deployment_mode == on) return;
+    deployment_mode = on;
+    InvalidateHUDbuttons();
+}
+
+bool SpellMap::IsDeploymentMode() const
+{
+    return deployment_mode;
+}
+
 int SpellMap::isGameMode()
 {
 	return(game_mode);
@@ -10082,7 +10094,12 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 			CreateHUDbutton(gres.wm_glyph_map, hud_origin, btn_right[0], buf, buf_end, buf_x_size, HUD_ACTION_MINIMAP, NULL, NULL);
 			CreateHUDbutton((unit_sel_land_preference) ? (gres.wm_glyph_ground) : (gres.wm_glyph_air), hud_origin, btn_right[1], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchAirLand, this), NULL);
 			CreateHUDbutton(gres.wm_glyph_goto_unit, hud_origin, btn_right[2], buf, buf_end, buf_x_size, HUD_ACTION_UNITS, NULL, NULL);
-			CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchEndTurn, this), NULL);
+			if (deployment_mode)
+				CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3],
+					buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
+			else
+				CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3],
+					buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchEndTurn, this), NULL);
 
 			CreateHUDbutton(gres.wm_glyph_unit_info, hud_origin, btn_right[4], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchUnitHUD, this), NULL);
 			CreateHUDbutton(gres.wm_glyph_info, hud_origin, btn_right[5], buf, buf_end, buf_x_size, 0, NULL, NULL);
