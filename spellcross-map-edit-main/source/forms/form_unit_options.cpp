@@ -18,13 +18,13 @@ FormUnitOpts::FormUnitOpts(wxPanel *parent, wxWindowID win_id, wxPoint position,
     if (flags & SpellMap::UNIT_OPT_SELECT_UPPER)
     {
         glyphs.push_back(m_spelldata->gres.wm_sel_upper);
-        m_labels.push_back("Select air");
+        m_labels.push_back("Upper");
         m_actions.push_back(SpellMap::UNIT_OPT_SELECT_UPPER);
     }
     if (flags & SpellMap::UNIT_OPT_SELECT_LOWER)
     {
         glyphs.push_back(m_spelldata->gres.wm_sel_lower);
-        m_labels.push_back("Select ground");
+        m_labels.push_back("Lower");
         m_actions.push_back(SpellMap::UNIT_OPT_SELECT_LOWER);
     }
     if (flags & SpellMap::UNIT_OPT_UPPER)
@@ -138,9 +138,33 @@ void FormUnitOpts::OnPaintTab(wxPaintEvent& event)
     const int x_size = m_spelldata->gres.wm_sel_tab->x_size;
     const int y_size = static_cast<int>(back.size()) / x_size;
     if (m_hovered_action >= 0 && m_hovered_action < static_cast<int>(m_labels.size()))
-        m_spelldata->font->Render(buf, buf + back.size(), x_size,
-            3, 29 + (m_hovered_action / 2) * m_tab_height, 54, 13,
-            info_label, 0xFF, 0xFE, SpellFont::FontShadow::RIGHT_DOWN);
+    {
+        // I_TAB is exactly 60x45; its original text slot is only 54 px
+        // wide. The old "Select ground" label was centred at a negative
+        // x coordinate and rendered outside the native artwork. The
+        // stock UPPER/LOWER captions fit; also guard future/modded labels.
+        constexpr int label_x = 3;
+        constexpr int label_width = 54;
+        constexpr int safe_width = label_width - 2; // 1px margin per side
+        std::string caption = info_label;
+        if (m_spelldata->font->GetTextWidth(caption) > safe_width)
+        {
+            // Keep the entire text inside the original DOS popup, even if
+            // another action gets a longer caption in a future update.
+            const std::string suffix = ".";
+            while (!caption.empty() &&
+                   m_spelldata->font->GetTextWidth(caption + suffix) > safe_width)
+                caption.pop_back();
+            if (!caption.empty())
+                caption += suffix;
+        }
+
+        if (!caption.empty())
+            m_spelldata->font->Render(buf, buf + back.size(), x_size,
+                label_x, 29 + (m_hovered_action / 2) * m_tab_height,
+                label_width, 13, caption, 0xFF, 0xFE,
+                SpellFont::FontShadow::RIGHT_DOWN);
+    }
 
     uint8_t (*pal)[3] = m_spelldata->gres.wm_sel_tab->pal;
     wxBitmap bmp(x_size, y_size, 24);
