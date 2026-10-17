@@ -997,7 +997,6 @@ public:
 		int  GetActiveGroup() const { return active_group; }
 		bool IsGroupMode() const { return active_group != 0; }
 		bool IsUnitInActiveGroup(const MapUnit* u) const;
-		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
 		bool IsActiveGroupMoving() const { return group_move_active; }
 		void CancelActiveGroupMovement();
 		void AddAllUnitsToActiveGroup();
