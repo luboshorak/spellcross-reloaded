@@ -1877,7 +1877,18 @@ void MainFrame::StartTacticalGame()
         spell_map->unit_view->AddUnitsView();
     }
     if (m_deployment_active)
-        ShowDeploymentUI();
+    {
+        // No pop-up: the map and its original HUD are the deployment UI.
+        // The player selects a visible company or cycles with the two
+        // native top buttons, then clicks another START cross.
+        m_deployment_selection = 0;
+        m_deployment_blink_ticks = 0;
+        spell_map->deployment_blink_visible = true;
+        MapUnit* first = m_deployment_units.front();
+        if (first)
+            spell_map->SelectUnit(first, true);
+        spell_map->InvalidateHUDbuttons();
+    }
     if (canvas) canvas->Refresh();
 }
 
@@ -1896,69 +1907,15 @@ void MainFrame::ResetDeploymentUI()
 {
     if (spell_map)
         spell_map->SetDeploymentMode(false);
-    if (m_deployment_panel)
-    {
-        m_deployment_panel->Destroy();
-        m_deployment_panel = nullptr;
-    }
-    m_deployment_list = nullptr;
     m_deployment_units.clear();
     m_deployment_requested = false;
     m_deployment_active = false;
     m_deployment_selection = 0;
+    m_deployment_blink_ticks = 0;
 }
 
-void MainFrame::ShowDeploymentUI()
-{
-    if (!canvas || m_deployment_panel || m_deployment_units.empty()) return;
-
-    m_deployment_panel = new wxPanel(canvas, wxID_ANY, wxPoint(12, 12),
-                                     wxSize(320, 340), wxBORDER_SIMPLE);
-    m_deployment_panel->SetBackgroundColour(wxColour(30, 38, 38));
-    auto* layout = new wxBoxSizer(wxVERTICAL);
-    auto* title = new wxStaticText(m_deployment_panel, wxID_ANY,
-                                  "DEPLOY UNITS - BEFORE BATTLE");
-    title->SetForegroundColour(wxColour(110, 224, 105));
-    title->SetFont(title->GetFont().Bold());
-    layout->Add(title, 0, wxALL, 9);
-    auto* help = new wxStaticText(m_deployment_panel, wxID_ANY,
-        "Select a unit and click a START square to place it.\n"
-        "Shift-click another company to swap positions.\n"
-        "All companies must remain on START squares.");
-    help->SetForegroundColour(*wxWHITE);
-    layout->Add(help, 0, wxLEFT | wxRIGHT | wxBOTTOM, 9);
-    m_deployment_list = new wxListBox(m_deployment_panel, wxID_ANY);
-    for (size_t i = 0; i < m_deployment_units.size(); ++i)
-    {
-        MapUnit* unit = m_deployment_units[i];
-        const wxString name = unit && unit->unit
-            ? wxString::FromUTF8(unit->unit->name)
-            : wxString("Company");
-        m_deployment_list->Append(wxString::Format("%02d. ", static_cast<int>(i + 1)) + name);
-    }
-    layout->Add(m_deployment_list, 1, wxEXPAND | wxLEFT | wxRIGHT, 9);
-    auto* finish = new wxButton(m_deployment_panel, wxID_ANY,
-                                "START BATTLE (Enter)");
-    layout->Add(finish, 0, wxEXPAND | wxALL, 9);
-    m_deployment_panel->SetSizer(layout);
-
-    m_deployment_selection = 0;
-    m_deployment_list->SetSelection(0);
-    if (spell_map && m_deployment_units.front())
-        spell_map->SelectUnit(m_deployment_units.front(), true);
-
-    m_deployment_list->Bind(wxEVT_LISTBOX, [this](wxCommandEvent&) {
-        if (!m_deployment_list || !spell_map) return;
-        const int selected = m_deployment_list->GetSelection();
-        if (selected < 0 || selected >= static_cast<int>(m_deployment_units.size()))
-            return;
-        m_deployment_selection = selected;
-        spell_map->SelectUnit(m_deployment_units[static_cast<size_t>(selected)], true);
-        if (canvas) canvas->Refresh();
-    });
-    finish->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { FinishDeployment(); });
-    m_deployment_panel->Raise();
-}
+// No extra widgets: the original unit HUD and START crosses provide all
+// interaction during the frozen pre-battle placement phase.
 
 void MainFrame::PlaceDeploymentUnit(MapXY tile, bool swap)
 {
@@ -2007,7 +1964,6 @@ void MainFrame::PlaceDeploymentUnit(MapXY tile, bool swap)
             return;
         }
         m_deployment_selection = static_cast<int>(i);
-        if (m_deployment_list) m_deployment_list->SetSelection(m_deployment_selection);
         spell_map->SelectUnit(unit);
         if (canvas) canvas->Refresh();
         return;
@@ -2061,13 +2017,8 @@ void MainFrame::FinishDeployment()
 
     m_deployment_active = false;
     m_deployment_requested = false;
+    m_deployment_blink_ticks = 0;
     spell_map->SetDeploymentMode(false);
-    if (m_deployment_panel)
-    {
-        m_deployment_panel->Destroy();
-        m_deployment_panel = nullptr;
-        m_deployment_list = nullptr;
-    }
     m_deployment_units.clear();
 
     // Only now fire MissionStart and save the battle's initial state. That
@@ -4253,8 +4204,22 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     // allowed the rescued ArmyUnit Commando to be killed after the mission had
     // already been declared complete, so it intermittently vanished before
     // LEVEL_02 was created.
-    if (m_mission_end_flow || m_deployment_active)
+    if (m_mission_end_flow)
         return;
+
+    if (m_deployment_active)
+    {
+        // The retail placement icon flashes; the AI and mission events must
+        // remain frozen until the player presses it. Main timer runs at 10 ms.
+        if (++m_deployment_blink_ticks >= 40)
+        {
+            m_deployment_blink_ticks = 0;
+            spell_map->deployment_blink_visible = !spell_map->deployment_blink_visible;
+            spell_map->InvalidateHUDbuttons();
+            if (canvas) canvas->Refresh();
+        }
+        return;
+    }
 
     if (m_tutorial_stage == 1)
     {
@@ -4869,15 +4834,33 @@ void MainFrame::OnHUDbuttonsLeave(wxMouseEvent& event)
 }
 void MainFrame::OnHUDbuttonsClick(wxMouseEvent& event)
 {
-    // The retail game's end-turn glyph also confirms the initial deployment.
-    // All combat/turn buttons remain inactive until the formation is accepted.
+    // Only the two unit-cycle glyphs and the original flashing UKONCEN
+    // button work before battle. Never let regular HUD actions spend AP,
+    // execute special actions or end the player's turn during deployment.
     if (m_deployment_active)
     {
+        if (event.GetEventType() != wxEVT_LEFT_UP || !spell_map)
+            return;
         auto* panel = static_cast<wxPanel*>(event.GetEventObject());
         auto* action = spell_map->GetHUDbutton(panel->GetId());
-        if (action && action->action_id == SpellMap::HUD_ACTION_DEPLOY_FINISH &&
-            event.GetEventType() == wxEVT_LEFT_UP)
+        if (!action || action->is_disabled)
+            return;
+        if (action->action_id == SpellMap::HUD_ACTION_DEPLOY_FINISH)
+        {
             FinishDeployment();
+        }
+        else if (action->action_id == SpellMap::HUD_ACTION_DEPLOY_NEXT_UNIT)
+        {
+            spell_map->OnHUDnextUnit();
+            MapUnit* active = spell_map->GetSelectedUnit();
+            for (size_t i = 0; i < m_deployment_units.size(); ++i)
+                if (m_deployment_units[i] == active)
+                {
+                    m_deployment_selection = static_cast<int>(i);
+                    break;
+                }
+            if (canvas) canvas->Refresh();
+        }
         return;
     }
     wxPanel* pan = (wxPanel*)event.GetEventObject();
