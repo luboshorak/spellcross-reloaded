@@ -10156,9 +10156,12 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_NEXT_UNIT, NULL, NULL);
 			CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1],
 				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_NEXT_UNIT, NULL, NULL);
-			if (deployment_blink_visible && gres.wm_glyph_end_placement)
-				CreateHUDbutton(gres.wm_glyph_end_placement, hud_origin, btn_top[2],
-					buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
+			// Keep the clickable control alive through both flashing phases.
+			// Only the native glyph changes; mouse-up must never be lost.
+			if (gres.wm_glyph_end_placement)
+				CreateHUDbutton(deployment_blink_visible ? gres.wm_glyph_end_placement : nullptr,
+					hud_origin, btn_top[2], buf, buf_end, buf_x_size,
+					HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
 		}
 		else
 		{
