@@ -6504,6 +6504,28 @@ tuple<int, int> SpellMap::GetSurfPos(MapXY& pos)
 	return tuple(mxx, myy);
 }
 
+// Original manual: a unit on higher terrain gains one tile of firing
+// distance per full elevation level above its target. The UI must still show
+// base range (without the height bonus), so compute this only for a target.
+int SpellMap::GetEffectiveFireRange(const MapUnit* shooter, MapXY target) const
+{
+    if (!shooter || !shooter->unit)
+        return 0;
+    const int base = shooter->GetFireRange();
+    if (!shooter->coor.IsSelected() || !target.IsSelected() ||
+        shooter->coor.x < 0 || shooter->coor.y < 0 ||
+        target.x < 0 || target.y < 0 ||
+        shooter->coor.x >= x_size || shooter->coor.y >= y_size ||
+        target.x >= x_size || target.y >= y_size)
+        return base;
+    const int from = shooter->coor.x + shooter->coor.y * x_size;
+    const int to = target.x + target.y * x_size;
+    if (static_cast<size_t>(from) >= tiles.size() ||
+        static_cast<size_t>(to) >= tiles.size())
+        return base;
+    return base + std::max(0, tiles[from].elev - tiles[to].elev);
+}
+
 // scroll map so tile is in center
 int SpellMap::ScrollToTile(MapXY& tile, TScroll* scroll)
 {
@@ -8465,7 +8487,7 @@ void SpellMap::PlanEnemyAIGroups()
                         continue;
 
                     const double d = defender->coor.Distance(target->coor);
-                    const int range = defender->GetFireRange();
+                    const int range = GetEffectiveFireRange(defender, target->coor);
                     if (range <= 0 || d > (double)range)
                         continue;
                     if (defender->unit->isIndirectFire() && target->unit->isLand() && d <= 2.0)
@@ -8731,7 +8753,9 @@ bool SpellMap::MoveEnemyToward(MapUnit* enemy, MapXY goal, bool stop_in_attack_r
             {
                 const double d = advance.Distance(goal);
                 const bool min_ok = !(enemy->unit->isIndirectFire() && d <= 2.0);
-                if (d <= fire_range && min_ok)
+                const int heightBonus = std::max(0,
+                    tiles[ConvXY(advance)].elev - tiles[ConvXY(goal)].elev);
+                if (d <= fire_range + heightBonus && min_ok)
                     break;
             }
         }
@@ -9311,7 +9335,7 @@ bool SpellMap::EnemyTurnStep()
             if (goal.IsSelected())
             {
                 const double dist = enemy->coor.Distance(goal);
-                const int fire_range = (std::max)(1, enemy->GetFireRange());
+                const int fire_range = (std::max)(1, GetEffectiveFireRange(enemy, goal));
                 if (dist > fire_range)
                     moved = MoveEnemyToward(enemy, goal, true);
             }
@@ -11559,17 +11583,12 @@ void SpellMap::ViewRange::Worker()
 
 			// next tile elevation
 			int next_alt = map->tiles[next_mxy].elev;
-			int view;
-			if (is_fire)
-			{
-				// fire/attack range must NOT expand with elevation difference
-				view = ref_view;
-			}
-			else
-			{
-				// sight range can expand when looking downhill
-				view = ref_view + (std::max)(ref_alt - next_alt, 0);
-			}
+			// Original manual explicitly grants downhill bonus to BOTH direct
+			// visibility and weapon distance: +1 tile per elevation level.
+			// Radar pulses are a separate fixed-radius ability.
+			int view = ref_view;
+			if (!is_radar)
+				view += (std::max)(ref_alt - next_alt, 0);
 
 			// visible?
 			if ((next_pos.Distance(ref_pos) - 0.5) > view)
