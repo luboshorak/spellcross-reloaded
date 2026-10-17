@@ -339,7 +339,17 @@ namespace
             ec.clear();
         }
 
-        // No config yet: create/use one beside the executable.
+        // In the development checkout, create a persistent local config
+        // next to the tracked example, rather than one per Debug/Release EXE.
+        // This file is ignored by Git and survives rebuilding the project.
+        // The portable distribution has no source/config.example.ini and
+        // therefore continues to store config.ini beside Spellcross.exe.
+        const fs::path source_dir = runtime_root / "source";
+        ec.clear();
+        if (fs::is_regular_file(source_dir / "config.example.ini", ec) && !ec)
+            return fs::absolute(source_dir / "config.ini").lexically_normal();
+
+        // Portable release / new standalone installation.
         return fs::absolute(executable_dir / "config.ini").lexically_normal();
     }
 
@@ -2193,6 +2203,22 @@ bool MyApp::OnInit()
             if (ini.LoadFile(config_path.c_str()) != SI_OK)
             {
                 wxMessageBox(string_format("Loading configuration failed:\n%ls", config_path.c_str()),
+                    "Startup error", wxICON_ERROR);
+                return false;
+            }
+        }
+        else
+        {
+            // Seed new source checkouts from the versioned example. Do not
+            // overwrite a user's real config or copy their machine-specific
+            // paths back into Git. The startup wizard will save config.ini.
+            cfgEc.clear();
+            const fs::path example = cfg.parent_path() / "config.example.ini";
+            if (fs::is_regular_file(example, cfgEc) && !cfgEc &&
+                fs::file_size(example, cfgEc) > 0 && !cfgEc &&
+                ini.LoadFile(example.wstring().c_str()) != SI_OK)
+            {
+                wxMessageBox("Loading default configuration template failed.",
                     "Startup error", wxICON_ERROR);
                 return false;
             }

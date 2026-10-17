@@ -46,3 +46,9 @@ spellcross-map-edit-main.7z
 /spellcross-map-edit-main/wxFormsBuilder/form_sprites.fbp
 /spellcross-map-edit-main/wxFormsBuilder/form_sprite_view.cpp
 /spellcross-map-edit-main/wxFormsBuilder/form_sprite_view.h
+
+# Player settings are generated at runtime and can contain local ISO/CD paths.
+# The tracked defaults live in source/config.example.ini instead.
+/config.ini
+/spellcross-map-edit-main/config.ini
+/spellcross-map-edit-main/source/config.ini
