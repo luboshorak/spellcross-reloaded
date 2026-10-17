@@ -5575,7 +5575,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		deployment_allowed.assign(static_cast<size_t>(x_size) * y_size, 0);
 		for (const MapXY& pos : start)
 			if (pos.x >= 0 && pos.x < x_size && pos.y >= 0 && pos.y < y_size)
-				deployment_allowed[static_cast<size_t>(ConvXY(pos))] = 1;
+				deployment_allowed[static_cast<size_t>(ConvXY(pos.x, pos.y))] = 1;
 	}
 	const auto deployment_tile_hidden = [&](int index) -> bool {
 		return deployment_mode &&
