@@ -1863,6 +1863,8 @@ void SpellMap::SetDeploymentMode(bool on)
     if (deployment_mode == on) return;
     deployment_mode = on;
     deployment_blink_visible = true;
+    if (!on)
+        deployment_preview_unit = nullptr;
     InvalidateHUDbuttons();
 }
 
@@ -1991,6 +1993,9 @@ void SpellMap::Close()
 	// loose start/ciel
 	start.clear();
 	escape.clear();
+	// Queued company previews are owned by MainFrame, not this map.
+	deployment_mode = false;
+	deployment_preview_unit = nullptr;
 	// loose units layer
 	Lunit.clear();
 	// loose units list
@@ -9778,14 +9783,19 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 	}
 	last_enemy_turn_hud = false;
 
+	// During placement, the left panel is the next queued company,
+	// even though that company has not appeared on the battlefield yet.
+	MapUnit* hud_selected_unit = (deployment_mode && deployment_preview_unit)
+		? deployment_preview_unit : unit_selection;
+
 	// for left and right panels
 	for (int pid = 0; pid < 2; pid++)
 	{
 		MapUnit* unit;
 		int px_ref = 0;
 		int ix_ref = 0;
-		if (pid == 0 && unit_selection)
-			unit = unit_selection;
+		if (pid == 0 && hud_selected_unit)
+			unit = hud_selected_unit;
 		else if (pid == 1 && cursor_unit && !destructible)
 		{
 			unit = cursor_unit;
@@ -9985,7 +9995,7 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 
 		// render state text
 		// pos: 244,77  size: 150,16
-		if ((pid == 0 && !cursor_unit) || (pid == 1 && unit_selection))
+		if ((pid == 0 && !cursor_unit) || (pid == 1 && hud_selected_unit))
 			font->Render(buf, buf_end, buf_x_size, hud_left + 244, hud_top + 77, 150, 16, string_format("ab: %d / attack: %d", ap_left, fire_count), 232, 254, SpellFont::DIAG2);
 
 		// render unit icon
@@ -10051,11 +10061,11 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 
 	// can unit heal?
 	int can_heal = 0;
-	if (unit_selection)
-		can_heal = unit_selection->HasMaxAP() && unit_selection->HasWounded();
+	if (hud_selected_unit)
+		can_heal = hud_selected_unit->HasMaxAP() && hud_selected_unit->HasWounded();
 
 	// modify HUD buttons?
-	int state_changed = isRenderSurfModified() || cursor_unit != last_cursor_unit || unit_selection != last_selected_unit || hud_enabled != last_hud_state ||
+	int state_changed = isRenderSurfModified() || cursor_unit != last_cursor_unit || hud_selected_unit != last_selected_unit || hud_enabled != last_hud_state ||
 		last_can_heal != can_heal || last_destructible != destructible;
 
 	if (state_changed && hud_buttons_cb)
@@ -10086,23 +10096,23 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 			CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnit, this), NULL);
 		}
 
-		if (!deployment_mode && unit_selection && unit_selection->unit->hasSpecAction())
+		if (!deployment_mode && hud_selected_unit && hud_selected_unit->unit->hasSpecAction())
 		{
 			// render middle buttons (unit actions)
-			int can_do_action = unit_selection->CanSpecAction();
-			if (unit_selection->unit->isActionTurretDown() || unit_selection->unit->isActionTurretUp())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDturretToggle, this), NULL, !can_do_action);
-			else if (unit_selection->unit->isActionToggleRadar())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(unit_selection->radar_up), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDradarToggle, this), NULL, !can_do_action);
-			else if (unit_selection->unit->isActionLand() || unit_selection->unit->isActionTakeOff())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDairLandTakeOff, this), NULL, !can_do_action);
-			else if (unit_selection->unit->isActionToFortres() || unit_selection->unit->isActionFromFortres())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDfortresToggle, this), NULL, !can_do_action);
-			else if (unit_selection->unit->isActionCreateUnit())
-				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDcreateUnit, this), NULL, !can_do_action);
+			int can_do_action = hud_selected_unit->CanSpecAction();
+			if (hud_selected_unit->unit->isActionTurretDown() || hud_selected_unit->unit->isActionTurretUp())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDturretToggle, this), NULL, !can_do_action);
+			else if (hud_selected_unit->unit->isActionToggleRadar())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(hud_selected_unit->radar_up), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDradarToggle, this), NULL, !can_do_action);
+			else if (hud_selected_unit->unit->isActionLand() || hud_selected_unit->unit->isActionTakeOff())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDairLandTakeOff, this), NULL, !can_do_action);
+			else if (hud_selected_unit->unit->isActionToFortres() || hud_selected_unit->unit->isActionFromFortres())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDfortresToggle, this), NULL, !can_do_action);
+			else if (hud_selected_unit->unit->isActionCreateUnit())
+				CreateHUDbutton(hud_selected_unit->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDcreateUnit, this), NULL, !can_do_action);
 		}
 
-		if (!deployment_mode && unit_selection)
+		if (!deployment_mode && hud_selected_unit)
 			CreateHUDbutton(gres.wm_glyph_heal, hud_origin, btn_top[3], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDhealUnit, this), NULL, !can_heal);
 
 		if (!cursor_unit && !destructible)
@@ -10131,7 +10141,7 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 	// store last units for change detection
 	last_hud_state = hud_enabled;
 	last_cursor_unit = cursor_unit;
-	last_selected_unit = unit_selection;
+	last_selected_unit = hud_selected_unit;
 	last_can_heal = can_heal;
 	last_destructible = destructible;
 
