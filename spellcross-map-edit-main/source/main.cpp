@@ -5664,8 +5664,11 @@ void MainFrame::OnUnitClick_cb(int option)
     else if(option & SpellMap::UNIT_OPT_ATTACK || option & SpellMap::UNIT_OPT_LOWER || option & SpellMap::UNIT_OPT_UPPER)
     {
         // attack (unit or object)
-        int is_upper = option & SpellMap::UNIT_OPT_UPPER;
-        spell_map->Attack(select_pos, is_upper);
+        // The two native layer choices are strict. Generic ATTACK (shown
+        // when only one attack layer exists) may resolve either layer.
+        const int target_layer = (option & SpellMap::UNIT_OPT_UPPER) ? 1
+            : (option & SpellMap::UNIT_OPT_LOWER) ? 0 : -1;
+        spell_map->Attack(select_pos, target_layer);
     }
 }
 
