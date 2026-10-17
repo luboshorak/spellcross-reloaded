@@ -3472,19 +3472,119 @@ bool MainFrame::StartTutorialStage(int stage)
     m_mission_result_stage = MissionResultStage::None;
     m_mission_end_req = SpellMap::MissionEndRequest();
     m_mission_earned_units.clear();
+    m_tutorial_command = (stage == 1 ? 1 : 0);
+    m_tutorial_command_shown = 0;
+    m_tutorial_pressed_m = false;
+    m_tutorial_pressed_rmb = false;
+    m_tutorial_clicked_square = false;
 
     if (!LoadMapFromDefPath(path.wstring(), {}))
         return false;
     m_tutorial_stage = stage;
     StartTacticalGame();
     ShowTacticalWindow();
-    if (stage == 1 && spell_data->texts)
-    {
-        // The original TUT01.TUT starts with EventText(TUT01_01).
-        if (SpellTextRec* help = spell_data->texts->GetText("TUT01_01"))
-            ShowMessage(help, false, nullptr);
-    }
+    if (stage == 1)
+        UpdateTutorialGuide();
     return true;
+}
+
+// Interpret the retail TUT01.TUT training progression. The original script
+// specifies EventText, WaitForInput(M/RMB), CenterOnSquare, LClickOnSquare,
+// UnitToSquare, WaitObjDest, SeeSquare and TutorialEnd. These source-derived
+// gates are intentionally separate from ordinary campaign missions.
+void MainFrame::UpdateTutorialGuide()
+{
+    if (m_tutorial_stage != 1 || !spell_map || !spell_map->IsLoaded() ||
+        m_tutorial_command < 1 || m_tutorial_command > 15 ||
+        m_mission_end_flow || m_deployment_active || CheckMessageState())
+        return;
+
+    const int step = m_tutorial_command;
+    if (m_tutorial_command_shown != step)
+    {
+        m_tutorial_command_shown = step;
+        if (step == 4)
+        {
+            m_tutorial_pressed_m = false;
+            m_tutorial_pressed_rmb = false;
+        }
+        if (step == 7)
+            m_tutorial_clicked_square = false;
+
+        // Only some TutCommand blocks contain EventText. Use the genuine
+        // original text records from TEXTS.FS instead of translated surrogates.
+        const bool hasText = (step >= 1 && step <= 4) ||
+            step == 6 || step == 7 || step == 8 || step == 9 ||
+            step == 10 || step == 11 || step == 12 || step == 13 || step == 14;
+        if (hasText && spell_data && spell_data->texts)
+        {
+            const std::string key = wxString::Format("TUT01_%02d", step).ToStdString();
+            if (SpellTextRec* msg = spell_data->texts->GetText(key.c_str()))
+            {
+                ShowMessage(msg, false, nullptr);
+                return;
+            }
+        }
+    }
+
+    // Original TUT01.TUT blocks 1-3/6/8/10/14 only display a message.
+    switch (step)
+    {
+        case 1: case 2: case 3: case 6: case 8: case 10: case 14:
+            ++m_tutorial_command;
+            break;
+        case 4: // WaitForInput(M), WaitForInput(RMB)
+            if (m_tutorial_pressed_m && m_tutorial_pressed_rmb)
+                ++m_tutorial_command;
+            break;
+        case 5: // CenterOnSquare(581)
+        {
+            if (spell_map->x_size > 0)
+            {
+                MapXY dest(581 % spell_map->x_size, 581 / spell_map->x_size);
+                spell_map->ScrollToTile(dest);
+            }
+            ++m_tutorial_command;
+            if (canvas) canvas->Refresh();
+            break;
+        }
+        case 7: // LClickOnSquare(868)
+            if (m_tutorial_clicked_square)
+                ++m_tutorial_command;
+            break;
+        case 9: // UnitToSquare(48,1115)
+        case 13: // UnitToSquare(49,1386)
+        {
+            const int id = step == 9 ? 48 : 49;
+            const int target = step == 9 ? 1115 : 1386;
+            MapUnit* unit = spell_map->GetUnit(id);
+            if (unit && spell_map->ConvXY(unit->coor) == target)
+                ++m_tutorial_command;
+            break;
+        }
+        case 11: // WaitObjDest(1372)
+        {
+            const int index = 1372;
+            if (spell_map->x_size > 0 && index < spell_map->x_size * spell_map->y_size)
+            {
+                MapXY square(index % spell_map->x_size, index / spell_map->x_size);
+                const MapSprite* tile = spell_map->GetTile(&square);
+                if (!tile || !tile->L2)
+                    ++m_tutorial_command;
+            }
+            break;
+        }
+        case 12: // SeeSquare(518)
+            if (spell_map->x_size > 0 &&
+                spell_map->TileIsVisible(518 % spell_map->x_size,
+                                         518 / spell_map->x_size))
+                ++m_tutorial_command;
+            break;
+        case 15: // TutorialEnd()
+            m_tutorial_command = 16;
+            break;
+        default: break;
+    }
 }
 
 void MainFrame::OnMainMenuAction(FormMainMenuAction action)
@@ -4087,6 +4187,14 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     // LEVEL_02 was created.
     if (m_mission_end_flow || m_deployment_active)
         return;
+
+    if (m_tutorial_stage == 1)
+    {
+        UpdateTutorialGuide();
+        // Do not run enemies underneath the instructional text window.
+        if (CheckMessageState())
+            return;
+    }
 
     if (spell_map->Tick())
         canvas->Refresh();
@@ -5015,6 +5123,8 @@ void MainFrame::OnViewMiniMap(wxCommandEvent& event)
 // --- scrolling control ---
 void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
 {
+    if (m_tutorial_stage == 1 && m_tutorial_command == 4 && event.RightUp())
+        m_tutorial_pressed_rmb = true;
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
     if (event.RightDown()) spell_map->scroller.SetRef(event.GetX(), event.GetY());
     else if (event.RightUp())
@@ -5075,6 +5185,9 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     if (form_minimap && form_minimap->form)
         wxQueueEvent(form_minimap->form, new wxCloseEvent(wxEVT_CLOSE_WINDOW, ID_MINIMAP_WIN));
     select_pos = spell_map->GetSelection(nullptr);
+    if (m_tutorial_stage == 1 && m_tutorial_command == 7 &&
+        select_pos.IsSelected() && spell_map->ConvXY(select_pos) == 868)
+        m_tutorial_clicked_square = true;
     if (spell_map->IsGroupMode())
     {
         if (!spell_map->IsActiveGroupMoving())
@@ -5171,6 +5284,10 @@ void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
     }
 
     int key = event.GetKeyCode();
+
+    if (m_tutorial_stage == 1 && m_tutorial_command == 4 &&
+        (key == 'M' || key == 'm'))
+        m_tutorial_pressed_m = true;
 
     if (m_deployment_active)
     {
