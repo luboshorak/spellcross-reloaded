@@ -905,6 +905,14 @@ namespace
         DWORD statusSize = sizeof(statusCode);
         const bool httpOk = HttpQueryInfoW(request, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
             &statusCode, &statusSize, nullptr) && statusCode >= 200 && statusCode < 300;
+        // Content-Length may be absent for chunked transfers. When supplied,
+        // validate the exact byte count to catch a prematurely closed socket.
+        wchar_t sizeText[48] = {};
+        DWORD sizeTextLength = sizeof(sizeText);
+        const bool hasLength = HttpQueryInfoW(request, HTTP_QUERY_CONTENT_LENGTH,
+            sizeText, &sizeTextLength, nullptr) != FALSE;
+        const unsigned long long expectedBytes = hasLength
+            ? _wcstoui64(sizeText, nullptr, 10) : 0;
         std::ofstream output;
         if (httpOk)
             output.open(part, std::ios::binary | std::ios::trunc);
@@ -941,13 +949,17 @@ namespace
         output.close();
         InternetCloseHandle(request);
         InternetCloseHandle(session);
+        if (ok && hasLength && expectedBytes != received)
+            ok = false;
 
-        if (ok && validIsoFile(part))
+        // A completed HTTP transfer is not proof of a valid ISO. Never pass
+        // a truncated/HTML error page to the importer, or replace a cached
+        // image before the new image has passed validation.
+        ok = ok && validIsoFile(part);
+        if (ok)
         {
-            fs::remove(iso_path, ec);
-            ec.clear();
-            fs::rename(part, iso_path, ec);
-            ok = !ec;
+            ok = MoveFileExW(part.c_str(), iso_path.c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
         }
         if (!ok)
         {
