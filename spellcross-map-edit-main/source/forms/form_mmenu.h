@@ -21,7 +21,6 @@ enum class FormMainMenuAction
     Credits,
     Intro,
     Exit,
-    GameModeOff,
     OpenEditor
 };
 

@@ -1932,7 +1932,7 @@ void MainFrame::UpdateMenuForGameMode()
         return;
 
     // Menu is restricted when editor is locked (default state).
-    // Console command GAMEMODEOFF unlocks it.
+    // Editor remains unavailable in the game build.
     bool restricted = !m_editor_unlocked;
 
     // File menu remains available in the shipped locked/game mode for
@@ -1946,23 +1946,11 @@ void MainFrame::UpdateMenuForGameMode()
     bar->Enable(ID_MainMenu, true);
 
     // Game menu = index 1: disable individual items except Save/Load game state
-    bar->Enable(ID_mmGameMode, !restricted);
     bar->Enable(ID_mmResetViewMap, !restricted);
     bar->Enable(ID_mmUnitViewMode, !restricted);
     // ID_mmSaveGameState and ID_mmLoadGameState stay enabled always
 
-    // Edit menu = index 2: disable entirely
-    bar->EnableTop(2, !restricted);
-
-    // View menu = index 3: disable entirely
-    bar->EnableTop(3, !restricted);
-
-    // Tools menu = index 4: disable entirely
-    bar->EnableTop(4, !restricted);
-
-    // Options menu = index 5: always enabled (Audio/Screen accessible in game mode)
-
-    // Help menu = index 6: always enabled
+    // Only File, Game, Options and Help are visible.
 }
 
 
@@ -2300,8 +2288,6 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
 
     // Game menu
     wxMenu* menuGame = new wxMenu;
-    menuGame->Append(ID_mmGameMode,"Game mode\tCtrl-G","Switch game mode",wxITEM_CHECK);
-    menuGame->AppendSeparator();
     menuGame->Append(ID_mmSaveGameState, "Save game state...\tCtrl+Shift+S", "Save current game snapshot to file.");
 	menuGame->Append(ID_mmLoadGameState, "Load game state...\tCtrl+Shift+L", "Load game snapshot from file.");
     menuGame->Append(ID_mmOpenMapEditor, "Open mission in Map Editor...",
@@ -2424,9 +2410,9 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     wxMenuBar* menuBar = new wxMenuBar;    
     menuBar->Append(menuFile, "&File");
     menuBar->Append(menuGame, "&Game");
-    menuBar->Append(menuEdit, "&Edit");
-    menuBar->Append(menuView, "&View");
-    menuBar->Append(menuTools,"&Tools");
+    // Editor menus are not part of the player-facing executable.
+    delete menuEdit;
+    delete menuTools;
     menuBar->Append(menuOptions, "&Options");
     menuBar->Append(menuHelp, "&Help");
     SetMenuBar(menuBar);
@@ -2524,7 +2510,6 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnAbout, this, wxID_ABOUT);
     Bind(wxEVT_MENU,&MainFrame::OnExit, this, wxID_EXIT);
 
-    Bind(wxEVT_MENU,&MainFrame::OnSwitchGameMode,this,ID_mmGameMode);
     Bind(wxEVT_MENU,&MainFrame::OnSaveGameState,this,ID_mmSaveGameState);
 	Bind(wxEVT_MENU,&MainFrame::OnLoadGameState,this,ID_mmLoadGameState);
     Bind(wxEVT_MENU,&MainFrame::OnOpenMapEditorFromBattle,this,ID_mmOpenMapEditor);
@@ -2603,7 +2588,7 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     /*SpellTextRec text("Experimental text message", SpellLang::CZE);
     ShowMessage(&text,true);*/
 
-    // Restrict menus at startup (editor locked by default, GAMEMODEOFF unlocks)
+    // Start with gameplay UI; no embedded editor unlock.
     UpdateMenuForGameMode();
 
     // ESC handler via CHAR_HOOK — fires BEFORE menu accelerators,
@@ -3915,14 +3900,6 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
             case FormMainMenuAction::Exit:
                 RequestApplicationExit();
                 return;
-            case FormMainMenuAction::GameModeOff:
-                m_editor_unlocked = true;
-                if(spell_map && spell_map->IsLoaded() && spell_map->isGameMode())
-                    SetGameModeUI(false);
-                else
-                    UpdateMenuForGameMode();
-                ShowTacticalWindow();
-                break;
             default:
                 break;
         }
@@ -6704,14 +6681,6 @@ void MainFrame::OnMapConsoleCommand()
             spell_map->CheckAndTriggerMissionEnd();
             if (canvas) canvas->Refresh();
         }
-    }
-    else if (cmd == "GAMEMODEOFF")
-    {
-        m_editor_unlocked = true;
-        if (spell_map && spell_map->IsLoaded() && spell_map->isGameMode())
-            SetGameModeUI(false);
-        else
-            UpdateMenuForGameMode();
     }
     else if (!cmd.empty())
     {

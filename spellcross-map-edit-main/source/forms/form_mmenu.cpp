@@ -752,12 +752,7 @@ void FormMainMenu::OnConsoleCommand()
     // to upper
     for (char& c : cmd) c = (char)std::toupper((unsigned char)c);
 
-    if (cmd == "GAMEMODEOFF")
-    {
-        if (m_action_cb)
-            m_action_cb(FormMainMenuAction::GameModeOff);
-    }
-    else if (!cmd.empty())
+    if (!cmd.empty())
     {
         wxMessageBox("Unknown command: " + dlg.GetValue(), "Console", wxOK | wxICON_WARNING, form);
     }
