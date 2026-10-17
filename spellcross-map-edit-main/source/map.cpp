@@ -5565,7 +5565,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		PasteBuffer(tiles, L3, L4, start, escape, targets, msel[0]);
 	}
 
-	int use_view_mask = game_mode || units_view_debug_mode;
+	// During pre-battle positioning display the terrain and every START cross.
+	// Do not expose enemy units simply because the fog filter is suspended.
+	int use_view_mask = !deployment_mode && (game_mode || units_view_debug_mode);
 
 	// FIX: v game mode se renderuje jen to, co je ve view masce.
 	// U nkterch map je view mask po startu przdn (vude 0) => ern obrazovka + HUD.
@@ -5895,6 +5897,13 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				// units render:
 				while (wUnits && unit && !hide_units)
 				{
+					// Pre-battle placement does not reveal enemy/scenario troops
+					// hidden behind the normal tactical fog of war.
+					if (deployment_mode && unit->is_enemy)
+					{
+						unit = unit->next;
+						continue;
+					}
 					if ((pass == 0 && unit->unit->isAir()) || pass == 2)
 					{
 						if (unit->is_visible < 2 && use_view_mask)
