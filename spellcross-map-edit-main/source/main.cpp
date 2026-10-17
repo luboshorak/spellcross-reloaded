@@ -5320,9 +5320,22 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     else
     {
         int options = spell_map->GetUnitOptions();
+        // The original I_TAB chooser is for ambiguous clicks only. A single
+        // possible action executes immediately: constructing a two-button
+        // chooser with one action used to close an uninitialised window.
+        // A single ground/air target uses the native generic ATTACK glyph
+        // when paired with MOVE or SELECT; two target layers remain distinct.
         if (!!(options & SpellMap::UNIT_OPT_LOWER) != !!(options & SpellMap::UNIT_OPT_UPPER))
             options = (options & ~(SpellMap::UNIT_OPT_LOWER | SpellMap::UNIT_OPT_UPPER)) | SpellMap::UNIT_OPT_ATTACK;
-        if (options)
+        const unsigned int bits = static_cast<unsigned int>(options);
+        unsigned int action_count = 0;
+        for (unsigned int remaining = bits; remaining; remaining &= remaining - 1)
+            ++action_count;
+        if (action_count == 1)
+        {
+            OnUnitClick_cb(options);
+        }
+        else if (action_count > 1)
         {
             wxPoint pos = event.GetPosition();
             pos.x -= 15;
