@@ -1862,6 +1862,7 @@ void SpellMap::SetDeploymentMode(bool on)
 {
     if (deployment_mode == on) return;
     deployment_mode = on;
+    deployment_blink_visible = true;
     InvalidateHUDbuttons();
 }
 
@@ -10066,10 +10067,26 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		// invalidate but keep old buttons
 		ClearHUDbuttons(true);
 
-		CreateHUDbutton(gres.wm_glyph_next_unused, hud_origin, btn_top[0], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnfinishedUnit, this), NULL);
-		CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnit, this), NULL);
+		if (deployment_mode)
+		{
+			// In the DOS game the third TOP slot (normally a special action) is
+			// the flashing "UKONCEN" button. It is NOT the end-turn icon in
+			// the right-side panel. Keep the first two native cycling glyphs.
+			CreateHUDbutton(gres.wm_glyph_next_unused, hud_origin, btn_top[0],
+				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_NEXT_UNIT, NULL, NULL);
+			CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1],
+				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_NEXT_UNIT, NULL, NULL);
+			if (deployment_blink_visible && gres.wm_glyph_end_placement)
+				CreateHUDbutton(gres.wm_glyph_end_placement, hud_origin, btn_top[2],
+					buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
+		}
+		else
+		{
+			CreateHUDbutton(gres.wm_glyph_next_unused, hud_origin, btn_top[0], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnfinishedUnit, this), NULL);
+			CreateHUDbutton(gres.wm_glyph_next, hud_origin, btn_top[1], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDnextUnit, this), NULL);
+		}
 
-		if (unit_selection && unit_selection->unit->hasSpecAction())
+		if (!deployment_mode && unit_selection && unit_selection->unit->hasSpecAction())
 		{
 			// render middle buttons (unit actions)
 			int can_do_action = unit_selection->CanSpecAction();
@@ -10085,14 +10102,8 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 				CreateHUDbutton(unit_selection->unit->GetActionBtnGlyph(), hud_origin, btn_top[2], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDcreateUnit, this), NULL, !can_do_action);
 		}
 
-		if (unit_selection)
+		if (!deployment_mode && unit_selection)
 			CreateHUDbutton(gres.wm_glyph_heal, hud_origin, btn_top[3], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDhealUnit, this), NULL, !can_heal);
-
-		// Deployment confirmation remains visible even when the mouse is over
-		// a company. The normal end-turn button must stay inactive here.
-		if (deployment_mode)
-			CreateHUDbutton(gres.wm_glyph_end_turn, hud_origin, btn_right[3],
-				buf, buf_end, buf_x_size, HUD_ACTION_DEPLOY_FINISH, NULL, NULL);
 
 		if (!cursor_unit && !destructible)
 		{
