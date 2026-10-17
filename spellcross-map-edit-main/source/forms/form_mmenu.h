@@ -19,6 +19,10 @@ enum class FormMainMenuAction
     Continue,
     LoadGame,
     Tutorial,
+    TutorialBasic,
+    TutorialFirstContact,
+    TutorialMission1,
+    TutorialMission2,
     Credits,
     Intro,
     Exit,
@@ -53,6 +57,9 @@ private:
 
     wxBitmap m_panel;
     wxPoint m_panel_pos;
+    wxBitmap m_tutorial_panel;
+    wxPoint m_tutorial_panel_pos;
+    bool m_tutorial_visible = false;
     wxSize m_panel_size;
     std::array<unsigned char, 256 * 3> m_pal256;
     bool m_pal256_ok;
@@ -62,7 +69,9 @@ private:
 
     bool LoadBackground();
     bool LoadPanel();
+    bool LoadTutorialPanel();
     void BuildMenuItems();
+    void BuildTutorialItems();
     void LayoutMenuItems(const wxSize& clientSize);
     void TriggerAction(int index);
 
