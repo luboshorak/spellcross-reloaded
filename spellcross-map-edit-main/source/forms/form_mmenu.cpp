@@ -492,13 +492,21 @@ bool FormMainMenu::LoadPanel()
     const int bgw = m_bg_size.x > 0 ? m_bg_size.x : 640;
     const int bgh = m_bg_size.y > 0 ? m_bg_size.y : 480;
 
-    int x = (bgw - m_panel_size.x) / 2;
-    int y = (bgh - m_panel_size.y) / 2;
-    
-    // Shift left and down
-    x -= 20;  // posun doleva (snížení x)
-    y += 79;  // posun dolů (zvýšení y)
-    
+    int x = (bgw - m_panel_size.x) / 2 - 20;
+    int y = (bgh - m_panel_size.y) / 2 + 79;
+
+    // The English MAINMENU.LZ has an actual 255x272 black cutout at
+    // logical (172,165). The earlier arbitrary +79 offset placed the
+    // panel at Y=183, leaving an 18-pixel black stripe above the buttons.
+    // Position the matching original artwork exactly over its opening.
+    // Leave the six-slot Czech variant's established layout unchanged.
+    if (m_bg_size == wxSize(640, 480) &&
+        m_panel_size == wxSize(255, 272))
+    {
+        x = 172;
+        y = 165;
+    }
+
     x = std::max(0, x);
     y = std::max(0, y);
 
