@@ -24,6 +24,11 @@
 #include <wx/filedlg.h>
 #include <wx/dirdlg.h>
 #include <wx/choicdlg.h>
+#include <wx/progdlg.h>
+#ifdef _WIN32
+#include <wininet.h>
+#pragma comment(lib, "wininet.lib")
+#endif
 #include "iso9660_import.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
@@ -820,6 +825,140 @@ namespace
         return {};
     }
 
+    // Download a user-selected, public CZ/EN Spellcross ISO to a private cache.
+    // The same ISO9660/INSTALL.DTA import pipeline handles downloaded and local
+    // images; downloading must not bypass archive validation or per-file setup.
+    static bool DownloadOriginalSpellcrossIso(const std::filesystem::path& runtime_root,
+        bool czech, std::filesystem::path& iso_path)
+    {
+        namespace fs = std::filesystem;
+        const wchar_t* url = czech
+            ? L"https://spellcross.czech-games.net/wp-content/uploads/ISO/Spellcross_CS.iso"
+            : L"https://spellcross.czech-games.net/wp-content/uploads/ISO/Spellcross_EN.iso";
+        const fs::path cache = runtime_root / "game_data" / "downloads";
+        iso_path = cache / (czech ? L"Spellcross_CS.iso" : L"Spellcross_EN.iso");
+        auto validIsoFile = [](const fs::path& p) -> bool
+        {
+            std::error_code ec;
+            if (!fs::is_regular_file(p, ec) || ec || fs::file_size(p, ec) < 34816 || ec)
+                return false;
+            std::ifstream stream(p, std::ios::binary);
+            char magic[5] = {};
+            stream.seekg(32769); // ISO9660 primary volume descriptor signature
+            stream.read(magic, sizeof(magic));
+            return stream && std::memcmp(magic, "CD001", sizeof(magic)) == 0;
+        };
+
+        if (validIsoFile(iso_path))
+        {
+            wxMessageDialog cached(nullptr,
+                "A previously downloaded Spellcross ISO is already available.\n\n"
+                "Use it without downloading again?",
+                "Spellcross ISO", wxYES_NO | wxICON_QUESTION);
+            if (cached.ShowModal() == wxID_YES)
+                return true;
+        }
+
+#ifndef _WIN32
+        wxMessageBox("Direct ISO download is supported by the Windows build. "
+            "Please use the manual ISO selection option.", "ISO download",
+            wxOK | wxICON_WARNING);
+        return false;
+#else
+        std::error_code ec;
+        fs::create_directories(cache, ec);
+        if (ec)
+        {
+            wxMessageBox("Cannot create the ISO cache folder.", "ISO download",
+                wxOK | wxICON_ERROR);
+            return false;
+        }
+        fs::path part = iso_path;
+        part += L".part";
+        fs::remove(part, ec);
+
+        // WinINet performs HTTPS verification and follows normal HTTP redirects.
+        HINTERNET session = InternetOpenW(L"Spellcross Reloaded", INTERNET_OPEN_TYPE_PRECONFIG,
+            nullptr, nullptr, 0);
+        if (!session)
+        {
+            wxMessageBox("Cannot initialize HTTPS download.", "ISO download",
+                wxOK | wxICON_ERROR);
+            return false;
+        }
+        DWORD timeout = 30000;
+        InternetSetOptionW(session, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+        InternetSetOptionW(session, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
+        HINTERNET request = InternetOpenUrlW(session, url, nullptr, 0,
+            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+        if (!request)
+        {
+            InternetCloseHandle(session);
+            wxMessageBox("Could not connect to the ISO download server. "
+                "Please check your network connection or select a local ISO.",
+                "ISO download", wxOK | wxICON_ERROR);
+            return false;
+        }
+
+        DWORD statusCode = 0;
+        DWORD statusSize = sizeof(statusCode);
+        const bool httpOk = HttpQueryInfoW(request, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
+            &statusCode, &statusSize, nullptr) && statusCode >= 200 && statusCode < 300;
+        std::ofstream output;
+        if (httpOk)
+            output.open(part, std::ios::binary | std::ios::trunc);
+
+        wxProgressDialog progress("Downloading Spellcross ISO",
+            czech ? "Downloading Czech Spellcross ISO..." : "Downloading English Spellcross ISO...",
+            100, nullptr, wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_AUTO_HIDE);
+        bool ok = httpOk && output.is_open();
+        unsigned long long received = 0;
+        std::vector<char> chunk(256 * 1024);
+        DWORD read = 0;
+        while (ok)
+        {
+            if (!InternetReadFile(request, chunk.data(), static_cast<DWORD>(chunk.size()), &read))
+            {
+                ok = false;
+                break;
+            }
+            if (!read) break;
+            output.write(chunk.data(), read);
+            if (!output)
+            {
+                ok = false;
+                break;
+            }
+            received += read;
+            if (!progress.Pulse(wxString::Format("Downloaded %.1f MiB",
+                static_cast<double>(received) / (1024.0 * 1024.0))))
+            {
+                ok = false; // user cancelled
+                break;
+            }
+        }
+        output.close();
+        InternetCloseHandle(request);
+        InternetCloseHandle(session);
+
+        if (ok && validIsoFile(part))
+        {
+            fs::remove(iso_path, ec);
+            ec.clear();
+            fs::rename(part, iso_path, ec);
+            ok = !ec;
+        }
+        if (!ok)
+        {
+            fs::remove(part, ec);
+            wxMessageBox("Download was cancelled or failed validation. "
+                "No existing ISO was replaced.", "ISO download",
+                wxOK | wxICON_WARNING);
+        }
+        return ok;
+#endif
+    }
+
     struct StartupSourceRequirement
     {
         const char* key;
@@ -1061,6 +1200,8 @@ namespace
                 options.Add("Use a CD, mounted ISO or extracted ISO folder");
                 options.Add("Use an existing Spellcross DATA folder");
                 options.Add("Select individual game archives manually");
+                options.Add("Download CZ ISO (Spellcross_CS.iso) and import");
+                options.Add("Download EN ISO (Spellcross_EN.iso) and import");
 
                 wxSingleChoiceDialog choice(nullptr,
                     "Spellcross needs files from your original game.\n\n"
@@ -1075,17 +1216,26 @@ namespace
                 if (option == 3)
                     break; // use the existing per-file fallback below
 
-                if (option == 0)
+                if (option == 0 || option == 4 || option == 5)
                 {
-                    wxFileDialog imageDialog(nullptr,
-                        "Select the original Spellcross ISO image",
-                        wxEmptyString, wxEmptyString,
-                        "ISO images (*.iso)|*.iso|All files (*.*)|*.*",
-                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-                    if (imageDialog.ShowModal() != wxID_OK)
-                        continue;
+                    fs::path imagePath;
+                    if (option == 0)
+                    {
+                        wxFileDialog imageDialog(nullptr,
+                            "Select the original Spellcross ISO image",
+                            wxEmptyString, wxEmptyString,
+                            "ISO images (*.iso)|*.iso|All files (*.*)|*.*",
+                            wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+                        if (imageDialog.ShowModal() != wxID_OK)
+                            continue;
+                        imagePath = fs::path(imageDialog.GetPath().ToStdWstring());
+                    }
+                    else if (!DownloadOriginalSpellcrossIso(runtime_root,
+                        option == 4, imagePath))
+                    {
+                        continue; // cancelled or failed: source wizard stays open
+                    }
 
-                    const fs::path imagePath(imageDialog.GetPath().ToStdWstring());
                     spellcross_iso::Reader iso;
                     std::string isoError;
                     {
