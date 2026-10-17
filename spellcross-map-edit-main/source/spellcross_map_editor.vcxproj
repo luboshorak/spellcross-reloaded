@@ -94,7 +94,6 @@
     <ClInclude Include="forms\form_mmenu.h" />
     <ClInclude Include="forms\form_midi.h" />
     <ClInclude Include="forms\form_minimap.h" />
-    <ClInclude Include="forms\form_strategic.h" />
     <ClInclude Include="forms\form_unit_options.h" />
     <ClInclude Include="forms\form_video_box.h" />
     <ClInclude Include="fsu_archive.h" />

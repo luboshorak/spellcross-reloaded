@@ -86,7 +86,7 @@ public:
     // the map when Alexander reaches the escape square.
     std::vector<LevelData::PlayerUnitAdd> m_mission_earned_units;
 
-    // Editor is locked by default (game mode UI). Console command GAMEMODEOFF unlocks it.
+    // Tactical gameplay and the standalone map editor are separate executables.
 
     // Strategic level reference for mission result callback
     class StrategicLevelFrame* m_strategicLevel = nullptr;
