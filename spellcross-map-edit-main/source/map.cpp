@@ -5565,8 +5565,24 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		PasteBuffer(tiles, L3, L4, start, escape, targets, msel[0]);
 	}
 
-	// During pre-battle positioning display the terrain and every START cross.
-	// Do not expose enemy units simply because the fog filter is suspended.
+	// Before battle reveal ONLY the valid START tiles where a company can
+	// actually be placed. All other terrain, objects, effects and units stay
+	// black. Do not mutate the real fog-of-war view: the battle will calculate
+	// it normally once the player finishes deploying.
+	std::vector<uint8_t> deployment_allowed;
+	if (deployment_mode)
+	{
+		deployment_allowed.assign(static_cast<size_t>(x_size) * y_size, 0);
+		for (const MapXY& pos : start)
+			if (pos.x >= 0 && pos.x < x_size && pos.y >= 0 && pos.y < y_size)
+				deployment_allowed[static_cast<size_t>(ConvXY(pos))] = 1;
+	}
+	const auto deployment_tile_hidden = [&](int index) -> bool {
+		return deployment_mode &&
+			(index < 0 || static_cast<size_t>(index) >= deployment_allowed.size() ||
+			 !deployment_allowed[static_cast<size_t>(index)]);
+	};
+
 	int use_view_mask = !deployment_mode && (game_mode || units_view_debug_mode);
 
 	// FIX: v game mode se renderuje jen to, co je ve view masce.
@@ -5604,6 +5620,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			uint8_t* fil = GetUnitRangeFilter(n + xs_ofs, m + ys_ofs * 2);
 
 			// game mode view range
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5672,6 +5690,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 			// game mode view range
 			uint8_t* fil = GetUnitRangeFilter(anm->x_pos, anm->y_pos);
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5716,7 +5736,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 				// game mode view range
 				uint8_t* fil = GetUnitRangeFilter(pos->x, pos->y);
-				if (use_view_mask && unit_view->view[mxy] == 0)
+				if (deployment_tile_hidden(mxy))
+				continue;
+			if (use_view_mask && unit_view->view[mxy] == 0)
 					continue;
 				else if (use_view_mask && unit_view->view[mxy] == 1)
 					fil = terrain->filter.darkpal;
@@ -5747,6 +5769,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			int y_pos = m + ys_ofs * 2;
 			int mxy = ConvXY(x_pos, y_pos);
 
+			// Suppress selection overlays on non-deployment terrain too.
+			if (deployment_tile_hidden(mxy))
+				continue;
 			// skip if not selected
 			if (!select[mxy])
 				continue;
@@ -5782,6 +5807,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 			// game mode view range
 			uint8_t* fil = GetUnitRangeFilter(n + xs_ofs, m + ys_ofs * 2);
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5821,6 +5848,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 			// game mode view range
 			uint8_t* fil = GetUnitRangeFilter(pnm->x_pos, pnm->y_pos);
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (use_view_mask && unit_view->view[mxy] == 1)
@@ -5882,6 +5911,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 			// game mode view range
 			int hide_units = use_view_mask && unit_view->view[mxy] < 1;
+			if (deployment_tile_hidden(mxy))
+				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
 			else if (hide_units)
