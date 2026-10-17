@@ -2133,15 +2133,6 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     SetTitle(BuildSpellcrossWindowTitle(spell_map));
 
     // subforms
-    form_gamma = NULL;
-    form_sprites = NULL;
-    form_anms = NULL;
-    form_objects = NULL;
-    form_pal = NULL;
-    form_gres = NULL;
-    form_units = NULL;
-    form_events = NULL;
-    form_videos = NULL;
     form_unit_opts = NULL;
     form_message = NULL;
     form_video_box = NULL;
@@ -2149,7 +2140,6 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     form_midi = NULL;
     form_minimap = NULL;
     form_units_list = NULL;
-    form_sounds = NULL;
     form_mmenu = NULL;
         
     wxMenu* menuFile = new wxMenu;
@@ -2271,6 +2261,7 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
 
     Bind(wxEVT_MENU,&MainFrame::OnSaveGameState,this,ID_mmSaveGameState);
 	Bind(wxEVT_MENU,&MainFrame::OnLoadGameState,this,ID_mmLoadGameState);
+    Bind(wxEVT_MENU,&MainFrame::OnOpenMapEditorFromBattle,this,ID_mmOpenMapEditor);
     Bind(wxEVT_MENU,&MainFrame::OnResetUnitView,this,ID_mmResetViewMap);
     Bind(wxEVT_MENU,&MainFrame::OnSelectUnitView,this,ID_mmUnitViewMode);
 
@@ -2637,170 +2628,11 @@ void MainFrame::StatusStringCallback(std::string info)
 
 void MainFrame::OnClose(wxCloseEvent& ev)
 {
-    if(ev.GetId() == ID_GAMMA_WIN)
-    {
-        form_gamma->Destroy();
-    }
-    else if (ev.GetId() == ID_OBJECTS_WIN)
-    {
-        form_objects->Destroy();
-
-    }
-    else if (ev.GetId() == ID_SPRITES_WIN)
-    {
-        // on close sprite editor
-        Terrain *terr = form_sprites->GetSelectedTerrain();
-        Sprite *spr = form_sprites->GetSelectedSprite();        
-        bool was_edit = form_sprites->wasSet();
-        form_sprites->Destroy();
-
-        if(spell_map && spell_map->IsLoaded() && spell_map->terrain == terr && spr)
-        {
-            if(was_edit)
-            {
-                // edit existing sprite
-                spell_map->EditTileSprite(spr,&spell_pos);
-            }
-            else
-            {
-                // some sprite selected - place to clipboard
-                spell_map->SetBuffer(spr);
-            }
-        }
-    }
-    else if(ev.GetId() == ID_ANM_WIN)
-    {
-        // on close ANM viewer
-        Terrain* terr = form_anms->GetSelectedTerrain();
-        AnimL1* anm = form_anms->GetSelectedAnim();
-        AnimPNM* pnm = form_anms->GetSelectedPNM();
-        bool was_edit = form_anms->WasAnmSet();
-        bool was_pnm =  form_anms->wasPNM();
-        auto [x_ofs,y_ofs] = form_anms->GetPNMoffset();
-        form_anms->Destroy();
-
-        if(spell_map && spell_map->IsLoaded() && spell_map->terrain == terr)
-        {
-            if(anm)
-            {
-                if(was_edit)
-                {
-                    // edit existing map anim
-                    spell_map->PlaceANM(&spell_pos,anm);
-                }
-                else
-                {
-                    // some anim selected - place to clipboard
-                    spell_map->SetBuffer(anm);
-                }
-            }
-            if(pnm)
-            {
-                if(was_edit)
-                {
-                    // edit existing map anim
-                    spell_map->PlacePNM(&spell_pos,pnm,x_ofs,y_ofs);
-                }
-                else
-                {
-                    // some anim selected - place to clipboard
-                    spell_map->SetBuffer(pnm,x_ofs,y_ofs);
-                }
-            }
-
-        }
-    }
-    else if(ev.GetId() == ID_SOUNDS_WIN)
-    {
-        // on close sounds viewer        
-        SpellSample *snd = form_sounds->GetSelectedSound();
-        auto snd_type = form_sounds->GetMapSoundType();
-        auto was_edit = form_sounds->WasSoundSet();
-        form_sounds->Destroy();
-
-        if(spell_map && spell_map->IsLoaded() && snd)
-        {
-            if(was_edit)
-            {
-                // edit existing map anim
-                spell_map->SoundEdit(snd,snd_type,&spell_pos);
-            }
-            else
-            {
-                // add new sound
-                auto map_sound = spell_map->SoundAdd(snd, snd_type, &spell_pos);
-                if(map_sound)
-                {
-                    spell_map->SoundSelect(map_sound);
-                    map_sound->in_placement = true;                    
-                }
-            }
-        }                
-    }
-    else if(ev.GetId() == ID_PAL_WIN)
-    {
-        form_pal->Destroy();
-    }
-    else if(ev.GetId() == ID_GRES_WIN)
-    {
-        form_gres->Destroy();
-    }
+    if(ev.GetId() == ID_MINIMAP_WIN)
     else if(ev.GetId() == ID_MINIMAP_WIN)
     {
         delete form_minimap;
         form_minimap = NULL;
-    }
-    else if(ev.GetId() == ID_UNITS_WIN)
-    {
-        // unit editor closed
-        auto new_unit = form_units->DoAddUnit();
-        if(new_unit)
-        {
-            // add new unit to map
-            new_unit->in_placement = true;
-            new_unit->is_active = true;
-            new_unit->ResetAP();
-            auto pos = spell_map->GetSelection();
-            if(pos.IsSelected())
-                new_unit->coor = pos;
-            else
-                new_unit->coor = MapXY(0,0);
-            if(new_unit->is_event)
-            {
-                // event unit - place to MissionStart
-                spell_map->events->AddMissionStartUnit(new_unit);
-            }
-            else
-            {
-                // normal unit - place to map
-                spell_map->AddUnit(new_unit);
-            }
-            spell_map->SelectUnit(new_unit);
-        }
-        if(form_units->DoUpdateUnit())
-        {
-            // update current unit:
-            spell_map->SortUnits();
-            canvas->Refresh();
-        }        
-        form_units->Destroy();
-    }
-    else if(ev.GetId() == ID_EVENT_WIN)
-    {
-        // event editor closed        
-        spell_map->SortUnits();
-        canvas->Refresh();
-        form_events->Destroy();
-    }
-    else if(ev.GetId() == ID_VIDEO_WIN)
-    {
-        // video viwer closed        
-        form_videos->Destroy();
-    }
-    else if(ev.GetId() == ID_MIDI_WIN)
-    {
-        // midi player closed        
-        form_midi->Destroy();
     }
     else if(ev.GetId() == ID_UNIT_MODE_WIN)
     {
@@ -3926,11 +3758,6 @@ void MainFrame::StartMissionEndFlow()
     {
 
         // zavři případný seznam videí
-        if (form_videos)
-        {
-            form_videos->Close();
-            form_videos = NULL;
-        }
 
         // přehraj cutscénu
         bool video_ok = false;
@@ -5295,109 +5122,3 @@ bool MainFrame::CheckMessageState()
 // tool page selected
 
 // fill toolset ribbon
-
-
-
-//--------------------------------------------------------------------------------------------------------------------
-// Set Gamma Dialog
-//--------------------------------------------------------------------------------------------------------------------
-FormGamma::FormGamma(wxFrame* parent,SpellMap* map,wxWindowID id) :wxDialog(parent,wxID_ANY,"Gamma correction",wxDefaultPosition,wxSize(400,80),wxDEFAULT_FRAME_STYLE|wxSTAY_ON_TOP)
-{
-    spellcross_app::ApplyWindowIcon(this);
-    // store local reference to initial map and data
-    spell_map = map;
-
-    // make slider
-    slider = new wxSlider(this,wxID_ANY,1300,500,2000);
-    wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
-    sizer->Add(slider,1,wxEXPAND|wxALL);
-    this->SetSizer(sizer);
-    this->SetAutoLayout(true); 
-    this->Center();
-    this->Bind(wxEVT_CHAR_HOOK,&FormGamma::OnExit,this);
-    SetMinSize(wxSize(300,-1));
-    this->Fit();
-    
-    Bind(wxEVT_COMMAND_SLIDER_UPDATED,&FormGamma::OnChangeGamma, this);
-    Bind(wxEVT_CLOSE_WINDOW,&FormGamma::OnClose,this,id);
-
-}
-void FormGamma::OnChangeGamma(wxCommandEvent& event)
-{
-    double gamma = 0.001*(double)slider->GetValue();
-    SetTitle(wxString::Format(wxT("Gamma correction = %#0.2f"),gamma));
-    spell_map->SetGamma(gamma);
-}
-void FormGamma::OnClose(wxCloseEvent& ev)
-{
-    wxPostEvent(GetParent(),ev);
-    ev.Skip();
-    Destroy();
-}
-void FormGamma::OnExit(wxKeyEvent& event)
-{
-    if(event.GetKeyCode()==WXK_ESCAPE)
-        this->Close();
-    else
-        event.Skip();
-}
-
-
-//--------------------------------------------------------------------------------------------------------------------
-// Select terrain Dialog
-//--------------------------------------------------------------------------------------------------------------------
-FormTerrain::FormTerrain(wxFrame* parent,SpellData* data,wxWindowID id) :wxDialog(parent,wxID_ANY,"Terrain selection",wxDefaultPosition,wxSize(300,150),wxDEFAULT_FRAME_STYLE|wxSTAY_ON_TOP)
-{
-    spellcross_app::ApplyWindowIcon(this);
-    // store local reference to initial map and data
-    m_spell_data = data;
-
-    // make slider
-    wxStaticText *txt = new wxStaticText(this, wxID_ANY, "Select terrain type:");    
-    terr_choice = new wxChoice(this, wxID_TERR_CHB);
-    btn_ok = new wxButton(this, wxID_OK_BTN,"OK");
-    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-    sizer->Add(txt,0,wxEXPAND|wxTOP|wxLEFT|wxRIGHT,5);
-    sizer->Add(terr_choice,0,wxEXPAND|wxBOTTOM|wxLEFT|wxRIGHT,5);
-    sizer->Add(btn_ok,0,wxEXPAND|wxALL,5);
-    this->SetSizer(sizer);
-    this->SetAutoLayout(true);
-    this->Center();
-    SetMinSize(wxSize(300,-1));
-    this->Fit();
-
-    // assign button shortcuts
-    std::vector<wxAcceleratorEntry> entries;
-    entries.emplace_back(wxACCEL_NORMAL,WXK_RETURN,wxID_OK_BTN);
-    entries.emplace_back(wxACCEL_NORMAL,WXK_NUMPAD_ENTER,wxID_OK_BTN);
-    wxAcceleratorTable accel(entries.size(),entries.data());
-    this->SetAcceleratorTable(accel);
-
-    this->Bind(wxEVT_CHAR_HOOK,&FormTerrain::OnExit,this);
-
-    Bind(wxEVT_CLOSE_WINDOW,&FormTerrain::OnClose,this,id);
-    Bind(wxEVT_COMMAND_BUTTON_CLICKED,&FormTerrain::OnOK,this,wxID_OK_BTN);
-
-    for(int k = 0; k < m_spell_data->GetTerrainCount(); k++)
-        terr_choice->Append(m_spell_data->GetTerrain(k)->name);
-    terr_choice->Select(0);
-}
-
-void FormTerrain::OnClose(wxCloseEvent& ev)
-{
-}
-void FormTerrain::OnOK(wxCommandEvent& ev)
-{
-    EndModal(wxID_OK);
-}
-std::string FormTerrain::GetTerrain()
-{
-    return(terr_choice->GetStringSelection().ToStdString());
-}
-void FormTerrain::OnExit(wxKeyEvent& event)
-{
-    if(event.GetKeyCode()==WXK_RETURN)
-        EndModal(wxID_OK);
-    else if(event.GetKeyCode()==WXK_ESCAPE)
-        EndModal(wxID_CANCEL);
-}

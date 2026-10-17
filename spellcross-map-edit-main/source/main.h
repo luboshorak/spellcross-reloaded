@@ -18,35 +18,17 @@
 #include "spell_hud_buttons.h"
 #include "spell_texts.h"
 #include "forms/form_loader.h"
-#include "forms/form_objects.h"
-#include "forms/form_sprite_view.h"
-#include "forms/form_anm.h"
-#include "forms/form_pal_view.h"
-#include "forms/form_gr_view.h"
-#include "forms/form_units.h"
-#include "forms/form_events.h"
-#include "forms/form_new_object.h"
 #include "forms/form_unit_options.h"
 #include "forms/form_message_box.h"
 #include "forms/form_map_options.h"
-#include "forms/form_video.h"
 #include "forms/form_video_box.h"
 #include "forms/form_midi.h"
 #include "forms/form_minimap.h"
 #include "forms/form_map_units_list.h"
-#include "forms/form_mission_params.h"
 #include "forms/form_about.h"
-#include "forms/form_sound.h"
-#include "forms/form_flags.h"
 #include "forms/form_mmenu.h"
 #include "level.h"
 
-#include <wx/ribbon/buttonbar.h>
-#include <wx/ribbon/panel.h>
-#include <wx/ribbon/page.h>
-#include <wx/ribbon/control.h>
-#include <wx/ribbon/art.h>
-#include <wx/ribbon/bar.h>
 
 
 // app entry point class
@@ -63,42 +45,6 @@ public:
 };
 
 
-
-// gamma correction form
-class FormGamma : public wxDialog
-{
-public:
-    FormGamma(wxFrame* parent,SpellMap* map,wxWindowID id);
-private:
-    void OnChangeGamma(wxCommandEvent& event);
-    void OnClose(wxCloseEvent& ev);
-    void OnExit(wxKeyEvent& event);
-    SpellMap* spell_map;
-    wxSlider* slider;
-};
-
-// terrain selection form
-class FormTerrain : public wxDialog
-{
-public:
-    FormTerrain(wxFrame* parent,SpellData* data,wxWindowID id);
-    std::string GetTerrain();
-private:
-    void OnClose(wxCloseEvent& ev);
-    void OnExit(wxKeyEvent& event);
-    void OnOK(wxCommandEvent& ev);
-    
-    SpellData* m_spell_data;
-
-    wxChoice *terr_choice;
-    wxButton *btn_ok;
-    
-    enum objs{
-        wxID_TERR_CHB = 5999,
-        wxID_OK_BTN
-    };
-
-};
 
 // Main application frame
 class MainFrame : public wxFrame
@@ -141,8 +87,6 @@ public:
     std::vector<LevelData::PlayerUnitAdd> m_mission_earned_units;
 
     // Editor is locked by default (game mode UI). Console command GAMEMODEOFF unlocks it.
-    bool m_editor_unlocked = false;
-    void UpdateMenuForGameMode();
 
     // Strategic level reference for mission result callback
     class StrategicLevelFrame* m_strategicLevel = nullptr;
@@ -188,12 +132,6 @@ private:
 
     void OnMapConsoleCommand();
     void OnViewLayer(wxCommandEvent& event);
-    void OnOpenMap(wxCommandEvent& event);
-    void OnSaveMap(wxCommandEvent& event);
-    void OnSaveDTA(wxCommandEvent& event);
-    void OnSaveDEF(wxCommandEvent& event);
-    void OnNewMap(wxCommandEvent& event);
-    void OnOpenLevelDef(wxCommandEvent& ev);
     void OnLoadCustomMap(wxCommandEvent& ev);
     void OnOpenMainMenu(wxCommandEvent& event);
     void OnMainMenuAction(FormMainMenuAction action);
@@ -208,7 +146,6 @@ private:
     void OnAbout(wxCommandEvent& event);
     void OnClose(wxCloseEvent& ev);     
 
-    void OnSwitchGameMode(wxCommandEvent& event);
     void OnSaveGameState(wxCommandEvent& event);
     void OnLoadGameState(wxCommandEvent& event);
     void OnOptionsAudio(wxCommandEvent& event);
@@ -224,43 +161,8 @@ private:
 
     void OnTimer(wxTimerEvent& event);
 
-    void OnSetGamma(wxCommandEvent& event);
-    void OnViewSprites(wxCommandEvent& event);
-    void OnViewAnms(wxCommandEvent& event);
-    void OnViewPnms(wxCommandEvent& event);
-    void OnViewSounds(wxCommandEvent& event);
-    void OnViewObjects(wxCommandEvent& event);
-    void OnViewPal(wxCommandEvent& event);
-    void OnViewGrRes(wxCommandEvent& event);
-    void OnEditUnit(wxCommandEvent& event);
-    void OnEditEvent(wxCommandEvent& event);
-    void OnViewVideo(wxCommandEvent& event);
-    void OnViewMidi(wxCommandEvent& event);
-    void OnTileFlags(wxCommandEvent& event);
-    void OnViewVoxZ(wxCommandEvent& event);
     void OnViewMiniMap(wxCommandEvent& event);
-    void OnUnitViewDebug(wxCommandEvent& event);
-    void OnUpdateTileContext(wxCommandEvent& event);
-    void OnUpdateTileContextMaps(wxCommandEvent& event);    
-    void OnGenDMAobjects(wxCommandEvent& event);
-    void OnGenDMAobjectsMaps(wxCommandEvent& event);
-    void OnSelectAll(wxCommandEvent& event);
-    void OnDeselectAll(wxCommandEvent& event);
-    void OnSelectDeselect(wxCommandEvent& event);
-    void OnCopyBuf(wxCommandEvent& event);
-    void OnPasteBuf(wxCommandEvent& event);
-    void OnClearBuf(wxCommandEvent& event);
-    void OnDeleteSel(wxCommandEvent& event);
-    void OnChangeElevation(wxCommandEvent& event);
-    void OnInvalidateSelection(wxCommandEvent& event);
-    void OnCreateNewObject(wxCommandEvent& event);
-    void OnAddUnit(wxCommandEvent& event);
-    void OnEditMissionParams(wxCommandEvent& event);
 
-    void OnToolBtnClick(wxRibbonButtonBarEvent& event);
-    void OnToolPageClick(wxRibbonBarEvent& event);
-    SpellTool GetToolSelection();
-    void LoadToolsetRibbon(Terrain* terr = NULL);
 
     // canvas stuff:
     void OnThreadCanvas(wxThreadEvent& event);
@@ -273,25 +175,20 @@ private:
     void OnCanvasKeyDown(wxKeyEvent& event);
     void OnCanvasKeyUp(wxKeyEvent& event);
     void OnCanvasLMouseDown(wxMouseEvent& event);
-    void OnCanvasPopupSelect(wxCommandEvent& event);
     void OnUnitClick_cb(int action);
     
     // map render buffer
     wxBitmap m_buffer;
     
     wxPanel* canvas;
-    wxMenu* menuView;    
     wxBoxSizer* sizer;
-    wxRibbonBar* ribbonBar = NULL;
     
     // spellcross data object
     // SpellData* spell_data;
     // spellcross map object
     SpellMap* spell_map;
     // last selected tile pos
-    MapXY spell_pos;
     // selected edit tool
-    SpellTool spell_tool;
 
     // last target selection
     MapXY select_pos;
@@ -299,16 +196,6 @@ private:
     MapUnit* sel_unit;
     int inUnitOptions() {return(form_unit_opts != NULL || form_message != NULL);};
     int inSubForm() {return(
-        form_gamma != NULL ||
-        form_sprites != NULL ||
-        form_anms != NULL ||
-        form_sounds != NULL ||
-        form_objects != NULL ||
-        form_pal != NULL ||
-        form_gres != NULL ||
-        form_units != NULL ||
-        form_events != NULL ||
-        form_videos != NULL ||
         form_unit_opts != NULL ||
         form_message != NULL ||
         form_video_box != NULL ||
@@ -324,15 +211,6 @@ private:
     wxTimer m_timer;
 
     // sub-forms
-    FormGamma* form_gamma = NULL;
-    FormSprite* form_sprites = NULL;
-    FormANM* form_anms = NULL;
-    FormObjects* form_objects = NULL;
-    FormPalView* form_pal = NULL;
-    FormGResView* form_gres = NULL;
-    FormUnits* form_units = NULL;
-    FormEvent* form_events = NULL;
-    FormVideo* form_videos = NULL;
     FormUnitOpts *form_unit_opts = NULL;
     FormMsgBox *form_message = NULL;
     FormVideoBox* form_video_box = NULL;
@@ -340,7 +218,6 @@ private:
     FormMIDI *form_midi = NULL;
     FormMiniMap *form_minimap = NULL;
     FormMapUnits *form_units_list = NULL;
-    FormSound *form_sounds = NULL;
     FormMainMenu *form_mmenu = NULL;
     bool m_reopen_mmenu_after_video = false;
     bool m_mainMenuReturnToTactical = false;
@@ -382,38 +259,6 @@ private:
     static constexpr int ID_TOOL_BASE = 10000;
     static constexpr int ID_TOOL_CLASS_STEP = 100;
 
-    // map edit popup menu items
-    enum
-    {
-        ID_POP_ADD_MISSIONSTART = 2100, /* 100 MissionStart items matching event probability 0-100 */
-        ID_POP_ADD_MISSIONSTART_MAX = 2200,
-        ID_POP_REM_MISSIONSTART,
-        ID_POP_ADD_SEEUNIT,
-        ID_POP_REM_SEEUNIT,
-        ID_POP_ADD_SEE_PLACE,
-        ID_POP_REM_SEE_PLACE,
-        ID_POP_ADD_SAVE_UNIT,
-        ID_POP_ADD_TRANSPORT_UNIT,
-        ID_POP_ADD_DESTROY_UNIT,
-        ID_POP_REM_SAVE_UNIT,
-        ID_POP_REM_TRANSPORT_UNIT,
-        ID_POP_REM_DESTROY_UNIT,
-        ID_POP_ADD_SPAWN_UNIT,
-        ID_POP_EDIT_EVENT,
-        ID_POP_ANOTHER_EVENT,
-        ID_POP_ADD_UNIT,
-        ID_POP_EDIT_UNIT,
-        ID_POP_REM_UNIT,
-        ID_POP_EDIT_TERR,
-        ID_POP_EDIT_OBJ,
-        ID_POP_REM_OBJ,
-        ID_POP_EDIT_ANM,
-        ID_POP_REM_ANM,
-        ID_POP_EDIT_PNM,
-        ID_POP_REM_PNM,
-        ID_POP_EDIT_SOUND,
-        ID_POP_REM_SOUND
-    };
 
     // maximum size of minimap panel
     static constexpr int MAX_MINIMAP_X = 1000;
