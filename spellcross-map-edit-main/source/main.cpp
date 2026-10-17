@@ -309,6 +309,18 @@ namespace
     {
         namespace fs = std::filesystem;
 
+        // A source checkout has a committed defaults template. Always use
+        // the one ignored config alongside it, regardless of which MSVC
+        // Debug/Release executable launched the game (or whether an older
+        // config.ini still exists inside a build-output directory).
+        // A portable ZIP has no source template and keeps its configuration
+        // next to the executable as before.
+        std::error_code ec;
+        const fs::path checkout_source = runtime_root / "source";
+        if (fs::is_regular_file(checkout_source / "config.example.ini", ec) && !ec)
+            return fs::absolute(checkout_source / "config.ini").lexically_normal();
+        ec.clear();
+
         // Prefer a config placed next to the executable even when it is empty.
         // A fresh release is allowed to ship an empty config.ini; the startup
         // source wizard will populate it instead of rejecting it outright.
@@ -331,23 +343,12 @@ namespace
             dir = parent;
         }
 
-        std::error_code ec;
         for (const auto& candidate : candidates)
         {
             if (fs::is_regular_file(candidate, ec) && !ec)
                 return fs::absolute(candidate).lexically_normal();
             ec.clear();
         }
-
-        // In the development checkout, create a persistent local config
-        // next to the tracked example, rather than one per Debug/Release EXE.
-        // This file is ignored by Git and survives rebuilding the project.
-        // The portable distribution has no source/config.example.ini and
-        // therefore continues to store config.ini beside Spellcross.exe.
-        const fs::path source_dir = runtime_root / "source";
-        ec.clear();
-        if (fs::is_regular_file(source_dir / "config.example.ini", ec) && !ec)
-            return fs::absolute(source_dir / "config.ini").lexically_normal();
 
         // Portable release / new standalone installation.
         return fs::absolute(executable_dir / "config.ini").lexically_normal();
