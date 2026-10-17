@@ -152,9 +152,13 @@ void FormUnitOpts::OnPaintTab(wxPaintEvent& event)
             // Keep the entire text inside the original DOS popup, even if
             // another action gets a longer caption in a future update.
             const std::string suffix = ".";
-            while (!caption.empty() &&
-                   m_spelldata->font->GetTextWidth(caption + suffix) > safe_width)
+            while (!caption.empty())
+            {
+                std::string candidate = caption + suffix;
+                if (m_spelldata->font->GetTextWidth(candidate) <= safe_width)
+                    break;
                 caption.pop_back();
+            }
             if (!caption.empty())
                 caption += suffix;
         }
