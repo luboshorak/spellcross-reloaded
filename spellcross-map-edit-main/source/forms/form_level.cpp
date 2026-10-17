@@ -2831,9 +2831,8 @@ void StrategicLevelFrame::BuildMenu()
     options->AppendSubMenu(difficulty, L"Game &Difficulty");
     bar->Append(options, "&Options");
 
-    auto* game = new wxMenu();
-    game->AppendCheckItem(ID_MENU_GAME_MODE_TOGGLE, L"&Enabled");
-    bar->Append(game, "&Game mode");
+    // Game mode is internal campaign state, not a user-facing editor toggle.
+    // Keep the underlying flag and loading logic, but hide the obsolete menu.
 
     // Parallel UI switch: the old implementation remains intact and usable.
     auto* strategicUi = new wxMenu();
@@ -2851,7 +2850,6 @@ void StrategicLevelFrame::BuildMenu()
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnOptionsScreen, this, ID_MENU_OPTIONS_SCREEN);
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnOptionsDifficulty, this,
         ID_MENU_OPTIONS_DIFFICULTY_EASY, ID_MENU_OPTIONS_DIFFICULTY_HARD);
-    Bind(wxEVT_MENU, &StrategicLevelFrame::OnToggleGameMode, this, ID_MENU_GAME_MODE_TOGGLE);
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnStrategicUiCurrent, this, ID_MENU_STRATEGIC_UI_CURRENT);
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnStrategicUiOriginal, this, ID_MENU_STRATEGIC_UI_ORIGINAL);
 
