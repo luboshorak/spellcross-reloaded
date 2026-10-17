@@ -897,6 +897,7 @@ public:
 		~SpellMap();
 		int SetGameMode(int new_mode);
 		int isGameMode();
+		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
 		void SetGameDifficulty(GameDifficulty difficulty);
 		GameDifficulty GetGameDifficulty() const { return game_difficulty; };
 		int GetTacticalSaveLimit() const;
