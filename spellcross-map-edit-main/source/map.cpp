@@ -12867,6 +12867,7 @@ int SpellMap::Tick()
 					// unit disappeared:
 
 					// move unit
+					const bool departure_presented = movement_visible_to_player(unit);
 					auto next_pos = unit->move_nodes[unit->move_step];
 					unit->action_points -= (next_pos.g_cost - 0);
 					unit->coor = next_pos.pos;
@@ -12879,7 +12880,8 @@ int SpellMap::Tick()
 
 					// The destination may be visible even when the departure was
 					// hidden: its arrival must resume ordinary presentation.
-					if (enemy_turn_running && unit->is_enemy && movement_visible_to_player(unit))
+					if (enemy_turn_running && unit->is_enemy && !departure_presented &&
+						movement_visible_to_player(unit))
 						unit->PlayMove();
 
 					// play the animation backwards
@@ -13105,6 +13107,7 @@ int SpellMap::Tick()
 					if (!enemy_turn_running || !unit->is_enemy ||
 						presented_before_step || presented_after_step ||
 						reaction_fire_active || !reaction_fire_queue.empty() ||
+						event_count_before_step != 0 ||
 						event_list.size() != event_count_before_step)
 						break;
 				}
