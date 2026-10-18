@@ -148,7 +148,6 @@
     <Image Include="wx\msw\std.ico" />
   </ItemGroup>
   <ItemGroup>
-    <None Include=".github\copilot-instructions.md" />
     <None Include="tests\inspect_scsave.py" />
     <None Include="tests\test_mission_events.py" />
     <None Include="tests\test_view_events.py" />
@@ -409,7 +408,7 @@
     <ItemGroup>
       <BundledRuntimeData Include="$(ProjectDir)..\data\C_NAMES.DEF;$(ProjectDir)..\data\DEVAST.fs;$(ProjectDir)..\data\PUST.fs;$(ProjectDir)..\data\T11.FS;$(ProjectDir)..\data\font_spellcross_7pix.fnt;$(ProjectDir)..\data\font_spellcross_14pix.fnt;$(ProjectDir)..\data\units.fsa;$(ProjectDir)..\data\units.json" />
       <BundledRuntimeMenuData Include="$(ProjectDir)..\data\menu\*.png" />
-      <BundledMovieFallbackData Include="$(ProjectDir)..\data\movie_fallback\*.mp4;$(ProjectDir)..\data\movie_fallback\MANIFEST.tsv;$(ProjectDir)..\data\movie_fallback\README.md" />
+      <BundledMovieFallbackData Include="$(ProjectDir)..\data\movie_fallback\*.mp4;$(ProjectDir)..\data\movie_fallback\MANIFEST.tsv" />
     </ItemGroup>
     <MakeDir Directories="$(OutDir)data;$(OutDir)data\menu;$(OutDir)data\movie_fallback" />
     <Copy SourceFiles="@(BundledRuntimeData)" DestinationFolder="$(OutDir)data" SkipUnchangedFiles="true" />
