@@ -6,6 +6,7 @@
 #include <wx/window.h>
 #include <wx/panel.h>
 #include <wx/bitmap.h>
+#include <wx/timer.h>
 #include <string>
 
 #ifdef _WIN32
@@ -23,6 +24,9 @@ public:
 private:
     SpellData* m_spelldata;
     SpellSound* m_sound;
+    // The legacy video image is advanced on the GUI thread; the audio thread
+    // never captures FormVideoBox or dispatches wxWidgets events.
+    wxTimer m_video_timer;
     wxBitmap* m_frame;
     SpellVideo *m_video;
 #ifdef _WIN32
@@ -53,7 +57,7 @@ private:
     void OnWinClick(wxMouseEvent& event);    
     void OnWinMouseMove(wxMouseEvent& event);    
 
-    void cbNewAudioFrame(void);
+    void OnVideoTimer(wxTimerEvent& event);
     void OnNewAudioFrame(wxThreadEvent& event);
 
     bool m_closing = false;       // aby se Close() nevolalo opakovan
