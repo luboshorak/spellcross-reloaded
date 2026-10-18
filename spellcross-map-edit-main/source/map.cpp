@@ -7291,6 +7291,58 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
 	return(0);
 }
 
+// Experimental first-mission bot movement.  Never teleport or write coordinates:
+// hand the native move animator a legal A* prefix, exactly as the original EN
+// group-movement implementation does.  Reaction fire, action points and
+// mission triggers therefore run through the normal tactical engine.
+bool SpellMap::AutopilotMoveToward(MapUnit* unit, MapXY destination)
+{
+    if (!isGameMode() || deployment_mode || !unit || !unit->unit ||
+        unit->is_enemy || unit->isDead() || !unit->isActive() ||
+        unit->radar_up || unit->panic_turns > 0 ||
+        unit->paralyze_turns > 0 || unit->freeze_turns > 0 ||
+        unit->action_points <= 0 || unit->GetWalkAP() <= 0 ||
+        !destination.IsSelected() || !unit->coor.IsSelected() ||
+        destination.x < 0 || destination.y < 0 ||
+        destination.x >= x_size || destination.y >= y_size ||
+        enemy_turn_running || panic_turn_running || reaction_fire_active ||
+        !reaction_fire_queue.empty() || group_move_active || IsUnitBusy(unit))
+        return false;
+
+    if (std::find(units.begin(), units.end(), unit) == units.end())
+        return false;
+
+    HaltUnitRanging(true);
+    const auto path = unit_range->FindPathToward(unit, destination);
+    ResumeUnitRanging(false);
+    if (path.size() < 2)
+        return false;
+
+    int last = 0;
+    for (int i = 1; i < (int)path.size(); ++i)
+    {
+        if (path[i].g_cost > unit->action_points)
+            break;
+        last = i;
+    }
+    if (last == 0)
+        return false;
+
+    LockMap();
+    unit->move_nodes.assign(path.begin() + 1, path.begin() + last + 1);
+    unit->move_step = 0;
+    unit->move_state = MapUnit::MOVE_STATE::TURRET;
+    unit->ClearDigLevel();
+    unit->ResetTurnsCounter();
+    unit_selection = unit;
+    unit_selection_mod = true;
+    g_attack_map_dirty_for = unit;
+    g_move_range_dirty_for = unit;
+    InvalidateHUDbuttons();
+    ReleaseMap();
+    return true;
+}
+
 // get unit action options for cursor position (game mode)
 int SpellMap::GetUnitOptions(TScroll* scroll)
 {
