@@ -1889,7 +1889,9 @@ int MapUnit::PlayMove()
 // stop move sound
 int MapUnit::PlayStop()
 {
-	sound_move->StopMove();
+	// Hidden movement does not instantiate a sound stream.
+	if (sound_move)
+		sound_move->StopMove();
 	return(0);
 }
 
