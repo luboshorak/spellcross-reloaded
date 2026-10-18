@@ -44,11 +44,15 @@ public:
 };
 
 
+class SpellSound; // one-shot sound lifetime is managed by SoundChannels
+
 class SoundChannels
 {    
 private:
     std::mutex lock;
     std::vector<RtAudio*> channels;
+    // Each one-shot callback owner survives until its audio worker is joined.
+    std::vector<SpellSound*> auto_delete_owners;
     std::vector<int> chn_index;
     int last_channel;
     double volume;
@@ -57,6 +61,7 @@ public:
     SoundChannels(int count=4);
     ~SoundChannels();
     RtAudio *GetChannel(int is_loop=false);
+    void RegisterAutoDelete(RtAudio* channel, SpellSound* sound);
     void SetVolume(double vol);
     double GetVolume();
     
