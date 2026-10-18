@@ -41,6 +41,7 @@ SoundChannels::SoundChannels(int count)
 {
     chn_index.assign(count,0);
     channels.assign(count,NULL);
+    channel_owners.assign(count,nullptr);
     is_loop.assign(count,0);
     for(auto & chn : channels)
         chn = new RtAudio();    
@@ -82,27 +83,27 @@ SoundChannels::~SoundChannels()
         chn = nullptr;
     }
     channels.clear();
+    channel_owners.clear();
 }
 // get first available channel
-RtAudio* SoundChannels::GetChannel(int is_loop)
-{    
-    lock.lock();
-    // look for first free stream
-    for(int cid = 0; cid < channels.size(); cid++)
+RtAudio* SoundChannels::GetChannel(int is_loop, SpellSound* owner)
+{
+    std::lock_guard<std::mutex> guard(lock);
+    // Closing a finished stream joins its callback thread before ownership
+    // can pass to a different sound.
+    for (size_t cid = 0; cid < channels.size(); ++cid)
     {
-        auto *chn = channels[cid];        
-        if(!chn->isStreamRunning())
-        {
-            if(chn->isStreamOpen())
-                chn->closeStream();
-            chn_index[cid] = ++last_channel;
-            this->is_loop[cid] = is_loop;
-            lock.unlock();
-            return(chn);
-        }
+        RtAudio* chn = channels[cid];
+        if (!chn || chn->isStreamRunning())
+            continue;
+        if (chn->isStreamOpen())
+            chn->closeStream();
+        chn_index[cid] = ++last_channel;
+        this->is_loop[cid] = is_loop;
+        channel_owners[cid] = owner;
+        return chn;
     }
-    lock.unlock();
-    return(NULL);
+    return NULL;
     // no empty channels found: use oldest one
     /*int min_index = 1<<30;
     int chn_id = 0;
@@ -120,6 +121,26 @@ RtAudio* SoundChannels::GetChannel(int is_loop)
     chn->abortStream();
     chn->closeStream();
     return(chn);*/
+}
+
+// Called from a non-callback thread, including SpellSound's destructor.
+// Never close a pooled stream already reassigned to another sound.
+void SoundChannels::CloseOwnedStream(SpellSound* owner, RtAudio* channel)
+{
+    if (!owner || !channel)
+        return;
+    std::lock_guard<std::mutex> guard(lock);
+    for (size_t cid = 0; cid < channels.size(); ++cid)
+    {
+        if (channels[cid] != channel || channel_owners[cid] != owner)
+            continue;
+        // DirectSound closeStream joins the callback thread. The object can
+        // only be destroyed once the callback no longer accesses it.
+        if (channel->isStreamOpen())
+            channel->closeStream();
+        channel_owners[cid] = nullptr;
+        return;
+    }
 }
 // set/get global volume
 void SoundChannels::SetVolume(double vol)
@@ -627,6 +648,12 @@ SpellSound::SpellSound(SoundChannels* channels,SpellSample* sound)
 // cleanup sound
 SpellSound::~SpellSound()
 {
+    // Automatically deleted one-shot sounds are destroyed ON the callback
+    // thread; they must not attempt to join that thread. Persistent sounds
+    // (unit movement, legacy movie audio) are destroyed on the main thread
+    // and must first wait for their callback to exit.
+    if (!auto_delete && streams && dac)
+        streams->CloseOwnedStream(this, dac);
 }
 // copy
 SpellSound::SpellSound(SpellSound& ref)
@@ -643,6 +670,7 @@ SpellSound::SpellSound(SpellSound& ref)
     dac = NULL;
     sub_id = samples.size();
     control = CTRL_IDLE;
+    auto_delete = false;
     is_playing = false;
 }
 
@@ -923,25 +951,24 @@ int SpellSound::Play(bool auto_delete, bool loop, std::function<void(void)> fram
         return(1);
     }
 
-    // automatically delete object after playaback?
+    // A previous playback may still be draining when isDone() becomes
+    // true. Retire its RtAudio callback before changing the callable and
+    // sample state accessed by the audio thread.
+    if (dac)
+    {
+        streams->CloseOwnedStream(this, dac);
+        dac = nullptr;
+    }
+
+    // automatically delete object after playback?
     this->auto_delete = auto_delete;
     force_loop = loop;
-    
-    // store user callback pointer
+
+    // store user callback only after the previous callback has exited
     user_frame_callback = frame_callback;
 
-    //control = CTRL_STOP;
-    if(!isDone())
-    {
-        if(dac)
-        {
-            dac->abortStream();
-            dac->closeStream();
-        }
-    }
-    
-    // get some stream channel
-    dac = streams->GetChannel(loop);
+    // get a stream leased to this sound
+    dac = streams->GetChannel(loop, this);
     if(!dac)
     {
         if(auto_delete)
