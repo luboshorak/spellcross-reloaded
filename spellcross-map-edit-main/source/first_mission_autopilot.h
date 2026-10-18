@@ -89,6 +89,9 @@ void MainFrame::OpenBotControls()
             m_botRescueReached = false;
             m_botCommandoId = -1;
             m_botCommandoOrigin.Clear();
+            m_botBreachTarget.Clear();
+            m_botBreachOpen = false;
+            m_botBreachStuckTurns = 0;
             m_botSupportTried.clear();
             m_botSquadMoved.clear();
             m_botKnownAllies.clear();
@@ -165,6 +168,9 @@ void MainFrame::StopFirstMissionBot(const wxString& reason)
     m_botCurrentStance = 0;
     m_botCommandoId = -1;
     m_botCommandoOrigin.Clear();
+    m_botBreachTarget.Clear();
+    m_botBreachOpen = false;
+    m_botBreachStuckTurns = 0;
     m_botMessageTicks = 0;
     m_botMessageCloseRequested = false;
     UpdateBotStatus();
@@ -382,7 +388,19 @@ void MainFrame::StepFirstMissionBot()
     // *original* enclosure, never random walls elsewhere on the map.
     MapXY palisadeTarget;
     double palisadeScore = 1e30;
-    if (rescueUnit && m_botCommandoOrigin.IsSelected() && !m_botRescueReached)
+    if (m_botBreachTarget.IsSelected() && !m_botBreachOpen)
+    {
+        MapSprite& tile = spell_map->tiles[spell_map->ConvXY(m_botBreachTarget)];
+        if (!tile.isTarget() || tile.hp <= 0)
+        {
+            m_botBreachOpen = true;
+            BotLog("First palisade panel destroyed: moving Commando through the gap.");
+        }
+        else
+            palisadeTarget = m_botBreachTarget;
+    }
+    if (!m_botBreachOpen && !palisadeTarget.IsSelected() && rescueUnit &&
+        m_botCommandoOrigin.IsSelected() && !m_botRescueReached)
     {
         const MapXY center = m_botCommandoOrigin;
         for (int y = (std::max)(0, center.y - 4);
@@ -405,6 +423,8 @@ void MainFrame::StepFirstMissionBot()
                     palisadeTarget = p;
                 }
             }
+        if (palisadeTarget.IsSelected())
+            m_botBreachTarget = palisadeTarget;
     }
 
     // The bot may see only real player-visible enemies. Estimate the contact
@@ -596,6 +616,7 @@ void MainFrame::StepFirstMissionBot()
         if (spell_map->AutopilotMoveToward(rescueUnit, hero->coor,
             preserveFire, 2))
         {
+            m_botBreachStuckTurns = 0;
             BotLog(wxString::Format("Commando #%d evacuating breached enclosure.",
                 rescueUnit->id));
             spell_map->ScrollToUnit(rescueUnit);
@@ -603,6 +624,18 @@ void MainFrame::StepFirstMissionBot()
             if (canvas) canvas->Refresh();
             return;
         }
+    }
+
+    // The chosen wall panel may not open a traversable corridor by itself.
+    // If A* repeatedly cannot find an exit, select another palisade panel.
+    if (rescueUnit && !m_botRescueReached && m_botBreachOpen &&
+        m_botBreachTarget.IsSelected() && !palisadeTarget.IsSelected() &&
+        ++m_botBreachStuckTurns >= 4)
+    {
+        m_botBreachOpen = false;
+        m_botBreachTarget.Clear();
+        m_botBreachStuckTurns = 0;
+        BotLog("Commando still blocked: seeking another palisade panel.");
     }
 
     // Support companies stay in their defensive positions while hostiles
