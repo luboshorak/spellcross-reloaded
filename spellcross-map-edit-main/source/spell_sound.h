@@ -53,6 +53,7 @@ private:
     std::vector<RtAudio*> channels;
     // Each one-shot callback owner survives until its audio worker is joined.
     std::vector<SpellSound*> auto_delete_owners;
+    std::vector<SpellSound*> active_owners; // includes persistent unit movement loops
     std::vector<int> chn_index;
     int last_channel;
     double volume;
@@ -61,7 +62,8 @@ public:
     SoundChannels(int count=4);
     ~SoundChannels();
     RtAudio *GetChannel(int is_loop=false);
-    void RegisterAutoDelete(RtAudio* channel, SpellSound* sound);
+    void RegisterSound(RtAudio* channel, SpellSound* sound, bool auto_delete);
+    void ReleaseSound(RtAudio* channel, SpellSound* sound);
     void SetVolume(double vol);
     double GetVolume();
     

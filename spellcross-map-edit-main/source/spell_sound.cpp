@@ -42,6 +42,7 @@ SoundChannels::SoundChannels(int count)
     chn_index.assign(count,0);
     channels.assign(count,NULL);
     auto_delete_owners.assign(count,nullptr);
+    active_owners.assign(count,nullptr);
     is_loop.assign(count,0);
     for(auto & chn : channels)
         chn = new RtAudio();    
@@ -70,18 +71,22 @@ SoundChannels::~SoundChannels()
             // The OS reclaims these two retained objects on process exit.
             channels[i] = nullptr;
             auto_delete_owners[i] = nullptr;
+            active_owners[i] = nullptr;
             continue;
         }
 
         if (chn->isStreamOpen())
             chn->closeStream();
-        delete auto_delete_owners[i];
+        active_owners[i] = nullptr;
+        SpellSound* oldOwner = auto_delete_owners[i];
         auto_delete_owners[i] = nullptr;
+        delete oldOwner;
         delete chn;
         channels[i] = nullptr;
     }
     channels.clear();
     auto_delete_owners.clear();
+    active_owners.clear();
 }
 
 // Reuse only stopped channels, then collect their previous one-shot sound.
@@ -97,6 +102,7 @@ RtAudio* SoundChannels::GetChannel(int is_loop)
 
         if (chn->isStreamOpen())
             chn->closeStream();
+        active_owners[cid] = nullptr;
 
         delete auto_delete_owners[cid];
         auto_delete_owners[cid] = nullptr;
@@ -107,16 +113,36 @@ RtAudio* SoundChannels::GetChannel(int is_loop)
     return nullptr;
 }
 
-void SoundChannels::RegisterAutoDelete(RtAudio* channel, SpellSound* sound)
+void SoundChannels::RegisterSound(RtAudio* channel, SpellSound* sound, bool auto_delete)
 {
     std::lock_guard<std::mutex> guard(lock);
     for (size_t cid = 0; cid < channels.size(); ++cid)
         if (channels[cid] == channel)
         {
-            // The previous owner was reclaimed by GetChannel().
-            auto_delete_owners[cid] = sound;
+            active_owners[cid] = sound;
+            if (auto_delete)
+                auto_delete_owners[cid] = sound;
             return;
         }
+}
+
+// Called when a persistent sound is destroyed with a stream still active.
+// We must join the callback before this sound's fields are destroyed.
+void SoundChannels::ReleaseSound(RtAudio* channel, SpellSound* sound)
+{
+    std::lock_guard<std::mutex> guard(lock);
+    for (size_t cid = 0; cid < channels.size(); ++cid)
+    {
+        if (channels[cid] != channel || active_owners[cid] != sound)
+            continue;
+
+        if (channel->isStreamOpen())
+            channel->closeStream(); // DirectSound waits for callback thread
+        active_owners[cid] = nullptr;
+        if (auto_delete_owners[cid] == sound)
+            auto_delete_owners[cid] = nullptr;
+        return;
+    }
 }
 // set/get global volume
 void SoundChannels::SetVolume(double vol)
@@ -624,6 +650,11 @@ SpellSound::SpellSound(SoundChannels* channels,SpellSample* sound)
 // cleanup sound
 SpellSound::~SpellSound()
 {
+    // Unit/map cleanup may destroy a persistent movement or ambient sound.
+    // Closing the exact stream still owned by this object prevents callback
+    // use-after-free when a company dies during movement or a map unloads.
+    if (dac && streams && dac->isStreamOpen())
+        streams->ReleaseSound(dac, this);
 }
 // copy
 SpellSound::SpellSound(SpellSound& ref)
@@ -979,8 +1010,7 @@ int SpellSound::Play(bool auto_delete, bool loop, std::function<void(void)> fram
 
     // start stream    
     dac->openStream(&parameters,NULL,RTAUDIO_SINT16,sampleRate,&bufferFrames,&SpellSound_RtCallback,(void*)this);
-    if (auto_delete)
-        streams->RegisterAutoDelete(dac, this);
+    streams->RegisterSound(dac, this, auto_delete);
     dac->startStream();
         
     return(0);
