@@ -483,80 +483,157 @@ void MainFrame::StepFirstMissionBot()
             { return hero->coor.Distance(a) < hero->coor.Distance(b); });
     }
 
-    // When hostiles are in sight, seek a forward flank with lower expected
-    // incoming fire instead of blindly taking the direct geometric route.
-    MapXY movementGoal = goal;
-    double nearestThreat = 1e30;
-    for (MapUnit* e : spell_map->units)
-        if (e && e->unit && e->is_enemy && !e->isDead() && e->is_visible >= 2)
-            nearestThreat = (std::min)(nearestThreat, hero->coor.Distance(e->coor));
-    if (nearestThreat < 6.0 && hero->coor.Distance(goal) > 6.0)
+    // A tactical round is not a race to spend every AP. Finish a phase while
+    // friendly companies can still react to newly approaching enemies.
+    auto finishPhase = [this](const wxString& reason, bool intentionalHold)
     {
+        ++m_botTurnCount;
+        m_botSupportTried.clear();
+        m_botSquadMoved.clear();
+        m_botHeroMovedThisTurn = false;
+        if (intentionalHold)
+            ++m_botNoProgressTurns;
+        else
+            m_botNoProgressTurns = 0;
+        BotLog(wxString::Format("Turn %d: ", m_botTurnCount) + reason);
+        if (m_botNoProgressTurns >= 12)
+        {
+            StopFirstMissionBot("No tactical progress for 12 turns.");
+            return;
+        }
+        spell_map->OnHUDswitchEndTurn();
+        m_botCooldown = 12;
+        UpdateBotStatus();
+    };
+
+    // Once the commander has moved this turn, defend the new position. The
+    // previous implementation immediately issued another A* order and spent
+    // every remaining AP, often walking straight into a waiting ork formation.
+    if (m_botHeroMovedThisTurn)
+    {
+        finishPhase("holding remaining AP for defensive fire.", false);
+        return;
+    }
+
+    // Estimate exposure using visible enemy weapon ranges and short potential
+    // approach moves. The extra radius is a conservative risk margin, NOT an
+    // attempt to reveal fog-of-war or precompute hidden enemy AI actions.
+    auto exposureAt = [&](MapXY p) -> double
+    {
+        double danger = 0.0;
+        for (MapUnit* enemy : visibleHostiles)
+        {
+            const double distance = p.Distance(enemy->coor);
+            const double range = (double)spell_map->GetEffectiveFireRange(enemy, p);
+            const double dangerRadius = (std::max)(2.0, range + 2.5);
+            if (distance < dangerRadius)
+                danger += (dangerRadius - distance) * 13.0;
+            if (distance <= 2.0)
+                danger += 35.0;
+        }
+        return danger;
+    };
+
+    const double currentExposure = exposureAt(hero->coor);
+    if (!combatContact)
+    {
+        m_botCurrentStance = 0;
+        m_botContactWaitTurns = 0;
+    }
+    else
+    {
+        // In contact, do not automatically charge just because a path exists.
+        // Wait twice at most for the enemy to approach our reserved-fire line.
+        // The cap prevents an immobile defensive enemy from freezing the bot.
+        if (!closeDanger && m_botContactWaitTurns < 2)
+        {
+            ++m_botContactWaitTurns;
+            m_botCurrentStance = 1;
+            finishPhase("ambush: let the orcs advance into our fire.", true);
+            return;
+        }
+        m_botCurrentStance = 2;
+    }
+
+    // Choose a *short* low-risk probe on contact. Evaluate several local
+    // endpoints and favor risk reduction over progress when severely threatened.
+    // A* remains responsible for terrain, AP, occupied tiles and animation.
+    MapXY movementGoal = goal;
+    int maxSteps = combatContact ? 2 : 5;
+    if (combatContact)
+    {
+        MapXY best;
         double bestScore = -1e30;
-        const int offsets[8][2] = {
-            {5,0},{-5,0},{0,5},{0,-5},{4,4},{4,-4},{-4,4},{-4,-4}
+        const int offsets[][2] = {
+            {1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1},
+            {2,0},{-2,0},{0,2},{0,-2}
         };
         for (const auto& delta : offsets)
         {
-            MapXY p(hero->coor.x + delta[0], hero->coor.y + delta[1]);
-            if (p.x < 0 || p.y < 0 || p.x >= spell_map->x_size ||
-                p.y >= spell_map->y_size || !spell_map->TileIsVisible(p.x, p.y))
+            const MapXY p(hero->coor.x + delta[0], hero->coor.y + delta[1]);
+            if (p.x < 0 || p.y < 0 ||
+                p.x >= spell_map->x_size || p.y >= spell_map->y_size ||
+                !spell_map->TileIsVisible(p.x, p.y))
                 continue;
+
             const double progress = hero->coor.Distance(goal) - p.Distance(goal);
-            if (progress < 0.5) continue;
-            double exposure = 0;
-            for (MapUnit* e : spell_map->units)
-                if (e && e->unit && e->is_enemy && !e->isDead() && e->is_visible >= 2)
-                {
-                    const double distance = p.Distance(e->coor);
-                    const double radius = (std::max)(2.0, (double)e->GetFireRange() + 1.5);
-                    exposure += (std::max)(0.0, radius - distance) * 14.0;
-                }
-            const double score = progress * 5.0 - exposure;
+            const double exposure = exposureAt(p);
+            // A wounded/isolated hero must sometimes retreat rather than
+            // maximize forward progress. Avoid positions appreciably riskier.
+            if (exposure > currentExposure + (closeDanger ? 0.0 : 5.0))
+                continue;
+            if (progress <= 0.0 && exposure >= currentExposure - 4.0)
+                continue;
+            const double score = progress * (closeDanger ? 2.0 : 8.0) -
+                (exposure - currentExposure) * (closeDanger ? 4.0 : 2.0);
             if (score > bestScore)
             {
                 bestScore = score;
-                movementGoal = p;
+                best = p;
             }
         }
+        if (!best.IsSelected())
+        {
+            ++m_botContactWaitTurns;
+            m_botCurrentStance = 1;
+            finishPhase("defending: no safe approach visible.", true);
+            return;
+        }
+        movementGoal = best;
     }
 
-    // Keep roughly one third of AP available for enemy-turn defensive fire.
     const int reserveAP = (std::max)(0, hero->GetMaxAP() / 3);
-    if (spell_map->AutopilotMoveToward(hero, movementGoal, reserveAP))
+    if (spell_map->AutopilotMoveToward(hero, movementGoal, reserveAP, maxSteps))
     {
         spell_map->ScrollToUnit(hero);
+        m_botHeroMovedThisTurn = true;
+        m_botContactWaitTurns = 0;
         m_botNoProgressTurns = 0;
         m_botCooldown = 12;
-        BotLog(wxString::Format("%s (%d, %d)%s.",
-            headingToRescue ? "Searching for Commando at" : "Extracting toward",
-            goal.x, goal.y, movementGoal == goal ? "" : " via safer flank"));
+        BotLog(wxString::Format("%s toward (%d, %d), %d steps max.",
+            combatContact ? "Cautious probe" :
+                (headingToRescue ? "Rescue advance" : "Extraction advance"),
+            movementGoal.x, movementGoal.y, maxSteps));
         if (canvas) canvas->Refresh();
+        UpdateBotStatus();
         return;
     }
-    // If AP reserve or the flank blocks progress, fall back to a legal direct move.
-    if (spell_map->AutopilotMoveToward(hero, goal, 0))
+
+    // A short safe probe may be blocked by terrain or another friendly unit.
+    // Only in a quiet sector may the bot try a direct unrestricted path.
+    if (!combatContact &&
+        spell_map->AutopilotMoveToward(hero, goal, reserveAP, 5))
     {
         spell_map->ScrollToUnit(hero);
+        m_botHeroMovedThisTurn = true;
         m_botNoProgressTurns = 0;
         m_botCooldown = 12;
-        BotLog("Advancing carefully along the direct route.");
+        BotLog("Advancing toward objective through the free route.");
         if (canvas) canvas->Refresh();
         return;
     }
 
-    // Reserve leftover AP for defensive fire; do not cheat movement/combat.
-    ++m_botTurnCount;
-    m_botSupportTried.clear();
-    m_botSquadMoved.clear();
-    ++m_botNoProgressTurns;
-    BotLog(wxString::Format("End of turn %d.", m_botTurnCount));
-    if (m_botNoProgressTurns >= 12)
-    {
-        StopFirstMissionBot("No progress for 12 turns; inspect map manually.");
-        return;
-    }
-    spell_map->OnHUDswitchEndTurn();
-    m_botCooldown = 12;
-    UpdateBotStatus();
+    m_botCurrentStance = combatContact ? 1 : 0;
+    finishPhase(combatContact ? "holding defensively; route blocked." :
+        "waiting for the next available move.", true);
 }
