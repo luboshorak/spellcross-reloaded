@@ -14,6 +14,7 @@
 
 #include "RtAudio.h"
 #include "cstdint"
+#include <atomic>
 #include <vector>
 #include <list>
 #include <string>
@@ -74,13 +75,13 @@ private:
     RtAudio* dac;
     vector<SpellSample*> samples;
     int sub_id;
-    int control;
+    std::atomic<int> control;
     int mode;
     int channels;
     int count;
     int fs;
     int pos;
-    int is_playing;
+    std::atomic<int> is_playing;
     int auto_delete;
     int force_loop;
     int32_t left_vol;
