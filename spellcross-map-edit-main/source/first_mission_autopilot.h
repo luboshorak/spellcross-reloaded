@@ -88,6 +88,7 @@ void MainFrame::OpenBotControls()
             m_botHeroId = -1;
             m_botRescueReached = false;
             m_botSupportTried.clear();
+            m_botSquadMoved.clear();
             m_botTurnCount = 0;
             m_botNoProgressTurns = 0;
             m_botCooldown = 0;
@@ -147,6 +148,7 @@ void MainFrame::StopFirstMissionBot(const wxString& reason)
     m_botPaused = false;
     m_botCooldown = 0;
     m_botSupportTried.clear();
+    m_botSquadMoved.clear();
     m_botMessageTicks = 0;
     m_botMessageCloseRequested = false;
     UpdateBotStatus();
@@ -250,6 +252,7 @@ void MainFrame::StepFirstMissionBot()
         // fire or move. Advance a real turn instead of busy-looping forever.
         ++m_botTurnCount;
         m_botSupportTried.clear();
+        m_botSquadMoved.clear();
         m_botCooldown = 12;
         spell_map->OnHUDswitchEndTurn();
         UpdateBotStatus();
@@ -400,6 +403,40 @@ void MainFrame::StepFirstMissionBot()
         return;
     }
 
+    // The rest of the squad must actually move and cover the commander.
+    // Give each healthy supporting company ONE movement order per player phase.
+    // Do not teleport or alter AP; the same A* and reaction-fire rules apply.
+    for (MapUnit* ally : spell_map->units)
+    {
+        if (!ally || ally == hero || !ally->unit || ally->is_enemy ||
+            ally->isDead() || !ally->isActive() || ally->panic_turns > 0 ||
+            ally->paralyze_turns > 0 || ally->freeze_turns > 0 ||
+            ally->action_points < ally->GetWalkAP() ||
+            std::find(m_botSquadMoved.begin(), m_botSquadMoved.end(), ally->id)
+                != m_botSquadMoved.end())
+            continue;
+
+        // Units ahead of Alexander do not need to retreat just to bunch up.
+        const double separation = ally->coor.Distance(hero->coor);
+        if (separation <= 3.5)
+            continue;
+
+        // Rejoin the main group. A* treats the commander's occupied square as
+        // an obstacle and selects the nearest legal reachable approach square.
+        const int reserve = (std::max)(0, ally->GetMaxAP() / 3);
+        m_botSquadMoved.push_back(ally->id);
+        if (spell_map->AutopilotMoveToward(ally, hero->coor, reserve) ||
+            spell_map->AutopilotMoveToward(ally, hero->coor, 0))
+        {
+            BotLog(wxString::Format("Squad #%d moving to support Alexander.",
+                ally->id));
+            spell_map->ScrollToUnit(ally);
+            m_botCooldown = 12;
+            if (canvas) canvas->Refresh();
+            return;
+        }
+    }
+
     // Rescue has precedence over the exit; no hard-coded map coordinates.
     bool headingToRescue = !m_botRescueReached && rescuePosition.IsSelected();
     MapXY goal;
@@ -484,6 +521,7 @@ void MainFrame::StepFirstMissionBot()
     // Reserve leftover AP for defensive fire; do not cheat movement/combat.
     ++m_botTurnCount;
     m_botSupportTried.clear();
+    m_botSquadMoved.clear();
     ++m_botNoProgressTurns;
     BotLog(wxString::Format("End of turn %d.", m_botTurnCount));
     if (m_botNoProgressTurns >= 12)

@@ -162,6 +162,7 @@ private:
     int m_botHeroId = -1;
     bool m_botRescueReached = false; // scout/recover palisade Commando before extraction
     std::vector<int> m_botSupportTried; // every allied shooter gets one attempt per phase
+    std::vector<int> m_botSquadMoved; // support companies get one repositioning order per phase
     int m_botTurnCount = 0;
     int m_botNoProgressTurns = 0;
     int m_botCooldown = 0;
