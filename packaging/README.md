@@ -1,6 +1,6 @@
 # Building Spellcross Reloaded for Windows
 
-This is the build guide for the **game and its standalone map editor**. If you just want to play, you don't need any of this: **[download v0.8.2](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.2)** and follow the [main README](../README.md).
+This is the build guide for the **game and its standalone map editor**. If you just want to play, you don't need any of this: **[download v0.9.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.9.1)** and follow the [main README](../README.md).
 
 The build produces one portable Windows x64 ZIP. It includes both applications and their support files, but **not the original commercial Spellcross archives**.
 
@@ -32,7 +32,7 @@ If the build can't find wxWidgets, specify the path to your vcpkg x64 installati
 The output is:
 
 ```text
-dist/Spellcross_Reloaded_v0.8.2.zip
+dist/Spellcross_Reloaded_v0.9.1.zip
 ```
 
 The build also leaves dated staging folders in `dist/`. The same versioned ZIP name is reused when you rebuild.
@@ -100,7 +100,7 @@ A successful compile is a good start, but a portable release needs a quick hands
 6. Load a standalone `.DEF` + `.DTA` mission in the playable game and check that it starts correctly.
 7. On a clean Windows 10/11 x64 machine, confirm that the portable package needs only the [VC++ Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), not your development environment.
 
-The v0.8.2 release is already published; use this list for checking rebuilt packages and future updates, not as an instruction to hold up that release.
+The v0.9.1 source is prepared; the public GitHub release will be published separately after the build and checks.
 
 ## Notes
 

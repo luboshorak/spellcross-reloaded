@@ -34,8 +34,9 @@ spellcross-map-edit-main.7z
 /dist/
 /game_data/
 /spellcross-map-edit-main/game_data/
-/spellcross-map-edit-main/*.md
-/spellcross-map-edit-main/*.txt
+# Local engineering notes, in this directory and all nested directories:
+/spellcross-map-edit-main/**/*.md
+/spellcross-map-edit-main/**/*.txt
 
 # Visual Studio state/build output and abandoned editor source snapshots
 /.vs/
