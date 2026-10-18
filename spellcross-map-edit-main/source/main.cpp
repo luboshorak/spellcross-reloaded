@@ -4631,6 +4631,8 @@ void MainFrame::OnTimer(wxTimerEvent& event)
         {
             m_mission_end_flow = true;
             m_mission_end_req = req;
+            if (m_botRunning)
+                StopFirstMissionBot(req.success ? "Mission victory." : "Mission ended (defeat).");
 
             // Snapshot mission-earned permanent companies NOW, before any
             // debrief/statistics/outro UI is shown.  First-mission success is
