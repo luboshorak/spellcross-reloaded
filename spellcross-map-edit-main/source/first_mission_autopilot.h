@@ -21,7 +21,7 @@ void MainFrame::OpenBotControls()
         wxDEFAULT_FRAME_STYLE | wxFRAME_FLOAT_ON_PARENT);
     auto* root = new wxBoxSizer(wxVERTICAL);
     root->Add(new wxStaticText(m_botControls, wxID_ANY,
-        "M01_01A: rescue the palisade Commando, then extract Alexander."),
+        "M01_01A: breach the palisade, keep all squads alive, complete objectives."),
         0, wxALL, 10);
 
     auto* row = new wxBoxSizer(wxHORIZONTAL);
@@ -440,7 +440,7 @@ void MainFrame::StepFirstMissionBot()
         if (ally && ally != hero && ally->unit && !ally->is_enemy &&
             !ally->isDead() && ally->isActive() &&
             (ally != rescueUnit || m_botRescueReached) &&
-            hero->coor.Distance(ally->coor) > 5.0)
+            hero->coor.Distance(ally->coor) > 3.5)
             teamSeparated = true;
 
     // A palisade is not an enemy company: only shoot an actual destructible
@@ -684,11 +684,10 @@ void MainFrame::StepFirstMissionBot()
         }
     }
 
-    // Support companies stay in their defensive positions while hostiles
-    // approach. Reposition only in relative safety: roaming supporters used
-    // to expose themselves to orcs before Alexander even moved.
+    // Support companies regroup whenever their *own* position is safe,
+    // even if another friendly sector is engaged. This prevents the Commando
+    // getting stranded in the forest while the enemy threatens Alexander.
     // Do not teleport or alter AP; all movement remains native.
-    if (!combatContact)
     for (MapUnit* ally : spell_map->units)
     {
         if (!ally || ally == hero || !ally->unit || ally->is_enemy ||
@@ -701,8 +700,21 @@ void MainFrame::StepFirstMissionBot()
 
         // Units ahead of Alexander do not need to retreat just to bunch up.
         const double separation = ally->coor.Distance(hero->coor);
-        if (separation <= 4.0)
+        if (separation <= 3.0)
             continue;
+
+        // Under contact, only non-exposed supporters may regroup. Don't
+        // walk a unit out of cover under an active ork firing line.
+        bool ownSectorThreatened = false;
+        for (MapUnit* hostile : visibleHostiles)
+            if (hostile->unit->canAttack(ally->unit) &&
+                ally->coor.Distance(hostile->coor) <
+                (double)spell_map->GetEffectiveFireRange(hostile, ally->coor) + 2.0)
+            {
+                ownSectorThreatened = true;
+                break;
+            }
+        if (ownSectorThreatened) continue;
 
         // Rejoin the main group. A* treats the commander's occupied square as
         // an obstacle and selects the nearest legal reachable approach square.
@@ -710,7 +722,8 @@ void MainFrame::StepFirstMissionBot()
         // company's AP just to stand next to the commander.
         const int reserve = ally->GetAPperFire();
         m_botSquadMoved.push_back(ally->id);
-        if (spell_map->AutopilotMoveToward(ally, hero->coor, reserve, 2))
+        if (spell_map->AutopilotMoveToward(ally, hero->coor,
+            reserve, combatContact ? 1 : 2))
         {
             BotLog(wxString::Format("Squad #%d moving to support Alexander.",
                 ally->id));
