@@ -691,20 +691,34 @@ void SpellSound::cb_DoneFlag()
 // copy sample data to DAC frame
 int SpellSound::cb_GetFrame(int16_t *buffer, int count)
 {
-    //SpellSample *smpl;
-    int smpl_size = cb_GetSmplSize();
-    while(count)
+    if (!buffer || count <= 0)
+        return(1);
+
+    // sub_id == samples.size() is the native "playback finished" sentinel.
+    // DirectSound may call us once more before stopping the stream. Never
+    // dereference samples[sub_id] before checking it (previous crash at
+    // cb_GetSmplSize / vector::operator[]).
+    auto silence_and_stop = [&]() -> int
     {
-        if(control == CTRL_STOP)
-        {
-            // immediate stop
-            sub_id = samples.size();
-            memset(buffer,0,count*2);            
-            return(1);
-        }
+        sub_id = static_cast<int>(samples.size());
+        memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(int16_t));
+        return(1);
+    };
+    if(control == CTRL_STOP || sub_id < 0 ||
+        static_cast<size_t>(sub_id) >= samples.size())
+        return silence_and_stop();
+
+    while(count > 0)
+    {
+        if(control == CTRL_STOP || sub_id < 0 ||
+            static_cast<size_t>(sub_id) >= samples.size())
+            return silence_and_stop();
 
         if(mode == MODE_RAND)
         {
+            // Random classes may also contain missing/empty sample slots.
+            if (!samples[sub_id] || samples[sub_id]->samples <= 0)
+                return silence_and_stop();
             // single sample mode:
             if(pos >= samples[sub_id]->samples)
             {
@@ -716,10 +730,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                 else
                 {
                     // finito: fill with zeros
-                    memset(buffer,0,count*2);
-                    count = 0;
-                    sub_id = samples.size();
-                    return(1);
+                    return silence_and_stop();
                 }
             }
 
@@ -734,9 +745,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
             if(sub_id >= samples.size())
             {
                 // finito: fill with zeros
-                memset(buffer,0,count*2);
-                count = 0;
-                return(1);
+                return silence_and_stop();
             }
 
             if(sub_id == 0)
@@ -793,10 +802,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                 if(!samples[sub_id] || pos >= samples[sub_id]->samples)
                 {
                     // terminate:
-                    memset(buffer,0,count*2);
-                    count = 0;
-                    sub_id++;
-                    return(1);
+                    return silence_and_stop();
                 }
 
             }
@@ -850,16 +856,18 @@ int16_t *SpellSound::cb_GetSmplData(int16_t* buffer, int count)
 
 int SpellSound::cb_GetSmplSize()
 {
-    SpellSample* smpl = samples[sub_id];
-    if(!smpl)
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
         return(0);
-    return(smpl->channels);
+    SpellSample* smpl = samples[sub_id];
+    return smpl ? smpl->channels : 0;
 }
 
 int SpellSound::cb_GetSmplLeft()
 {
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        return(0);
     SpellSample *smpl = samples[sub_id];
-    if(!smpl)
+    if (!smpl || smpl->channels <= 0)
         return(0);
     int left = (smpl->samples - pos)/smpl->channels;
     return(left);
@@ -868,7 +876,7 @@ int SpellSound::cb_GetSmplLeft()
 // get spellcross sample
 SpellSample* SpellSound::GetSample(int id)
 {
-    if(id >= samples.size())
+    if (id < 0 || static_cast<size_t>(id) >= samples.size())
         return(NULL);
     return(samples[id]);
 }
