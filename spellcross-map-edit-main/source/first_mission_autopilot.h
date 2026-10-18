@@ -91,6 +91,7 @@ void MainFrame::OpenBotControls()
             m_botCommandoOrigin.Clear();
             m_botSupportTried.clear();
             m_botSquadMoved.clear();
+            m_botKnownAllies.clear();
             m_botHeroMovedThisTurn = false;
             m_botHeroFiredThisTurn = false;
             m_botContactWaitTurns = 0;
@@ -157,6 +158,7 @@ void MainFrame::StopFirstMissionBot(const wxString& reason)
     m_botCooldown = 0;
     m_botSupportTried.clear();
     m_botSquadMoved.clear();
+    m_botKnownAllies.clear();
     m_botHeroMovedThisTurn = false;
     m_botHeroFiredThisTurn = false;
     m_botContactWaitTurns = 0;
@@ -216,6 +218,27 @@ void MainFrame::StepFirstMissionBot()
     {
         StopFirstMissionBot("Stopped: 120-turn safety limit.");
         return;
+    }
+
+    // Every Alliance company matters, not just the general or the Commando.
+    // Spawned allies join the protected roster when they become visible in
+    // the native live unit list. A casualty is a FAILED spectator run.
+    for (MapUnit* ally : spell_map->units)
+    {
+        if (!ally || !ally->unit || ally->is_enemy) continue;
+        if (std::find(m_botKnownAllies.begin(), m_botKnownAllies.end(), ally->id)
+            == m_botKnownAllies.end() && !ally->isDead())
+            m_botKnownAllies.push_back(ally->id);
+    }
+    for (int id : m_botKnownAllies)
+    {
+        MapUnit* ally = spell_map->GetUnit(id);
+        if (!ally || ally->isDead())
+        {
+            StopFirstMissionBot(wxString::Format(
+                "Defeat: Allied company #%d was lost. All companies must survive.", id));
+            return;
+        }
     }
 
     // Wait for the regular movement/attack state machine to finish.
@@ -283,10 +306,7 @@ void MainFrame::StepFirstMissionBot()
         spell_map->GetUnit(m_botCommandoId) : nullptr;
     if (m_botCommandoId >= 0 && (!rescueUnit || rescueUnit->isDead()))
     {
-        // Losing any company is a strategic failure for the squad. Do not
-        // pretend the rescued Commando was uniquely expendable or uniquely
-        // important. Report a casualty and stop the spectator experiment.
-        StopFirstMissionBot("A friendly company has been lost (Commando).");
+        StopFirstMissionBot("Defeat: Commando company was lost.");
         return;
     }
     if (!m_botRescueReached && spell_map->events)
@@ -329,7 +349,9 @@ void MainFrame::StepFirstMissionBot()
             rescuePosition = rescueUnit->coor;
 
         if (!m_botRescueReached && m_botCommandoOrigin.IsSelected() &&
-            rescueUnit->coor.Distance(m_botCommandoOrigin) >= 2.0)
+            rescueUnit->coor.Distance(m_botCommandoOrigin) > 3.0 &&
+            rescueUnit->coor.Distance(hero->coor) <
+                m_botCommandoOrigin.Distance(hero->coor))
         {
             m_botRescueReached = true;
             BotLog("Commando physically left the enclosure. Escorting him.");
@@ -559,6 +581,30 @@ void MainFrame::StepFirstMissionBot()
         return;
     }
 
+    // Once a gap has opened, order the trapped Commando out of his pen.
+    // No magic teleport; he uses the same real pathfinder and AP budget as
+    // everyone else. Alexander must not abandon him before he gets out.
+    if (rescueUnit && !m_botRescueReached && !palisadeTarget.IsSelected() &&
+        rescueUnit != hero && rescueUnit->isActive() &&
+        rescueUnit->panic_turns == 0 && rescueUnit->paralyze_turns == 0 &&
+        rescueUnit->freeze_turns == 0 &&
+        std::find(m_botSquadMoved.begin(), m_botSquadMoved.end(), rescueUnit->id)
+            == m_botSquadMoved.end())
+    {
+        m_botSquadMoved.push_back(rescueUnit->id);
+        const int preserveFire = rescueUnit->GetAPperFire();
+        if (spell_map->AutopilotMoveToward(rescueUnit, hero->coor,
+            preserveFire, 2))
+        {
+            BotLog(wxString::Format("Commando #%d evacuating breached enclosure.",
+                rescueUnit->id));
+            spell_map->ScrollToUnit(rescueUnit);
+            m_botCooldown = 12;
+            if (canvas) canvas->Refresh();
+            return;
+        }
+    }
+
     // Support companies stay in their defensive positions while hostiles
     // approach. Reposition only in relative safety: roaming supporters used
     // to expose themselves to orcs before Alexander even moved.
@@ -576,15 +622,16 @@ void MainFrame::StepFirstMissionBot()
 
         // Units ahead of Alexander do not need to retreat just to bunch up.
         const double separation = ally->coor.Distance(hero->coor);
-        if (separation <= 3.5)
+        if (separation <= 4.0)
             continue;
 
         // Rejoin the main group. A* treats the commander's occupied square as
         // an obstacle and selects the nearest legal reachable approach square.
-        const int reserve = (std::max)(0, ally->GetMaxAP() / 3);
+        // Save enough AP for one full defensive shot. Never exhaust a
+        // company's AP just to stand next to the commander.
+        const int reserve = ally->GetAPperFire();
         m_botSquadMoved.push_back(ally->id);
-        if (spell_map->AutopilotMoveToward(ally, hero->coor, reserve) ||
-            spell_map->AutopilotMoveToward(ally, hero->coor, 0))
+        if (spell_map->AutopilotMoveToward(ally, hero->coor, reserve, 2))
         {
             BotLog(wxString::Format("Squad #%d moving to support Alexander.",
                 ally->id));
@@ -647,6 +694,19 @@ void MainFrame::StepFirstMissionBot()
         return;
     }
 
+    // The commander does not cross the next choke point while his companies
+    // are scattered or the palisade Commando is still trapped. Regroup first.
+    if (teamSeparated || (rescueUnit && !m_botRescueReached &&
+        m_botCommandoOrigin.IsSelected() &&
+        hero->coor.Distance(m_botCommandoOrigin) <= 4.0))
+    {
+        m_botCurrentStance = 1;
+        finishPhase(teamSeparated ?
+            "waiting for supporting companies to regroup." :
+            "holding at the palisade until Commando exits.", true);
+        return;
+    }
+
     // Estimate exposure using visible enemy weapon ranges and short potential
     // approach moves. The extra radius is a conservative risk margin, NOT an
     // attempt to reveal fog-of-war or precompute hidden enemy AI actions.
@@ -691,7 +751,9 @@ void MainFrame::StepFirstMissionBot()
     // endpoints and favor risk reduction over progress when severely threatened.
     // A* remains responsible for terrain, AP, occupied tiles and animation.
     MapXY movementGoal = goal;
-    int maxSteps = combatContact ? 2 : 5;
+    // A scout probes one square under fire and two in a quiet sector.
+    // No full-AP marches towards potentially concealed orcs near the ford.
+    int maxSteps = combatContact ? 1 : 2;
     if (combatContact)
     {
         MapXY best;
@@ -734,7 +796,8 @@ void MainFrame::StepFirstMissionBot()
         movementGoal = best;
     }
 
-    const int reserveAP = (std::max)(0, hero->GetMaxAP() / 3);
+    // A complete shot, not an arbitrary third of AP, must remain available.
+    const int reserveAP = hero->GetAPperFire();
     if (spell_map->AutopilotMoveToward(hero, movementGoal, reserveAP, maxSteps))
     {
         spell_map->ScrollToUnit(hero);
@@ -754,7 +817,7 @@ void MainFrame::StepFirstMissionBot()
     // A short safe probe may be blocked by terrain or another friendly unit.
     // Only in a quiet sector may the bot try a direct unrestricted path.
     if (!combatContact &&
-        spell_map->AutopilotMoveToward(hero, goal, reserveAP, 5))
+        spell_map->AutopilotMoveToward(hero, goal, reserveAP, 2))
     {
         spell_map->ScrollToUnit(hero);
         m_botHeroMovedThisTurn = true;
