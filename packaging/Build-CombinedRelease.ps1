@@ -13,8 +13,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$releaseVersion = '0.8.2'
 $game = Join-Path $root 'spellcross-map-edit-main'
+# Keep packaging synchronized with the app and Windows version metadata.
+$versionHeader = Join-Path $game 'source\app_version.h'
+if (-not (Test-Path -LiteralPath $versionHeader -PathType Leaf)) { throw "Version header not found: $versionHeader" }
+$versionMatch = [regex]::Match((Get-Content -LiteralPath $versionHeader -Raw),
+    '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+)"\s*$')
+if (-not $versionMatch.Success) { throw "Cannot read SPELLCROSS_VERSION_STRING from $versionHeader" }
+$releaseVersion = $versionMatch.Groups[1].Value
 $editor = Join-Path $root 'external\map-editor'
 $gameProject = Join-Path $game 'source\spellcross_map_editor.vcxproj'
 $editorProject = Join-Path $editor 'source\spellcross_map_editor.vcxproj'
@@ -98,7 +104,8 @@ foreach ($f in @('C_NAMES.DEF','DEVAST.fs','PUST.fs','T11.FS',
 Copy-Item -LiteralPath (Join-Path $gameAssets 'menu') -Destination $gameData -Recurse -Force
 $movieDir = Join-Path $gameData 'movie_fallback'
 New-Item -ItemType Directory -Path $movieDir -Force | Out-Null
-foreach ($f in @('README.md','MANIFEST.tsv')) {
+# Local Markdown notes are intentionally not included in clean source clones.
+foreach ($f in @('MANIFEST.tsv')) {
     $src = Join-Path $gameAssets ('movie_fallback\' + $f)
     if (Test-Path -LiteralPath $src -PathType Leaf) {
         Copy-Item -LiteralPath $src -Destination $movieDir -Force
@@ -228,14 +235,14 @@ if (Test-Path -LiteralPath $info -PathType Container) {
     }
 }
 @'
-SPELLCROSS RELOADED - WINDOWS X64 COMBINED TEST BUILD
+SPELLCROSS RELOADED - WINDOWS X64 PORTABLE BUILD
 
 Game:       Spellcross.exe
 Map editor: Editor\spellcross_map_editor.exe
 
 1. Unpack the whole ZIP into a writable folder.
 2. Launch Spellcross.exe first. Configure your own original Spellcross
-   game archives, or import them from an original CD / MOUNTED ISO image.
+   game archives, or download CZ/EN ISO, choose a local ISO, or use a CD.
 3. The game can place imported archives in game_data\DATA.
 4. Launch Editor\spellcross_map_editor.exe. It locates that game-data folder.
 5. Game and editor have SEPARATE config.ini files in their executable folders.
@@ -247,7 +254,7 @@ Editor\data\COMMON.fs with the original game's COMMON.FS archive.
 Requires Microsoft Visual C++ Redistributable x64 on systems without it:
 https://aka.ms/vc14/vc_redist.x64.exe
 
-DEVELOPMENT BUILD: still requires testing on a clean Windows machine.
+Before publishing, verify the package on a clean Windows machine.
 '@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8
 if (-not $NoZip) {
     # Stable asset name for GitHub Releases. Build folders retain timestamps

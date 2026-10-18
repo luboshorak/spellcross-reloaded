@@ -131,7 +131,7 @@ namespace
         InternetHandle request(WinHttpOpenRequest(
             connection,
             L"GET",
-            L"/repos/luboshorak/spellcross_restoration_tools/releases?per_page=20",
+            L"/repos/luboshorak/spellcross-reloaded/releases?per_page=20",
             nullptr,
             WINHTTP_NO_REFERER,
             WINHTTP_DEFAULT_ACCEPT_TYPES,

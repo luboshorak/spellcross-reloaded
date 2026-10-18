@@ -10,16 +10,16 @@ Spellcross Reloaded brings the original turn-based strategy game to current PCs.
 
 The project also includes a standalone **map editor**, so you can explore the original game files and make your own missions.
 
-**[Download Spellcross Reloaded v0.8.2](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.2)** · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor) · [Report a problem](https://github.com/luboshorak/spellcross-reloaded/issues)
+**[Download Spellcross Reloaded v0.9.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.9.1)** · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor) · [Report a problem](https://github.com/luboshorak/spellcross-reloaded/issues)
 
 > **You'll need your own original Spellcross game data.** The game itself and the editor are provided here, but the original commercial archives are not included.
 
 ## Get started
 
-1. Download the Windows x64 ZIP from the [v0.8.2 release](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.8.2).
+1. Download the Windows x64 ZIP from the [v0.9.1 release](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.9.1).
 2. Extract the whole ZIP into a **writable folder**. Don't run it from inside the archive.
 3. Launch `Spellcross.exe`.
-4. On first run, point the game to your original Spellcross data. You can select a **raw ISO file** (no mounting required), an original CD or mounted/extracted CD folder, an existing `DATA` directory, or the original archive files.
+4. On first run, load original Spellcross data. Choose **Download CZ ISO** / **Download EN ISO** (with browser fallback if needed), a **raw ISO file** (no mounting required), an original CD/mounted folder, an existing `DATA` directory, or individual game archives.
 5. Want to edit maps? Launch `Editor/spellcross_map_editor.exe` from the same folder.
 
 There's no installer or registry setup. You may need the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) on a fresh Windows installation.
@@ -44,7 +44,7 @@ outside the repository, restore the tracked version, pull, and copy your
 backup back to `source/config.ini` (which is now ignored):
 
 ```bash
-cd ~/spellcross-refactor-test
+cd /path/to/your/spellcross-reloaded
 cp spellcross-map-edit-main/source/config.ini ~/spellcross-config.ini.backup
 git restore -- spellcross-map-edit-main/source/config.ini
 git pull --ff-only
@@ -57,6 +57,31 @@ This one-time backup is important: Git removes the previously tracked
 the old tracked file after the deletion. Once copied back, playing the game
 no longer dirties Git and no `stash` is needed for future pulls.
 
+## Preserving local development notes when updating to v0.9.1
+
+The `spellcross-map-edit-main/` subtree no longer tracks `.md` or
+`.txt` notes, including those in its subdirectories. They remain in Git's
+history. The repository's `.gitignore` now ignores any local copies.
+
+**Git deletes previously tracked files during a pull even if they become
+ignored.** If you want to retain your notes, back them up **outside** the
+checkout **before** pulling. In Git Bash, from the repository root:
+
+```bash
+mkdir -p "$HOME/spellcross-local-notes-backup"
+find spellcross-map-edit-main -type f \( -iname '*.md' -o -iname '*.txt' \) \
+  -exec cp --parents '{}' "$HOME/spellcross-local-notes-backup/" \;
+git status --short
+git pull --ff-only origin main
+cp -a "$HOME/spellcross-local-notes-backup/spellcross-map-edit-main/." spellcross-map-edit-main/
+git status --short
+```
+
+Resolve any pre-existing uncommitted changes before pulling. Do not use
+`git reset --hard` or assume `.gitignore` preserves tracked files. Once
+restored, the notes will remain on disk but will no longer appear in Git status.
+The top-level `README.md` and `packaging/README.md` are retained.
+
 ## The game
 
 Reloaded keeps Spellcross's two connected parts:
@@ -67,17 +92,19 @@ Reloaded keeps Spellcross's two connected parts:
 
 You'll find the original graphics, unit artwork, animations, sounds, music and strategic interface wherever they can be recovered from the game files. The Windows package also includes 37 video fallbacks for cinematics that the old video formats cannot reliably play on modern systems.
 
-## What's new in v0.8.2?
+## What's new in v0.9.1?
 
-**Easier setup.** Reloaded now reads a standard ISO 9660 `.iso` directly. No virtual drive or manual extraction is needed.
+**Improved original-game mechanics.** Tactical movement costs now use the actual action-point cost from each original unit definition. Experience and equipment upgrades modify available action points; sight, radar, high-ground firing distance and formation bonuses have been reviewed against the original game data. Rescue objectives, enemy-death cleanup and turn handling have also received corrections.
 
-**Game and editor work together.** Open the editor from the main menu without closing the game. While playing a tactical mission, you can also open its **original mission file** in the editor. The game asks whether you want to save first, proceed without saving, or cancel. This opens the source DEF/DTA mission, **not** your current live battle state.
+**Easier tactical deployment.** The initial tactical view centers on the densest group of START squares, while the flashing placement-finish button remains clickable throughout its animation.
 
-**Try your own maps.** In the tactical window, use **File → Load custom map...** (`Ctrl+Alt+O`) to play a standalone `.DEF` mission. Keep its referenced `.DTA` file available. Custom maps run separately from the main campaign.
+**CZ and EN ISO download.** On first run, download either original game ISO directly from spellcross.czech-games.net, validate it and import it without mounting a virtual drive. If Cloudflare denies the in-app transfer, the wizard offers a browser-based download and imports the selected result. Existing local ISO/CD/DATA import paths remain available.
 
-**Better map editing.** The included editor has fixes for painting terrain and objects, clearer brush status messages, 90° rotation of supported flat terrain/road brushes (including multi-cell selections), and drag-and-drop movement of supported L2 objects with Undo.
+**More faithful strategic UI.** Restored original-style strategic screens with usable scrollbar thumbs and dragging; removal of the obsolete editor-era Game mode menu; further fixes to tactical/strategic transitions and save support.
 
-Some editor tools are still experimental. For example, rotating a flat road is supported, but dragging a building baked into the L1 ground layer is not.
+**Editor and custom missions.** Launch the bundled standalone map editor from the main menu, open a mission's original DEF/DTA source after save confirmation, or try standalone custom tactical maps with **File → Load custom map…** (`Ctrl+Alt+O`).
+
+This is still an ongoing restoration, not a claim of perfect binary compatibility with the 1997 DOS original.
 
 ## Handy controls
 
@@ -89,7 +116,7 @@ Some editor tools are still experimental. For example, rotating a flat road is s
 | `I` | Show or hide unit information |
 | `O` | Tactical options |
 | `Esc` | Cancel the current action |
-| `Ctrl+Alt+O` | Open a custom tactical mission (v0.8.2) |
+| `Ctrl+Alt+O` | Open a custom tactical mission (v0.9.1) |
 
 ### Group movement
 
