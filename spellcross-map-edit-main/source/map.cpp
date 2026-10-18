@@ -7318,7 +7318,7 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
 // hand the native move animator a legal A* prefix, exactly as the original EN
 // group-movement implementation does.  Reaction fire, action points and
 // mission triggers therefore run through the normal tactical engine.
-bool SpellMap::AutopilotMoveToward(MapUnit* unit, MapXY destination, int reserve_ap)
+bool SpellMap::AutopilotMoveToward(MapUnit* unit, MapXY destination, int reserve_ap, int max_steps)
 {
     if (!isGameMode() || deployment_mode || !unit || !unit->unit ||
         unit->is_enemy || unit->isDead() || !unit->isActive() ||
@@ -7346,7 +7346,7 @@ bool SpellMap::AutopilotMoveToward(MapUnit* unit, MapXY destination, int reserve
     int last = 0;
     for (int i = 1; i < (int)path.size(); ++i)
     {
-        if (path[i].g_cost > budget)
+        if (path[i].g_cost > budget || (max_steps > 0 && i > max_steps))
             break;
         last = i;
     }

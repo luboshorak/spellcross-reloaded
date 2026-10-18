@@ -1042,7 +1042,7 @@ public:
 		int CanUnitMove(MapXY target);
 		int MoveUnit(MapXY target, bool reserve_one_shot = false);
 		// Experimental spectator AI: use the native path and movement state machines.
-		bool AutopilotMoveToward(MapUnit* unit, MapXY destination, int reserve_ap = 0);
+		bool AutopilotMoveToward(MapUnit* unit, MapXY destination, int reserve_ap = 0, int max_steps = 0);
 		int ResetUnitsAP();
 		static constexpr int UNIT_RANGE_NONE = 0x00;
 		static constexpr int UNIT_RANGE_MOVE = 0x01;
