@@ -165,6 +165,7 @@ private:
     MapXY m_botCommandoOrigin; // discover and retain its initial palisade position
     std::vector<int> m_botSupportTried; // every allied shooter gets one attempt per phase
     std::vector<int> m_botSquadMoved; // support companies get one repositioning order per phase
+    std::vector<int> m_botKnownAllies; // track every friendly life, including late spawns
     bool m_botHeroMovedThisTurn = false; // no suicidal repeated marches in one phase
     bool m_botHeroFiredThisTurn = false; // leave AP available for defensive fire
     int m_botContactWaitTurns = 0; // capped wait/ambush sequence
