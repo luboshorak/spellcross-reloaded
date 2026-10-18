@@ -160,7 +160,9 @@ private:
     bool m_botPaused = false;
     int m_botSpeed = 1; // native simulation ticks per 10 ms UI timer
     int m_botHeroId = -1;
-    bool m_botRescueReached = false; // scout/recover palisade Commando before extraction
+    bool m_botRescueReached = false; // only true after Commando leaves its enclosure
+    int m_botCommandoId = -1;
+    MapXY m_botCommandoOrigin; // discover and retain its initial palisade position
     std::vector<int> m_botSupportTried; // every allied shooter gets one attempt per phase
     std::vector<int> m_botSquadMoved; // support companies get one repositioning order per phase
     bool m_botHeroMovedThisTurn = false; // no suicidal repeated marches in one phase
