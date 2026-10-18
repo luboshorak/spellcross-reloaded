@@ -161,6 +161,7 @@ private:
     int m_botSpeed = 1; // native simulation ticks per 10 ms UI timer
     int m_botHeroId = -1;
     int m_botTurnCount = 0;
+    int m_botNoProgressTurns = 0;
     int m_botCooldown = 0;
     wxFrame* m_botControls = nullptr;
     wxButton* m_botStartPause = nullptr;
