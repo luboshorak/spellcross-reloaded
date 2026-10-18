@@ -87,6 +87,8 @@ void MainFrame::OpenBotControls()
             m_botPaused = false;
             m_botHeroId = -1;
             m_botRescueReached = false;
+            m_botCommandoId = -1;
+            m_botCommandoOrigin.Clear();
             m_botSupportTried.clear();
             m_botSquadMoved.clear();
             m_botHeroMovedThisTurn = false;
@@ -159,6 +161,8 @@ void MainFrame::StopFirstMissionBot(const wxString& reason)
     m_botHeroFiredThisTurn = false;
     m_botContactWaitTurns = 0;
     m_botCurrentStance = 0;
+    m_botCommandoId = -1;
+    m_botCommandoOrigin.Clear();
     m_botMessageTicks = 0;
     m_botMessageCloseRequested = false;
     UpdateBotStatus();
@@ -271,53 +275,111 @@ void MainFrame::StepFirstMissionBot()
         return;
     }
 
-    // Locate rescue via the *real* mission event records. A delayed SeePlace
-    // or SeeUnit event can hold an unspawned ArmyUnit (permanent Commando).
-    // An already active ArmyUnit is a rescue candidate as well.
+    // Resolve the permanent Commando once it spawns. Approaching his pen
+    // does NOT count as rescuing him: he must physically leave the palisade.
     MapXY rescuePosition;
     bool rescueEventPending = false;
-    MapUnit* rescueUnit = nullptr;
-    if (!m_botRescueReached)
+    MapUnit* rescueUnit = m_botCommandoId >= 0 ?
+        spell_map->GetUnit(m_botCommandoId) : nullptr;
+    if (m_botCommandoId >= 0 && (!rescueUnit || rescueUnit->isDead()))
     {
-        if (spell_map->events)
-            for (auto* ev : spell_map->events->GetEvents())
+        StopFirstMissionBot("The rescued Commando has been killed.");
+        return;
+    }
+    if (!m_botRescueReached && spell_map->events)
+        for (auto* ev : spell_map->events->GetEvents())
+        {
+            if (!ev || ev->is_done) continue;
+            for (const auto& spawn : ev->units)
             {
-                if (!ev) continue;
-                for (const auto& spawn : ev->units)
+                MapUnit* u = spawn.unit;
+                if (!u || !u->unit || u->is_enemy || spawn.is_placed ||
+                    u->spec_type != MapUnitType::ArmyUnit)
+                    continue;
+                MapXY p = ev->hasPosition() ? ev->position : u->coor;
+                if (!p.IsSelected()) continue;
+                if (!rescueEventPending ||
+                    hero->coor.Distance(p) < hero->coor.Distance(rescuePosition))
                 {
-                    auto* t = spawn.unit;
-                    if (!t || !t->unit || t->is_enemy || spawn.is_placed ||
-                        t->spec_type != MapUnitType::ArmyUnit)
-                        continue;
-                    const MapXY location = ev->hasPosition() ? ev->position : t->coor;
-                    if (!location.IsSelected()) continue;
-                    if (!rescueEventPending ||
-                        hero->coor.Distance(location) < hero->coor.Distance(rescuePosition))
-                    {
-                        rescueEventPending = true;
-                        rescuePosition = location;
-                    }
+                    rescueEventPending = true;
+                    rescuePosition = p;
                 }
             }
-        for (MapUnit* other : spell_map->units)
-            if (other && other->unit && !other->is_enemy && !other->isDead() &&
-                other->spec_type == MapUnitType::ArmyUnit &&
-                (!rescueUnit || hero->coor.Distance(other->coor) <
-                    hero->coor.Distance(rescueUnit->coor)))
-                rescueUnit = other;
-
-        // Approaching the living Commando represents actually making contact,
-        // not simply exploiting its known coordinates from the DEF file.
-        if (!rescueEventPending && rescueUnit)
-        {
-            rescuePosition = rescueUnit->coor;
-            if (hero->coor.Distance(rescuePosition) <= 3.0)
-            {
-                m_botRescueReached = true;
-                BotLog(wxString::Format("Rescued Commando #%d: now extracting.",
-                    rescueUnit->id));
-            }
         }
+    if (!rescueUnit && m_botCommandoId < 0)
+        for (MapUnit* ally : spell_map->units)
+            if (ally && ally->unit && !ally->is_enemy && !ally->isDead() &&
+                ally->spec_type == MapUnitType::ArmyUnit &&
+                (!rescueUnit || hero->coor.Distance(ally->coor) <
+                    hero->coor.Distance(rescueUnit->coor)))
+                rescueUnit = ally;
+    if (rescueUnit)
+    {
+        if (m_botCommandoId < 0)
+        {
+            m_botCommandoId = rescueUnit->id;
+            m_botCommandoOrigin = rescueUnit->coor;
+            BotLog(wxString::Format("Commando #%d found in palisade; extraction NOT yet secured.",
+                rescueUnit->id));
+        }
+        if (!m_botRescueReached)
+            rescuePosition = rescueUnit->coor;
+
+        if (!m_botRescueReached && m_botCommandoOrigin.IsSelected() &&
+            rescueUnit->coor.Distance(m_botCommandoOrigin) >= 2.0)
+        {
+            m_botRescueReached = true;
+            BotLog("Commando physically left the enclosure. Escorting him.");
+        }
+    }
+
+    // Prefer real native objectives. SaveUnit means START squares, whereas
+    // TransportUnit means ESCAPE squares. They are not interchangeable.
+    MapXY commandoObjective;
+    if (rescueUnit && spell_map->events)
+        for (auto* ev : spell_map->events->GetEvents())
+        {
+            if (!ev || !ev->is_objective || ev->is_done ||
+                ev->trig_unit != rescueUnit) continue;
+            const std::vector<MapXY>* places = nullptr;
+            if (ev->evt_type == SpellMapEventRec::EVT_SAVE_UNIT)
+                places = &spell_map->start;
+            else if (ev->evt_type == SpellMapEventRec::EVT_TRANSPORT_UNIT)
+                places = &spell_map->escape;
+            if (places && !places->empty())
+                commandoObjective = *std::min_element(places->begin(),places->end(),
+                    [rescueUnit](const MapXY& x, const MapXY& y)
+                    { return rescueUnit->coor.Distance(x) < rescueUnit->coor.Distance(y); });
+        }
+
+    // In the first mission there is a destructible palisade around the
+    // Commando. Only evaluate targetable, visible map objects close to the
+    // *original* enclosure, never random walls elsewhere on the map.
+    MapXY palisadeTarget;
+    double palisadeScore = 1e30;
+    if (rescueUnit && m_botCommandoOrigin.IsSelected() && !m_botRescueReached)
+    {
+        const MapXY center = m_botCommandoOrigin;
+        for (int y = (std::max)(0, center.y - 4);
+                 y <= (std::min)(spell_map->y_size - 1, center.y + 4); ++y)
+            for (int x = (std::max)(0, center.x - 4);
+                     x <= (std::min)(spell_map->x_size - 1, center.x + 4); ++x)
+            {
+                MapXY p(x,y);
+                if (center.Distance(p) > 3.5 ||
+                    !spell_map->TileIsVisible(x,y)) continue;
+                const MapSprite& tile = spell_map->tiles[spell_map->ConvXY(p)];
+                if (!tile.isTarget() || tile.hp <= 0 || !tile.GetDestructible())
+                    continue;
+                // Make a gap on the side from which the rescuers approach.
+                double score = hero->coor.Distance(p) +
+                    0.4 * center.Distance(p);
+                if (score < palisadeScore)
+                {
+                    palisadeScore = score;
+                    palisadeTarget = p;
+                }
+            }
     }
 
     // The bot may see only real player-visible enemies. Estimate the contact
