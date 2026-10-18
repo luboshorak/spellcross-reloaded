@@ -163,6 +163,9 @@ private:
     bool m_botRescueReached = false; // only true after Commando leaves its enclosure
     int m_botCommandoId = -1;
     MapXY m_botCommandoOrigin; // discover and retain its initial palisade position
+    MapXY m_botBreachTarget; // one selected wall panel, not the entire palisade
+    bool m_botBreachOpen = false;
+    int m_botBreachStuckTurns = 0;
     std::vector<int> m_botSupportTried; // every allied shooter gets one attempt per phase
     std::vector<int> m_botSquadMoved; // support companies get one repositioning order per phase
     std::vector<int> m_botKnownAllies; // track every friendly life, including late spawns
