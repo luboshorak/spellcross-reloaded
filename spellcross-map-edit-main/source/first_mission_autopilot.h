@@ -90,6 +90,7 @@ void MainFrame::OpenBotControls()
             m_botSupportTried.clear();
             m_botSquadMoved.clear();
             m_botHeroMovedThisTurn = false;
+            m_botHeroFiredThisTurn = false;
             m_botContactWaitTurns = 0;
             m_botCurrentStance = 0;
             m_botTurnCount = 0;
@@ -155,6 +156,7 @@ void MainFrame::StopFirstMissionBot(const wxString& reason)
     m_botSupportTried.clear();
     m_botSquadMoved.clear();
     m_botHeroMovedThisTurn = false;
+    m_botHeroFiredThisTurn = false;
     m_botContactWaitTurns = 0;
     m_botCurrentStance = 0;
     m_botMessageTicks = 0;
@@ -262,6 +264,7 @@ void MainFrame::StepFirstMissionBot()
         m_botSupportTried.clear();
         m_botSquadMoved.clear();
         m_botHeroMovedThisTurn = false;
+        m_botHeroFiredThisTurn = false;
         m_botCooldown = 12;
         spell_map->OnHUDswitchEndTurn();
         UpdateBotStatus();
@@ -356,6 +359,9 @@ void MainFrame::StepFirstMissionBot()
                     const int layer = e->unit->isAir() ? 1 : 0;
                     if (spell_map->Attack(e->coor, layer) == 0)
                     {
+                        // One proactive shot per squad each phase leaves AP for
+                        // genuine incoming-contact/defensive fire.
+                        m_botSupportTried.push_back(selected->id);
                         BotLog(wxString::Format("Support unit #%d fired at #%d.",
                             selected->id, e->id));
                         m_botCooldown = 12;
@@ -372,7 +378,7 @@ void MainFrame::StepFirstMissionBot()
 
     MapUnit* bestTarget = nullptr;
     double bestDistance = 1e30;
-    if (hero->GetFireCount() > 0)
+    if (!m_botHeroFiredThisTurn && hero->GetFireCount() > 0)
         for (MapUnit* enemy : spell_map->units)
         {
             if (!enemy || !enemy->unit || !enemy->is_enemy || enemy->isDead() ||
@@ -396,7 +402,8 @@ void MainFrame::StepFirstMissionBot()
         const int layer = bestTarget->unit->isAir() ? 1 : 0;
         if (spell_map->Attack(enemyPos, layer) == 0)
         {
-            BotLog(wxString::Format("Defensive fire at threat #%d.", targetId));
+            m_botHeroFiredThisTurn = true;
+            BotLog(wxString::Format("Controlled shot at threat #%d (AP reserved).", targetId));
             m_botCooldown = 12;
             m_botNoProgressTurns = 0;
             return;
@@ -491,6 +498,7 @@ void MainFrame::StepFirstMissionBot()
         m_botSupportTried.clear();
         m_botSquadMoved.clear();
         m_botHeroMovedThisTurn = false;
+        m_botHeroFiredThisTurn = false;
         if (intentionalHold)
             ++m_botNoProgressTurns;
         else

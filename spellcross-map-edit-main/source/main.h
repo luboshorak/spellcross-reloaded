@@ -164,6 +164,7 @@ private:
     std::vector<int> m_botSupportTried; // every allied shooter gets one attempt per phase
     std::vector<int> m_botSquadMoved; // support companies get one repositioning order per phase
     bool m_botHeroMovedThisTurn = false; // no suicidal repeated marches in one phase
+    bool m_botHeroFiredThisTurn = false; // leave AP available for defensive fire
     int m_botContactWaitTurns = 0; // capped wait/ambush sequence
     int m_botCurrentStance = 0; // 0=advance, 1=contact/hold, 2=cautious probe
     int m_botTurnCount = 0;
