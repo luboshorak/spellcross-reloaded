@@ -325,7 +325,6 @@ enum
     ID_SaveDEF,
     ID_NewMap,
     ID_MainMenu,
-    ID_AutopilotControls,
     ID_mmGameMode,
     ID_mmSaveGameState,
 	ID_mmLoadGameState,
@@ -391,7 +390,8 @@ enum
     ID_OptionsDifficultyEasy,
     ID_OptionsDifficultyNormal,
     ID_OptionsDifficultyHard,
-    ID_mmOpenMapEditor
+    ID_mmOpenMapEditor,
+    ID_AutopilotControls
 };
 
 
