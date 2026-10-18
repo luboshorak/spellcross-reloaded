@@ -12786,7 +12786,7 @@ int SpellMap::Tick()
 		if (!unit_view)
 			return true; // invalid vision state: retain normal presentation
 
-		const int index = ConvXY(mover->coor);
+		const int index = ConvXY(mover->coor.x, mover->coor.y);
 		unit_view->ResultLock(true);
 		const bool valid_mask = unit_view->view.size() == (size_t)(x_size * y_size);
 		const bool visible = valid_mask && index >= 0 &&
