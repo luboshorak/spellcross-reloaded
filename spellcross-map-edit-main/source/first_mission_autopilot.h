@@ -87,6 +87,7 @@ void MainFrame::OpenBotControls()
             m_botPaused = false;
             m_botHeroId = -1;
             m_botRescueReached = false;
+            m_botSupportTried.clear();
             m_botTurnCount = 0;
             m_botNoProgressTurns = 0;
             m_botCooldown = 0;
@@ -145,6 +146,7 @@ void MainFrame::StopFirstMissionBot(const wxString& reason)
     m_botRunning = false;
     m_botPaused = false;
     m_botCooldown = 0;
+    m_botSupportTried.clear();
     m_botMessageTicks = 0;
     m_botMessageCloseRequested = false;
     UpdateBotStatus();
@@ -247,6 +249,7 @@ void MainFrame::StepFirstMissionBot()
         // Status effects and newly spawned inactive companies must never
         // fire or move. Advance a real turn instead of busy-looping forever.
         ++m_botTurnCount;
+        m_botSupportTried.clear();
         m_botCooldown = 12;
         spell_map->OnHUDswitchEndTurn();
         UpdateBotStatus();
@@ -302,8 +305,38 @@ void MainFrame::StepFirstMissionBot()
         }
     }
 
-    if (spell_map->GetSelectedUnit() != hero)
+    // Let every nearby friendly squad provide supporting fire, not only the
+    // mission leader. Keep selection stable until its native fire animation ends.
+    auto supportTried = [this](int id) {
+        return std::find(m_botSupportTried.begin(), m_botSupportTried.end(), id)
+            != m_botSupportTried.end();
+    };
+    MapUnit* selected = spell_map->GetSelectedUnit();
+    if (selected != hero)
     {
+        if (selected && selected->unit && !selected->is_enemy &&
+            !selected->isDead() && !supportTried(selected->id))
+        {
+            if (selected->isActive() && selected->GetFireCount() > 0)
+                for (MapUnit* e : spell_map->units)
+                {
+                    if (!e || !e->unit || !e->is_enemy || e->isDead() ||
+                        e->is_visible < 2 || !e->coor.IsSelected()) continue;
+                    if (selected->coor.Distance(e->coor) >
+                        (double)selected->GetFireRange()) continue;
+                    if (!spell_map->CanUnitAttack(e)) continue;
+                    const int layer = e->unit->isAir() ? 1 : 0;
+                    if (spell_map->Attack(e->coor, layer) == 0)
+                    {
+                        BotLog(wxString::Format("Support unit #%d fired at #%d.",
+                            selected->id, e->id));
+                        m_botCooldown = 12;
+                        m_botNoProgressTurns = 0;
+                        return;
+                    }
+                }
+            m_botSupportTried.push_back(selected->id);
+        }
         spell_map->SelectUnit(hero, true);
         m_botCooldown = 12; // async visibility/attack map refresh
         return;
@@ -340,6 +373,31 @@ void MainFrame::StepFirstMissionBot()
             m_botNoProgressTurns = 0;
             return;
         }
+    }
+
+    // After the commander has handled nearby threats, use the other Alliance
+    // squads for suppressive fire wherever their current weapon range allows.
+    for (MapUnit* ally : spell_map->units)
+    {
+        if (!ally || ally == hero || !ally->unit || ally->is_enemy ||
+            ally->isDead() || !ally->isActive() || supportTried(ally->id) ||
+            ally->panic_turns > 0 || ally->paralyze_turns > 0 ||
+            ally->freeze_turns > 0 || ally->GetFireCount() <= 0)
+            continue;
+        bool inRange = false;
+        for (MapUnit* e : spell_map->units)
+            if (e && e->unit && e->is_enemy && !e->isDead() &&
+                e->is_visible >= 2 && e->coor.IsSelected() &&
+                ally->coor.Distance(e->coor) <= (double)ally->GetFireRange() &&
+                ally->unit->canAttack(e->unit))
+            {
+                inRange = true;
+                break;
+            }
+        if (!inRange) continue;
+        spell_map->SelectUnit(ally, true);
+        m_botCooldown = 12;
+        return;
     }
 
     // Rescue has precedence over the exit; no hard-coded map coordinates.
@@ -425,6 +483,7 @@ void MainFrame::StepFirstMissionBot()
 
     // Reserve leftover AP for defensive fire; do not cheat movement/combat.
     ++m_botTurnCount;
+    m_botSupportTried.clear();
     ++m_botNoProgressTurns;
     BotLog(wxString::Format("End of turn %d.", m_botTurnCount));
     if (m_botNoProgressTurns >= 12)
