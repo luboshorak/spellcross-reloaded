@@ -89,6 +89,8 @@ void MainFrame::OpenBotControls()
             m_botTurnCount = 0;
             m_botNoProgressTurns = 0;
             m_botCooldown = 0;
+            m_botMessageTicks = 0;
+            m_botMessageCloseRequested = false;
             m_botOutput->Clear();
             BotLog("Started. Native game simulation drives all actions.");
         }
@@ -142,7 +144,31 @@ void MainFrame::StopFirstMissionBot(const wxString& reason)
     m_botRunning = false;
     m_botPaused = false;
     m_botCooldown = 0;
+    m_botMessageTicks = 0;
+    m_botMessageCloseRequested = false;
     UpdateBotStatus();
+}
+
+// First-mission event dialogs are game-script gates, not ordinary OS popups.
+// Acknowledge via FormMsgBox::Close so its normal OnClose -> ResultCallback
+// sequence fires, exactly as when the player clicks or presses Enter.
+void MainFrame::TickFirstMissionBotMessages()
+{
+    if (!m_botRunning || m_botPaused || !form_message || form_video_box ||
+        m_mission_end_flow || m_botMessageCloseRequested)
+        return;
+
+    // Keep the message readable in spectator mode, even at 10x simulation
+    // speed (this routine runs once per 10 ms UI timer, not per game tick).
+    constexpr int kReadTimeTicks = 180;
+    if (++m_botMessageTicks < kReadTimeTicks)
+        return;
+
+    m_botMessageCloseRequested = true; // close event is delivered asynchronously
+    const bool hasChoice = form_message->IsChoicePrompt();
+    BotLog(hasChoice ? "Message: selected Yes to continue." :
+        "Message: acknowledged information.");
+    form_message->AcknowledgeForAutopilot(true);
 }
 
 // Simplest useful test AI: one persistent Alliance hero, real enemy turns,

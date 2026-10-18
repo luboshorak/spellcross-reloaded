@@ -298,6 +298,15 @@ void FormMsgBox::OnButtonMouseHover(wxMouseEvent& event)
     btn->Refresh();
 }
 
+void FormMsgBox::AcknowledgeForAutopilot(bool chooseYes)
+{
+    // Plain information windows have no choice; yes/no script prompts need
+    // an explicit selection before the normal close event reaches MainFrame.
+    if (m_options == SpellMsgOptions::YESNO)
+        m_result = chooseYes ? SpellMsgResult::YES : SpellMsgResult::NO;
+    form->Close();
+}
+
 void FormMsgBox::ResultCallback()
 {
     if(m_sel_cb)

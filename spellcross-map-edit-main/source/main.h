@@ -163,12 +163,15 @@ private:
     int m_botTurnCount = 0;
     int m_botNoProgressTurns = 0;
     int m_botCooldown = 0;
+    int m_botMessageTicks = 0; // keep narrative messages on screen briefly
+    bool m_botMessageCloseRequested = false;
     wxFrame* m_botControls = nullptr;
     wxButton* m_botStartPause = nullptr;
     wxStaticText* m_botStatus = nullptr;
     wxTextCtrl* m_botOutput = nullptr;
     void OpenBotControls();
     void StepFirstMissionBot();
+    void TickFirstMissionBotMessages();
     void StopFirstMissionBot(const wxString& reason);
     void UpdateBotStatus();
     void BotLog(const wxString& message);

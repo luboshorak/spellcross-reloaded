@@ -4606,6 +4606,11 @@ void MainFrame::OnTimer(wxTimerEvent& event)
             return;
     }
 
+    // Native in-game messages block tactical ticks. In spectator mode,
+    // acknowledge them after a short reading interval instead of deadlocking
+    // at the first scripted encounter (e.g. the rescued infantry).
+    if (m_botRunning && !m_botPaused && form_message)
+        TickFirstMissionBotMessages();
     if (m_botRunning && (m_botPaused || CheckMessageState()))
         return;
 
@@ -6012,6 +6017,8 @@ void MainFrame::OnUnitClick_cb(int option)
 void MainFrame::ShowMessage(SpellTextRec *message,bool is_yesno,std::function<void(bool)> exit_cb)
 {
     //auto text = spell_data->texts->GetText("u0101_07");
+    m_botMessageTicks = 0;
+    m_botMessageCloseRequested = false;
     form_message = new FormMsgBox(canvas, ID_MSG_WIN, spell_data, spell_map, message, (is_yesno)?(FormMsgBox::SpellMsgOptions::YESNO):(FormMsgBox::SpellMsgOptions::NONE), exit_cb);
 }
 // return true if some message still exist or a video is playing

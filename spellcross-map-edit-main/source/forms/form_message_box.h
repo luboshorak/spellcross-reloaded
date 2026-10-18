@@ -17,6 +17,9 @@ public:
     FormMsgBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_data,SpellMap* spell_map,SpellTextRec* text,SpellMsgOptions options=SpellMsgOptions::NONE,std::function<void(bool)> selection_cb=NULL);
     ~FormMsgBox();
     void ResultCallback();
+    bool IsChoicePrompt() const { return m_options == SpellMsgOptions::YESNO; }
+    // Close through the normal wx event path so mission-script callbacks run once.
+    void AcknowledgeForAutopilot(bool chooseYes = true);
 
 private:
     SpellData* m_spelldata;    
