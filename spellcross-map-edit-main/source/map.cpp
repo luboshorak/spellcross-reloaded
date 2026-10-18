@@ -12776,6 +12776,24 @@ int SpellMap::Tick()
 
 // === Unit state machine ===
 	LockMap();
+
+	// Presentation uses the player's fog-of-war mask. The simulation must
+	// always process the real path regardless of what the player can see.
+	auto movement_visible_to_player = [&](const MapUnit* mover) -> bool
+	{
+		if (!mover || !isGameMode() || !mover->is_enemy)
+			return true;
+		if (!unit_view)
+			return true; // invalid vision state: retain normal presentation
+
+		const int index = ConvXY(mover->coor);
+		unit_view->ResultLock(true);
+		const bool valid_mask = unit_view->view.size() == (size_t)(x_size * y_size);
+		const bool visible = valid_mask && index >= 0 &&
+			(size_t)index < unit_view->view.size() && unit_view->view[index] == 2;
+		unit_view->ResultLock(false);
+		return !valid_mask || visible;
+	};
 	if (unit->move_state != MapUnit::MOVE_STATE::IDLE)
 	{
 		// === UNIT MOVEMENT ===
@@ -12926,19 +12944,26 @@ int SpellMap::Tick()
 			}
 			else if (unit->move_state == MapUnit::MOVE_STATE::MOVE)
 			{
-				// movement:
+				// Fast-forward only hidden enemies. Every tile retains all normal
+				// simulation, reaction-fire and script-event checks.
+				constexpr int MAX_HIDDEN_STEPS_PER_TICK = 32;
+				int steps_this_tick = 0;
+				bool presented_after_step = true;
+				while (unit->move_state == MapUnit::MOVE_STATE::MOVE &&
+					steps_this_tick < MAX_HIDDEN_STEPS_PER_TICK)
+				{
+					const bool presented_before_step = movement_visible_to_player(unit);
+					const size_t event_count_before_step = event_list.size();
 
 				if (unit->move_step == 0)
 				{
 					// first step:
 
-					// play move sound (async)
-					unit->PlayMove();
-
-					// start animation
+					// Presentation is optional; the logical move is not.
+					if (presented_before_step)
+						unit->PlayMove();
 					unit->frame = -1;
-					if (unit->unit->gr_base->anim.frames)
-						unit->in_animation = unit->unit->gr_base;
+					unit->in_animation = nullptr;
 
 					// update view of all but this unit:
 					unit_view->ClearUnitsView();
@@ -12998,6 +13023,28 @@ int SpellMap::Tick()
 				if (isGameMode())
 					CheckReactionFire(unit, this_pos);
 
+				presented_after_step = movement_visible_to_player(unit);
+				const bool movement_finished = unit->move_step >= unit->move_nodes.size();
+
+				// Sounds and animations exist only while the mover is seen.
+				if (unit->is_enemy && presented_after_step != presented_before_step)
+				{
+					if (presented_after_step && !movement_finished)
+						unit->PlayMove();
+					else
+						unit->PlayStop();
+				}
+				if (presented_after_step && unit->unit->gr_base->anim.frames)
+				{
+					if (!unit->in_animation)
+						unit->frame = -1;
+					unit->in_animation = unit->unit->gr_base;
+				}
+				else
+				{
+					unit->in_animation = nullptr;
+					unit->frame = 0;
+				}
 
 				if (unit->in_animation)
 				{
@@ -13016,7 +13063,7 @@ int SpellMap::Tick()
 
 				//if (new_contact || !events.empty() || unit->move_step >= unit->move_nodes.size())
 
-				if (unit->move_step >= unit->move_nodes.size())
+				if (movement_finished)
 
 				{
 					// movement done:
@@ -13033,6 +13080,15 @@ int SpellMap::Tick()
 					unit->frame = 0;
 				}
 
+					++steps_this_tick;
+					// Yield on contact, defensive-fire, scripted events or after
+					// any visible step. Never batch presentation or interrupts.
+					if (!enemy_turn_running || !unit->is_enemy ||
+						presented_before_step || presented_after_step ||
+						reaction_fire_active || !reaction_fire_queue.empty() ||
+						event_list.size() != event_count_before_step)
+						break;
+				}
 			}
 
 			update = true;
