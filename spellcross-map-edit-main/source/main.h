@@ -161,6 +161,7 @@ private:
     int m_botSpeed = 1; // native simulation ticks per 10 ms UI timer
     int m_botHeroId = -1;
     bool m_botRescueReached = false; // scout/recover palisade Commando before extraction
+    std::vector<int> m_botSupportTried; // every allied shooter gets one attempt per phase
     int m_botTurnCount = 0;
     int m_botNoProgressTurns = 0;
     int m_botCooldown = 0;
