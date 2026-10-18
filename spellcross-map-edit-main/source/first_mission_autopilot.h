@@ -618,6 +618,72 @@ void MainFrame::StepFirstMissionBot()
         BotLog("Commando still blocked: seeking another palisade panel.");
     }
 
+    // A threatened squad may withdraw ONE square to a safer visible tile.
+    // This happens after its chance to fire, not before. Never try to rush
+    // several steps away under enemy opportunity fire.
+    if (combatContact)
+    for (MapUnit* ally : spell_map->units)
+    {
+        if (!ally || !ally->unit || ally->is_enemy || ally->isDead() ||
+            !ally->isActive() || ally->panic_turns > 0 ||
+            ally->paralyze_turns > 0 || ally->freeze_turns > 0 ||
+            ally->GetWalkAP() <= 0 ||
+            std::find(m_botSquadMoved.begin(), m_botSquadMoved.end(), ally->id)
+                != m_botSquadMoved.end())
+            continue;
+
+        auto localExposure = [&](MapXY p) -> double
+        {
+            double risk = 0.0;
+            for (MapUnit* e : visibleHostiles)
+            {
+                if (!e->unit->canAttack(ally->unit)) continue;
+                double d = p.Distance(e->coor);
+                double range = (double)spell_map->GetEffectiveFireRange(e,p) + 2.0;
+                if (d < range)
+                    risk += (range - d) * 16.0;
+                if (d < 2.0) risk += 35.0;
+            }
+            return risk;
+        };
+        const double oldRisk = localExposure(ally->coor);
+        if (oldRisk < 15.0) continue;
+
+        MapXY safer;
+        double bestRisk = oldRisk - 12.0;
+        const int dirs[][2] = {{1,0},{-1,0},{0,1},{0,-1},
+                               {1,1},{1,-1},{-1,1},{-1,-1}};
+        for (const auto& dir : dirs)
+        {
+            MapXY p(ally->coor.x + dir[0], ally->coor.y + dir[1]);
+            if (p.x < 0 || p.y < 0 || p.x >= spell_map->x_size ||
+                p.y >= spell_map->y_size ||
+                !spell_map->TileIsVisible(p.x, p.y))
+                continue;
+            const double risk = localExposure(p);
+            // Retreat into a protected pocket, not farther than needed from
+            // the rest of the squad.
+            if (risk + (std::max)(0.0,
+                    p.Distance(hero->coor) - ally->coor.Distance(hero->coor)) * 3.0
+                < bestRisk)
+            {
+                bestRisk = risk;
+                safer = p;
+            }
+        }
+        if (!safer.IsSelected()) continue;
+        m_botSquadMoved.push_back(ally->id);
+        if (spell_map->AutopilotMoveToward(ally, safer,
+            ally->GetAPperFire(), 1))
+        {
+            BotLog(wxString::Format("Company #%d retreats one safer tile.", ally->id));
+            spell_map->ScrollToUnit(ally);
+            m_botCooldown = 12;
+            if (canvas) canvas->Refresh();
+            return;
+        }
+    }
+
     // Support companies stay in their defensive positions while hostiles
     // approach. Reposition only in relative safety: roaming supporters used
     // to expose themselves to orcs before Alexander even moved.
