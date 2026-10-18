@@ -21,6 +21,7 @@
 #include <vector>
 #include <stdexcept>
 #include <thread>
+#include <algorithm>
 
 using namespace std;
 
@@ -45,10 +46,16 @@ FSUarchive::FSUarchive(std::wstring &path,std::function<void(std::string)> statu
 	uint32_t units_count = *(uint32_t*)&data[4];
 	
 	
-	// --- multithreaded load (was too slow):
-	// max cores
-	int cores = thread::hardware_concurrency();
+	// Decode in parallel, but avoid spawning one thread per logical CPU for
+	// *every* archive. On many-core systems that creates hundreds of short-lived
+	// threads at startup, each with an LZW decoder and its own stack.
+	const unsigned reported_cores = thread::hardware_concurrency();
+	const unsigned available = reported_cores ? reported_cores : 2u;
+	const unsigned workers = (std::min)(8u,
+		(std::min)(available, (std::max)(1u, units_count)));
+	const int cores = static_cast<int>(workers);
 	std::vector<std::thread> threads;
+	threads.reserve(cores);
 	std::vector<std::vector<FSU_resource*>> lists(cores);
 
 	// load/decode:
