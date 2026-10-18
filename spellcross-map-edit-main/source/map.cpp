@@ -12819,6 +12819,45 @@ int SpellMap::Tick()
 		unit_view->ResultLock(false);
 		return !valid_mask || visible;
 	};
+
+	// A route can become obstructed after A* plans it (AI moves, summons,
+	// mission events). Never permit two units of the same map layer to overlap.
+	// Different layers (air/ground) may legitimately share a tile.
+	auto movement_tile_is_free = [&](MapUnit* mover, MapXY pos) -> bool
+	{
+		if (!mover || !mover->unit || !pos.IsSelected() ||
+			pos.x >= x_size || pos.y >= y_size)
+			return false;
+		const int idx = ConvXY(pos.x, pos.y);
+		if (idx < 0 || (size_t)idx >= Lunit.size())
+			return false;
+		for (MapUnit* occupant = Lunit[idx]; occupant; occupant = occupant->next)
+			if (occupant != mover && occupant->unit &&
+				occupant->unit->isAir() == mover->unit->isAir())
+				return false;
+		return true;
+	};
+	auto abort_blocked_movement = [&](MapUnit* mover)
+	{
+		// The start-of-movement snapshot excludes this mover; put its view
+		// back before returning the state machine to IDLE.
+		unit_view->RestoreUnitsView(mover->is_enemy);
+		if (!mover->is_enemy)
+		{
+			unit_view->AddUnitView(mover, ViewRange::ClearMode::NONE);
+			HideEnemiesOutsidePlayerView(this, unit_view);
+		}
+		else
+			UpdateEnemyVisibilityFromPlayerView(this, unit_view, mover, nullptr);
+		mover->PlayStop();
+		mover->move_nodes.clear();
+		mover->move_step = 0;
+		mover->move_state = MapUnit::MOVE_STATE::IDLE;
+		mover->in_animation = nullptr;
+		mover->frame = 0;
+		mover->was_moved = true;
+	};
+
 	if (unit->move_state != MapUnit::MOVE_STATE::IDLE)
 	{
 		// === UNIT MOVEMENT ===
@@ -12894,23 +12933,27 @@ int SpellMap::Tick()
 					// move unit
 					const bool departure_presented = movement_visible_to_player(unit);
 					auto next_pos = unit->move_nodes[unit->move_step];
-					unit->action_points -= (next_pos.g_cost - 0);
-					unit->coor = next_pos.pos;
+					if (!movement_tile_is_free(unit, next_pos.pos))
+					{
+						// Another unit reached the landing tile since path planning.
+						abort_blocked_movement(unit);
+					}
+					else
+					{
+						unit->action_points -= (next_pos.g_cost - 0);
+						unit->coor = next_pos.pos;
 
-					// stop move sound (async - this is just flag to shut down in next sound frame)
-					unit->PlayStop();
+						// stop move sound
+						unit->PlayStop();
 
-					// resort units in map
-					SortUnits();
+						SortUnits();
+						// A hidden departure may land in sight: show the arrival.
+						if (enemy_turn_running && unit->is_enemy && !departure_presented &&
+							movement_visible_to_player(unit))
+							unit->PlayMove();
 
-					// The destination may be visible even when the departure was
-					// hidden: its arrival must resume ordinary presentation.
-					if (enemy_turn_running && unit->is_enemy && !departure_presented &&
-						movement_visible_to_player(unit))
-						unit->PlayMove();
-
-					// play the animation backwards
-					unit->move_state = MapUnit::MOVE_STATE::TELEPORT_OUT;
+						unit->move_state = MapUnit::MOVE_STATE::TELEPORT_OUT;
+					}
 				}
 
 				update = true;
@@ -13026,7 +13069,14 @@ int SpellMap::Tick()
 				if (unit->move_step)
 					ap_prev = unit->move_nodes[unit->move_step - 1].g_cost;
 
-				auto next_pos = unit->move_nodes[unit->move_step++];
+				const auto next_pos = unit->move_nodes[unit->move_step];
+				if (!movement_tile_is_free(unit, next_pos.pos))
+				{
+					// Stop before spending AP or overwriting an occupied tile.
+					abort_blocked_movement(unit);
+					break;
+				}
+				++unit->move_step;
 
 				HaltUnitRanging(true);
 				unit->action_points -= (next_pos.g_cost - ap_prev);
