@@ -154,6 +154,24 @@ private:
     bool m_tutorial_clicked_square = false;
     void UpdateTutorialGuide();
 
+    // First-mission spectator/autopilot experiment. It never runs unless
+    // explicitly started from the Game menu / F8 control window.
+    bool m_botRunning = false;
+    bool m_botPaused = false;
+    int m_botSpeed = 1; // native simulation ticks per 10 ms UI timer
+    int m_botHeroId = -1;
+    int m_botTurnCount = 0;
+    int m_botCooldown = 0;
+    wxFrame* m_botControls = nullptr;
+    wxButton* m_botStartPause = nullptr;
+    wxStaticText* m_botStatus = nullptr;
+    wxTextCtrl* m_botOutput = nullptr;
+    void OpenBotControls();
+    void StepFirstMissionBot();
+    void StopFirstMissionBot(const wxString& reason);
+    void UpdateBotStatus();
+    void BotLog(const wxString& message);
+
     bool m_rangeMoveKeyDown = false;
     bool m_rangeAttackKeyDown = false;
 
