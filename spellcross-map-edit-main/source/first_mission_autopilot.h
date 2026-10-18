@@ -364,25 +364,6 @@ void MainFrame::StepFirstMissionBot()
         }
     }
 
-    // Prefer real native objectives. SaveUnit means START squares, whereas
-    // TransportUnit means ESCAPE squares. They are not interchangeable.
-    MapXY commandoObjective;
-    if (rescueUnit && spell_map->events)
-        for (auto* ev : spell_map->events->GetEvents())
-        {
-            if (!ev || !ev->is_objective || ev->is_done ||
-                ev->trig_unit != rescueUnit) continue;
-            const std::vector<MapXY>* places = nullptr;
-            if (ev->evt_type == SpellMapEventRec::EVT_SAVE_UNIT)
-                places = &spell_map->start;
-            else if (ev->evt_type == SpellMapEventRec::EVT_TRANSPORT_UNIT)
-                places = &spell_map->escape;
-            if (places && !places->empty())
-                commandoObjective = *std::min_element(places->begin(),places->end(),
-                    [rescueUnit](const MapXY& x, const MapXY& y)
-                    { return rescueUnit->coor.Distance(x) < rescueUnit->coor.Distance(y); });
-        }
-
     // In the first mission there is a destructible palisade around the
     // Commando. Only evaluate targetable, visible map objects close to the
     // *original* enclosure, never random walls elsewhere on the map.
@@ -616,7 +597,6 @@ void MainFrame::StepFirstMissionBot()
         if (spell_map->AutopilotMoveToward(rescueUnit, hero->coor,
             preserveFire, 2))
         {
-            m_botBreachStuckTurns = 0;
             BotLog(wxString::Format("Commando #%d evacuating breached enclosure.",
                 rescueUnit->id));
             spell_map->ScrollToUnit(rescueUnit);
@@ -630,7 +610,7 @@ void MainFrame::StepFirstMissionBot()
     // If A* repeatedly cannot find an exit, select another palisade panel.
     if (rescueUnit && !m_botRescueReached && m_botBreachOpen &&
         m_botBreachTarget.IsSelected() && !palisadeTarget.IsSelected() &&
-        ++m_botBreachStuckTurns >= 4)
+        m_botBreachStuckTurns >= 4)
     {
         m_botBreachOpen = false;
         m_botBreachTarget.Clear();
@@ -696,9 +676,11 @@ void MainFrame::StepFirstMissionBot()
 
     // A tactical round is not a race to spend every AP. Finish a phase while
     // friendly companies can still react to newly approaching enemies.
-    auto finishPhase = [this](const wxString& reason, bool intentionalHold)
+    auto finishPhase = [this, rescueUnit](const wxString& reason, bool intentionalHold)
     {
         ++m_botTurnCount;
+        if (rescueUnit && !m_botRescueReached && m_botBreachOpen)
+            ++m_botBreachStuckTurns;
         m_botSupportTried.clear();
         m_botSquadMoved.clear();
         m_botHeroMovedThisTurn = false;
