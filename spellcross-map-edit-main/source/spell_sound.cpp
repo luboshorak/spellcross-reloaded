@@ -39,108 +39,83 @@ using namespace std;
 // initialize stream channels
 SoundChannels::SoundChannels(int count)
 {
-    chn_index.assign(count,0);
-    channels.assign(count,NULL);
-    auto_delete_owners.assign(count,nullptr);
-    active_owners.assign(count,nullptr);
-    is_loop.assign(count,0);
-    for(auto & chn : channels)
-        chn = new RtAudio();    
+    chn_index.assign(count, 0);
+    channels.assign(count, nullptr);
+    auto_delete_owners.assign(count, nullptr);
+    is_loop.assign(count, 0);
+    for (auto& chn : channels)
+        chn = new RtAudio();
     last_channel = 0;
     volume = 0.5;
 }
-// close stream channels
+
+// Keep the original main shutdown policy: never wait indefinitely for a
+// running DirectSound backend. Only dispose sounds after the audio thread
+// has demonstrably exited and its stream has been closed.
 SoundChannels::~SoundChannels()
 {
-    // DirectSound closeStream joins the callback thread. Destroy userData only
-    // after that join, never from the callback while RtAudio still holds it.
     for (size_t i = 0; i < channels.size(); ++i)
     {
         RtAudio* chn = channels[i];
-        if (!chn)
-            continue;
-
+        if (!chn) continue;
         chn->setStreamTime(FAKE_STOP_TIME_MARK * 2.0);
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (chn->isStreamRunning() && std::chrono::steady_clock::now() < deadline)
+
+        const auto deadline = std::chrono::steady_clock::now() +
+            std::chrono::seconds(2);
+        while (chn->isStreamRunning() &&
+            std::chrono::steady_clock::now() < deadline)
             this_thread::sleep_for(10ms);
 
         if (chn->isStreamRunning())
         {
-            // Avoid use-after-free when an audio backend fails to shut down.
-            // The OS reclaims these two retained objects on process exit.
+            // Deliberately retain userData and backend during failed shutdown.
+            // Freeing either would race a still-running audio callback.
             channels[i] = nullptr;
             auto_delete_owners[i] = nullptr;
-            active_owners[i] = nullptr;
             continue;
         }
 
         if (chn->isStreamOpen())
             chn->closeStream();
-        active_owners[i] = nullptr;
-        SpellSound* oldOwner = auto_delete_owners[i];
+        delete auto_delete_owners[i];
         auto_delete_owners[i] = nullptr;
-        delete oldOwner;
         delete chn;
         channels[i] = nullptr;
     }
     channels.clear();
     auto_delete_owners.clear();
-    active_owners.clear();
 }
 
-// Reuse only stopped channels, then collect their previous one-shot sound.
-// Closing a stream also waits until its last callback has returned.
 RtAudio* SoundChannels::GetChannel(int is_loop)
 {
     std::lock_guard<std::mutex> guard(lock);
-    for (size_t cid = 0; cid < channels.size(); ++cid)
+    for (size_t i = 0; i < channels.size(); ++i)
     {
-        RtAudio* chn = channels[cid];
+        RtAudio* chn = channels[i];
         if (!chn || chn->isStreamRunning())
             continue;
 
+        // This closeStream was present in main already; its callback has
+        // stopped before the old one-shot sound can be destroyed.
         if (chn->isStreamOpen())
             chn->closeStream();
-        active_owners[cid] = nullptr;
+        delete auto_delete_owners[i];
+        auto_delete_owners[i] = nullptr;
 
-        delete auto_delete_owners[cid];
-        auto_delete_owners[cid] = nullptr;
-        chn_index[cid] = ++last_channel;
-        this->is_loop[cid] = is_loop;
+        chn_index[i] = ++last_channel;
+        this->is_loop[i] = is_loop;
         return chn;
     }
     return nullptr;
 }
 
-void SoundChannels::RegisterSound(RtAudio* channel, SpellSound* sound, bool auto_delete)
+void SoundChannels::RegisterAutoDelete(RtAudio* channel, SpellSound* sound)
 {
     std::lock_guard<std::mutex> guard(lock);
-    for (size_t cid = 0; cid < channels.size(); ++cid)
-        if (channels[cid] == channel)
-        {
-            active_owners[cid] = sound;
-            if (auto_delete)
-                auto_delete_owners[cid] = sound;
-            return;
-        }
-}
-
-// Called when a persistent sound is destroyed with a stream still active.
-// We must join the callback before this sound's fields are destroyed.
-void SoundChannels::ReleaseSound(RtAudio* channel, SpellSound* sound)
-{
-    std::lock_guard<std::mutex> guard(lock);
-    for (size_t cid = 0; cid < channels.size(); ++cid)
+    for (size_t i = 0; i < channels.size(); ++i)
     {
-        if (channels[cid] != channel || active_owners[cid] != sound)
-            continue;
-
-        if (channel->isStreamOpen())
-            channel->closeStream(); // DirectSound waits for callback thread
-        active_owners[cid] = nullptr;
-        if (auto_delete_owners[cid] == sound)
-            auto_delete_owners[cid] = nullptr;
+        if (channels[i] != channel) continue;
+        auto_delete_owners[i] = sound;
         return;
     }
 }
@@ -650,11 +625,6 @@ SpellSound::SpellSound(SoundChannels* channels,SpellSample* sound)
 // cleanup sound
 SpellSound::~SpellSound()
 {
-    // Unit/map cleanup may destroy a persistent movement or ambient sound.
-    // Closing the exact stream still owned by this object prevents callback
-    // use-after-free when a company dies during movement or a map unloads.
-    if (dac && streams && dac->isStreamOpen())
-        streams->ReleaseSound(dac, this);
 }
 // copy
 SpellSound::SpellSound(SpellSound& ref)
@@ -956,7 +926,7 @@ int SpellSound::Play(bool auto_delete, bool loop, std::function<void(void)> fram
     this->auto_delete = auto_delete;
     force_loop = loop;
     
-    // Replace frame callback only after the previous stream is closed.
+    // Assign only after the prior playback was stopped/recycled.
     //control = CTRL_STOP;
     if(!isDone())
     {
@@ -1010,7 +980,8 @@ int SpellSound::Play(bool auto_delete, bool loop, std::function<void(void)> fram
 
     // start stream    
     dac->openStream(&parameters,NULL,RTAUDIO_SINT16,sampleRate,&bufferFrames,&SpellSound_RtCallback,(void*)this);
-    streams->RegisterSound(dac, this, auto_delete);
+    if (auto_delete)
+        streams->RegisterAutoDelete(dac, this);
     dac->startStream();
         
     return(0);
