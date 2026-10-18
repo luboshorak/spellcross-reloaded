@@ -12809,6 +12809,12 @@ int SpellMap::Tick()
 				// turn unit to match teleport animation
 				int azim_count = unit->unit->gr_base->stat.azimuths;
 				int delta_azim = mod(0x0A - unit->azimuth + azim_count / 2, azim_count) - azim_count / 2;
+				if (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))
+				{
+					// A hidden teleport does not spend presentation ticks turning.
+					unit->azimuth = mod(0x0A, azim_count);
+					delta_azim = 0;
+				}
 				if (delta_azim == 0)
 				{
 					// aligned: done										
@@ -12826,7 +12832,8 @@ int SpellMap::Tick()
 
 				update = true;
 			}
-			else if (unit->move_state == MapUnit::MOVE_STATE::TELEPORT_IN && tick_30ms)
+			else if (unit->move_state == MapUnit::MOVE_STATE::TELEPORT_IN &&
+				(tick_30ms || (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))))
 			{
 				// play teleport animation
 
@@ -12836,8 +12843,9 @@ int SpellMap::Tick()
 					unit->in_animation = unit->unit->gr_action;
 					unit->azimuth = 0; // animation has no azimuth!
 
-					// play move sound (async)
-					unit->PlayMove();
+					// Do not start sound for a teleport hidden from the player.
+					if (movement_visible_to_player(unit))
+						unit->PlayMove();
 
 					// update view of all but this unit:
 					unit_view->ClearUnitsView();
@@ -12850,6 +12858,9 @@ int SpellMap::Tick()
 					unit->move_step = unit->move_nodes.size() - 1;
 				}
 
+				// Skip hidden departure animation, but keep its logical landing.
+				if (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))
+					unit->frame = unit->in_animation->anim.frames - 1;
 				unit->frame++;
 				if (unit->frame >= unit->in_animation->anim.frames)
 				{
@@ -12866,16 +12877,23 @@ int SpellMap::Tick()
 					// resort units in map
 					SortUnits();
 
+					// The destination may be visible even when the departure was
+					// hidden: its arrival must resume ordinary presentation.
+					if (enemy_turn_running && unit->is_enemy && movement_visible_to_player(unit))
+						unit->PlayMove();
+
 					// play the animation backwards
 					unit->move_state = MapUnit::MOVE_STATE::TELEPORT_OUT;
 				}
 
 				update = true;
 			}
-			if (unit->move_state == MapUnit::MOVE_STATE::TELEPORT_OUT && tick_30ms)
+			if (unit->move_state == MapUnit::MOVE_STATE::TELEPORT_OUT &&
+				(tick_30ms || (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))))
 			{
-				// teleport out
-
+				// Hidden arrivals finish immediately; visible ones still animate.
+				if (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))
+					unit->frame = 0;
 				unit->frame--;
 				if (unit->frame < 0)
 				{
@@ -12910,7 +12928,8 @@ int SpellMap::Tick()
 					if (isGameMode())
 						CheckReactionFire(unit, MapXY());
 
-					// done					
+					// done
+					unit->PlayStop(); // also stop audio started on a visible arrival
 					unit->in_animation = NULL;
 					unit->azimuth = 0x0A; // azimuth matching teleport animation which has only one azimumth
 					unit->move_nodes.clear();
