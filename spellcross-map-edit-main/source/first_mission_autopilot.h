@@ -172,9 +172,9 @@ void MainFrame::TickFirstMissionBotMessages()
     form_message->AcknowledgeForAutopilot(true);
 }
 
-// Simplest useful test AI: one persistent Alliance hero, real enemy turns,
-// actual fog-of-war attack checks, and A* route toward a native escape square.
-// This is intentionally *not* a solver for all mission scripting.
+// First-mission spectator pilot: escort/rescue the permanent Commando before
+// extracting the mission commander. This is a mission-aware heuristic rather
+// than a full tactical solver; all mechanics still use the original engine.
 void MainFrame::StepFirstMissionBot()
 {
     if (!m_botRunning || m_botPaused || !spell_map ||
@@ -209,16 +209,22 @@ void MainFrame::StepFirstMissionBot()
     if (m_botHeroId < 0)
     {
         MapUnit* fallback = nullptr;
+        int bestRank = -1;
         for (MapUnit* unit : spell_map->units)
         {
             if (!unit || !unit->unit || unit->is_enemy || unit->isDead())
                 continue;
-            if (!fallback) fallback = unit;
-            if (unit->spec_type == MapUnitType::MissionUnit)
-            {
-                fallback = unit;
-                break;
-            }
+            int rank = 0;
+            if (unit->spec_type == MapUnitType::MissionUnit) rank = 1;
+            if (unit->is_commander) rank = 2;
+            if (unit->spec_type == MapUnitType::SpecUnit) rank = 3;
+            if (spell_map->events)
+                for (auto* ev : spell_map->events->GetEvents())
+                    if (ev && ev->is_objective &&
+                        ev->evt_type == SpellMapEventRec::EVT_TRANSPORT_UNIT &&
+                        ev->trig_unit == unit)
+                        rank = 4;
+            if (rank > bestRank) { fallback = unit; bestRank = rank; }
         }
         if (!fallback)
         {
@@ -226,7 +232,7 @@ void MainFrame::StepFirstMissionBot()
             return;
         }
         m_botHeroId = fallback->id;
-        BotLog(wxString::Format("Following Alliance unit #%d.", m_botHeroId));
+        BotLog(wxString::Format("Following mission leader #%d.", m_botHeroId));
     }
 
     MapUnit* hero = spell_map->GetUnit(m_botHeroId);
@@ -247,6 +253,55 @@ void MainFrame::StepFirstMissionBot()
         return;
     }
 
+    // Locate rescue via the *real* mission event records. A delayed SeePlace
+    // or SeeUnit event can hold an unspawned ArmyUnit (permanent Commando).
+    // An already active ArmyUnit is a rescue candidate as well.
+    MapXY rescuePosition;
+    bool rescueEventPending = false;
+    MapUnit* rescueUnit = nullptr;
+    if (!m_botRescueReached)
+    {
+        if (spell_map->events)
+            for (auto* ev : spell_map->events->GetEvents())
+            {
+                if (!ev) continue;
+                for (const auto& spawn : ev->units)
+                {
+                    auto* t = spawn.unit;
+                    if (!t || !t->unit || t->is_enemy || spawn.is_placed ||
+                        t->spec_type != MapUnitType::ArmyUnit)
+                        continue;
+                    const MapXY location = ev->hasPosition() ? ev->position : t->coor;
+                    if (!location.IsSelected()) continue;
+                    if (!rescueEventPending ||
+                        hero->coor.Distance(location) < hero->coor.Distance(rescuePosition))
+                    {
+                        rescueEventPending = true;
+                        rescuePosition = location;
+                    }
+                }
+            }
+        for (MapUnit* other : spell_map->units)
+            if (other && other->unit && !other->is_enemy && !other->isDead() &&
+                other->spec_type == MapUnitType::ArmyUnit &&
+                (!rescueUnit || hero->coor.Distance(other->coor) <
+                    hero->coor.Distance(rescueUnit->coor)))
+                rescueUnit = other;
+
+        // Approaching the living Commando represents actually making contact,
+        // not simply exploiting its known coordinates from the DEF file.
+        if (!rescueEventPending && rescueUnit)
+        {
+            rescuePosition = rescueUnit->coor;
+            if (hero->coor.Distance(rescuePosition) <= 3.0)
+            {
+                m_botRescueReached = true;
+                BotLog(wxString::Format("Rescued Commando #%d: now extracting.",
+                    rescueUnit->id));
+            }
+        }
+    }
+
     if (spell_map->GetSelectedUnit() != hero)
     {
         spell_map->SelectUnit(hero, true);
@@ -260,8 +315,9 @@ void MainFrame::StepFirstMissionBot()
         for (MapUnit* enemy : spell_map->units)
         {
             if (!enemy || !enemy->unit || !enemy->is_enemy || enemy->isDead() ||
-                !enemy->coor.IsSelected() ||
+                enemy->is_visible < 2 || !enemy->coor.IsSelected() ||
                 !spell_map->TileIsVisible(enemy->coor.x, enemy->coor.y) ||
+                hero->coor.Distance(enemy->coor) > 4.0 ||
                 !spell_map->CanUnitAttack(enemy))
                 continue;
             const double distance = hero->coor.Distance(enemy->coor);
@@ -279,31 +335,90 @@ void MainFrame::StepFirstMissionBot()
         const int layer = bestTarget->unit->isAir() ? 1 : 0;
         if (spell_map->Attack(enemyPos, layer) == 0)
         {
-            BotLog(wxString::Format("Attack on enemy #%d.", targetId));
+            BotLog(wxString::Format("Defensive fire at threat #%d.", targetId));
             m_botCooldown = 12;
             m_botNoProgressTurns = 0;
             return;
         }
     }
 
-    // Escape/target markers are loaded from the original mission, not guessed.
-    const auto& goals = !spell_map->escape.empty() ?
-        spell_map->escape : spell_map->target;
-    if (goals.empty())
+    // Rescue has precedence over the exit; no hard-coded map coordinates.
+    bool headingToRescue = !m_botRescueReached && rescuePosition.IsSelected();
+    MapXY goal;
+    if (headingToRescue)
+        goal = rescuePosition;
+    else
     {
-        StopFirstMissionBot("No escape/target squares in mission data.");
-        return;
+        const auto& exits = !spell_map->escape.empty() ?
+            spell_map->escape : spell_map->target;
+        if (exits.empty())
+        {
+            StopFirstMissionBot("No extraction squares in mission data.");
+            return;
+        }
+        goal = *std::min_element(exits.begin(), exits.end(),
+            [hero](const MapXY& a, const MapXY& b)
+            { return hero->coor.Distance(a) < hero->coor.Distance(b); });
     }
-    const MapXY goal = *std::min_element(goals.begin(), goals.end(),
-        [hero](const MapXY& a, const MapXY& b)
-        { return hero->coor.Distance(a) < hero->coor.Distance(b); });
 
-    if (spell_map->AutopilotMoveToward(hero, goal))
+    // When hostiles are in sight, seek a forward flank with lower expected
+    // incoming fire instead of blindly taking the direct geometric route.
+    MapXY movementGoal = goal;
+    double nearestThreat = 1e30;
+    for (MapUnit* e : spell_map->units)
+        if (e && e->unit && e->is_enemy && !e->isDead() && e->is_visible >= 2)
+            nearestThreat = (std::min)(nearestThreat, hero->coor.Distance(e->coor));
+    if (nearestThreat < 6.0 && hero->coor.Distance(goal) > 6.0)
+    {
+        double bestScore = -1e30;
+        const int offsets[8][2] = {
+            {5,0},{-5,0},{0,5},{0,-5},{4,4},{4,-4},{-4,4},{-4,-4}
+        };
+        for (const auto& delta : offsets)
+        {
+            MapXY p(hero->coor.x + delta[0], hero->coor.y + delta[1]);
+            if (p.x < 0 || p.y < 0 || p.x >= spell_map->x_size ||
+                p.y >= spell_map->y_size || !spell_map->TileIsVisible(p.x, p.y))
+                continue;
+            const double progress = hero->coor.Distance(goal) - p.Distance(goal);
+            if (progress < 0.5) continue;
+            double exposure = 0;
+            for (MapUnit* e : spell_map->units)
+                if (e && e->unit && e->is_enemy && !e->isDead() && e->is_visible >= 2)
+                {
+                    const double distance = p.Distance(e->coor);
+                    const double radius = (std::max)(2.0, (double)e->GetFireRange() + 1.5);
+                    exposure += (std::max)(0.0, radius - distance) * 14.0;
+                }
+            const double score = progress * 5.0 - exposure;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                movementGoal = p;
+            }
+        }
+    }
+
+    // Keep roughly one third of AP available for enemy-turn defensive fire.
+    const int reserveAP = (std::max)(0, hero->GetMaxAP() / 3);
+    if (spell_map->AutopilotMoveToward(hero, movementGoal, reserveAP))
     {
         spell_map->ScrollToUnit(hero);
         m_botNoProgressTurns = 0;
         m_botCooldown = 12;
-        BotLog(wxString::Format("Moving toward exit (%d, %d).", goal.x, goal.y));
+        BotLog(wxString::Format("%s (%d, %d)%s.",
+            headingToRescue ? "Searching for Commando at" : "Extracting toward",
+            goal.x, goal.y, movementGoal == goal ? "" : " via safer flank"));
+        if (canvas) canvas->Refresh();
+        return;
+    }
+    // If AP reserve or the flank blocks progress, fall back to a legal direct move.
+    if (spell_map->AutopilotMoveToward(hero, goal, 0))
+    {
+        spell_map->ScrollToUnit(hero);
+        m_botNoProgressTurns = 0;
+        m_botCooldown = 12;
+        BotLog("Advancing carefully along the direct route.");
         if (canvas) canvas->Refresh();
         return;
     }
