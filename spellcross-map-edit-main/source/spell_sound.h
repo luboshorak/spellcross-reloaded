@@ -15,6 +15,7 @@
 #include "RtAudio.h"
 #include "cstdint"
 #include <vector>
+#include <atomic>
 #include <list>
 #include <string>
 
@@ -56,7 +57,7 @@ private:
     std::vector<SpellSound*> active_owners; // includes persistent unit movement loops
     std::vector<int> chn_index;
     int last_channel;
-    double volume;
+    std::atomic<double> volume{0.5}; // UI writes; audio callback reads
     std::vector<int> is_loop;
 public:
     SoundChannels(int count=4);
@@ -76,17 +77,17 @@ private:
     RtAudio* dac;
     vector<SpellSample*> samples;
     int sub_id;
-    int control;
+    std::atomic<int> control{CTRL_IDLE};
     int mode;
     int channels;
     int count;
     int fs;
     int pos;
-    int is_playing;
+    std::atomic<int> is_playing{false};
     int auto_delete;
     int force_loop;
-    int32_t left_vol;
-    int32_t right_vol;
+    std::atomic<int32_t> left_vol{65535};
+    std::atomic<int32_t> right_vol{65535};
 
     void SpellSoundInit();
 
