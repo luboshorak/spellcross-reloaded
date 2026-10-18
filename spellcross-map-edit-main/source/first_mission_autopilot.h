@@ -585,8 +585,15 @@ void MainFrame::StepFirstMissionBot()
     // Once a gap has opened, order the trapped Commando out of his pen.
     // No magic teleport; he uses the same real pathfinder and AP budget as
     // everyone else. Alexander must not abandon him before he gets out.
+    bool commandoUnderFire = false;
+    if (rescueUnit)
+        for (MapUnit* enemy : visibleHostiles)
+            if (enemy->unit->canAttack(rescueUnit->unit) &&
+                rescueUnit->coor.Distance(enemy->coor) <
+                (double)spell_map->GetEffectiveFireRange(enemy, rescueUnit->coor) + 2.0)
+                commandoUnderFire = true;
     if (rescueUnit && !m_botRescueReached && !palisadeTarget.IsSelected() &&
-        rescueUnit != hero && rescueUnit->isActive() &&
+        rescueUnit != hero && rescueUnit->isActive() && !commandoUnderFire &&
         rescueUnit->panic_turns == 0 && rescueUnit->paralyze_turns == 0 &&
         rescueUnit->freeze_turns == 0 &&
         std::find(m_botSquadMoved.begin(), m_botSquadMoved.end(), rescueUnit->id)
@@ -595,7 +602,7 @@ void MainFrame::StepFirstMissionBot()
         m_botSquadMoved.push_back(rescueUnit->id);
         const int preserveFire = rescueUnit->GetAPperFire();
         if (spell_map->AutopilotMoveToward(rescueUnit, hero->coor,
-            preserveFire, 2))
+            preserveFire, combatContact ? 1 : 2))
         {
             BotLog(wxString::Format("Commando #%d evacuating breached enclosure.",
                 rescueUnit->id));
