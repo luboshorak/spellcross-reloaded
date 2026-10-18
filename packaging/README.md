@@ -2,7 +2,7 @@
 
 This is the build guide for the **game and its standalone map editor**. If you just want to play, you don't need any of this: **[download v0.9.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.9.1)** and follow the [main README](../README.md).
 
-The build produces one portable Windows x64 ZIP. It includes both applications and their support files, but **not the original commercial Spellcross archives**.
+The build produces a portable Windows x64 ZIP **and**, if WinRAR is installed, a self-extracting SFX `.exe` installer. Both packages include the game, standalone map editor, and support files, but **not the original commercial Spellcross archives**.
 
 ## Build the game and editor
 
@@ -33,9 +33,46 @@ The output is:
 
 ```text
 dist/Spellcross_Reloaded_v0.9.1.zip
+dist/Spellcross_Reloaded_v0.9.1.exe    (WinRAR SFX, when WinRAR is installed)
 ```
 
-The build also leaves dated staging folders in `dist/`. The same versioned ZIP name is reused when you rebuild.
+To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
+
+```powershell
+.\packaging\Build-CombinedRelease.ps1 -SkipBuild -NoZip
+```
+
+The version is read automatically from `spellcross-map-edit-main/source/app_version.h`, so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
+
+### WinRAR SFX installer
+
+With WinRAR installed, the regular command also creates the graphical installer automatically. It has:
+
+- Standard (93x302) and high-DPI (186x604) vertical Spellcross logos on the left side.
+- The supplied `spellcross_reloaded.ico` as the setup executable icon.
+- An automatic **Spellcross Reloaded** shortcut on the player's Desktop, using that icon.
+- A **user-selectable extraction directory** and **SavePath** to remember the directory on later updates.
+- An initial writable destination of `%USERPROFILE%\Games\Spellcross Reloaded`, which the player can freely change.
+
+The layout inside both archives has `Spellcross.exe` **at the root**, not inside a version-numbered directory. The installed shortcut therefore correctly follows whichever installation directory the player selects. The release bundles `setup/spellcross_reloaded.ico`, because the shortcut needs that icon after extraction.
+
+Keep these three files in the repository's `packaging/setup/` directory:
+
+```text
+packaging/setup/spellcross_sfx_logo.png      (93 x 302)
+packaging/setup/spellcross_sfx_logo_hd.png   (186 x 604)
+packaging/setup/spellcross_reloaded.ico
+```
+
+WinRAR is detected through `PATH`, `C:\Program Files\WinRAR\WinRAR.exe`, or the x86 Program Files location. You can also specify its exact location:
+
+```powershell
+.\packaging\Build-CombinedRelease.ps1 -WinRARPath 'C:\Program Files\WinRAR\WinRAR.exe'
+```
+
+If WinRAR is not installed, the build still creates the ZIP and warns that it skipped SFX. If SFX is enabled but its branding files or the WinRAR `Default.SFX` module are missing, the script stops with a clear error rather than producing an incorrectly branded installer. To disable SFX explicitly, use `-NoSfx`.
+
+**Note:** An unsigned SFX executable may still trigger a Microsoft Defender SmartScreen warning for an unknown publisher or uncommon download. Using WinRAR does not sign the installer.
 
 ### About the video files
 
@@ -54,7 +91,9 @@ Missing or mismatched clips cause packaging to stop, rather than producing an in
 | `-WxRoot <path>` | wxWidgets/vcpkg isn't detected automatically |
 | `-MovieSource <path>` | Point to existing copies of the fallback videos |
 | `-SkipBuild` | Repackage the already compiled Release executables |
-| `-NoZip` | Prepare the staged files without creating the ZIP |
+| `-NoZip` | Prepare the staged files without creating the ZIP (SFX still created) |
+| `-NoSfx` | Skip the WinRAR installer even when WinRAR is installed |
+| `-WinRARPath <path>` | Supply an explicit path to `WinRAR.exe` |
 | `-PruneOldBuilds` | Remove eligible old staging outputs after a successful build |
 
 You can preview safe cleanup without deleting anything:
@@ -69,9 +108,9 @@ To perform that cleanup:
 .\packaging\Clean-OldBuilds.ps1 -Keep 3 -Apply
 ```
 
-The cleanup script keeps the newest three dated builds, protects user data and ignores unrelated files.
+The cleanup script keeps the newest three dated staging builds, protects user data, ignores unrelated files, and **does not delete the stable versioned ZIP or SFX installer**.
 
-## What's in the ZIP?
+## What's in the ZIP and SFX?
 
 ```text
 Spellcross.exe                 playable game
@@ -82,6 +121,10 @@ Editor/
 README-FIRST.txt
 LICENSE-Reloaded.txt
 LICENSE-Map-Editor.txt
+setup/
+  spellcross_reloaded.ico   icon for the installed desktop shortcut
+  spellcross_sfx_logo.png   standard branding asset
+  spellcross_sfx_logo_hd.png high-DPI branding asset
 ```
 
 The game creates its `config.ini` and imported `game_data/DATA/` on first use. The editor keeps a separate `Editor/config.ini`. Its own `Editor/data/COMMON.fs` supplies editor resources and is different from the original retail `COMMON.FS`.
@@ -92,7 +135,7 @@ The packager intentionally leaves out your saves, settings, imported commercial 
 
 A successful compile is a good start, but a portable release needs a quick hands-on test:
 
-1. Extract the ZIP **outside** your source checkout and launch `Spellcross.exe` without Visual Studio installed.
+1. Extract the ZIP **outside** your source checkout and launch `Spellcross.exe` without Visual Studio installed. Run the SFX on a test Windows system, select a custom install folder, and check the Desktop shortcut target and icon.
 2. Import original data from a **raw ISO file**, or try an existing `DATA` directory. Check that the game still works after restarting.
 3. Open a tactical mission, check graphics, sound and a save/load cycle.
 4. Launch the map editor from the game. Test the save/open/cancel prompts and what happens if the editor executable or mission file is missing.
@@ -100,7 +143,7 @@ A successful compile is a good start, but a portable release needs a quick hands
 6. Load a standalone `.DEF` + `.DTA` mission in the playable game and check that it starts correctly.
 7. On a clean Windows 10/11 x64 machine, confirm that the portable package needs only the [VC++ Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), not your development environment.
 
-The v0.9.1 source is prepared; the public GitHub release will be published separately after the build and checks.
+Publish the ZIP and SFX as separate optional GitHub Release assets after a Windows smoke test.
 
 ## Notes
 

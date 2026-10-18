@@ -1,6 +1,6 @@
-# Spellcross Reloaded + original map editor: clean portable x64 release.
+﻿# Spellcross Reloaded + original map editor: clean portable x64 release.
 # Windows PowerShell 5.1+, MSVC Build Tools, wxWidgets/vcpkg x64.
-# Usage: .\packaging\Build-CombinedRelease.ps1 [-SkipBuild] [-WxRoot <path>]
+# Usage: .\packaging\Build-CombinedRelease.ps1 [-SkipBuild] [-WxRoot <path>] [-NoSfx] [-WinRARPath <path>]
 [CmdletBinding()]
 param(
     [switch]$SkipBuild,
@@ -8,6 +8,8 @@ param(
     [string]$OutputDirectory = '',
     [string]$MovieSource = '',
     [switch]$NoZip,
+    [switch]$NoSfx,
+    [string]$WinRARPath = '',
     [switch]$PruneOldBuilds
 )
 Set-StrictMode -Version Latest
@@ -37,6 +39,48 @@ function Copy-Required([string]$From, [string]$To) {
 Assert-File $gameProject
 Assert-File $editorProject
 Assert-File (Join-Path $editor 'data\COMMON.fs')
+
+# WinRAR is optional for regular ZIP builds, but when found we also emit an
+# SFX installer. -NoSfx disables it; -WinRARPath overrides autodetection.
+# SFX branding assets are version-independent and live in packaging\setup.
+$winrarExe = $null
+$sfxSetup = Join-Path $PSScriptRoot 'setup'
+$sfxIcon = Join-Path $sfxSetup 'spellcross_reloaded.ico'
+$sfxLogo = Join-Path $sfxSetup 'spellcross_sfx_logo.png'
+$sfxLogoHd = Join-Path $sfxSetup 'spellcross_sfx_logo_hd.png'
+if ($NoSfx -and $WinRARPath) {
+    throw 'Choose either -NoSfx or -WinRARPath, not both.'
+}
+if (-not $NoSfx) {
+    if ($WinRARPath) {
+        Assert-File $WinRARPath
+        $winrarExe = (Resolve-Path -LiteralPath $WinRARPath).Path
+    } else {
+        $candidates = @()
+        $found = Get-Command 'WinRAR.exe' -ErrorAction SilentlyContinue
+        if ($found) { $candidates += $found.Source }
+        if ($env:ProgramFiles) {
+            $candidates += (Join-Path $env:ProgramFiles 'WinRAR\WinRAR.exe')
+        }
+        if (${env:ProgramFiles(x86)}) {
+            $candidates += (Join-Path ${env:ProgramFiles(x86)} 'WinRAR\WinRAR.exe')
+        }
+        foreach ($candidate in $candidates) {
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $winrarExe = (Resolve-Path -LiteralPath $candidate).Path
+                break
+            }
+        }
+    }
+    if ($winrarExe) {
+        foreach ($asset in @($sfxIcon, $sfxLogo, $sfxLogoHd)) { Assert-File $asset }
+        # Use the GUI RAR SFX module, which understands Title, Path and Shortcut.
+        Assert-File (Join-Path (Split-Path -Parent $winrarExe) 'Default.SFX')
+        Write-Host "WinRAR SFX enabled: $winrarExe" -ForegroundColor Cyan
+    } else {
+        Write-Warning 'WinRAR.exe was not found: the ZIP will be created, but not an SFX EXE. Install WinRAR or use -WinRARPath to specify it.'
+    }
+}
 
 $vswhere = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
 $msbuild = $null
@@ -234,13 +278,23 @@ if (Test-Path -LiteralPath $info -PathType Container) {
         }
     }
 }
+# Keep the shortcut icon and SFX source artwork under setup\ in releases.
+# The desktop shortcut icon is resolved relative to the user's chosen folder.
+if ($winrarExe) {
+    $stageSetup = Join-Path $stage 'setup'
+    New-Item -ItemType Directory -Path $stageSetup -Force | Out-Null
+    foreach ($asset in @($sfxIcon, $sfxLogo, $sfxLogoHd)) {
+        Copy-Required $asset (Join-Path $stageSetup (Split-Path -Leaf $asset))
+    }
+}
 @'
 SPELLCROSS RELOADED - WINDOWS X64 PORTABLE BUILD
 
 Game:       Spellcross.exe
 Map editor: Editor\spellcross_map_editor.exe
 
-1. Unpack the whole ZIP into a writable folder.
+1. ZIP: unpack the whole archive into a writable folder.
+   SFX EXE: choose a writable installation folder in the installer.
 2. Launch Spellcross.exe first. Configure your own original Spellcross
    game archives, or download CZ/EN ISO, choose a local ISO, or use a CD.
 3. The game can place imported archives in game_data\DATA.
@@ -263,8 +317,92 @@ if (-not $NoZip) {
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
     Write-Host "Package created: $zip" -ForegroundColor Green
 }
+# Build a graphical, install-to-user-chosen-folder WinRAR SFX from the SAME
+# staged contents as the ZIP. Keep the file layout flat (Spellcross.exe at root)
+# to avoid broken shortcuts or creating a nested version directory.
+if ($winrarExe) {
+    $sfx = Join-Path $OutputDirectory ("Spellcross_Reloaded_v$releaseVersion.exe")
+    $id = [Guid]::NewGuid().ToString('N')
+    # Build under a normal versioned filename in an isolated work directory.
+    # Publish to dist only after WinRAR has finished and the EXE was checked.
+    $sfxWorkDir = Join-Path $OutputDirectory ("Spellcross-SFX-Work-$id")
+    New-Item -ItemType Directory -Path $sfxWorkDir -Force | Out-Null
+    $temporarySfx = Join-Path $sfxWorkDir ("Spellcross_Reloaded_v$releaseVersion.exe")
+    $sfxScript = Join-Path ([System.IO.Path]::GetTempPath()) ("spellcross-sfx-$id.txt")
+
+    # No Silent or TempMode: the user sees the folder selection dialog and
+    # the game remains installed there. SavePath remembers custom destinations
+    # across versions because the default Path does not contain the version.
+    $sfxOptions = @"
+;The comment below contains SFX script commands
+Path=%USERPROFILE%\Games\Spellcross Reloaded
+SavePath
+Title=Spellcross Reloaded v$releaseVersion
+Text
+{
+Spellcross Reloaded v$releaseVersion
+
+Select the installation folder and click Install.
+The game and the standalone map editor will be extracted together.
+Original commercial Spellcross game data is not included.
+}
+Overwrite=1
+Shortcut=D,Spellcross.exe,,Spellcross Reloaded,Spellcross Reloaded,setup\spellcross_reloaded.ico
+"@
+    try {
+        # ASCII is intentional: SFX config commands and displayed text here
+        # are ASCII-only, so no BOM/codepage ambiguity with WinRAR.
+        [System.IO.File]::WriteAllText($sfxScript, $sfxOptions,
+            [System.Text.Encoding]::ASCII)
+        Write-Host "Creating SFX installer: $sfx"
+        # IMPORTANT: WinRAR.exe is a GUI application. Calling it with '&' may
+        # return to PowerShell before the SFX has finished being written.
+        # Start-Process -Wait waits for WinRAR and its child processes; only
+        # after that may we validate, move or delete the temporary archive.
+        # Quote switch values and the output path explicitly: paths can contain
+        # spaces (e.g. C:\Program Files or the user's repository directory).
+        $rarArguments = @(
+            'a', '-cfg-', '-r', '-y', '-m5', '-sfxDefault.SFX',
+            ('-iimg"{0}"' -f $sfxLogo),
+            ('-iimg"{0}"' -f $sfxLogoHd),
+            ('-iicon"{0}"' -f $sfxIcon),
+            ('-z"{0}"' -f $sfxScript),
+            ('"{0}"' -f $temporarySfx), '*'
+        ) -join ' '
+        Write-Host 'Waiting for WinRAR to finish creating the SFX archive...'
+        Write-Verbose ("WinRAR: {0} {1}" -f $winrarExe, $rarArguments)
+        $rarProcess = Start-Process -FilePath $winrarExe -WorkingDirectory $stage `
+            -ArgumentList $rarArguments -PassThru -Wait
+        if ($rarProcess.ExitCode -ne 0) {
+            throw "WinRAR SFX creation failed (exit code $($rarProcess.ExitCode))."
+        }
+        if (-not (Test-Path -LiteralPath $temporarySfx -PathType Leaf)) {
+            $producedFiles = @(Get-ChildItem -LiteralPath $sfxWorkDir -File |
+                Select-Object -ExpandProperty Name) -join ', '
+            throw "WinRAR exited with code 0 but no SFX EXE was found at $temporarySfx. Files found in work directory: $producedFiles"
+        }
+        # Validate that the output is an actual Windows executable before publishing.
+        $stream = [System.IO.File]::OpenRead($temporarySfx)
+        try {
+            $signature = New-Object byte[] 2
+            if ($stream.Read($signature, 0, 2) -ne 2 -or
+                $signature[0] -ne 0x4D -or $signature[1] -ne 0x5A) {
+                throw "WinRAR output is not an EXE: $temporarySfx"
+            }
+        } finally {
+            $stream.Dispose()
+        }
+        Move-Item -LiteralPath $temporarySfx -Destination $sfx -Force
+        Write-Host "SFX installer created: $sfx" -ForegroundColor Green
+    } finally {
+        Remove-Item -LiteralPath $sfxScript -Force -ErrorAction SilentlyContinue
+        # Safe now: Start-Process -Wait finished before this cleanup.
+        Remove-Item -LiteralPath $sfxWorkDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 Write-Host "Staged release: $stage; copied $($copiedDlls.Count) distinct DLLs." -ForegroundColor Green
 if ($PruneOldBuilds) {
-    # The release is complete. Keep 3 most recent dated ZIP+stage pairs.
+    # The release is complete. Keep 3 most recent dated staging builds.
+    # Stable, versioned ZIP and EXE releases are never removed by cleanup.
     & (Join-Path $PSScriptRoot 'Clean-OldBuilds.ps1') -DistDirectory $OutputDirectory -Keep 3 -Apply
 }
