@@ -724,7 +724,6 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                 return(1);
             }
 
-        {
             // single sample mode:
             if(pos >= samples[sub_id]->samples)
             {
