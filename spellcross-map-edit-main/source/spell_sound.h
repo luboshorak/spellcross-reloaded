@@ -14,6 +14,7 @@
 
 #include "RtAudio.h"
 #include "cstdint"
+#include <atomic>
 #include <vector>
 #include <list>
 #include <string>
@@ -44,11 +45,15 @@ public:
 };
 
 
+class SpellSound;
+
 class SoundChannels
 {    
 private:
     std::mutex lock;
     std::vector<RtAudio*> channels;
+    // Only the current owner may close a pooled stream during destruction.
+    std::vector<SpellSound*> channel_owners;
     std::vector<int> chn_index;
     int last_channel;
     double volume;
@@ -56,7 +61,8 @@ private:
 public:
     SoundChannels(int count=4);
     ~SoundChannels();
-    RtAudio *GetChannel(int is_loop=false);
+    RtAudio *GetChannel(int is_loop=false, SpellSound* owner=nullptr);
+    void CloseOwnedStream(SpellSound* owner, RtAudio* channel);
     void SetVolume(double vol);
     double GetVolume();
     
@@ -69,13 +75,13 @@ private:
     RtAudio* dac;
     vector<SpellSample*> samples;
     int sub_id;
-    int control;
+    std::atomic<int> control;
     int mode;
     int channels;
     int count;
     int fs;
     int pos;
-    int is_playing;
+    std::atomic<int> is_playing;
     int auto_delete;
     int force_loop;
     int32_t left_vol;

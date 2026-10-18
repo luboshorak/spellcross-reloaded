@@ -410,7 +410,13 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     if (!use_fallback)
     {
         m_sound = new SpellSound(m_spelldata->sounds->channels, m_video->GetSound());
-        m_sound->Play(false,false,bind(&FormVideoBox::cbNewAudioFrame,this),0.010);
+        // Audio must not retain a callback bound to this GUI object's lifetime.
+        // Advance the image from the wxWidgets event loop using the sound
+        // stream's playback clock instead.
+        m_sound->Play(false, false, nullptr, 0.010);
+        m_video_timer.SetOwner(form);
+        form->Bind(wxEVT_TIMER, &FormVideoBox::OnVideoTimer, this);
+        m_video_timer.Start(16);
     }
 
     form->SetFocus();
@@ -418,7 +424,8 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
 
 // cleanup
 FormVideoBox::~FormVideoBox()
-{           
+{
+    m_video_timer.Stop();
     // optional kill narration sound playback
     StopPlayback();
     
@@ -433,6 +440,7 @@ FormVideoBox::~FormVideoBox()
     if (form)
     {
         form->Unbind(wxEVT_CLOSE_WINDOW, &FormVideoBox::OnClose, this);
+        form->Unbind(wxEVT_TIMER, &FormVideoBox::OnVideoTimer, this);
         form->Unbind(wxEVT_THREAD, &FormVideoBox::OnNewAudioFrame, this);
     }
 
@@ -444,50 +452,39 @@ FormVideoBox::~FormVideoBox()
 
 }
 
-// callback when new audio frame is submitted (time critical!), called from another thread, so no touchy to GUI here!
-void FormVideoBox::cbNewAudioFrame(void)
-{
-    if (!form || m_closing)   // <- dleit, a to po Close u nesype eventy
-        return;
-
-    wxThreadEvent* evt = new wxThreadEvent();
-    wxQueueEvent(form, evt);
-}
-
-// on new audio frame (GUI thread event)
+// Media Foundation delivers completion through a wxThreadEvent. Legacy
+// video uses a GUI-thread timer instead of a function called by RtAudio.
 void FormVideoBox::OnNewAudioFrame(wxThreadEvent& event)
 {
 #ifdef _WIN32
-    if (m_using_mf)
+    if (m_using_mf && !m_closing && form)
     {
-        if (!m_closing && form)
-        {
-            m_closing = true;
-            form->Close();
-        }
-        return;
+        m_closing = true;
+        form->Close();
     }
 #endif
-    if(!m_sound || !m_video)
+}
+
+// Refresh legacy frames on the GUI thread. No audio-thread callback is
+// allowed to capture FormVideoBox or post events to a closing wxWindow.
+void FormVideoBox::OnVideoTimer(wxTimerEvent& event)
+{
+    if (m_closing || !form || !m_sound || !m_video)
         return;
 
-    // get playback time
-    double time = m_sound->GetPlaybackTime();
-
-    // update video frame
-    int new_frame = m_video->GetFrameID(time);
-    if(m_frame_id != new_frame)
+    const double time = m_sound->GetPlaybackTime();
+    const int next_frame = m_video->GetFrameID(time);
+    if (m_frame_id != next_frame)
     {
-        m_frame_id = new_frame;
+        m_frame_id = next_frame;
         form->Refresh();
     }
 
-    if (m_sound && m_sound->isDone() && !m_closing)
+    if (m_sound->isDone())
     {
         m_closing = true;
-        form->Close(); // vyvol OnClose prv jednou
+        form->Close();
     }
-
 }
 
 // stop audio playback
@@ -547,7 +544,8 @@ void FormVideoBox::OnClose(wxCloseEvent& ev)
     }
     m_done_sent = true;
 
-    // okamit usekni audio + psun thread event
+    // Stop GUI frame updates before releasing the stream or its owner.
+    m_video_timer.Stop();
     StopPlayback();
     form->Unbind(wxEVT_THREAD, &FormVideoBox::OnNewAudioFrame, this);
 

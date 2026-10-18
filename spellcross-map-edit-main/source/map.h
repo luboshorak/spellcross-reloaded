@@ -806,6 +806,7 @@ public:
 		public:
 			vector<AStarNode> range_nodes_buffer; // this is preinitialized buffer holding the nodes
 			vector<AStarNode> range_nodes; // this is working buffer
+			std::mutex path_mutex; // also used by the asynchronous movement range worker
 			
 			vector<int> ap_left;
 			vector<int> fire_left;

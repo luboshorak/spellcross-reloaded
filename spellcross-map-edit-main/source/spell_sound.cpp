@@ -41,6 +41,7 @@ SoundChannels::SoundChannels(int count)
 {
     chn_index.assign(count,0);
     channels.assign(count,NULL);
+    channel_owners.assign(count,nullptr);
     is_loop.assign(count,0);
     for(auto & chn : channels)
         chn = new RtAudio();    
@@ -82,27 +83,27 @@ SoundChannels::~SoundChannels()
         chn = nullptr;
     }
     channels.clear();
+    channel_owners.clear();
 }
 // get first available channel
-RtAudio* SoundChannels::GetChannel(int is_loop)
-{    
-    lock.lock();
-    // look for first free stream
-    for(int cid = 0; cid < channels.size(); cid++)
+RtAudio* SoundChannels::GetChannel(int is_loop, SpellSound* owner)
+{
+    std::lock_guard<std::mutex> guard(lock);
+    // Closing a finished stream joins its callback thread before ownership
+    // can pass to a different sound.
+    for (size_t cid = 0; cid < channels.size(); ++cid)
     {
-        auto *chn = channels[cid];        
-        if(!chn->isStreamRunning())
-        {
-            if(chn->isStreamOpen())
-                chn->closeStream();
-            chn_index[cid] = ++last_channel;
-            this->is_loop[cid] = is_loop;
-            lock.unlock();
-            return(chn);
-        }
+        RtAudio* chn = channels[cid];
+        if (!chn || chn->isStreamRunning())
+            continue;
+        if (chn->isStreamOpen())
+            chn->closeStream();
+        chn_index[cid] = ++last_channel;
+        this->is_loop[cid] = is_loop;
+        channel_owners[cid] = owner;
+        return chn;
     }
-    lock.unlock();
-    return(NULL);
+    return NULL;
     // no empty channels found: use oldest one
     /*int min_index = 1<<30;
     int chn_id = 0;
@@ -120,6 +121,26 @@ RtAudio* SoundChannels::GetChannel(int is_loop)
     chn->abortStream();
     chn->closeStream();
     return(chn);*/
+}
+
+// Called from a non-callback thread, including SpellSound's destructor.
+// Never close a pooled stream already reassigned to another sound.
+void SoundChannels::CloseOwnedStream(SpellSound* owner, RtAudio* channel)
+{
+    if (!owner || !channel)
+        return;
+    std::lock_guard<std::mutex> guard(lock);
+    for (size_t cid = 0; cid < channels.size(); ++cid)
+    {
+        if (channels[cid] != channel || channel_owners[cid] != owner)
+            continue;
+        // DirectSound closeStream joins the callback thread. The object can
+        // only be destroyed once the callback no longer accesses it.
+        if (channel->isStreamOpen())
+            channel->closeStream();
+        channel_owners[cid] = nullptr;
+        return;
+    }
 }
 // set/get global volume
 void SoundChannels::SetVolume(double vol)
@@ -627,6 +648,12 @@ SpellSound::SpellSound(SoundChannels* channels,SpellSample* sound)
 // cleanup sound
 SpellSound::~SpellSound()
 {
+    // Automatically deleted one-shot sounds are destroyed ON the callback
+    // thread; they must not attempt to join that thread. Persistent sounds
+    // (unit movement, legacy movie audio) are destroyed on the main thread
+    // and must first wait for their callback to exit.
+    if (!auto_delete && streams && dac)
+        streams->CloseOwnedStream(this, dac);
 }
 // copy
 SpellSound::SpellSound(SpellSound& ref)
@@ -643,6 +670,7 @@ SpellSound::SpellSound(SpellSound& ref)
     dac = NULL;
     sub_id = samples.size();
     control = CTRL_IDLE;
+    auto_delete = false;
     is_playing = false;
 }
 
@@ -691,20 +719,39 @@ void SpellSound::cb_DoneFlag()
 // copy sample data to DAC frame
 int SpellSound::cb_GetFrame(int16_t *buffer, int count)
 {
-    //SpellSample *smpl;
-    int smpl_size = cb_GetSmplSize();
+    if (!buffer || count <= 0)
+        return count <= 0 ? 0 : 1;
+
     while(count)
     {
         if(control == CTRL_STOP)
         {
             // immediate stop
-            sub_id = samples.size();
-            memset(buffer,0,count*2);            
+            sub_id = static_cast<int>(samples.size());
+            memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
+            return(1);
+        }
+
+        // The callback may be invoked again after the final sample was
+        // consumed. sub_id == samples.size() is the normal end sentinel,
+        // NEVER a valid element index. This check must precede all indexing,
+        // including the MODE_RAND branch.
+        if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        {
+            memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
             return(1);
         }
 
         if(mode == MODE_RAND)
         {
+            // Zero-length/missing samples cannot be looped.
+            if (!samples[sub_id] || samples[sub_id]->samples <= 0)
+            {
+                memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
+                sub_id = static_cast<int>(samples.size());
+                return(1);
+            }
+
             // single sample mode:
             if(pos >= samples[sub_id]->samples)
             {
@@ -716,7 +763,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                 else
                 {
                     // finito: fill with zeros
-                    memset(buffer,0,count*2);
+                    memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
                     count = 0;
                     sub_id = samples.size();
                     return(1);
@@ -734,7 +781,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
             if(sub_id >= samples.size())
             {
                 // finito: fill with zeros
-                memset(buffer,0,count*2);
+                memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
                 count = 0;
                 return(1);
             }
@@ -771,10 +818,10 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                     continue;
                 }
 
-                if(!samples[sub_id])
+                if(!samples[sub_id] || samples[sub_id]->samples <= 0)
                 {
                     // loop silence:
-                    memset(buffer,0,count*2);
+                    memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
                     count = 0;
                     return(0);
                 }
@@ -793,7 +840,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                 if(!samples[sub_id] || pos >= samples[sub_id]->samples)
                 {
                     // terminate:
-                    memset(buffer,0,count*2);
+                    memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
                     count = 0;
                     sub_id++;
                     return(1);
@@ -815,9 +862,11 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
 
 int16_t *SpellSound::cb_GetSmplData(int16_t* buffer, int count)
 {
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        return(buffer);
     SpellSample* smpl = samples[sub_id];
     if(!smpl)
-        return(NULL);
+        return(buffer);
     auto *data = &smpl->data[smpl->channels*pos];
     pos += count;
 
@@ -850,6 +899,8 @@ int16_t *SpellSound::cb_GetSmplData(int16_t* buffer, int count)
 
 int SpellSound::cb_GetSmplSize()
 {
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        return(0);
     SpellSample* smpl = samples[sub_id];
     if(!smpl)
         return(0);
@@ -858,8 +909,10 @@ int SpellSound::cb_GetSmplSize()
 
 int SpellSound::cb_GetSmplLeft()
 {
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        return(0);
     SpellSample *smpl = samples[sub_id];
-    if(!smpl)
+    if(!smpl || smpl->channels <= 0)
         return(0);
     int left = (smpl->samples - pos)/smpl->channels;
     return(left);
@@ -898,25 +951,24 @@ int SpellSound::Play(bool auto_delete, bool loop, std::function<void(void)> fram
         return(1);
     }
 
-    // automatically delete object after playaback?
+    // A previous playback may still be draining when isDone() becomes
+    // true. Retire its RtAudio callback before changing the callable and
+    // sample state accessed by the audio thread.
+    if (dac)
+    {
+        streams->CloseOwnedStream(this, dac);
+        dac = nullptr;
+    }
+
+    // automatically delete object after playback?
     this->auto_delete = auto_delete;
     force_loop = loop;
-    
-    // store user callback pointer
+
+    // store user callback only after the previous callback has exited
     user_frame_callback = frame_callback;
 
-    //control = CTRL_STOP;
-    if(!isDone())
-    {
-        if(dac)
-        {
-            dac->abortStream();
-            dac->closeStream();
-        }
-    }
-    
-    // get some stream channel
-    dac = streams->GetChannel(loop);
+    // get a stream leased to this sound
+    dac = streams->GetChannel(loop, this);
     if(!dac)
     {
         if(auto_delete)

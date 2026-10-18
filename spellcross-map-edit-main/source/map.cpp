@@ -6891,11 +6891,27 @@ void SpellMap::MoveRange::Worker()
 	}
 }
 
+// Keep heap priorities immutable. A* may improve a tile's score after it
+// has already been inserted, so ordering pointers to mutable nodes violates
+// std::push_heap's strict weak ordering requirement in Debug builds.
+struct FindUnitPathHeapEntry
+{
+	AStarNode* node;
+	int f_cost;
+	int h_cost;
+	int g_cost;
+};
+
 struct FindUnitPathCompareHeap
 {
-	bool operator()(AStarNode*& b, AStarNode*& a) const
+	bool operator()(const FindUnitPathHeapEntry& a, const FindUnitPathHeapEntry& b) const
 	{
-		return((a->f_cost < b->f_cost || a->g_cost == b->g_cost && a->h_cost < b->h_cost));
+		// Min-heap by total estimated cost, with deterministic tie breaks.
+		if (a.f_cost != b.f_cost) return a.f_cost > b.f_cost;
+		if (a.h_cost != b.h_cost) return a.h_cost > b.h_cost;
+		if (a.g_cost != b.g_cost) return a.g_cost > b.g_cost;
+		if (a.node->pos.y != b.node->pos.y) return a.node->pos.y > b.node->pos.y;
+		return a.node->pos.x > b.node->pos.x;
 	}
 };
 
@@ -6921,6 +6937,10 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 		!target.IsSelected() || !unit->coor.IsSelected())
 		return path;
 
+	// The HUD movement-range worker and AI may both call FindPath(). Never
+	// reuse or mutate the shared node array simultaneously on two threads.
+	std::lock_guard<std::mutex> path_guard(path_mutex);
+
 	// local nodes map
 	vector<AStarNode>* nodes = &range_nodes;
 	nodes->resize(map->x_size * map->y_size);
@@ -6928,14 +6948,14 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 
 	MapXY start_pos = unit->coor;
 
-	vector<AStarNode*> open_set;
+	vector<FindUnitPathHeapEntry> open_set;
 	open_set.reserve(500);
 
 	AStarNode* start_node = &nodes->at(map->ConvXY(start_pos));
 	start_node->f_cost = 0;
 	start_node->h_cost = 0;
 	start_node->g_cost = 0;
-	open_set.push_back(start_node);
+	open_set.push_back({ start_node, start_node->f_cost, start_node->h_cost, start_node->g_cost });
 	push_heap(open_set.begin(), open_set.end(), FindUnitPathCompareHeap());
 
 	AStarNode* best_node = start_node;
@@ -6962,10 +6982,15 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 	while (!open_set.empty())
 	{
 		pop_heap(open_set.begin(), open_set.end(), FindUnitPathCompareHeap());
-		AStarNode* current_node = open_set.back();
+		const FindUnitPathHeapEntry entry = open_set.back();
 		open_set.pop_back();
+		AStarNode* current_node = entry.node;
 
-		if (current_node->closed)
+		// An improved route makes older queued copies obsolete. Do not
+		// process stale entries or depend on changing a queued priority.
+		if (current_node->closed ||
+			current_node->f_cost != entry.f_cost ||
+			current_node->g_cost != entry.g_cost)
 			continue;
 		current_node->closed = true;
 
@@ -7068,7 +7093,7 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 				neighbor_node->h_cost = next_h;
 				neighbor_node->f_cost = next_f;
 				neighbor_node->parent_pos = current_node->pos;
-				open_set.push_back(neighbor_node);
+				open_set.push_back({ neighbor_node, next_f, next_h, next_g });
 				push_heap(open_set.begin(), open_set.end(), FindUnitPathCompareHeap());
 			}
 		}
@@ -12776,6 +12801,63 @@ int SpellMap::Tick()
 
 // === Unit state machine ===
 	LockMap();
+
+	// Presentation uses the player's fog-of-war mask. The simulation must
+	// always process the real path regardless of what the player can see.
+	auto movement_visible_to_player = [&](const MapUnit* mover) -> bool
+	{
+		if (!mover || !isGameMode() || !mover->is_enemy)
+			return true;
+		if (!unit_view)
+			return true; // invalid vision state: retain normal presentation
+
+		const int index = ConvXY(mover->coor.x, mover->coor.y);
+		unit_view->ResultLock(true);
+		const bool valid_mask = unit_view->view.size() == (size_t)(x_size * y_size);
+		const bool visible = valid_mask && index >= 0 &&
+			(size_t)index < unit_view->view.size() && unit_view->view[index] == 2;
+		unit_view->ResultLock(false);
+		return !valid_mask || visible;
+	};
+
+	// A route can become obstructed after A* plans it (AI moves, summons,
+	// mission events). Never permit two units of the same map layer to overlap.
+	// Different layers (air/ground) may legitimately share a tile.
+	auto movement_tile_is_free = [&](MapUnit* mover, MapXY pos) -> bool
+	{
+		if (!mover || !mover->unit || !pos.IsSelected() ||
+			pos.x >= x_size || pos.y >= y_size)
+			return false;
+		const int idx = ConvXY(pos.x, pos.y);
+		if (idx < 0 || (size_t)idx >= Lunit.size())
+			return false;
+		for (MapUnit* occupant = Lunit[idx]; occupant; occupant = occupant->next)
+			if (occupant != mover && occupant->unit &&
+				occupant->unit->isAir() == mover->unit->isAir())
+				return false;
+		return true;
+	};
+	auto abort_blocked_movement = [&](MapUnit* mover)
+	{
+		// The start-of-movement snapshot excludes this mover; put its view
+		// back before returning the state machine to IDLE.
+		unit_view->RestoreUnitsView(mover->is_enemy);
+		if (!mover->is_enemy)
+		{
+			unit_view->AddUnitView(mover, ViewRange::ClearMode::NONE);
+			HideEnemiesOutsidePlayerView(this, unit_view);
+		}
+		else
+			UpdateEnemyVisibilityFromPlayerView(this, unit_view, mover, nullptr);
+		mover->PlayStop();
+		mover->move_nodes.clear();
+		mover->move_step = 0;
+		mover->move_state = MapUnit::MOVE_STATE::IDLE;
+		mover->in_animation = nullptr;
+		mover->frame = 0;
+		mover->was_moved = true;
+	};
+
 	if (unit->move_state != MapUnit::MOVE_STATE::IDLE)
 	{
 		// === UNIT MOVEMENT ===
@@ -12791,6 +12873,12 @@ int SpellMap::Tick()
 				// turn unit to match teleport animation
 				int azim_count = unit->unit->gr_base->stat.azimuths;
 				int delta_azim = mod(0x0A - unit->azimuth + azim_count / 2, azim_count) - azim_count / 2;
+				if (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))
+				{
+					// A hidden teleport does not spend presentation ticks turning.
+					unit->azimuth = mod(0x0A, azim_count);
+					delta_azim = 0;
+				}
 				if (delta_azim == 0)
 				{
 					// aligned: done										
@@ -12808,7 +12896,8 @@ int SpellMap::Tick()
 
 				update = true;
 			}
-			else if (unit->move_state == MapUnit::MOVE_STATE::TELEPORT_IN && tick_30ms)
+			else if (unit->move_state == MapUnit::MOVE_STATE::TELEPORT_IN &&
+				(tick_30ms || (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))))
 			{
 				// play teleport animation
 
@@ -12818,8 +12907,9 @@ int SpellMap::Tick()
 					unit->in_animation = unit->unit->gr_action;
 					unit->azimuth = 0; // animation has no azimuth!
 
-					// play move sound (async)
-					unit->PlayMove();
+					// Do not start sound for a teleport hidden from the player.
+					if (movement_visible_to_player(unit))
+						unit->PlayMove();
 
 					// update view of all but this unit:
 					unit_view->ClearUnitsView();
@@ -12832,32 +12922,48 @@ int SpellMap::Tick()
 					unit->move_step = unit->move_nodes.size() - 1;
 				}
 
+				// Skip hidden departure animation, but keep its logical landing.
+				if (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))
+					unit->frame = unit->in_animation->anim.frames - 1;
 				unit->frame++;
 				if (unit->frame >= unit->in_animation->anim.frames)
 				{
 					// unit disappeared:
 
 					// move unit
+					const bool departure_presented = movement_visible_to_player(unit);
 					auto next_pos = unit->move_nodes[unit->move_step];
-					unit->action_points -= (next_pos.g_cost - 0);
-					unit->coor = next_pos.pos;
+					if (!movement_tile_is_free(unit, next_pos.pos))
+					{
+						// Another unit reached the landing tile since path planning.
+						abort_blocked_movement(unit);
+					}
+					else
+					{
+						unit->action_points -= (next_pos.g_cost - 0);
+						unit->coor = next_pos.pos;
 
-					// stop move sound (async - this is just flag to shut down in next sound frame)
-					unit->PlayStop();
+						// stop move sound
+						unit->PlayStop();
 
-					// resort units in map
-					SortUnits();
+						SortUnits();
+						// A hidden departure may land in sight: show the arrival.
+						if (enemy_turn_running && unit->is_enemy && !departure_presented &&
+							movement_visible_to_player(unit))
+							unit->PlayMove();
 
-					// play the animation backwards
-					unit->move_state = MapUnit::MOVE_STATE::TELEPORT_OUT;
+						unit->move_state = MapUnit::MOVE_STATE::TELEPORT_OUT;
+					}
 				}
 
 				update = true;
 			}
-			if (unit->move_state == MapUnit::MOVE_STATE::TELEPORT_OUT && tick_30ms)
+			if (unit->move_state == MapUnit::MOVE_STATE::TELEPORT_OUT &&
+				(tick_30ms || (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))))
 			{
-				// teleport out
-
+				// Hidden arrivals finish immediately; visible ones still animate.
+				if (enemy_turn_running && unit->is_enemy && !movement_visible_to_player(unit))
+					unit->frame = 0;
 				unit->frame--;
 				if (unit->frame < 0)
 				{
@@ -12892,7 +12998,8 @@ int SpellMap::Tick()
 					if (isGameMode())
 						CheckReactionFire(unit, MapXY());
 
-					// done					
+					// done
+					unit->PlayStop(); // also stop audio started on a visible arrival
 					unit->in_animation = NULL;
 					unit->azimuth = 0x0A; // azimuth matching teleport animation which has only one azimumth
 					unit->move_nodes.clear();
@@ -12926,19 +13033,26 @@ int SpellMap::Tick()
 			}
 			else if (unit->move_state == MapUnit::MOVE_STATE::MOVE)
 			{
-				// movement:
+				// Fast-forward only hidden enemies. Every tile retains all normal
+				// simulation, reaction-fire and script-event checks.
+				constexpr int MAX_HIDDEN_STEPS_PER_TICK = 32;
+				int steps_this_tick = 0;
+				bool presented_after_step = true;
+				while (unit->move_state == MapUnit::MOVE_STATE::MOVE &&
+					steps_this_tick < MAX_HIDDEN_STEPS_PER_TICK)
+				{
+					const bool presented_before_step = movement_visible_to_player(unit);
+					const size_t event_count_before_step = event_list.size();
 
 				if (unit->move_step == 0)
 				{
 					// first step:
 
-					// play move sound (async)
-					unit->PlayMove();
-
-					// start animation
+					// Presentation is optional; the logical move is not.
+					if (presented_before_step)
+						unit->PlayMove();
 					unit->frame = -1;
-					if (unit->unit->gr_base->anim.frames)
-						unit->in_animation = unit->unit->gr_base;
+					unit->in_animation = nullptr;
 
 					// update view of all but this unit:
 					unit_view->ClearUnitsView();
@@ -12955,7 +13069,14 @@ int SpellMap::Tick()
 				if (unit->move_step)
 					ap_prev = unit->move_nodes[unit->move_step - 1].g_cost;
 
-				auto next_pos = unit->move_nodes[unit->move_step++];
+				const auto next_pos = unit->move_nodes[unit->move_step];
+				if (!movement_tile_is_free(unit, next_pos.pos))
+				{
+					// Stop before spending AP or overwriting an occupied tile.
+					abort_blocked_movement(unit);
+					break;
+				}
+				++unit->move_step;
 
 				HaltUnitRanging(true);
 				unit->action_points -= (next_pos.g_cost - ap_prev);
@@ -12998,6 +13119,28 @@ int SpellMap::Tick()
 				if (isGameMode())
 					CheckReactionFire(unit, this_pos);
 
+				presented_after_step = movement_visible_to_player(unit);
+				const bool movement_finished = unit->move_step >= unit->move_nodes.size();
+
+				// Sounds and animations exist only while the mover is seen.
+				if (unit->is_enemy && presented_after_step != presented_before_step)
+				{
+					if (presented_after_step && !movement_finished)
+						unit->PlayMove();
+					else
+						unit->PlayStop();
+				}
+				if (presented_after_step && unit->unit->gr_base->anim.frames)
+				{
+					if (!unit->in_animation)
+						unit->frame = -1;
+					unit->in_animation = unit->unit->gr_base;
+				}
+				else
+				{
+					unit->in_animation = nullptr;
+					unit->frame = 0;
+				}
 
 				if (unit->in_animation)
 				{
@@ -13016,7 +13159,7 @@ int SpellMap::Tick()
 
 				//if (new_contact || !events.empty() || unit->move_step >= unit->move_nodes.size())
 
-				if (unit->move_step >= unit->move_nodes.size())
+				if (movement_finished)
 
 				{
 					// movement done:
@@ -13033,6 +13176,16 @@ int SpellMap::Tick()
 					unit->frame = 0;
 				}
 
+					++steps_this_tick;
+					// Yield on contact, defensive-fire, scripted events or after
+					// any visible step. Never batch presentation or interrupts.
+					if (!enemy_turn_running || !unit->is_enemy ||
+						presented_before_step || presented_after_step ||
+						reaction_fire_active || !reaction_fire_queue.empty() ||
+						event_count_before_step != 0 ||
+						event_list.size() != event_count_before_step)
+						break;
+				}
 			}
 
 			update = true;
