@@ -6916,6 +6916,10 @@ vector<AStarNode> SpellMap::MoveRange::FindPathToward(MapUnit* unit, MapXY targe
 
 vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY target, int max_ap, bool return_best)
 {
+    // The asynchronous movement-range worker and the foreground enemy/player
+    // drivers share range_nodes. Without this lock, their A* node parents and
+    // heap pointers can be overwritten concurrently.
+    std::lock_guard<std::mutex> path_guard(path_lock);
 	vector<AStarNode> path;
 	if (!unit || !unit->unit || unit->GetWalkAP() <= 0 ||
 		!target.IsSelected() || !unit->coor.IsSelected())
@@ -6948,15 +6952,27 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 		if (!node)
 			return result;
 		result.reserve(30);
-		while (true)
+        // A legal path never contains more nodes than the map. If memory was
+        // corrupted or a parent cycle formed, fail safely instead of growing
+        // this vector until the machine runs out of RAM.
+        for (size_t steps = 0; steps < nodes->size(); ++steps)
 		{
 			result.push_back(*node);
 			if (!node->parent_pos.IsSelected())
-				break;
-			node = &nodes->at(map->ConvXY(node->parent_pos));
+            {
+                reverse(result.begin(), result.end());
+                return result;
+            }
+            const int parent = map->ConvXY(node->parent_pos);
+            if (parent < 0 || (size_t)parent >= nodes->size())
+            {
+                wxLogWarning("[PATH] Invalid A* parent position");
+                return {};
+            }
+            node = &(*nodes)[parent];
 		}
-		reverse(result.begin(), result.end());
-		return result;
+        wxLogWarning("[PATH] Aborting A* parent cycle");
+        return {};
 	};
 
 	while (!open_set.empty())
@@ -7068,6 +7084,13 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 				neighbor_node->h_cost = next_h;
 				neighbor_node->f_cost = next_f;
 				neighbor_node->parent_pos = current_node->pos;
+                // Stale heap entries are possible during a better-path update,
+                // but millions of entries on a small map indicate corruption.
+                if (open_set.size() >= nodes->size() * 8)
+                {
+                    wxLogWarning("[PATH] A* heap safety limit reached");
+                    return {};
+                }
 				open_set.push_back(neighbor_node);
 				push_heap(open_set.begin(), open_set.end(), FindUnitPathCompareHeap());
 			}

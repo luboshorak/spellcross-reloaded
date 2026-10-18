@@ -801,6 +801,9 @@ public:
 			vector<AStarNode> FindPathToward(MapUnit* unit, MapXY target);
 
 		private:
+            // FindPathInternal is called by both the range worker and the
+            // tactical/AI thread; its shared range_nodes must be serialized.
+            std::mutex path_lock;
 			vector<AStarNode> FindPathInternal(MapUnit* unit, MapXY target, int max_ap, bool return_best);
 
 		public:
