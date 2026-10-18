@@ -208,8 +208,17 @@ void MainFrame::StepFirstMissionBot()
         StopFirstMissionBot("The controlled unit was lost.");
         return;
     }
-    if (!hero->isActive() || hero->panic_turns > 0)
+    if (!hero->isActive() || hero->panic_turns > 0 ||
+        hero->paralyze_turns > 0 || hero->freeze_turns > 0)
+    {
+        // Status effects and newly spawned inactive companies must never
+        // fire or move. Advance a real turn instead of busy-looping forever.
+        ++m_botTurnCount;
+        m_botCooldown = 12;
+        spell_map->OnHUDswitchEndTurn();
+        UpdateBotStatus();
         return;
+    }
 
     if (spell_map->GetSelectedUnit() != hero)
     {
