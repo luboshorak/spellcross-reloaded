@@ -7295,7 +7295,7 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
 // hand the native move animator a legal A* prefix, exactly as the original EN
 // group-movement implementation does.  Reaction fire, action points and
 // mission triggers therefore run through the normal tactical engine.
-bool SpellMap::AutopilotMoveToward(MapUnit* unit, MapXY destination)
+bool SpellMap::AutopilotMoveToward(MapUnit* unit, MapXY destination, int reserve_ap)
 {
     if (!isGameMode() || deployment_mode || !unit || !unit->unit ||
         unit->is_enemy || unit->isDead() || !unit->isActive() ||
@@ -7318,10 +7318,12 @@ bool SpellMap::AutopilotMoveToward(MapUnit* unit, MapXY destination)
     if (path.size() < 2)
         return false;
 
+    // Bot may keep action points for defensive fire during the enemy phase.
+    const int budget = (std::max)(0, unit->action_points - (std::max)(0, reserve_ap));
     int last = 0;
     for (int i = 1; i < (int)path.size(); ++i)
     {
-        if (path[i].g_cost > unit->action_points)
+        if (path[i].g_cost > budget)
             break;
         last = i;
     }
@@ -12828,6 +12830,23 @@ int SpellMap::Tick()
 
 // === Unit state machine ===
 	LockMap();
+    // Recover interrupted moves with an empty/exhausted A* route before any
+    // indexed access to move_nodes. Keep a diagnostic for the next test run.
+    if (unit->move_state != MapUnit::MOVE_STATE::IDLE &&
+        (unit->move_nodes.empty() || unit->move_step < 0 ||
+         (unit->move_state == MapUnit::MOVE_STATE::MOVE &&
+          (size_t)unit->move_step >= unit->move_nodes.size())))
+    {
+        wxLogWarning("[MOVE] Aborting invalid path: unit=%d state=%d step=%d nodes=%zu",
+            unit->id, (int)unit->move_state, unit->move_step, unit->move_nodes.size());
+        unit->move_nodes.clear();
+        unit->move_state = MapUnit::MOVE_STATE::IDLE;
+        unit->move_step = 0;
+        unit->in_animation = nullptr;
+        unit->frame = 0;
+        unit->PlayStop();
+        update = true;
+    }
 	if (unit->move_state != MapUnit::MOVE_STATE::IDLE)
 	{
 		// === UNIT MOVEMENT ===

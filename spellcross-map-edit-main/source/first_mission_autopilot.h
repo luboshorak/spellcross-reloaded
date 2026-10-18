@@ -21,7 +21,7 @@ void MainFrame::OpenBotControls()
         wxDEFAULT_FRAME_STYLE | wxFRAME_FLOAT_ON_PARENT);
     auto* root = new wxBoxSizer(wxVERTICAL);
     root->Add(new wxStaticText(m_botControls, wxID_ANY,
-        "M01_01A: guide Alexander to the exit; fire at visible enemies."),
+        "M01_01A: rescue the palisade Commando, then extract Alexander."),
         0, wxALL, 10);
 
     auto* row = new wxBoxSizer(wxHORIZONTAL);
@@ -86,6 +86,7 @@ void MainFrame::OpenBotControls()
             m_botRunning = true;
             m_botPaused = false;
             m_botHeroId = -1;
+            m_botRescueReached = false;
             m_botTurnCount = 0;
             m_botNoProgressTurns = 0;
             m_botCooldown = 0;

@@ -160,6 +160,7 @@ private:
     bool m_botPaused = false;
     int m_botSpeed = 1; // native simulation ticks per 10 ms UI timer
     int m_botHeroId = -1;
+    bool m_botRescueReached = false; // scout/recover palisade Commando before extraction
     int m_botTurnCount = 0;
     int m_botNoProgressTurns = 0;
     int m_botCooldown = 0;

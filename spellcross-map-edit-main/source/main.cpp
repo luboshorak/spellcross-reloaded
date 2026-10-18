@@ -4614,14 +4614,17 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     if (m_botRunning && (m_botPaused || CheckMessageState()))
         return;
 
-    const int simulationSteps = m_botRunning ? m_botSpeed : 1;
+    // Enemy AI/path calculation is time-sensitive; do not accelerate it.
+    const int simulationSteps = (m_botRunning && !spell_map->IsEnemyTurnRunning())
+        ? m_botSpeed : 1;
     bool redraw = false;
     for (int i = 0; i < simulationSteps; ++i)
     {
         if (spell_map->Tick()) redraw = true;
         if (m_botRunning) StepFirstMissionBot();
         if (spell_map->m_mission_end_req.pending || m_mission_end_flow ||
-            !spell_map->isGameMode() || (m_botRunning && m_botPaused))
+            !spell_map->isGameMode() ||
+            (m_botRunning && (m_botPaused || spell_map->IsEnemyTurnRunning())))
             break;
     }
     if (redraw && canvas) canvas->Refresh();
