@@ -325,6 +325,7 @@ enum
     ID_SaveDEF,
     ID_NewMap,
     ID_MainMenu,
+    ID_AutopilotControls,
     ID_mmGameMode,
     ID_mmSaveGameState,
 	ID_mmLoadGameState,
