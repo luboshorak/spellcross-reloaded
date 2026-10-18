@@ -691,19 +691,39 @@ void SpellSound::cb_DoneFlag()
 // copy sample data to DAC frame
 int SpellSound::cb_GetFrame(int16_t *buffer, int count)
 {
-    //SpellSample *smpl;
-    int smpl_size = cb_GetSmplSize();
+    if (!buffer || count <= 0)
+        return count <= 0 ? 0 : 1;
+
     while(count)
     {
         if(control == CTRL_STOP)
         {
             // immediate stop
-            sub_id = samples.size();
-            memset(buffer,0,count*2);            
+            sub_id = static_cast<int>(samples.size());
+            memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
+            return(1);
+        }
+
+        // The callback may be invoked again after the final sample was
+        // consumed. sub_id == samples.size() is the normal end sentinel,
+        // NEVER a valid element index. This check must precede all indexing,
+        // including the MODE_RAND branch.
+        if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        {
+            memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
             return(1);
         }
 
         if(mode == MODE_RAND)
+        {
+            // Zero-length/missing samples cannot be looped.
+            if (!samples[sub_id] || samples[sub_id]->samples <= 0)
+            {
+                memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
+                sub_id = static_cast<int>(samples.size());
+                return(1);
+            }
+
         {
             // single sample mode:
             if(pos >= samples[sub_id]->samples)
@@ -716,7 +736,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                 else
                 {
                     // finito: fill with zeros
-                    memset(buffer,0,count*2);
+                    memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
                     count = 0;
                     sub_id = samples.size();
                     return(1);
@@ -734,7 +754,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
             if(sub_id >= samples.size())
             {
                 // finito: fill with zeros
-                memset(buffer,0,count*2);
+                memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
                 count = 0;
                 return(1);
             }
@@ -771,10 +791,10 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                     continue;
                 }
 
-                if(!samples[sub_id])
+                if(!samples[sub_id] || samples[sub_id]->samples <= 0)
                 {
                     // loop silence:
-                    memset(buffer,0,count*2);
+                    memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
                     count = 0;
                     return(0);
                 }
@@ -793,7 +813,7 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                 if(!samples[sub_id] || pos >= samples[sub_id]->samples)
                 {
                     // terminate:
-                    memset(buffer,0,count*2);
+                    memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(*buffer));
                     count = 0;
                     sub_id++;
                     return(1);
@@ -815,9 +835,11 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
 
 int16_t *SpellSound::cb_GetSmplData(int16_t* buffer, int count)
 {
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        return(buffer);
     SpellSample* smpl = samples[sub_id];
     if(!smpl)
-        return(NULL);
+        return(buffer);
     auto *data = &smpl->data[smpl->channels*pos];
     pos += count;
 
@@ -850,6 +872,8 @@ int16_t *SpellSound::cb_GetSmplData(int16_t* buffer, int count)
 
 int SpellSound::cb_GetSmplSize()
 {
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        return(0);
     SpellSample* smpl = samples[sub_id];
     if(!smpl)
         return(0);
@@ -858,8 +882,10 @@ int SpellSound::cb_GetSmplSize()
 
 int SpellSound::cb_GetSmplLeft()
 {
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+        return(0);
     SpellSample *smpl = samples[sub_id];
-    if(!smpl)
+    if(!smpl || smpl->channels <= 0)
         return(0);
     int left = (smpl->samples - pos)/smpl->channels;
     return(left);
