@@ -57,6 +57,15 @@ private:
 
     wxBitmap m_panel;
     wxPoint m_panel_pos;
+    // Native MAINM_0.LZ..MAINM_6.LZ (255x62) from COMMON.FS.
+    std::array<wxBitmap, 7> m_native_hover;
+    std::array<wxBitmap, 7> m_scaled_hover;
+    // Original T01..T04 hover sprites, 200x31 pixels each (COMMON.FS).
+    std::array<wxBitmap, 4> m_native_tutorial_hover;
+    std::array<wxBitmap, 4> m_scaled_tutorial_hover;
+    // Full, already scaled background + panel. Rebuilt only on resize or tutorial toggle.
+    wxBitmap m_menu_cache;
+    bool m_menu_cache_tutorial = false;
     wxBitmap m_tutorial_panel;
     wxPoint m_tutorial_panel_pos;
     bool m_tutorial_visible = false;
@@ -69,7 +78,10 @@ private:
 
     bool LoadBackground();
     bool LoadPanel();
+    void LoadNativeHover();
     bool LoadTutorialPanel();
+    void LoadTutorialHover();
+    void PlayNativeMenuSound();
     void BuildMenuItems();
     void BuildTutorialItems();
     void LayoutMenuItems(const wxSize& clientSize);

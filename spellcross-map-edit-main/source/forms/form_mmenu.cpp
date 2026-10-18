@@ -3,7 +3,7 @@
 
 #include <wx/wx.h>
 #include <wx/dcbuffer.h>
-#include <wx/dcgraph.h>
+#include <wx/dcmemory.h>
 #include <wx/frame.h>
 #include <wx/log.h>
 #include <wx/slider.h>
@@ -239,6 +239,7 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
 
     LoadBackground();
     LoadPanel();
+    LoadNativeHover();
     BuildMenuItems(); // native TUTMNU.LZ is loaded on demand
 
     // Match the strategic-level window footprint and scale the original
@@ -251,7 +252,9 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     spellcross_app::ApplyWindowIcon(form);
     form->SetMinSize(wxSize(660, 520));
     form->SetBackgroundStyle(wxBG_STYLE_PAINT);
-    form->SetDoubleBuffered(true);
+    // Avoid native MSW composition during hover redraws: OnPaint explicitly
+    // buffers the completed menu frame before presenting it.
+    form->SetDoubleBuffered(false);
 
     // copy icon from parent top-level window
     wxWindow* tlw = parent;
@@ -514,6 +517,53 @@ bool FormMainMenu::LoadPanel()
     return true;
 }
 
+void FormMainMenu::LoadNativeHover()
+{
+    if (!m_spelldata || !m_pal256_ok || !m_panel.IsOk())
+        return;
+
+    // The retail game stores each highlighted main-menu row as a 255x62
+    // transparent indexed sprite. Never replace it with synthetic rectangles.
+    constexpr int spriteW = 255;
+    constexpr int spriteH = 62;
+    constexpr size_t expected = static_cast<size_t>(spriteW) * spriteH;
+    FSarchive* common = m_spelldata->GetCommonFS();
+
+    for (size_t i = 0; i < m_native_hover.size(); ++i)
+    {
+        const std::string name = "MAINM_" + std::to_string(i) + ".LZ";
+        std::vector<unsigned char> bytes;
+        bool loaded = LoadBytesFromFS(common, name.c_str(), bytes);
+
+        if (!loaded)
+        {
+            const auto loose = FindMenuFile(
+                std::filesystem::path(m_spelldata->spell_data_root), name);
+            if (!loose.empty())
+                loaded = LoadFileBytes(loose, bytes);
+        }
+        if (!loaded)
+            continue;
+
+        // COMMON.FS with DELZ_ALL delivers decoded pixels already. Loose .LZ
+        // copies may still be packed; tolerate a few trailing decoder bytes.
+        if (bytes.size() < expected || bytes.size() > expected + 64)
+        {
+            LZWexpand lzw(32 * 1024);
+            const auto decoded = lzw.Decode(bytes.data(), bytes.data() + bytes.size());
+            if (decoded.size() < expected || decoded.size() > expected + 64)
+                continue;
+            bytes.assign(decoded.begin(), decoded.end());
+        }
+
+        DecodedIndexed d;
+        d.w = spriteW;
+        d.h = spriteH;
+        d.pixels.assign(bytes.begin(), bytes.begin() + expected);
+        m_native_hover[i] = MakeBitmapFromIndexed(d, m_pal256, true);
+    }
+}
+
 bool FormMainMenu::LoadTutorialPanel()
 {
     if (m_tutorial_panel.IsOk())
@@ -535,15 +585,19 @@ bool FormMainMenu::LoadTutorialPanel()
     if (!found)
         return false;
 
+    // Spellcross retail TUTMNU.LZ contains 250x214 pixels plus a few
+    // trailing decoder bytes. Accept the original payload without trying to
+    // decompress an already-decoded buffer a second time.
     constexpr size_t expected = 250u * 214u;
-    if (pixels.size() != expected)
+    if (pixels.size() < expected || pixels.size() > expected + 64)
     {
         LZWexpand lzw(128 * 1024);
         const auto decompressed = lzw.Decode(pixels.data(), pixels.data() + pixels.size());
-        if (decompressed.size() != expected)
+        if (decompressed.size() < expected || decompressed.size() > expected + 64)
             return false;
         pixels.assign(decompressed.begin(), decompressed.end());
     }
+    pixels.resize(expected);
 
     DecodedIndexed image;
     image.w = 250;
@@ -551,7 +605,54 @@ bool FormMainMenu::LoadTutorialPanel()
     image.pixels = std::move(pixels);
     m_tutorial_panel = MakeBitmapFromIndexed(image, m_pal256, true);
     m_tutorial_panel_pos = wxPoint((640 - 250) / 2, (480 - 214) / 2);
+    if (m_tutorial_panel.IsOk())
+        LoadTutorialHover();
     return m_tutorial_panel.IsOk();
+}
+
+void FormMainMenu::LoadTutorialHover()
+{
+    if (!m_spelldata || !m_pal256_ok)
+        return;
+
+    // Native retail assets: T01.LZ / T02.LZ / T03.LZ / T04.LZ.
+    // C and CH variants contain completion checkmarks; do not use those as
+    // hover sprites or invent animation frames.
+    constexpr int spriteW = 200;
+    constexpr int spriteH = 31;
+    constexpr size_t expected = static_cast<size_t>(spriteW) * spriteH;
+    FSarchive* common = m_spelldata->GetCommonFS();
+
+    for (size_t i = 0; i < m_native_tutorial_hover.size(); ++i)
+    {
+        const std::string name = "T0" + std::to_string(i + 1) + ".LZ";
+        std::vector<unsigned char> bytes;
+        bool loaded = LoadBytesFromFS(common, name.c_str(), bytes);
+        if (!loaded)
+        {
+            const auto loose = FindMenuFile(
+                std::filesystem::path(m_spelldata->spell_data_root), name);
+            if (!loose.empty())
+                loaded = LoadFileBytes(loose, bytes);
+        }
+        if (!loaded)
+            continue;
+
+        if (bytes.size() < expected || bytes.size() > expected + 64)
+        {
+            LZWexpand lzw(32 * 1024);
+            const auto decoded = lzw.Decode(bytes.data(), bytes.data() + bytes.size());
+            if (decoded.size() < expected || decoded.size() > expected + 64)
+                continue;
+            bytes.assign(decoded.begin(), decoded.end());
+        }
+
+        DecodedIndexed d;
+        d.w = spriteW;
+        d.h = spriteH;
+        d.pixels.assign(bytes.begin(), bytes.begin() + expected);
+        m_native_tutorial_hover[i] = MakeBitmapFromIndexed(d, m_pal256, true);
+    }
 }
 
 void FormMainMenu::BuildTutorialItems()
@@ -687,7 +788,7 @@ void FormMainMenu::OnSize(wxSizeEvent& event)
 
 void FormMainMenu::OnPaint(wxPaintEvent& event)
 {
-    wxAutoBufferedPaintDC dc(form);
+    wxBufferedPaintDC dc(form);
     dc.SetBackground(*wxBLACK_BRUSH);
     dc.Clear();
 
@@ -710,62 +811,112 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
     const int drawX = (client.x - drawW) / 2;
     const int drawY = (client.y - drawH) / 2;
     m_draw_rect = wxRect(drawX, drawY, drawW, drawH);
-
-    if (m_background.IsOk())
-    {
-        wxBitmap bg = m_background;
-        if (drawW != logicalW || drawH != logicalH)
-            bg = wxBitmap(m_background.ConvertToImage().Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST));
-        if (bg.IsOk())
-            dc.DrawBitmap(bg, drawX, drawY, false);
-    }
-
     LayoutMenuItems(wxSize(logicalW, logicalH));
 
-    if (m_tutorial_visible && m_tutorial_panel.IsOk())
+    // Expensive scaling and alpha composition happen ONLY when the menu size
+    // or tutorial mode changes, not during mouse movement across buttons.
+    if (!m_menu_cache.IsOk() || m_menu_cache.GetSize() != wxSize(drawW, drawH) ||
+        m_menu_cache_tutorial != m_tutorial_visible)
     {
-        const int px = drawX + static_cast<int>(std::lround(m_tutorial_panel_pos.x * scale));
-        const int py = drawY + static_cast<int>(std::lround(m_tutorial_panel_pos.y * scale));
-        const int pw = std::max(1, static_cast<int>(std::lround(250 * scale)));
-        const int ph = std::max(1, static_cast<int>(std::lround(214 * scale)));
-        wxBitmap menu = m_tutorial_panel;
-        if (pw != 250 || ph != 214)
-            menu = wxBitmap(m_tutorial_panel.ConvertToImage().Scale(pw, ph, wxIMAGE_QUALITY_NEAREST));
-        if (menu.IsOk()) dc.DrawBitmap(menu, px, py, true);
-    }
-    else if (m_panel.IsOk() && m_panel_size.x > 0 && m_panel_size.y > 0)
-    {
-        const int px = drawX + static_cast<int>(std::lround(m_panel_pos.x * scale));
-        const int py = drawY + static_cast<int>(std::lround(m_panel_pos.y * scale));
-        const int pw = std::max(1, static_cast<int>(std::lround(m_panel_size.x * scale)));
-        const int ph = std::max(1, static_cast<int>(std::lround(m_panel_size.y * scale)));
-        wxBitmap panel = m_panel;
-        if (pw != m_panel_size.x || ph != m_panel_size.y)
-            panel = wxBitmap(m_panel.ConvertToImage().Scale(pw, ph, wxIMAGE_QUALITY_NEAREST));
-        if (panel.IsOk())
-            dc.DrawBitmap(panel, px, py, true);
-    }
+        wxBitmap composed(drawW, drawH);
+        wxMemoryDC layer;
+        layer.SelectObject(composed);
+        layer.SetBackground(*wxBLACK_BRUSH);
+        layer.Clear();
 
-    // Hover rectangle is stored in logical 640x480 coordinates and transformed
-    // together with the original artwork.
-    if (m_hover_index >= 0 && m_hover_index < (int)m_items.size())
-    {
-        const wxRect& lr = m_items[(size_t)m_hover_index].rect;
-        wxRect r(
-            drawX + static_cast<int>(std::lround(lr.x * scale)),
-            drawY + static_cast<int>(std::lround(lr.y * scale)),
-            std::max(1, static_cast<int>(std::lround(lr.width * scale))),
-            std::max(1, static_cast<int>(std::lround(lr.height * scale))));
-
-        wxGCDC gdc(dc);
-        wxGraphicsContext* gc = gdc.GetGraphicsContext();
-        if (gc)
+        if (m_background.IsOk())
         {
-            gc->SetPen(gc->CreatePen(wxGraphicsPenInfo(wxColour(200, 200, 200, 180)).Width(std::max(1.0, 2.0 * scale))));
-            gc->SetBrush(gc->CreateBrush(wxBrush(wxColour(150, 150, 150, 50))));
-            gc->DrawRoundedRectangle(r.x, r.y, r.width, r.height, std::max(3.0, 6.0 * scale));
+            wxBitmap bg = m_background;
+            if (drawW != logicalW || drawH != logicalH)
+                bg = wxBitmap(bg.ConvertToImage().Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST));
+            if (bg.IsOk())
+                layer.DrawBitmap(bg, 0, 0, false);
+        }
+
+        // Preserve the original main menu behind the smaller tutorial panel.
+        // TUTMNU has transparent pixels and must not replace MAINM_BG.
+        const auto drawOverlay = [&](const wxBitmap& overlay, const wxPoint& pos)
+        {
+            if (!overlay.IsOk())
+                return;
+            const int x = static_cast<int>(std::lround(pos.x * scale));
+            const int y = static_cast<int>(std::lround(pos.y * scale));
+            const int w = std::max(1, static_cast<int>(std::lround(overlay.GetWidth() * scale)));
+            const int h = std::max(1, static_cast<int>(std::lround(overlay.GetHeight() * scale)));
+            wxBitmap picture = overlay;
+            if (w != overlay.GetWidth() || h != overlay.GetHeight())
+                picture = wxBitmap(overlay.ConvertToImage().Scale(w, h, wxIMAGE_QUALITY_NEAREST));
+            if (picture.IsOk())
+                layer.DrawBitmap(picture, x, y, true);
+        };
+        drawOverlay(m_panel, m_panel_pos);
+        if (m_tutorial_visible)
+            drawOverlay(m_tutorial_panel, m_tutorial_panel_pos);
+        layer.SelectObject(wxNullBitmap);
+        m_menu_cache = composed;
+        m_menu_cache_tutorial = m_tutorial_visible;
+
+        for (size_t i = 0; i < m_native_hover.size(); ++i)
+        {
+            m_scaled_hover[i] = wxBitmap();
+            if (!m_native_hover[i].IsOk())
+                continue;
+            const int w = std::max(1, static_cast<int>(std::lround(255 * scale)));
+            const int h = std::max(1, static_cast<int>(std::lround(62 * scale)));
+            m_scaled_hover[i] = (w == 255 && h == 62)
+                ? m_native_hover[i]
+                : wxBitmap(m_native_hover[i].ConvertToImage().Scale(w, h, wxIMAGE_QUALITY_NEAREST));
+        }
+        for (size_t i = 0; i < m_native_tutorial_hover.size(); ++i)
+        {
+            m_scaled_tutorial_hover[i] = wxBitmap();
+            if (!m_native_tutorial_hover[i].IsOk())
+                continue;
+            const int w = std::max(1, static_cast<int>(std::lround(200 * scale)));
+            const int h = std::max(1, static_cast<int>(std::lround(31 * scale)));
+            m_scaled_tutorial_hover[i] = (w == 200 && h == 31)
+                ? m_native_tutorial_hover[i]
+                : wxBitmap(m_native_tutorial_hover[i].ConvertToImage().Scale(w, h, wxIMAGE_QUALITY_NEAREST));
         }
     }
+
+    if (m_menu_cache.IsOk())
+        dc.DrawBitmap(m_menu_cache, drawX, drawY, false);
+
+    // Pixel-perfect row offsets determined from MAINM_BG and MAINM_0..6.
+    // These are source-image positions, NOT synthetic highlight rectangles.
+    static constexpr int rowY[7] = { 0, 35, 70, 105, 140, 175, 210 };
+    if (!m_tutorial_visible && m_panel.IsOk() &&
+        m_hover_index >= 0 && m_hover_index < (int)m_items.size() &&
+        m_hover_index < (int)m_scaled_hover.size() &&
+        m_scaled_hover[(size_t)m_hover_index].IsOk())
+    {
+        const int x = drawX + static_cast<int>(std::lround(m_panel_pos.x * scale));
+        const int y = drawY + static_cast<int>(std::lround(
+            (m_panel_pos.y + rowY[m_hover_index]) * scale));
+        dc.DrawBitmap(m_scaled_hover[(size_t)m_hover_index], x, y, true);
+    }
+    if (m_tutorial_visible && m_tutorial_panel.IsOk() &&
+        m_hover_index >= 0 && m_hover_index < 4 &&
+        m_scaled_tutorial_hover[(size_t)m_hover_index].IsOk())
+    {
+        // Verified against TUTMNU pixels: x=19, y=69,100,131,162.
+        const int x = drawX + static_cast<int>(std::lround(
+            (m_tutorial_panel_pos.x + 19) * scale));
+        const int y = drawY + static_cast<int>(std::lround(
+            (m_tutorial_panel_pos.y + 69 + 31 * m_hover_index) * scale));
+        dc.DrawBitmap(m_scaled_tutorial_hover[(size_t)m_hover_index], x, y, true);
+    }
+}
+
+void FormMainMenu::PlayNativeMenuSound()
+{
+    // SAMPLES.DEF specifies 1-PIP1 for both menu hover and activation.
+    if (!m_spelldata || !m_spelldata->sounds ||
+        !m_spelldata->sounds->GetSample("1-PIP1"))
+        return;
+    if (auto* sound = m_spelldata->sounds->GetSound("1-PIP1"))
+        sound->PlayAsync();
 }
 
 void FormMainMenu::OnMouseMove(wxMouseEvent& event)
@@ -794,6 +945,8 @@ void FormMainMenu::OnMouseMove(wxMouseEvent& event)
     if (hit != m_hover_index)
     {
         m_hover_index = hit;
+        if (hit >= 0)
+            PlayNativeMenuSound();
         form->Refresh(false);
     }
 
@@ -813,7 +966,10 @@ void FormMainMenu::OnMouseLeave(wxMouseEvent& event)
 void FormMainMenu::OnMouseClick(wxMouseEvent& event)
 {
     if (m_hover_index >= 0)
+    {
+        PlayNativeMenuSound();
         TriggerAction(m_hover_index);
+    }
     event.Skip();
 }
 
