@@ -283,7 +283,10 @@ void MainFrame::StepFirstMissionBot()
         spell_map->GetUnit(m_botCommandoId) : nullptr;
     if (m_botCommandoId >= 0 && (!rescueUnit || rescueUnit->isDead()))
     {
-        StopFirstMissionBot("The rescued Commando has been killed.");
+        // Losing any company is a strategic failure for the squad. Do not
+        // pretend the rescued Commando was uniquely expendable or uniquely
+        // important. Report a casualty and stop the spectator experiment.
+        StopFirstMissionBot("A friendly company has been lost (Commando).");
         return;
     }
     if (!m_botRescueReached && spell_map->events)
@@ -368,7 +371,7 @@ void MainFrame::StepFirstMissionBot()
                 MapXY p(x,y);
                 if (center.Distance(p) > 3.5 ||
                     !spell_map->TileIsVisible(x,y)) continue;
-                const MapSprite& tile = spell_map->tiles[spell_map->ConvXY(p)];
+                MapSprite& tile = spell_map->tiles[spell_map->ConvXY(p)];
                 if (!tile.isTarget() || tile.hp <= 0 || !tile.GetDestructible())
                     continue;
                 // Make a gap on the side from which the rescuers approach.
@@ -395,8 +398,48 @@ void MainFrame::StepFirstMissionBot()
             nearestHostile = (std::min)(nearestHostile,
                 hero->coor.Distance(e->coor));
         }
-    const bool combatContact = nearestHostile <= 9.0;
-    const bool closeDanger = nearestHostile <= 3.5;
+    // Contact anywhere on the friendly perimeter halts the group, even if
+    // Alexander is far from the ork. Otherwise he abandons supporting squads.
+    double nearestTeamThreat = nearestHostile;
+    for (MapUnit* enemy : visibleHostiles)
+        for (MapUnit* ally : spell_map->units)
+            if (ally && ally->unit && !ally->is_enemy && !ally->isDead())
+                nearestTeamThreat = (std::min)(nearestTeamThreat,
+                    enemy->coor.Distance(ally->coor));
+    const bool combatContact = nearestTeamThreat <= 9.0;
+    const bool closeDanger = nearestTeamThreat <= 3.5;
+
+    // No isolated hero: he must wait whenever a healthy allied squad lags
+    // behind by more than a few cells. The palisade Commando is excluded
+    // only until freed, because he literally cannot follow through a wall.
+    bool teamSeparated = false;
+    for (MapUnit* ally : spell_map->units)
+        if (ally && ally != hero && ally->unit && !ally->is_enemy &&
+            !ally->isDead() && ally->isActive() &&
+            (ally != rescueUnit || m_botRescueReached) &&
+            hero->coor.Distance(ally->coor) > 5.0)
+            teamSeparated = true;
+
+    // A palisade is not an enemy company: only shoot an actual destructible
+    // map object through the game's own CanUnitAttackObject + Attack path.
+    // The current selection's attack-map must already be calculated.
+    auto breakPalisade = [this, &palisadeTarget](MapUnit* shooter) -> bool
+    {
+        if (!palisadeTarget.IsSelected() || !shooter || !shooter->unit ||
+            shooter->is_enemy || shooter->isDead() ||
+            !shooter->unit->canAttackObject() || shooter->GetFireCount() <= 0 ||
+            spell_map->GetSelectedUnit() != shooter)
+            return false;
+        if (!spell_map->CanUnitAttackObject(palisadeTarget))
+            return false;
+        if (spell_map->Attack(palisadeTarget, 0) != 0)
+            return false;
+        BotLog(wxString::Format("Company #%d fires on palisade (%d,%d).",
+            shooter->id, palisadeTarget.x, palisadeTarget.y));
+        m_botCooldown = 12;
+        m_botNoProgressTurns = 0;
+        return true;
+    };
 
     // Let every nearby friendly squad provide supporting fire, not only the
     // mission leader. Keep selection stable until its native fire animation ends.
@@ -431,6 +474,13 @@ void MainFrame::StepFirstMissionBot()
                         return;
                     }
                 }
+            // Enclosure obstacle can be breached by any eligible infantry;
+            // do this only after addressing nearby mobile threats.
+            if (breakPalisade(selected))
+            {
+                m_botSupportTried.push_back(selected->id);
+                return;
+            }
             m_botSupportTried.push_back(selected->id);
         }
         spell_map->SelectUnit(hero, true);
@@ -472,6 +522,14 @@ void MainFrame::StepFirstMissionBot()
         }
     }
 
+    // If no immediate enemy needs a shot, breach the enclosure first.
+    // The Commando cannot leave before there is a physical gap.
+    if (!m_botHeroFiredThisTurn && breakPalisade(hero))
+    {
+        m_botHeroFiredThisTurn = true;
+        return;
+    }
+
     // After the commander has handled nearby threats, use the other Alliance
     // squads for suppressive fire wherever their current weapon range allows.
     for (MapUnit* ally : spell_map->units)
@@ -491,7 +549,11 @@ void MainFrame::StepFirstMissionBot()
                 inRange = true;
                 break;
             }
-        if (!inRange) continue;
+        // Choose wall-capable allies as well, not only enemy shooters.
+        if (!inRange && !(palisadeTarget.IsSelected() &&
+            ally->unit->canAttackObject() &&
+            ally->coor.Distance(palisadeTarget) <= (double)ally->GetFireRange()))
+            continue;
         spell_map->SelectUnit(ally, true);
         m_botCooldown = 12;
         return;
