@@ -783,10 +783,15 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
                 if(!samples[sub_id])
                 {
                     // loop silence:
-                    memset(buffer,0,count*2);
+                    memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(int16_t));
                     count = 0;
                     return(0);
                 }
+
+                // Missing/zero-length sustain samples cannot loop. A valid
+                // absent sustain slot is handled above as intentional silence.
+                if(samples[sub_id]->samples <= 0)
+                    return silence_and_stop();
 
                 if(pos >= samples[sub_id]->samples)
                 {
@@ -821,10 +826,25 @@ int SpellSound::cb_GetFrame(int16_t *buffer, int count)
 
 int16_t *SpellSound::cb_GetSmplData(int16_t* buffer, int count)
 {
+    if (!buffer || count <= 0)
+        return buffer;
+    if (sub_id < 0 || static_cast<size_t>(sub_id) >= samples.size())
+    {
+        memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(int16_t));
+        return buffer + count * 2;
+    }
     SpellSample* smpl = samples[sub_id];
-    if(!smpl)
-        return(NULL);
-    auto *data = &smpl->data[smpl->channels*pos];
+    // A truncated or malformed PCM payload must not become an out-of-bounds
+    // read on the real-time audio thread. Produce silence instead.
+    if (!smpl || smpl->channels < 1 || smpl->channels > 2 || pos < 0 ||
+        (static_cast<size_t>(pos) + static_cast<size_t>(count)) *
+            static_cast<size_t>(smpl->channels) > smpl->data.size())
+    {
+        memset(buffer, 0, static_cast<size_t>(count) * 2 * sizeof(int16_t));
+        pos += count;
+        return buffer + count * 2;
+    }
+    auto *data = &smpl->data[static_cast<size_t>(smpl->channels) * pos];
     pos += count;
 
     double volume = streams->GetVolume();
