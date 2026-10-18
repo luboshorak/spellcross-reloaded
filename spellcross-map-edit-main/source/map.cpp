@@ -6891,11 +6891,27 @@ void SpellMap::MoveRange::Worker()
 	}
 }
 
+// Keep heap priorities immutable. A* may improve a tile's score after it
+// has already been inserted, so ordering pointers to mutable nodes violates
+// std::push_heap's strict weak ordering requirement in Debug builds.
+struct FindUnitPathHeapEntry
+{
+	AStarNode* node;
+	int f_cost;
+	int h_cost;
+	int g_cost;
+};
+
 struct FindUnitPathCompareHeap
 {
-	bool operator()(AStarNode*& b, AStarNode*& a) const
+	bool operator()(const FindUnitPathHeapEntry& a, const FindUnitPathHeapEntry& b) const
 	{
-		return((a->f_cost < b->f_cost || a->g_cost == b->g_cost && a->h_cost < b->h_cost));
+		// Min-heap by total estimated cost, with deterministic tie breaks.
+		if (a.f_cost != b.f_cost) return a.f_cost > b.f_cost;
+		if (a.h_cost != b.h_cost) return a.h_cost > b.h_cost;
+		if (a.g_cost != b.g_cost) return a.g_cost > b.g_cost;
+		if (a.node->pos.y != b.node->pos.y) return a.node->pos.y > b.node->pos.y;
+		return a.node->pos.x > b.node->pos.x;
 	}
 };
 
@@ -6921,6 +6937,10 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 		!target.IsSelected() || !unit->coor.IsSelected())
 		return path;
 
+	// The HUD movement-range worker and AI may both call FindPath(). Never
+	// reuse or mutate the shared node array simultaneously on two threads.
+	std::lock_guard<std::mutex> path_guard(path_mutex);
+
 	// local nodes map
 	vector<AStarNode>* nodes = &range_nodes;
 	nodes->resize(map->x_size * map->y_size);
@@ -6928,14 +6948,14 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 
 	MapXY start_pos = unit->coor;
 
-	vector<AStarNode*> open_set;
+	vector<FindUnitPathHeapEntry> open_set;
 	open_set.reserve(500);
 
 	AStarNode* start_node = &nodes->at(map->ConvXY(start_pos));
 	start_node->f_cost = 0;
 	start_node->h_cost = 0;
 	start_node->g_cost = 0;
-	open_set.push_back(start_node);
+	open_set.push_back({ start_node, start_node->f_cost, start_node->h_cost, start_node->g_cost });
 	push_heap(open_set.begin(), open_set.end(), FindUnitPathCompareHeap());
 
 	AStarNode* best_node = start_node;
@@ -6962,10 +6982,15 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 	while (!open_set.empty())
 	{
 		pop_heap(open_set.begin(), open_set.end(), FindUnitPathCompareHeap());
-		AStarNode* current_node = open_set.back();
+		const FindUnitPathHeapEntry entry = open_set.back();
 		open_set.pop_back();
+		AStarNode* current_node = entry.node;
 
-		if (current_node->closed)
+		// An improved route makes older queued copies obsolete. Do not
+		// process stale entries or depend on changing a queued priority.
+		if (current_node->closed ||
+			current_node->f_cost != entry.f_cost ||
+			current_node->g_cost != entry.g_cost)
 			continue;
 		current_node->closed = true;
 
@@ -7068,7 +7093,7 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 				neighbor_node->h_cost = next_h;
 				neighbor_node->f_cost = next_f;
 				neighbor_node->parent_pos = current_node->pos;
-				open_set.push_back(neighbor_node);
+				open_set.push_back({ neighbor_node, next_f, next_h, next_g });
 				push_heap(open_set.begin(), open_set.end(), FindUnitPathCompareHeap());
 			}
 		}
