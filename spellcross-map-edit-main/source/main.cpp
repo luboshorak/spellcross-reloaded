@@ -2081,6 +2081,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
 void MainFrame::StartTacticalGame()
 {
     if (!spell_map || !spell_map->IsLoaded()) return;
+    StopFirstMissionBot("New tactical mission.");
     spell_map->SetGameMode(1);
     if (spell_map->saves) spell_map->saves->Clear(spell_map->GetTacticalSaveLimit());
     if (spell_map->events) spell_map->events->ResetEvents();
@@ -2616,6 +2617,8 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuGame->AppendSeparator();
     menuGame->Append(ID_mmResetViewMap, "Reset view map");
     menuGame->Append(ID_mmUnitViewMode, "View unit move/attack range (Space)");
+    menuGame->AppendSeparator();
+    menuGame->Append(ID_AutopilotControls, "First mission spectator bot...\tF8");
 
     // Help menu
     wxMenu* menuHelp = new wxMenu;
@@ -2723,6 +2726,7 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnSaveGameState,this,ID_mmSaveGameState);
 	Bind(wxEVT_MENU,&MainFrame::OnLoadGameState,this,ID_mmLoadGameState);
     Bind(wxEVT_MENU,&MainFrame::OnOpenMapEditorFromBattle,this,ID_mmOpenMapEditor);
+    Bind(wxEVT_MENU, [this](wxCommandEvent&) { OpenBotControls(); }, ID_AutopilotControls);
     Bind(wxEVT_MENU,&MainFrame::OnResetUnitView,this,ID_mmResetViewMap);
     Bind(wxEVT_MENU,&MainFrame::OnSelectUnitView,this,ID_mmUnitViewMode);
 
@@ -2759,6 +2763,13 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     // ESC handler via CHAR_HOOK — fires BEFORE menu accelerators,
     // so ESC is not consumed by the disabled Edit > Clear buffer accelerator.
     Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent& event) {
+        if (event.GetKeyCode() == WXK_F8) { OpenBotControls(); return; }
+        if (event.GetKeyCode() == WXK_F9 && m_botRunning) {
+            m_botPaused = !m_botPaused;
+            UpdateBotStatus();
+            return;
+        }
+
         // EN group slots must be handled at frame level.  wxPanel key events
         // are focus-dependent and keyboard layouts (notably Czech) may not
         // report the top number row as ASCII '1'..'8'.  Accept the logical
@@ -4540,6 +4551,8 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
     const SpellData* spellData);
 
 // map animation periodic refresh tick
+#include "first_mission_autopilot.h" // Experiment UI / driver methods (included once)
+
 void MainFrame::OnTimer(wxTimerEvent& event)
 {
     if (!spell_map->IsLoaded())
@@ -4593,8 +4606,20 @@ void MainFrame::OnTimer(wxTimerEvent& event)
             return;
     }
 
-    if (spell_map->Tick())
-        canvas->Refresh();
+    if (m_botRunning && (m_botPaused || CheckMessageState()))
+        return;
+
+    const int simulationSteps = m_botRunning ? m_botSpeed : 1;
+    bool redraw = false;
+    for (int i = 0; i < simulationSteps; ++i)
+    {
+        if (spell_map->Tick()) redraw = true;
+        if (m_botRunning) StepFirstMissionBot();
+        if (spell_map->m_mission_end_req.pending || m_mission_end_flow ||
+            !spell_map->isGameMode() || (m_botRunning && m_botPaused))
+            break;
+    }
+    if (redraw && canvas) canvas->Refresh();
 
     // Mission-end flow (po ticku)
     // Note: do NOT require isGameMode() here — game mode may already be off
