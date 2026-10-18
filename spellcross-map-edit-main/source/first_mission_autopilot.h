@@ -89,6 +89,9 @@ void MainFrame::OpenBotControls()
             m_botRescueReached = false;
             m_botSupportTried.clear();
             m_botSquadMoved.clear();
+            m_botHeroMovedThisTurn = false;
+            m_botContactWaitTurns = 0;
+            m_botCurrentStance = 0;
             m_botTurnCount = 0;
             m_botNoProgressTurns = 0;
             m_botCooldown = 0;
@@ -135,8 +138,10 @@ void MainFrame::UpdateBotStatus()
     {
         const wxString state = !m_botRunning ? "Stopped" :
             (m_botPaused ? "Paused" : "Watching AI");
+        const char* stance = m_botCurrentStance == 1 ? " | HOLD" :
+            (m_botCurrentStance == 2 ? " | SCOUT" : " | ADVANCE");
         m_botStatus->SetLabel(state +
-            wxString::Format(" | %dx | Turn %d / 120", m_botSpeed, m_botTurnCount));
+            wxString::Format(" | %dx | Turn %d / 120", m_botSpeed, m_botTurnCount) + stance);
     }
 }
 
@@ -149,6 +154,9 @@ void MainFrame::StopFirstMissionBot(const wxString& reason)
     m_botCooldown = 0;
     m_botSupportTried.clear();
     m_botSquadMoved.clear();
+    m_botHeroMovedThisTurn = false;
+    m_botContactWaitTurns = 0;
+    m_botCurrentStance = 0;
     m_botMessageTicks = 0;
     m_botMessageCloseRequested = false;
     UpdateBotStatus();
@@ -253,6 +261,7 @@ void MainFrame::StepFirstMissionBot()
         ++m_botTurnCount;
         m_botSupportTried.clear();
         m_botSquadMoved.clear();
+        m_botHeroMovedThisTurn = false;
         m_botCooldown = 12;
         spell_map->OnHUDswitchEndTurn();
         UpdateBotStatus();
@@ -307,6 +316,22 @@ void MainFrame::StepFirstMissionBot()
             }
         }
     }
+
+    // The bot may see only real player-visible enemies. Estimate the contact
+    // zone from currently visible weapon ranges, not hidden map enemy records.
+    std::vector<MapUnit*> visibleHostiles;
+    double nearestHostile = 1e30;
+    for (MapUnit* e : spell_map->units)
+        if (e && e->unit && e->is_enemy && !e->isDead() &&
+            e->is_visible >= 2 && e->coor.IsSelected() &&
+            spell_map->TileIsVisible(e->coor.x, e->coor.y))
+        {
+            visibleHostiles.push_back(e);
+            nearestHostile = (std::min)(nearestHostile,
+                hero->coor.Distance(e->coor));
+        }
+    const bool combatContact = nearestHostile <= 9.0;
+    const bool closeDanger = nearestHostile <= 3.5;
 
     // Let every nearby friendly squad provide supporting fire, not only the
     // mission leader. Keep selection stable until its native fire animation ends.
@@ -403,9 +428,11 @@ void MainFrame::StepFirstMissionBot()
         return;
     }
 
-    // The rest of the squad must actually move and cover the commander.
-    // Give each healthy supporting company ONE movement order per player phase.
-    // Do not teleport or alter AP; the same A* and reaction-fire rules apply.
+    // Support companies stay in their defensive positions while hostiles
+    // approach. Reposition only in relative safety: roaming supporters used
+    // to expose themselves to orcs before Alexander even moved.
+    // Do not teleport or alter AP; all movement remains native.
+    if (!combatContact)
     for (MapUnit* ally : spell_map->units)
     {
         if (!ally || ally == hero || !ally->unit || ally->is_enemy ||
