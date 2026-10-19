@@ -10,19 +10,19 @@ Spellcross Reloaded brings the original turn-based strategy game to current PCs.
 
 The project also includes a standalone **map editor**, so you can explore the original game files and make your own missions.
 
-**[Download Spellcross Reloaded v0.9.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.9.1)** · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor) · [Report a problem](https://github.com/luboshorak/spellcross-reloaded/issues)
+**Current source version: v0.9.2** · **[Download the latest published release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor) · [Report a problem](https://github.com/luboshorak/spellcross-reloaded/issues)
 
 > **You'll need your own original Spellcross game data.** The game itself and the editor are provided here, but the original commercial archives are not included.
 
 ## Get started
 
-1. Download the Windows x64 ZIP from the [v0.9.1 release](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.9.1).
-2. Extract the whole ZIP into a **writable folder**. Don't run it from inside the archive.
+1. Get the Windows x64 ZIP or optional SFX installer from the [latest published release](https://github.com/luboshorak/spellcross-reloaded/releases/latest). A new source version may appear on `main` before its release packages are published.
+2. **ZIP:** extract the whole archive into a **writable folder**, then run the game from there. **SFX installer:** choose a writable installation directory when prompted.
 3. Launch `Spellcross.exe`.
 4. On first run, load original Spellcross data. Choose **Download CZ ISO** / **Download EN ISO** (with browser fallback if needed), a **raw ISO file** (no mounting required), an original CD/mounted folder, an existing `DATA` directory, or individual game archives.
 5. Want to edit maps? Launch `Editor/spellcross_map_editor.exe` from the same folder.
 
-There's no installer or registry setup. You may need the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) on a fresh Windows installation.
+The ZIP requires no installer or registry setup. The optional SFX installer adds a folder picker and desktop shortcut. You may need the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) on a fresh Windows installation.
 
 ## Configuration when building from source
 
@@ -92,7 +92,21 @@ Reloaded keeps Spellcross's two connected parts:
 
 You'll find the original graphics, unit artwork, animations, sounds, music and strategic interface wherever they can be recovered from the game files. The Windows package also includes 37 video fallbacks for cinematics that the old video formats cannot reliably play on modern systems.
 
-## What's new in v0.9.1?
+## What's new in v0.9.2?
+
+**Original main menu restored further.** Menu highlighting now uses the original game's hover graphics instead of drawn rectangles. Tutorial-menu artwork, redrawing and window scaling have also been improved.
+
+**Faster handling of unseen enemy movement.** The tactical engine can batch movement steps outside the player's view without playing invisible animations or movement audio. Intermediate movement costs, visibility, map events and defensive-fire checks remain part of the simulation.
+
+**Safer pathfinding and unit movement.** A* path priorities and shared path buffers have been stabilized, and occupancy is rechecked at each movement or teleport step.
+
+**Audio and video reliability.** Additional synchronization and lifetime safeguards protect sound streams and callbacks, while legacy video frames are now advanced by a GUI timer rather than audio callbacks.
+
+**More Windows packaging options.** Alongside the portable ZIP, the build can generate a branded WinRAR SFX installer with a selectable destination and desktop shortcut. As before, players must provide their own original game data.
+
+See the [changes since v0.9.1](https://github.com/luboshorak/spellcross-reloaded/compare/v0.9.1...main). The Windows release package should be built and smoke-tested before publishing.
+
+### Previous highlights: v0.9.1
 
 **Improved original-game mechanics.** Tactical movement costs now use the actual action-point cost from each original unit definition. Experience and equipment upgrades modify available action points; sight, radar, high-ground firing distance and formation bonuses have been reviewed against the original game data. Rescue objectives, enemy-death cleanup and turn handling have also received corrections.
 

@@ -1,6 +1,6 @@
 # Building Spellcross Reloaded for Windows
 
-This is the build guide for the **game and its standalone map editor**. If you just want to play, you don't need any of this: **[download v0.9.1](https://github.com/luboshorak/spellcross-reloaded/releases/tag/v0.9.1)** and follow the [main README](../README.md).
+This is the build guide for the **game and its standalone map editor**. If you just want to play, you don't need any of this: **[download the latest published release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** and follow the [main README](../README.md).
 
 The build produces a portable Windows x64 ZIP **and**, if WinRAR is installed, a self-extracting SFX `.exe` installer. Both packages include the game, standalone map editor, and support files, but **not the original commercial Spellcross archives**.
 
@@ -32,8 +32,8 @@ If the build can't find wxWidgets, specify the path to your vcpkg x64 installati
 The output is:
 
 ```text
-dist/Spellcross_Reloaded_v0.9.1.zip
-dist/Spellcross_Reloaded_v0.9.1.exe    (WinRAR SFX, when WinRAR is installed)
+dist/Spellcross_Reloaded_v0.9.2.zip
+dist/Spellcross_Reloaded_v0.9.2.exe    (WinRAR SFX, when WinRAR is installed)
 ```
 
 To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
@@ -42,7 +42,7 @@ To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
 .\packaging\Build-CombinedRelease.ps1 -SkipBuild -NoZip
 ```
 
-The version is read automatically from `spellcross-map-edit-main/source/app_version.h`, so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
+The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (currently `0.9.2`), so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
 
 ### WinRAR SFX installer
 
@@ -54,7 +54,7 @@ With WinRAR installed, the regular command also creates the graphical installer 
 - A **user-selectable extraction directory** and **SavePath** to remember the directory on later updates.
 - An initial writable destination of `%USERPROFILE%\Games\Spellcross Reloaded`, which the player can freely change.
 
-The layout inside both archives has `Spellcross.exe` **at the root**, not inside a version-numbered directory. The installed shortcut therefore correctly follows whichever installation directory the player selects. The release bundles `setup/spellcross_reloaded.ico`, because the shortcut needs that icon after extraction.
+The layout inside both archives has `Spellcross.exe` **at the root**, not inside a version-numbered directory. The installed shortcut therefore correctly follows whichever installation directory the player selects. When SFX generation is enabled, the staged release bundles `setup/spellcross_reloaded.ico`, because the shortcut needs that icon after extraction.
 
 Keep these three files in the repository's `packaging/setup/` directory:
 
@@ -121,7 +121,7 @@ Editor/
 README-FIRST.txt
 LICENSE-Reloaded.txt
 LICENSE-Map-Editor.txt
-setup/
+setup/                        included when WinRAR SFX is enabled
   spellcross_reloaded.ico   icon for the installed desktop shortcut
   spellcross_sfx_logo.png   standard branding asset
   spellcross_sfx_logo_hd.png high-DPI branding asset
