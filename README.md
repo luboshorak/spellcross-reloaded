@@ -12,8 +12,6 @@ The idea is simple: **keep Spellcross looking, sounding and playing like Spellcr
 
 **[Download the latest release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor) · [Report a bug](https://github.com/luboshorak/spellcross-reloaded/issues)
 
-*Current development version: **0.9.2**. The latest downloadable release may still be an older version.*
-
 ## Back to the battlefield
 
 **Lead the campaign.** Choose your battles on the strategic map, recruit and upgrade troops, research new technology, manage your resources and organize commanders into formations.
