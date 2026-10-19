@@ -16,6 +16,15 @@ git submodule update --init --recursive
 .\packaging\Build-CombinedRelease.ps1
 ```
 
+If PowerShell refuses to run `Build-CombinedRelease.ps1` because it is not digitally signed, allow scripts **for this PowerShell session only** and rerun the build:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\packaging\Build-CombinedRelease.ps1
+```
+
+This does not change the execution policy permanently. A policy enforced by your organization may still prevent the script from running.
+
 If you're starting from scratch, first clone with submodules:
 
 ```powershell
@@ -96,19 +105,7 @@ Missing or mismatched clips cause packaging to stop, rather than producing an in
 | `-WinRARPath <path>` | Supply an explicit path to `WinRAR.exe` |
 | `-PruneOldBuilds` | Remove eligible old staging outputs after a successful build |
 
-You can preview safe cleanup without deleting anything:
-
-```powershell
-.\packaging\Clean-OldBuilds.ps1 -Keep 3
-```
-
-To perform that cleanup:
-
-```powershell
-.\packaging\Clean-OldBuilds.ps1 -Keep 3 -Apply
-```
-
-The cleanup script keeps the newest three dated staging builds, protects user data, ignores unrelated files, and **does not delete the stable versioned ZIP or SFX installer**.
+Older staging folders can be removed manually from `dist/` after checking their contents. The previously documented `Clean-OldBuilds.ps1` helper is not present in the current repository, so do not use `-PruneOldBuilds` for now.
 
 ## What's in the ZIP and SFX?
 
