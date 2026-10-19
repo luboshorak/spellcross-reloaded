@@ -103,7 +103,6 @@ Missing or mismatched clips cause packaging to stop, rather than producing an in
 | `-NoZip` | Prepare the staged files without creating the ZIP (SFX still created) |
 | `-NoSfx` | Skip the WinRAR installer even when WinRAR is installed |
 | `-WinRARPath <path>` | Supply an explicit path to `WinRAR.exe` |
-| `-PruneOldBuilds` | Remove eligible old staging outputs after a successful build |
 
 Older staging folders can be removed manually from `dist/` after checking their contents. The previously documented `Clean-OldBuilds.ps1` helper is not present in the current repository, so do not use `-PruneOldBuilds` for now.
 
