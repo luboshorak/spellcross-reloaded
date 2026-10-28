@@ -4515,30 +4515,81 @@ void MainFrame::PlayCutsceneFromStrategic(const std::string& video_entry_name)
     if (video_entry_name.empty() || !spell_data)
         return;
 
-    // Close existing video if any
+    // Mission endings, chapter outros and the next chapter's intros may all
+    // request movies in the same call stack. Creating a new FormVideoBox here
+    // used to destroy the previous one and then show the strategic wxFrame
+    // ABOVE the canvas-hosted movie (audio-only symptom reported in #53).
+    m_strategicCutsceneQueue.push_back(video_entry_name);
+    if (!m_strategicCutscenePlaying && !m_strategicCutsceneScheduled)
+    {
+        m_strategicCutsceneScheduled = true;
+        CallAfter([this]() {
+            m_strategicCutsceneScheduled = false;
+            PlayNextStrategicCutscene();
+        });
+    }
+}
+
+void MainFrame::PlayNextStrategicCutscene()
+{
+    if (m_strategicCutscenePlaying)
+        return;
+
+    while (!m_strategicCutsceneQueue.empty())
+    {
+        const std::string entry = m_strategicCutsceneQueue.front();
+        m_strategicCutsceneQueue.erase(m_strategicCutsceneQueue.begin());
+
+        // FormVideoBox is a child of this frame's canvas. It cannot be visible
+        // above a separate top-level strategic window, so temporarily show the
+        // canvas and hide strategic UI for the WHOLE cutscene queue.
+        if (m_strategicLevel)
+            m_strategicLevel->Hide();
+        ShowTacticalWindow();
+
+        try
+        {
+            form_video_box = new FormVideoBox(canvas, ID_VIDEO_BOX_WIN,
+                spell_data, entry, 2);
+            m_strategicCutscenePlaying = true;
+            canvas->Bind(wxEVT_CLOSE_WINDOW,
+                &MainFrame::OnStrategicCutsceneClosed, this, ID_VIDEO_BOX_WIN);
+            return;
+        }
+        catch (const std::exception& ex)
+        {
+            form_video_box = nullptr;
+            wxLogWarning("[VIDEO] Skipped strategic cutscene %s: %s",
+                entry.c_str(), ex.what());
+            // Continue with the following queued clip rather than abandoning
+            // the transition with both gameplay windows hidden.
+        }
+    }
+
+    // Only the final clip returns to the new/current strategic frame.
+    HideTacticalWindow();
+    if (m_strategicLevel)
+    {
+        m_strategicLevel->Show();
+        m_strategicLevel->Raise();
+    }
+}
+
+void MainFrame::OnStrategicCutsceneClosed(wxCloseEvent& ev)
+{
+    ev.Skip(false);
+    canvas->Unbind(wxEVT_CLOSE_WINDOW,
+        &MainFrame::OnStrategicCutsceneClosed, this, ID_VIDEO_BOX_WIN);
     if (form_video_box)
     {
         delete form_video_box;
         form_video_box = nullptr;
     }
-
-    try
-    {
-        form_video_box = new FormVideoBox(
-            canvas,
-            ID_VIDEO_BOX_WIN,
-            spell_data,
-            video_entry_name,
-            2  // zoom
-        );
-    }
-    catch (const std::exception& ex)
-    {
-        // Video not found or failed to load - log and continue
-        wxLogMessage("PlayCutsceneFromStrategic: %s", ex.what());
-    }
+    m_strategicCutscenePlaying = false;
+    // Wait until the wxCloseEvent dispatch is finished before creating
+    // another movie window (and its media/audio resources).
+    CallAfter([this]() { PlayNextStrategicCutscene(); });
 }
-
 
 // Forward declarations for helpers defined later in this file
 static std::string FindLevelDefContainingMission(const std::string& missionStem,
