@@ -10,6 +10,10 @@
 #define SPELLCROSS_VERSION_STRING "0.9.2"
 #define SPELLCROSS_VERSION_WSTRING L"0.9.2"
 
+// Temporary diagnostics on PR #55 only: identifies which binary is running.
+#define SPELLCROSS_TEST_BUILD_TAG "PR55-R2"
+#define SPELLCROSS_TEST_BUILD_TAG_W L"PR55-R2"
+
 #define SPELLCROSS_PRODUCT_NAME "Spellcross Reloaded"
 #define SPELLCROSS_PRODUCT_NAME_W L"Spellcross Reloaded"
 #define SPELLCROSS_GITHUB_REPO "luboshorak/spellcross-reloaded"
