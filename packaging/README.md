@@ -41,8 +41,8 @@ If the build can't find wxWidgets, specify the path to your vcpkg x64 installati
 The output is:
 
 ```text
-dist/Spellcross_Reloaded_v0.9.2.zip
-dist/Spellcross_Reloaded_v0.9.2.exe    (WinRAR SFX, when WinRAR is installed)
+dist/Spellcross_Reloaded_v0.9.2.1.zip
+dist/Spellcross_Reloaded_v0.9.2.1.exe    (WinRAR SFX, when WinRAR is installed)
 ```
 
 To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
@@ -51,7 +51,7 @@ To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
 .\packaging\Build-CombinedRelease.ps1 -SkipBuild -NoZip
 ```
 
-The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (currently `0.9.2`), so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
+The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (currently `0.9.2.1`), so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
 
 ### WinRAR SFX installer
 
