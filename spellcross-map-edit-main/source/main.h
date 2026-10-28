@@ -28,6 +28,7 @@
 #include "forms/form_about.h"
 #include "forms/form_mmenu.h"
 #include "level.h"
+#include <filesystem>
 
 
 
@@ -112,6 +113,7 @@ public:
     // .json and original BIG_MAP.SAV; Save chooses the correct native format
     // for the currently visible game layer.
     bool ShowUnifiedLoadGameDialog(wxWindow* owner = nullptr);
+    bool OpenStrategicSaveGame(const std::filesystem::path& path);
     bool ShowUnifiedSaveGameDialog(wxWindow* owner = nullptr);
 
     // One idempotent shutdown path for every UI layer.  Strategic/main-menu
