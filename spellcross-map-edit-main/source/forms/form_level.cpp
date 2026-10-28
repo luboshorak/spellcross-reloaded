@@ -2501,7 +2501,7 @@ static std::filesystem::path GetStrategicStatePath(const LevelData& level);
 static std::filesystem::path FindPreviousLevelSavePath(const LevelData& currentLevel);
 
 StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& level, bool skipAutosave)
-    : wxFrame(nullptr, wxID_ANY, "Strategic Level", wxDefaultPosition, wxSize(1390, 1050),
+    : wxFrame(nullptr, wxID_ANY, "Strategic Level [" SPELLCROSS_TEST_BUILD_TAG "]", wxDefaultPosition, wxSize(1390, 1050),
         wxDEFAULT_FRAME_STYLE),
     m_main(parent),
     m_spellData(parent ? parent->spell_data : nullptr),
@@ -15742,8 +15742,24 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
         dtaPath = ResolveMapDtaPathForMissionToken(token);
         if (dtaPath.empty())
         {
-            wxMessageBox("Map DEF/DTA not found for mission: " + wxString(token),
-                "Launch", wxOK | wxICON_WARNING, this);
+            std::string expected = token;
+            const std::string normalized = to_lower(token);
+            if (normalized.size() == 5 && normalized[0] == 'r' &&
+                std::all_of(normalized.begin() + 1, normalized.end(),
+                    [](unsigned char c) { return std::isdigit(c) != 0; }))
+                expected = "M" + normalized.substr(1, 2) + "_" + normalized.substr(3, 2) + ".DTA";
+            else
+                expected += ".DTA";
+
+            const fs::path cache = fs::path(GetStableBaseDir()) / "temp" / "COMMON";
+            wxString diagnostic;
+            diagnostic << "Mission: " << wxString::FromUTF8(token) << "\\n";
+            diagnostic << "Expected terrain: " << wxString::FromUTF8(expected) << "\\n";
+            diagnostic << "Build: " SPELLCROSS_TEST_BUILD_TAG "\\n";
+            diagnostic << "Cache directory: " << wxString(cache.wstring()) << "\\n";
+            diagnostic << "Level DEF: " << wxString::FromUTF8(m_level.source_path) << "\\n";
+            diagnostic << "No matching tactical DEF or DTA found.";
+            wxMessageBox(diagnostic, "Launch", wxOK | wxICON_WARNING, this);
             return;
         }
 
