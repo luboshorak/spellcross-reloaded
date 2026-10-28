@@ -34,6 +34,14 @@ $target = Join-Path $root ('dist\PR55-R2-' + $shortHead)
 Write-Host "Compiling $expectedBranch at $head" -ForegroundColor Cyan
 
 $packager = Join-Path $PSScriptRoot 'Build-CombinedRelease.ps1'
+# An existing installed build often already holds the verified MP4 cutscenes.
+# Use that as the movie source unless an explicit override was supplied.
+if (-not $MovieSource -and $ExistingInstall) {
+    $movieCandidate = Join-Path $ExistingInstall 'data\movie_fallback'
+    if (Test-Path -LiteralPath $movieCandidate -PathType Container) {
+        $MovieSource = $ExistingInstall
+    }
+}
 $packArgs = @{
     Rebuild = $true
     NoSfx = $true
