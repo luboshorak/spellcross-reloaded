@@ -3274,6 +3274,11 @@ bool MainFrame::ShowUnifiedSaveGameDialog(wxWindow* owner)
     return true;
 }
 
+bool MainFrame::OpenStrategicSaveGame(const std::filesystem::path& path)
+{
+    return OpenStrategicSaveFromPath(this, path);
+}
+
 bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
 {
     namespace fs = std::filesystem;
