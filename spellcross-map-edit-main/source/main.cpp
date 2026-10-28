@@ -2570,7 +2570,7 @@ int MyApp::OnExit()
 // editor-era title.
 static wxString BuildSpellcrossWindowTitle(SpellMap* map)
 {
-    wxString title = "Spellcross [" SPELLCROSS_TEST_BUILD_TAG "]";
+    wxString title = "Spellcross v" SPELLCROSS_VERSION_STRING;
     if (!map || !map->IsLoaded())
         return title;
 
