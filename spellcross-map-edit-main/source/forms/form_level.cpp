@@ -7152,7 +7152,11 @@ static std::filesystem::path GetStrategicSaveSlotPath(const LevelData& level, in
     // Non-destructive migration from the former level_XX/slot_YY.json layout:
     // the most recently written copy wins if this global slot is still empty.
     // All legacy saves remain in their original folders for manual recovery.
-    if (!fs::exists(globalSlot, ec))
+    // This helper is called for every Options-page repaint. Scan old save
+    // directories only once per global slot, not every frame.
+    static std::unordered_set<std::string> migrationAttempted;
+    if (!fs::exists(globalSlot, ec) &&
+        migrationAttempted.insert(globalSlot.lexically_normal().string()).second)
     {
         fs::path newest;
         fs::file_time_type newestTime = fs::file_time_type::min();
