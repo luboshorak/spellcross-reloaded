@@ -7297,7 +7297,11 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     // chapter switching and recreating the strategic window safely.
     if (m_main)
     {
-        (void)m_main->OpenStrategicSaveGame(path);
+        // The native Options click handler still refreshes this frame after
+        // returning. Defer replacement until that event finishes to avoid
+        // refreshing a frame the shared loader has just destroyed.
+        MainFrame* main = m_main;
+        main->CallAfter([main, path]() { (void)main->OpenStrategicSaveGame(path); });
         return;
     }
 
