@@ -15671,6 +15671,17 @@ std::wstring StrategicLevelFrame::ResolveMapDtaPathForMissionToken(const std::st
     bases.push_back(fs::current_path(ec));
 
     std::vector<std::string> tokens;
+    // Random enemy attacks are stored by DOS as R0502.MIS, but the
+    // accompanying original battlefield is M05_02.DTA. The R token is
+    // generated mission state, not a DEF/DTA file name. These DTA assets
+    // already ship inside the original COMMON.FS (CZ and EN).
+    const std::string lowerToken = to_lower(mission_token);
+    if (lowerToken.size() == 5 && lowerToken[0] == 'r' &&
+        std::all_of(lowerToken.begin() + 1, lowerToken.end(),
+            [](unsigned char c) { return std::isdigit(c) != 0; }))
+    {
+        tokens.push_back("m" + lowerToken.substr(1, 2) + "_" + lowerToken.substr(3, 2));
+    }
     tokens.push_back(mission_token);
     if (!mission_token.empty() && std::isalpha(static_cast<unsigned char>(mission_token.back())))
         tokens.push_back(mission_token.substr(0, mission_token.size() - 1));
