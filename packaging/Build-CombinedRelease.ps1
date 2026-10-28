@@ -21,7 +21,7 @@ $game = Join-Path $root 'spellcross-map-edit-main'
 $versionHeader = Join-Path $game 'source\app_version.h'
 if (-not (Test-Path -LiteralPath $versionHeader -PathType Leaf)) { throw "Version header not found: $versionHeader" }
 $versionMatch = [regex]::Match((Get-Content -LiteralPath $versionHeader -Raw),
-    '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+)"\s*$')
+    '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+(?:\.\d+)?)"\s*$')
 if (-not $versionMatch.Success) { throw "Cannot read SPELLCROSS_VERSION_STRING from $versionHeader" }
 $releaseVersion = $versionMatch.Groups[1].Value
 $editor = Join-Path $root 'external\map-editor'
