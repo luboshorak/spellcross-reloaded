@@ -7138,9 +7138,52 @@ static std::filesystem::path GetStrategicSaveDir(const LevelData& level)
 
 static std::filesystem::path GetStrategicSaveSlotPath(const LevelData& level, int slot)
 {
+    namespace fs = std::filesystem;
     char buf[64];
     std::snprintf(buf, sizeof(buf), "slot_%02d.json", slot);
-    return GetStrategicSaveDir(level) / buf;
+
+    // The retail game has ONE set of nine player save slots for the entire
+    // campaign. Level-specific directories remain for internal autosaves only.
+    const fs::path root = fs::path(GetStableBaseDir()) / "save" / "strategic";
+    std::error_code ec;
+    fs::create_directories(root, ec);
+    const fs::path globalSlot = root / buf;
+
+    // Non-destructive migration from the former level_XX/slot_YY.json layout:
+    // the most recently written copy wins if this global slot is still empty.
+    // All legacy saves remain in their original folders for manual recovery.
+    if (!fs::exists(globalSlot, ec))
+    {
+        fs::path newest;
+        fs::file_time_type newestTime = fs::file_time_type::min();
+        ec.clear();
+        fs::directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+        const fs::directory_iterator end;
+        for (; !ec && it != end; it.increment(ec))
+        {
+            std::error_code entryEc;
+            if (!it->is_directory(entryEc) || entryEc)
+                continue;
+            const std::string dirName = to_lower(it->path().filename().string());
+            if (dirName.rfind("level_", 0) != 0)
+                continue;
+            const fs::path candidate = it->path() / buf;
+            if (!fs::is_regular_file(candidate, entryEc) || entryEc)
+                continue;
+            const auto mtime = fs::last_write_time(candidate, entryEc);
+            if (entryEc)
+                continue;
+            if (newest.empty() || mtime > newestTime)
+            {
+                newest = candidate;
+                newestTime = mtime;
+            }
+        }
+        ec.clear();
+        if (!newest.empty())
+            fs::copy_file(newest, globalSlot, fs::copy_options::skip_existing, ec);
+    }
+    return globalSlot;
 }
 
 static bool PeekStrategicSaveSummary(const std::filesystem::path& path, int& outMoney, int& outRank, int& outExp, std::string& outTs)
@@ -7246,6 +7289,15 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     {
         if (notify)
             wxMessageBox("This slot is empty.", "Load game", wxOK | wxICON_WARNING, this);
+        return;
+    }
+
+    // Cross-chapter slots must resolve and load their OWN LEVEL_XX.DEF before
+    // mutating this frame. The shared loader already handles save portability,
+    // chapter switching and recreating the strategic window safely.
+    if (m_main)
+    {
+        (void)m_main->OpenStrategicSaveGame(path);
         return;
     }
 
