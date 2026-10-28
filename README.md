@@ -31,6 +31,14 @@ You may also need the [Microsoft Visual C++ Redistributable (x64)](https://aka.m
 
 **Please note:** Original commercial Spellcross game data is not included in this repository or release package.
 
+## What's new in 0.9.2.1?
+
+- **Strategic counter-attacks and recaptures:** fixed generated `Rxxxx` mission map lookup, improved attack target selection and corrected crossed-swords indicators.
+- **Shared campaign save slots:** nine slots now follow the player across strategic regions, with non-destructive migration of previous level-specific slots.
+- **Consistent tactical loss statistics:** restoring an in-game tactical save restores the casualty history of that saved position.
+- **Region transition videos:** sequential cutscenes are queued and shown above the strategic map rather than playing audio behind it.
+- **Build diagnostics:** packaged `BUILD-INFO.txt` records source revision and executable checksum; full builds can use `-Rebuild`.
+
 ## What's new in 0.9.2?
 
 - **A more authentic main menu**, with the original hover artwork, improved tutorial screens and smoother rendering.
