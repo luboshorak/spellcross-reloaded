@@ -1950,7 +1950,7 @@ static std::string EscapeJson(const std::string& s)
         {
         case '\\': out += "\\\\"; break;
         case '"':  out += "\\\""; break;
-        case '\n': out += "\\n"; break;
+        case '\n': out += "\n"; break;
         case '\r': out += "\\r"; break;
         case '\t': out += "\\t"; break;
         default: out.push_back(c); break;
@@ -15751,13 +15751,13 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
             else
                 expected += ".DTA";
 
-            const fs::path cache = fs::path(GetStableBaseDir()) / "temp" / "COMMON";
+            const std::filesystem::path cache = std::filesystem::path(GetStableBaseDir()) / "temp" / "COMMON";
             wxString diagnostic;
-            diagnostic << "Mission: " << wxString::FromUTF8(token) << "\\n";
-            diagnostic << "Expected terrain: " << wxString::FromUTF8(expected) << "\\n";
-            diagnostic << "Build: " SPELLCROSS_TEST_BUILD_TAG "\\n";
-            diagnostic << "Cache directory: " << wxString(cache.wstring()) << "\\n";
-            diagnostic << "Level DEF: " << wxString::FromUTF8(m_level.source_path) << "\\n";
+            diagnostic << "Mission: " << wxString::FromUTF8(token) << "\n";
+            diagnostic << "Expected terrain: " << wxString::FromUTF8(expected) << "\n";
+            diagnostic << "Build: " SPELLCROSS_TEST_BUILD_TAG "\n";
+            diagnostic << "Cache directory: " << wxString(cache.wstring()) << "\n";
+            diagnostic << "Level DEF: " << wxString::FromUTF8(m_level.source_path) << "\n";
             diagnostic << "No matching tactical DEF or DTA found.";
             wxMessageBox(diagnostic, "Launch", wxOK | wxICON_WARNING, this);
             return;
