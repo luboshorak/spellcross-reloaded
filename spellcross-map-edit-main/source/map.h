@@ -865,6 +865,8 @@ public:
 			vector<AITacticalGroup> enemy_ai_groups;
 			int next_enemy_ai_group_id = 1;
 			bool enemy_ai_groups_initialized = false;
+			// Snapshot of casualties already removed from the live map.
+			MissionLossStats mission_losses;
 			
 			SavedState();
 			~SavedState();
