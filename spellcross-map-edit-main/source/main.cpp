@@ -3454,6 +3454,14 @@ static std::string MissionFamilyToken(const std::string& raw)
     for (char& c : token)
         c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
+    // A DOS-generated R0502.MIS defence/recapture uses the original
+    // M05_02.DTA terrain. Consider them the same battle when restoring the
+    // strategic context from a tactical save or completing the mission.
+    if (token.size() == 5 && token[0] == 'R' &&
+        std::all_of(token.begin() + 1, token.end(),
+            [](unsigned char c) { return std::isdigit(c) != 0; }))
+        token = "M" + token.substr(1, 2) + "_" + token.substr(3, 2);
+
     // Original campaign mission families are MNN_NN with an optional stage
     // letter (M05_06A/M05_06B).  The DTA is simply M05_06.
     if (token.size() == 7 && token[0] == 'M' &&
