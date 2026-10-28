@@ -20516,12 +20516,55 @@ void StrategicLevelFrame::ProcessLevelEvents()
         // Army: counter-attack on a player-owned territory
         if (!evt->armies.empty() && !m_ownedTerritories.empty())
         {
-            // Pick a target territory for the counter-attack. The original
-            // strategic engine keeps the exact Army(...) company list and
-            // generates the tactical battle on the territory's DTA map.
-            // Persist that force here so declining/losing the defence still
-            // leaves a concrete occupying army for a later recapture.
-            int target_tid = m_ownedTerritories.back();
+            // Army(...) defines the scripted attacking force; it does NOT
+            // designate the last owned territory as the target. In particular,
+            // the first Start(n) sector is the initial command foothold, not a
+            // normal candidate for a random counter-attack.
+            //
+            // Prefer actual front-line territory borders from LEVEL_XX.CLK.
+            // If the CLK is unavailable (e.g. custom map), any other owned
+            // territory is eligible; never silently attack the command sector.
+            std::unordered_set<int> owned(m_ownedTerritories.begin(), m_ownedTerritories.end());
+            std::unordered_set<int> frontLine;
+            if (m_clkW > 0 && m_clkH > 0 &&
+                m_clkValues.size() == static_cast<size_t>(m_clkW) * m_clkH)
+            {
+                auto territoryAt = [this](int x, int y) -> int {
+                    const uint8_t raw = m_clkValues[static_cast<size_t>(y) * m_clkW + x];
+                    return raw >= 129 ? raw - 128 : raw;
+                };
+                for (int y = 0; y < m_clkH; ++y)
+                {
+                    for (int x = 0; x < m_clkW; ++x)
+                    {
+                        const int a = territoryAt(x, y);
+                        if (a <= 0) continue;
+                        auto markBorder = [&](int b) {
+                            if (b <= 0 || a == b) return;
+                            if (owned.count(a) && !owned.count(b))
+                                frontLine.insert(a);
+                            if (owned.count(b) && !owned.count(a))
+                                frontLine.insert(b);
+                        };
+                        if (x + 1 < m_clkW) markBorder(territoryAt(x + 1, y));
+                        if (y + 1 < m_clkH) markBorder(territoryAt(x, y + 1));
+                    }
+                }
+            }
+            std::vector<int> eligible;
+            for (const int id : m_ownedTerritories)
+                if (id != m_level.start_territory &&
+                    (frontLine.empty() || frontLine.count(id) != 0) &&
+                    std::find_if(m_level.territories.begin(), m_level.territories.end(),
+                        [id](const LevelTerritory& t) { return t.id == id; })
+                        != m_level.territories.end())
+                    eligible.push_back(id);
+            if (eligible.empty())
+            {
+                wxLogDebug("[STRATEGY] Army event %d has no eligible defending territory.", evt->id);
+                continue;
+            }
+            const int target_tid = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
 
             CounterAttackState eventAttack;
             eventAttack.territory_id = target_tid;
@@ -20793,45 +20836,9 @@ void StrategicLevelFrame::DrawTerritoryMarker(wxDC& dc, int territory_id, int x,
     bool isFinal = IsFinalTerritory(territory_id);
     int timeoutRemaining = GetTerritoryTimeoutRemaining(territory_id);
 
-    // Check for counter-attack state
-    bool counterActive = false;  // triggered, player needs to defend
-    int counterTurnsLeft = -1;   // turns until counter-attack triggers
-    for (const auto& ca : m_counterAttacks)
-    {
-        if (ca.territory_id != territory_id || ca.completed)
-            continue;
-        if (ca.triggered)
-        {
-            counterActive = true;
-            break;
-        }
-        counterTurnsLeft = ca.trigger_turn - m_turn;
-        break;
-    }
-
-    if (counterActive && isOwned)
-    {
-        // Counter-attack active — show LASTTERT icon (crossed swords) with orange tint
-        if (m_icoLastTert.IsOk())
-        {
-            DrawIconCentered(dc, m_icoLastTert, x, y, markerScale);
-        }
-        else
-        {
-            // Fallback: primitive shape
-            dc.SetPen(wxPen(wxColour(255, 100, 0), 2));
-            dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            int len = radius;
-            dc.DrawLine(x - len, y - len, x + len, y + len);
-            dc.DrawLine(x + len, y - len, x - len, y + len);
-        }
-        // Add "!" label for urgency
-        dc.SetTextForeground(wxColour(255, 100, 0));
-        wxFont font(wxFontInfo(std::max(8, radius)).Bold());
-        dc.SetFont(font);
-        dc.DrawText("!", x + radius + 2, y - radius);
-    }
-    else if (isFinal && !isOwned)
+    // LASTTERT is the story/final-territory symbol. Counter-attacks on
+    // friendly sectors were never marked with it in the DOS strategic map.
+    if (isFinal && !isOwned)
     {
         // LASTTERT - crossed swords icon for the final territory
         if (m_icoLastTert.IsOk())
@@ -20881,29 +20888,6 @@ void StrategicLevelFrame::DrawTerritoryMarker(wxDC& dc, int territory_id, int x,
             wxString num = wxString::Format("%d", timeoutRemaining);
             wxSize textSize = dc.GetTextExtent(num);
             dc.DrawText(num, x - textSize.x / 2, y - textSize.y / 2);
-        }
-    }
-    else if (isOwned)
-    {
-        // Show counter-attack countdown on owned territory using VM_N icons
-        if (counterTurnsLeft > 0 && counterTurnsLeft <= 9)
-        {
-            int digit = std::clamp(counterTurnsLeft, 0, 9);
-            if (m_icoVM[digit].IsOk())
-            {
-                // Draw the countdown icon slightly offset (bottom-right) to not cover the green marker
-                DrawIconCentered(dc, m_icoVM[digit], x + radius, y - radius, markerScale * 0.7);
-            }
-            else
-            {
-                wxColour caColor = counterTurnsLeft <= 2 ? wxColour(255, 50, 50) : wxColour(255, 165, 0);
-                dc.SetTextForeground(caColor);
-                wxFont font(wxFontInfo(std::max(7, radius - 2)).Bold());
-                dc.SetFont(font);
-                wxString num = wxString::Format("%d", counterTurnsLeft);
-                wxSize textSize = dc.GetTextExtent(num);
-                dc.DrawText(num, x - textSize.x / 2, y - textSize.y / 2);
-            }
         }
     }
     // else: visible but not owned, no special state — no marker drawn
