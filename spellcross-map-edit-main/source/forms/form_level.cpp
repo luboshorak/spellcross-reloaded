@@ -2501,7 +2501,7 @@ static std::filesystem::path GetStrategicStatePath(const LevelData& level);
 static std::filesystem::path FindPreviousLevelSavePath(const LevelData& currentLevel);
 
 StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& level, bool skipAutosave)
-    : wxFrame(nullptr, wxID_ANY, "Strategic Level [" SPELLCROSS_TEST_BUILD_TAG "]", wxDefaultPosition, wxSize(1390, 1050),
+    : wxFrame(nullptr, wxID_ANY, "Strategic Level v" SPELLCROSS_VERSION_STRING, wxDefaultPosition, wxSize(1390, 1050),
         wxDEFAULT_FRAME_STYLE),
     m_main(parent),
     m_spellData(parent ? parent->spell_data : nullptr),
@@ -15755,7 +15755,7 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
             wxString diagnostic;
             diagnostic << "Mission: " << wxString::FromUTF8(token) << "\n";
             diagnostic << "Expected terrain: " << wxString::FromUTF8(expected) << "\n";
-            diagnostic << "Build: " SPELLCROSS_TEST_BUILD_TAG "\n";
+            diagnostic << "Build: v" SPELLCROSS_VERSION_STRING "\n";
             diagnostic << "Cache directory: " << wxString(cache.wstring()) << "\n";
             diagnostic << "Level DEF: " << wxString::FromUTF8(m_level.source_path) << "\n";
             diagnostic << "No matching tactical DEF or DTA found.";
