@@ -4,6 +4,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipBuild,
+    [switch]$Rebuild,
     [string]$WxRoot = '',
     [string]$OutputDirectory = '',
     [string]$MovieSource = '',
@@ -20,7 +21,7 @@ $game = Join-Path $root 'spellcross-map-edit-main'
 $versionHeader = Join-Path $game 'source\app_version.h'
 if (-not (Test-Path -LiteralPath $versionHeader -PathType Leaf)) { throw "Version header not found: $versionHeader" }
 $versionMatch = [regex]::Match((Get-Content -LiteralPath $versionHeader -Raw),
-    '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+)"\s*$')
+    '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+(?:\.\d+)?)"\s*$')
 if (-not $versionMatch.Success) { throw "Cannot read SPELLCROSS_VERSION_STRING from $versionHeader" }
 $releaseVersion = $versionMatch.Groups[1].Value
 $editor = Join-Path $root 'external\map-editor'
@@ -114,12 +115,14 @@ if (-not $WxRoot) {
 }
 if ($WxRoot) { $WxRoot = (Resolve-Path -LiteralPath $WxRoot).Path.TrimEnd('\') + '\' }
 
+if ($SkipBuild -and $Rebuild) { throw 'Cannot combine -SkipBuild and -Rebuild.' }
 if (-not $SkipBuild) {
     if (-not $msbuild) { throw 'MSBuild unavailable. Install Visual Studio C++ tools or use -SkipBuild.' }
     if (-not $WxRoot) { throw 'wxWidgets root unavailable. Supply -WxRoot path-to-vcpkg\installed\x64-windows.' }
+    $buildTarget = if ($Rebuild) { '/t:Rebuild' } else { '/t:Build' }
     foreach ($project in @($gameProject, $editorProject)) {
-        Write-Host "Building Release|x64: $project"
-        & $msbuild $project '/m' '/t:Build' '/p:Configuration=Release' '/p:Platform=x64' ("/p:wxwin=" + $WxRoot) '/v:minimal'
+        Write-Host "Building Release|x64 ($buildTarget): $project"
+        & $msbuild $project '/m' $buildTarget '/p:Configuration=Release' '/p:Platform=x64' ("/p:wxwin=" + $WxRoot) '/v:minimal'
         if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $project" }
     }
 }
@@ -135,6 +138,27 @@ $editorData = Join-Path $stageEditor 'data'
 New-Item -ItemType Directory -Path $gameData, $editorData -Force | Out-Null
 Copy-Required $gameExe (Join-Path $stage 'Spellcross.exe')
 Copy-Required $editorExe (Join-Path $stageEditor 'spellcross_map_editor.exe')
+
+# Trace exactly which Git checkout and executable produced this package. A
+# release version alone is not an adequate identifier for a bugfix build.
+$gitBranch = '(no git)'
+$gitCommit = '(no git)'
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $gitBranchCandidate = & git -C $root branch --show-current
+    if ($LASTEXITCODE -eq 0 -and $gitBranchCandidate) { $gitBranch = "$gitBranchCandidate".Trim() }
+    $gitCommitCandidate = & git -C $root rev-parse HEAD
+    if ($LASTEXITCODE -eq 0 -and $gitCommitCandidate) { $gitCommit = "$gitCommitCandidate".Trim() }
+}
+$gameHash = (Get-FileHash -LiteralPath (Join-Path $stage 'Spellcross.exe') -Algorithm SHA256).Hash
+@"
+Git branch: $gitBranch
+Git commit: $gitCommit
+Game version: $releaseVersion
+Built executable: $gameExe
+Spellcross.exe SHA256: $gameHash
+Build UTC: $((Get-Date).ToUniversalTime().ToString('o'))
+"@ | Set-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Encoding UTF8
+Write-Host "Package provenance: $gitBranch / $gitCommit / exe SHA256 $gameHash" -ForegroundColor Cyan
 
 # Whitelist project-authored support files. NEVER package retail DATA archives.
 $gameAssets = Join-Path $game 'data'

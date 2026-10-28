@@ -1950,7 +1950,7 @@ static std::string EscapeJson(const std::string& s)
         {
         case '\\': out += "\\\\"; break;
         case '"':  out += "\\\""; break;
-        case '\n': out += "\\n"; break;
+        case '\n': out += "\n"; break;
         case '\r': out += "\\r"; break;
         case '\t': out += "\\t"; break;
         default: out.push_back(c); break;
@@ -2501,7 +2501,7 @@ static std::filesystem::path GetStrategicStatePath(const LevelData& level);
 static std::filesystem::path FindPreviousLevelSavePath(const LevelData& currentLevel);
 
 StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& level, bool skipAutosave)
-    : wxFrame(nullptr, wxID_ANY, "Strategic Level", wxDefaultPosition, wxSize(1390, 1050),
+    : wxFrame(nullptr, wxID_ANY, "Strategic Level v" SPELLCROSS_VERSION_STRING, wxDefaultPosition, wxSize(1390, 1050),
         wxDEFAULT_FRAME_STYLE),
     m_main(parent),
     m_spellData(parent ? parent->spell_data : nullptr),
@@ -7138,9 +7138,56 @@ static std::filesystem::path GetStrategicSaveDir(const LevelData& level)
 
 static std::filesystem::path GetStrategicSaveSlotPath(const LevelData& level, int slot)
 {
+    namespace fs = std::filesystem;
     char buf[64];
     std::snprintf(buf, sizeof(buf), "slot_%02d.json", slot);
-    return GetStrategicSaveDir(level) / buf;
+
+    // The retail game has ONE set of nine player save slots for the entire
+    // campaign. Level-specific directories remain for internal autosaves only.
+    const fs::path root = fs::path(GetStableBaseDir()) / "save" / "strategic";
+    std::error_code ec;
+    fs::create_directories(root, ec);
+    const fs::path globalSlot = root / buf;
+
+    // Non-destructive migration from the former level_XX/slot_YY.json layout:
+    // the most recently written copy wins if this global slot is still empty.
+    // All legacy saves remain in their original folders for manual recovery.
+    // This helper is called for every Options-page repaint. Scan old save
+    // directories only once per global slot, not every frame.
+    static std::unordered_set<std::string> migrationAttempted;
+    if (!fs::exists(globalSlot, ec) &&
+        migrationAttempted.insert(globalSlot.lexically_normal().string()).second)
+    {
+        fs::path newest;
+        fs::file_time_type newestTime = fs::file_time_type::min();
+        ec.clear();
+        fs::directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+        const fs::directory_iterator end;
+        for (; !ec && it != end; it.increment(ec))
+        {
+            std::error_code entryEc;
+            if (!it->is_directory(entryEc) || entryEc)
+                continue;
+            const std::string dirName = to_lower(it->path().filename().string());
+            if (dirName.rfind("level_", 0) != 0)
+                continue;
+            const fs::path candidate = it->path() / buf;
+            if (!fs::is_regular_file(candidate, entryEc) || entryEc)
+                continue;
+            const auto mtime = fs::last_write_time(candidate, entryEc);
+            if (entryEc)
+                continue;
+            if (newest.empty() || mtime > newestTime)
+            {
+                newest = candidate;
+                newestTime = mtime;
+            }
+        }
+        ec.clear();
+        if (!newest.empty())
+            fs::copy_file(newest, globalSlot, fs::copy_options::skip_existing, ec);
+    }
+    return globalSlot;
 }
 
 static bool PeekStrategicSaveSummary(const std::filesystem::path& path, int& outMoney, int& outRank, int& outExp, std::string& outTs)
@@ -7246,6 +7293,19 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     {
         if (notify)
             wxMessageBox("This slot is empty.", "Load game", wxOK | wxICON_WARNING, this);
+        return;
+    }
+
+    // Cross-chapter slots must resolve and load their OWN LEVEL_XX.DEF before
+    // mutating this frame. The shared loader already handles save portability,
+    // chapter switching and recreating the strategic window safely.
+    if (m_main)
+    {
+        // The native Options click handler still refreshes this frame after
+        // returning. Defer replacement until that event finishes to avoid
+        // refreshing a frame the shared loader has just destroyed.
+        MainFrame* main = m_main;
+        main->CallAfter([main, path]() { (void)main->OpenStrategicSaveGame(path); });
         return;
     }
 
@@ -15615,6 +15675,17 @@ std::wstring StrategicLevelFrame::ResolveMapDtaPathForMissionToken(const std::st
     bases.push_back(fs::current_path(ec));
 
     std::vector<std::string> tokens;
+    // Random enemy attacks are stored by DOS as R0502.MIS, but the
+    // accompanying original battlefield is M05_02.DTA. The R token is
+    // generated mission state, not a DEF/DTA file name. These DTA assets
+    // already ship inside the original COMMON.FS (CZ and EN).
+    const std::string lowerToken = to_lower(mission_token);
+    if (lowerToken.size() == 5 && lowerToken[0] == 'r' &&
+        std::all_of(lowerToken.begin() + 1, lowerToken.end(),
+            [](unsigned char c) { return std::isdigit(c) != 0; }))
+    {
+        tokens.push_back("m" + lowerToken.substr(1, 2) + "_" + lowerToken.substr(3, 2));
+    }
     tokens.push_back(mission_token);
     if (!mission_token.empty() && std::isalpha(static_cast<unsigned char>(mission_token.back())))
         tokens.push_back(mission_token.substr(0, mission_token.size() - 1));
@@ -15671,8 +15742,24 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
         dtaPath = ResolveMapDtaPathForMissionToken(token);
         if (dtaPath.empty())
         {
-            wxMessageBox("Map DEF/DTA not found for mission: " + wxString(token),
-                "Launch", wxOK | wxICON_WARNING, this);
+            std::string expected = token;
+            const std::string normalized = to_lower(token);
+            if (normalized.size() == 5 && normalized[0] == 'r' &&
+                std::all_of(normalized.begin() + 1, normalized.end(),
+                    [](unsigned char c) { return std::isdigit(c) != 0; }))
+                expected = "M" + normalized.substr(1, 2) + "_" + normalized.substr(3, 2) + ".DTA";
+            else
+                expected += ".DTA";
+
+            const std::filesystem::path cache = std::filesystem::path(GetStableBaseDir()) / "temp" / "COMMON";
+            wxString diagnostic;
+            diagnostic << "Mission: " << wxString::FromUTF8(token) << "\n";
+            diagnostic << "Expected terrain: " << wxString::FromUTF8(expected) << "\n";
+            diagnostic << "Build: v" SPELLCROSS_VERSION_STRING "\n";
+            diagnostic << "Cache directory: " << wxString(cache.wstring()) << "\n";
+            diagnostic << "Level DEF: " << wxString::FromUTF8(m_level.source_path) << "\n";
+            diagnostic << "No matching tactical DEF or DTA found.";
+            wxMessageBox(diagnostic, "Launch", wxOK | wxICON_WARNING, this);
             return;
         }
 
@@ -20449,12 +20536,55 @@ void StrategicLevelFrame::ProcessLevelEvents()
         // Army: counter-attack on a player-owned territory
         if (!evt->armies.empty() && !m_ownedTerritories.empty())
         {
-            // Pick a target territory for the counter-attack. The original
-            // strategic engine keeps the exact Army(...) company list and
-            // generates the tactical battle on the territory's DTA map.
-            // Persist that force here so declining/losing the defence still
-            // leaves a concrete occupying army for a later recapture.
-            int target_tid = m_ownedTerritories.back();
+            // Army(...) defines the scripted attacking force; it does NOT
+            // designate the last owned territory as the target. In particular,
+            // the first Start(n) sector is the initial command foothold, not a
+            // normal candidate for a random counter-attack.
+            //
+            // Prefer actual front-line territory borders from LEVEL_XX.CLK.
+            // If the CLK is unavailable (e.g. custom map), any other owned
+            // territory is eligible; never silently attack the command sector.
+            std::unordered_set<int> owned(m_ownedTerritories.begin(), m_ownedTerritories.end());
+            std::unordered_set<int> frontLine;
+            if (m_clkW > 0 && m_clkH > 0 &&
+                m_clkValues.size() == static_cast<size_t>(m_clkW) * m_clkH)
+            {
+                auto territoryAt = [this](int x, int y) -> int {
+                    const uint8_t raw = m_clkValues[static_cast<size_t>(y) * m_clkW + x];
+                    return raw >= 129 ? raw - 128 : raw;
+                };
+                for (int y = 0; y < m_clkH; ++y)
+                {
+                    for (int x = 0; x < m_clkW; ++x)
+                    {
+                        const int a = territoryAt(x, y);
+                        if (a <= 0) continue;
+                        auto markBorder = [&](int b) {
+                            if (b <= 0 || a == b) return;
+                            if (owned.count(a) && !owned.count(b))
+                                frontLine.insert(a);
+                            if (owned.count(b) && !owned.count(a))
+                                frontLine.insert(b);
+                        };
+                        if (x + 1 < m_clkW) markBorder(territoryAt(x + 1, y));
+                        if (y + 1 < m_clkH) markBorder(territoryAt(x, y + 1));
+                    }
+                }
+            }
+            std::vector<int> eligible;
+            for (const int id : m_ownedTerritories)
+                if (id != m_level.start_territory &&
+                    (frontLine.empty() || frontLine.count(id) != 0) &&
+                    std::find_if(m_level.territories.begin(), m_level.territories.end(),
+                        [id](const LevelTerritory& t) { return t.id == id; })
+                        != m_level.territories.end())
+                    eligible.push_back(id);
+            if (eligible.empty())
+            {
+                wxLogDebug("[STRATEGY] Army event %d has no eligible defending territory.", evt->id);
+                continue;
+            }
+            const int target_tid = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
 
             CounterAttackState eventAttack;
             eventAttack.territory_id = target_tid;
@@ -20726,45 +20856,9 @@ void StrategicLevelFrame::DrawTerritoryMarker(wxDC& dc, int territory_id, int x,
     bool isFinal = IsFinalTerritory(territory_id);
     int timeoutRemaining = GetTerritoryTimeoutRemaining(territory_id);
 
-    // Check for counter-attack state
-    bool counterActive = false;  // triggered, player needs to defend
-    int counterTurnsLeft = -1;   // turns until counter-attack triggers
-    for (const auto& ca : m_counterAttacks)
-    {
-        if (ca.territory_id != territory_id || ca.completed)
-            continue;
-        if (ca.triggered)
-        {
-            counterActive = true;
-            break;
-        }
-        counterTurnsLeft = ca.trigger_turn - m_turn;
-        break;
-    }
-
-    if (counterActive && isOwned)
-    {
-        // Counter-attack active — show LASTTERT icon (crossed swords) with orange tint
-        if (m_icoLastTert.IsOk())
-        {
-            DrawIconCentered(dc, m_icoLastTert, x, y, markerScale);
-        }
-        else
-        {
-            // Fallback: primitive shape
-            dc.SetPen(wxPen(wxColour(255, 100, 0), 2));
-            dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            int len = radius;
-            dc.DrawLine(x - len, y - len, x + len, y + len);
-            dc.DrawLine(x + len, y - len, x - len, y + len);
-        }
-        // Add "!" label for urgency
-        dc.SetTextForeground(wxColour(255, 100, 0));
-        wxFont font(wxFontInfo(std::max(8, radius)).Bold());
-        dc.SetFont(font);
-        dc.DrawText("!", x + radius + 2, y - radius);
-    }
-    else if (isFinal && !isOwned)
+    // LASTTERT is the story/final-territory symbol. Counter-attacks on
+    // friendly sectors were never marked with it in the DOS strategic map.
+    if (isFinal && !isOwned)
     {
         // LASTTERT - crossed swords icon for the final territory
         if (m_icoLastTert.IsOk())
@@ -20814,29 +20908,6 @@ void StrategicLevelFrame::DrawTerritoryMarker(wxDC& dc, int territory_id, int x,
             wxString num = wxString::Format("%d", timeoutRemaining);
             wxSize textSize = dc.GetTextExtent(num);
             dc.DrawText(num, x - textSize.x / 2, y - textSize.y / 2);
-        }
-    }
-    else if (isOwned)
-    {
-        // Show counter-attack countdown on owned territory using VM_N icons
-        if (counterTurnsLeft > 0 && counterTurnsLeft <= 9)
-        {
-            int digit = std::clamp(counterTurnsLeft, 0, 9);
-            if (m_icoVM[digit].IsOk())
-            {
-                // Draw the countdown icon slightly offset (bottom-right) to not cover the green marker
-                DrawIconCentered(dc, m_icoVM[digit], x + radius, y - radius, markerScale * 0.7);
-            }
-            else
-            {
-                wxColour caColor = counterTurnsLeft <= 2 ? wxColour(255, 50, 50) : wxColour(255, 165, 0);
-                dc.SetTextForeground(caColor);
-                wxFont font(wxFontInfo(std::max(7, radius - 2)).Bold());
-                dc.SetFont(font);
-                wxString num = wxString::Format("%d", counterTurnsLeft);
-                wxSize textSize = dc.GetTextExtent(num);
-                dc.DrawText(num, x - textSize.x / 2, y - textSize.y / 2);
-            }
         }
     }
     // else: visible but not owned, no special state — no marker drawn

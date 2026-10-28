@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // Map and Levels handling functions, wxWidgets GUI.
 // 
-// This code is part of Spellcross ñ restoration tools project.
+// This code is part of Spellcross ‚Äì restoration tools project.
 // (c) 2025-2026, Lubos Horak
 // url: https://github.com/luboshorak/spellcross_restoration_tools
 // Distributed under MIT license, https://opensource.org/licenses/MIT.
@@ -30,7 +30,7 @@ static inline bool starts_with(const std::string& s, const std::string& prefix) 
 }
 
 static inline std::string strip_comment_semicolon(std::string s) {
-    // Spellcross DEF m· koment·¯e od ';' do konce ¯·dku
+    // Spellcross DEF m√° koment√°√∏e od ';' do konce √∏√°dku
     auto pos = s.find(';');
     if (pos != std::string::npos) s = s.substr(0, pos);
     return s;
@@ -49,8 +49,8 @@ static bool parse_int(const std::string& s, int& out) {
     }
 }
 
-// Rozparsuje "Name(a,b,c)" -> name="Name", args=["a","b","c"] (trimnutÈ).
-// VracÌ false, kdyû to nenÌ call.
+// Rozparsuje "Name(a,b,c)" -> name="Name", args=["a","b","c"] (trimnut√©).
+// Vrac√≠ false, kdy≈æ to nen√≠ call.
 static bool parse_call(const std::string& line, std::string& name, std::vector<std::string>& args) {
     auto l = trim(line);
     if (l.empty()) return false;
@@ -85,7 +85,7 @@ static bool parse_block_header(const std::string& line, std::string& blockName, 
     if (l.empty()) return false;
     if (l.find('{') == std::string::npos) return false;
 
-    // LevelInit {  (bez z·vorek)
+    // LevelInit {  (bez z√°vorek)
     if (starts_with(l, "LevelInit")) {
         blockName = "LevelInit";
         headerArgs.clear();
@@ -95,7 +95,7 @@ static bool parse_block_header(const std::string& line, std::string& blockName, 
     // Mission(...) { / Event(...) {
     std::string callName;
     std::vector<std::string> callArgs;
-    // vezmeme jen Ë·st do '{', aby parse_call neshodil z·vorku
+    // vezmeme jen √®√°st do '{', aby parse_call neshodil z√°vorku
     auto beforeBrace = trim(l.substr(0, l.find('{')));
     if (!parse_call(beforeBrace, callName, callArgs)) return false;
 
@@ -190,11 +190,11 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
             }
         }
 
-        // uvnit¯ bloku: ¯·dkovÈ calls
+        // uvnit√∏ bloku: √∏√°dkov√© calls
         std::string cmd;
         std::vector<std::string> args;
         if (!parse_call(line, cmd, args)) {
-            // nezn·m˝ form·t ¯·dku
+            // nezn√°m√Ω form√°t √∏√°dku
             out.unknown_lines.push_back("L" + std::to_string(lineNo) + ": " + line);
             continue;
         }
@@ -208,7 +208,12 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
         // --- LevelInit parsing ---
         if (ctx == Ctx::LevelInit) {
             if (cmd == "Start" && args.size() >= 1) {
-                int v = 0; if (parse_int(args[0], v)) out.start_territory = v;
+                // LEVEL_05/other chapters may contain several Start(n) entries.
+                // The FIRST is the original command sector; overwriting it
+                // with the final Start(n) made counter-attacks target command.
+                int v = 0;
+                if (parse_int(args[0], v) && out.start_territory < 0)
+                    out.start_territory = v;
                 continue;
             }
             if (cmd == "End" && args.size() >= 1) {
@@ -287,7 +292,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 out.intro_video = args[0];
                 continue;
             }
-            // PlayEndDeltaAnim na ˙rovni levelu - outro video
+            // PlayEndDeltaAnim na √∫rovni levelu - outro video
             // PlayEndCANAnim - original talking-head/story outro. This is
             // distinct from PlayEndDeltaAnim (LEVEL_01: ALEX.SMK vs LEVEL1_1.SMK).
             if (cmd == "PlayEndCANAnim" && args.size() >= 1) {
@@ -298,7 +303,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 out.outro_video = args[0];
                 continue;
             }
-            // NextLevel - dalöÌ level po dokonËenÌ vöech misÌ
+            // NextLevel - dal≈°√≠ level po dokon√®en√≠ v≈°ech mis√≠
             if (cmd == "NextLevel" && args.size() >= 1) {
                 out.next_level_def = args[0];
                 continue;
@@ -325,17 +330,17 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 int v = 0; if (parse_int(args[0], v)) curMission.time_limit = v;
                 continue;
             }
-            // PlayEndDeltaAnim - video po dokonËenÌ mise (success)
+            // PlayEndDeltaAnim - video po dokon√®en√≠ mise (success)
             if (cmd == "PlayEndDeltaAnim" && args.size() >= 1) {
                 curMission.end_ok_video = args[0];
                 continue;
             }
-            // PlayEndBadDeltaAnim - video po selh·nÌ mise
+            // PlayEndBadDeltaAnim - video po selh√°n√≠ mise
             if (cmd == "PlayEndBadDeltaAnim" && args.size() >= 1) {
                 curMission.end_bad_video = args[0];
                 continue;
             }
-            // NextLevelDef - dalöÌ level po dokonËenÌ mise
+            // NextLevelDef - dal≈°√≠ level po dokon√®en√≠ mise
             if (cmd == "NextLevelDef" && args.size() >= 1) {
                 curMission.next_level_def = args[0];
                 curMission.is_level_final = true;
@@ -414,7 +419,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
         unknown_here();
     }
 
-    // kdyby soubor skonËil bez '}'
+    // kdyby soubor skon√®il bez '}'
     if (ctx == Ctx::Mission) flush_mission();
     if (ctx == Ctx::Event) flush_event();
 

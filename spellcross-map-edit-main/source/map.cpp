@@ -14943,6 +14943,7 @@ void SpellMap::SavedState::Clear()
 	enemy_ai_groups.clear();
 	next_enemy_ai_group_id = 1;
 	enemy_ai_groups_initialized = false;
+	mission_losses = MissionLossStats{};
 	sel_unit = NULL;
 	tiles.clear();
 	if (events)
@@ -15054,6 +15055,8 @@ int SpellMap::Saves::Save(SpellMap::SavedState* slot)
 	save->enemy_ai_groups = map->enemy_ai_groups;
 	save->next_enemy_ai_group_id = map->next_enemy_ai_group_id;
 	save->enemy_ai_groups_initialized = map->enemy_ai_groups_initialized;
+	// The statistics page must reflect the restored tactical timeline.
+	save->mission_losses = map->m_mission_losses;
 
 	map->ReleaseMap();
 
@@ -15157,6 +15160,7 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 	map->enemy_ai_groups = save->enemy_ai_groups;
 	map->next_enemy_ai_group_id = save->next_enemy_ai_group_id;
 	map->enemy_ai_groups_initialized = save->enemy_ai_groups_initialized;
+	map->m_mission_losses = save->mission_losses;
 	if (map->enemy_ai_groups_initialized)
 	{
 		map->PruneEnemyAIGroups();

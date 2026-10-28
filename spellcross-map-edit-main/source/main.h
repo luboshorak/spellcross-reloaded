@@ -28,6 +28,8 @@
 #include "forms/form_about.h"
 #include "forms/form_mmenu.h"
 #include "level.h"
+#include <filesystem>
+#include <string>
 
 
 
@@ -101,6 +103,8 @@ public:
 
     // Play a cutscene video (called from Strategic Level)
     void PlayCutsceneFromStrategic(const std::string& video_entry_name);
+    void PlayNextStrategicCutscene();
+    void OnStrategicCutsceneClosed(wxCloseEvent& ev);
 
     // Window-flow helpers: only one game layer is interactable at a time.
     void ShowMainMenuWindow();
@@ -112,6 +116,7 @@ public:
     // .json and original BIG_MAP.SAV; Save chooses the correct native format
     // for the currently visible game layer.
     bool ShowUnifiedLoadGameDialog(wxWindow* owner = nullptr);
+    bool OpenStrategicSaveGame(const std::filesystem::path& path);
     bool ShowUnifiedSaveGameDialog(wxWindow* owner = nullptr);
 
     // One idempotent shutdown path for every UI layer.  Strategic/main-menu
@@ -127,6 +132,12 @@ public:
     SpellData* spell_data;
 
 private:
+    // Strategic transitions can request several videos in sequence (outro,
+    // next chapter intro). Play them above the strategic window, one at a time.
+    std::vector<std::string> m_strategicCutsceneQueue;
+    bool m_strategicCutsceneScheduled = false;
+    bool m_strategicCutscenePlaying = false;
+
     // Pre-battle placement belongs to gameplay, not the removed map editor.
     bool m_deployment_requested = false;
     bool m_deployment_active = false;

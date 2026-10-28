@@ -2570,7 +2570,7 @@ int MyApp::OnExit()
 // editor-era title.
 static wxString BuildSpellcrossWindowTitle(SpellMap* map)
 {
-    wxString title = "Spellcross";
+    wxString title = "Spellcross v" SPELLCROSS_VERSION_STRING;
     if (!map || !map->IsLoaded())
         return title;
 
@@ -3274,6 +3274,11 @@ bool MainFrame::ShowUnifiedSaveGameDialog(wxWindow* owner)
     return true;
 }
 
+bool MainFrame::OpenStrategicSaveGame(const std::filesystem::path& path)
+{
+    return OpenStrategicSaveFromPath(this, path);
+}
+
 bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
 {
     namespace fs = std::filesystem;
@@ -3448,6 +3453,14 @@ static std::string MissionFamilyToken(const std::string& raw)
     std::string token = fs::path(raw).stem().string();
     for (char& c : token)
         c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+
+    // A DOS-generated R0502.MIS defence/recapture uses the original
+    // M05_02.DTA terrain. Consider them the same battle when restoring the
+    // strategic context from a tactical save or completing the mission.
+    if (token.size() == 5 && token[0] == 'R' &&
+        std::all_of(token.begin() + 1, token.end(),
+            [](unsigned char c) { return std::isdigit(c) != 0; }))
+        token = "M" + token.substr(1, 2) + "_" + token.substr(3, 2);
 
     // Original campaign mission families are MNN_NN with an optional stage
     // letter (M05_06A/M05_06B).  The DTA is simply M05_06.
@@ -4510,30 +4523,81 @@ void MainFrame::PlayCutsceneFromStrategic(const std::string& video_entry_name)
     if (video_entry_name.empty() || !spell_data)
         return;
 
-    // Close existing video if any
+    // Mission endings, chapter outros and the next chapter's intros may all
+    // request movies in the same call stack. Creating a new FormVideoBox here
+    // used to destroy the previous one and then show the strategic wxFrame
+    // ABOVE the canvas-hosted movie (audio-only symptom reported in #53).
+    m_strategicCutsceneQueue.push_back(video_entry_name);
+    if (!m_strategicCutscenePlaying && !m_strategicCutsceneScheduled)
+    {
+        m_strategicCutsceneScheduled = true;
+        CallAfter([this]() {
+            m_strategicCutsceneScheduled = false;
+            PlayNextStrategicCutscene();
+        });
+    }
+}
+
+void MainFrame::PlayNextStrategicCutscene()
+{
+    if (m_strategicCutscenePlaying)
+        return;
+
+    while (!m_strategicCutsceneQueue.empty())
+    {
+        const std::string entry = m_strategicCutsceneQueue.front();
+        m_strategicCutsceneQueue.erase(m_strategicCutsceneQueue.begin());
+
+        // FormVideoBox is a child of this frame's canvas. It cannot be visible
+        // above a separate top-level strategic window, so temporarily show the
+        // canvas and hide strategic UI for the WHOLE cutscene queue.
+        if (m_strategicLevel)
+            m_strategicLevel->Hide();
+        ShowTacticalWindow();
+
+        try
+        {
+            form_video_box = new FormVideoBox(canvas, ID_VIDEO_BOX_WIN,
+                spell_data, entry, 2);
+            m_strategicCutscenePlaying = true;
+            canvas->Bind(wxEVT_CLOSE_WINDOW,
+                &MainFrame::OnStrategicCutsceneClosed, this, ID_VIDEO_BOX_WIN);
+            return;
+        }
+        catch (const std::exception& ex)
+        {
+            form_video_box = nullptr;
+            wxLogWarning("[VIDEO] Skipped strategic cutscene %s: %s",
+                entry.c_str(), ex.what());
+            // Continue with the following queued clip rather than abandoning
+            // the transition with both gameplay windows hidden.
+        }
+    }
+
+    // Only the final clip returns to the new/current strategic frame.
+    HideTacticalWindow();
+    if (m_strategicLevel)
+    {
+        m_strategicLevel->Show();
+        m_strategicLevel->Raise();
+    }
+}
+
+void MainFrame::OnStrategicCutsceneClosed(wxCloseEvent& ev)
+{
+    ev.Skip(false);
+    canvas->Unbind(wxEVT_CLOSE_WINDOW,
+        &MainFrame::OnStrategicCutsceneClosed, this, ID_VIDEO_BOX_WIN);
     if (form_video_box)
     {
         delete form_video_box;
         form_video_box = nullptr;
     }
-
-    try
-    {
-        form_video_box = new FormVideoBox(
-            canvas,
-            ID_VIDEO_BOX_WIN,
-            spell_data,
-            video_entry_name,
-            2  // zoom
-        );
-    }
-    catch (const std::exception& ex)
-    {
-        // Video not found or failed to load - log and continue
-        wxLogMessage("PlayCutsceneFromStrategic: %s", ex.what());
-    }
+    m_strategicCutscenePlaying = false;
+    // Wait until the wxCloseEvent dispatch is finished before creating
+    // another movie window (and its media/audio resources).
+    CallAfter([this]() { PlayNextStrategicCutscene(); });
 }
-
 
 // Forward declarations for helpers defined later in this file
 static std::string FindLevelDefContainingMission(const std::string& missionStem,
