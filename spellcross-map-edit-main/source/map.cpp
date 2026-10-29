@@ -2181,7 +2181,14 @@ int SpellMap::Load(wstring& path, SpellData* spelldata)
 	// DEF file
 	SpellDEF* def = NULL;
 
-	if (path.rfind(L".DEF") != wstring::npos)
+	// Strategic mission resolution may return lowercase .def (including on
+	// case-insensitive Windows filesystems).  Checking only for uppercase
+	// ".DEF" treats a valid text MissionData file as binary DTA and interprets
+	// bytes 4..7 ("ionD") as an impossible L1 sprite count.
+	std::wstring map_extension = std::filesystem::path(path).extension().wstring();
+	std::transform(map_extension.begin(), map_extension.end(), map_extension.begin(),
+		[](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+	if (map_extension == L".def")
 	{
 		// --- this is DEF file: parse it ---
 
