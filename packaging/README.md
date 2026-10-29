@@ -55,6 +55,8 @@ To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
 
 The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (currently `0.9.2.2`), so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
 
+Packaging checks the compiled `Spellcross.exe` FileVersion and ProductVersion against that header and **stops** if they do not match. In particular, `-SkipBuild` cannot silently repackage an outdated executable under a new release number.
+
 ### WinRAR SFX installer
 
 With WinRAR installed, the regular command also creates the graphical installer automatically. It has:
