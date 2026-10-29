@@ -31,6 +31,19 @@ You may also need the [Microsoft Visual C++ Redistributable (x64)](https://aka.m
 
 **Please note:** Original commercial Spellcross game data is not included in this repository or release package.
 
+## What's new in 0.9.2.2?
+
+This maintenance release focuses on more reliable strategic counter-attacks and tactical battles, without changing the original game's look or assets.
+
+- **Counter-attacks and deployment:** defensive battles now use the original map-authored deployment positions, and mission definitions load correctly regardless of whether the `.DEF` extension is uppercase or lowercase.
+- **Correct combat range:** melee units such as Magotar no longer gain unrealistic long-range attacks from elevation differences.
+- **Smarter enemy reactions:** enemy groups can respond after being attacked even without immediately spotting the attacker, and units no longer unnecessarily step away from an already reached movement destination.
+- **Full battlefield access:** the tactical camera can reach valid tiles near the map edges, including units arriving there through group movement or enemy AI.
+- **Safer unit placement:** fixed out-of-bounds memory access when searching for free placement tiles near the map boundary.
+- **Quiet menus:** battlefield ambient sounds and the tactical simulation stop while the tactical window is hidden behind the main menu or strategic screen.
+
+[Read the v0.9.2.2 release notes](./packaging/releases/v0.9.2.2.md) for details and verification notes.
+
 ## What's new in 0.9.2.1?
 
 - **Strategic counter-attacks and recaptures:** fixed generated `Rxxxx` mission map lookup, improved attack target selection and corrected crossed-swords indicators.
