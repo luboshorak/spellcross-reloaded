@@ -6529,6 +6529,11 @@ int SpellMap::GetEffectiveFireRange(const MapUnit* shooter, MapXY target) const
     if (!shooter || !shooter->unit)
         return 0;
     const int base = shooter->GetFireRange();
+    // A one-tile melee reach is physical adjacency, not a projectile range.
+    // The downhill elevation bonus must never turn range-1 units (including
+    // Magotar) into ranged attackers.
+    if (base <= 1)
+        return base;
     if (!shooter->coor.IsSelected() || !target.IsSelected() ||
         shooter->coor.x < 0 || shooter->coor.y < 0 ||
         target.x < 0 || target.y < 0 ||
@@ -7716,6 +7721,13 @@ bool SpellMap::StartAttack_NoHUD(MapUnit* attacker, MapUnit* target)
     if (!attacker->unit->canAttack(target->unit))
         return(false);
 
+    // Defensive guard for AI/reaction attacks: the caller normally verifies
+    // attack_map, but stale async state must not let a melee unit strike
+    // farther than one neighboring tile. The isometric 8-neighbor grid has
+    // MapXY::Distance() up to sqrt(2) for adjacent tiles.
+    if (attacker->GetFireRange() <= 1 &&
+        attacker->coor.Distance(target->coor) > 1.5)
+        return(false);
 
 	// indirect fire: minimum range (>= 3 hexes) for ground targets
 	if (attacker->unit && attacker->unit->isIndirectFire() && target->unit && target->unit->isLand())
@@ -8795,7 +8807,7 @@ bool SpellMap::MoveEnemyToward(MapUnit* enemy, MapXY goal, bool stop_in_attack_r
             {
                 const double d = advance.Distance(goal);
                 const bool min_ok = !(enemy->unit->isIndirectFire() && d <= 2.0);
-                const int heightBonus = (std::max)(0,
+                const int heightBonus = fire_range <= 1 ? 0 : (std::max)(0,
                     tiles[ConvXY(advance)].elev - tiles[ConvXY(goal)].elev);
                 if (d <= fire_range + heightBonus && min_ok)
                     break;
@@ -11629,7 +11641,10 @@ void SpellMap::ViewRange::Worker()
 			// Original manual: +1 tile of sight or firing distance for each
 			// elevation level above the target, including deployed radar sight.
 			// Radar still ignores intervening terrain rays (unlike normal sight).
-			const int view = ref_view + (std::max)(ref_alt - next_alt, 0);
+			// Elevation extends projectile fire/sight, never physical melee.
+			const int height_bonus = (is_fire && target->GetFireRange() <= 1)
+				? 0 : (std::max)(ref_alt - next_alt, 0);
+			const int view = ref_view + height_bonus;
 
 			// visible?
 			if ((next_pos.Distance(ref_pos) - 0.5) > view)
