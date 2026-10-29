@@ -3900,20 +3900,15 @@ int SpellMap::RenderPrepare(TScroll* scroll)
 		return(1);
 
 	// limit scroller to valid range
-	int scroll_x_min = 0;
-	int scroll_y_min = 0;
-	int scroll_x_max = pic_x_size - surf_x;
-	int scroll_y_max = pic_y_size - surf_y;
-	if (game_mode)
-	{
-		scroll_x_min = 120;
-		scroll_y_min = 250;
-		scroll_x_max -= 240;
-		scroll_y_max -= 400;
-		if (!hud_enabled)
-			scroll_y_max -= 90;
-	}
-	scroll->CheckScroll(scroll_x_min, scroll_y_min, scroll_x_max, scroll_y_max);
+	// Both the player group mover and enemy pathfinder may legally use the
+	// entire DTA tile grid. In tactical mode the old hard-coded camera inset
+	// (left 120, top 250, right 240, bottom 400 pixels) made edge tiles
+	// unreachable by scrolling, leaving live units able to walk and fight
+	// beyond the visible viewport. Keep the normal viewport-to-map limits for
+	// every mode instead of imposing a separate invisible battlefield border.
+	const int scroll_x_max = (std::max)(0, pic_x_size - surf_x);
+	const int scroll_y_max = (std::max)(0, pic_y_size - surf_y);
+	scroll->CheckScroll(0, 0, scroll_x_max, scroll_y_max);
 
 	// top-left visible portion of buffer (surface origin)	
 	auto [x_pos, y_pos] = scroll->GetScroll();
