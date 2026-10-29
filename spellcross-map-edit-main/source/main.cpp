@@ -1873,9 +1873,19 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
 
     Refresh();
 
-    size_t playerCompanyCount = 0;
-    for (const auto& entry : player_units)
-        playerCompanyCount += static_cast<size_t>(std::max(0, entry.count));
+    // DOS random/counter-attack battles use the deployment crosses authored
+    // in the battlefield DTA's L6 (Alliance counter-attack positions).
+    // Do not synthesize deployment squares from terrain: a sparse passable
+    // band can expose fewer crosses than the campaign roster and deadlock
+    // FinishDeployment(), while scattered crosses alter the original layout.
+    if (spell_map->counter_attack_post_player.empty())
+    {
+        wxMessageBox("This battlefield has no authored Alliance counter-attack "
+                     "deployment positions (DTA layer L6).",
+                     "Launch", wxOK | wxICON_ERROR, this);
+        return false;
+    }
+    spell_map->start = spell_map->counter_attack_post_player;
 
     auto tile_ok = [&](int x, int y, bool strict) -> bool
     {
@@ -1929,22 +1939,20 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
         return out;
     };
 
-    std::vector<MapXY> playerCandidates = collect_band(true, true);
-    if (playerCandidates.empty())
-        playerCandidates = collect_band(true, false);
+    // Enemy spawning remains separate from player deployment. The L5
+    // counter-attack posts also serve the original enemy group AI, so keep
+    // the existing enemy-side spawning behavior pending separate DOS checks.
     std::vector<MapXY> enemyCandidates = collect_band(false, true);
     if (enemyCandidates.empty())
         enemyCandidates = collect_band(false, false);
 
-    if (playerCandidates.empty() || enemyCandidates.empty())
+    if (enemyCandidates.empty())
     {
-        wxMessageBox("The DTA battlefield has no usable deployment area.",
+        wxMessageBox("The DTA battlefield has no usable enemy deployment area.",
             "Launch", wxOK | wxICON_ERROR, this);
         return false;
     }
 
-    const size_t wantedStarts = std::max<size_t>(12, playerCompanyCount);
-    spell_map->start = spread_pick(playerCandidates, wantedStarts);
     const std::vector<MapXY> enemySeeds = spread_pick(enemyCandidates,
         std::max<size_t>(1, enemy_unit_ids.size()));
 
