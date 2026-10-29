@@ -42,7 +42,7 @@ This maintenance release focuses on more reliable strategic counter-attacks and 
 - **Safer unit placement:** fixed out-of-bounds memory access when searching for free placement tiles near the map boundary.
 - **Quiet menus:** battlefield ambient sounds and the tactical simulation stop while the tactical window is hidden behind the main menu or strategic screen.
 
-[Read the v0.9.2.2 release notes](./packaging/releases/v0.9.2.2.md) for details and verification notes.
+[Read the v0.9.2.2 release notes](./packaging/releases/v0.9.2.2.md) for the complete list of fixes.
 
 ## What's new in 0.9.2.1?
 
