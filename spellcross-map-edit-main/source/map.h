@@ -172,6 +172,8 @@ public:
 	MapSounds(SpellData* spell_data,int x_size,int y_size);
 	~MapSounds();
 	void ClearSounds();
+	// Stop active map ambience without discarding authored loops or volume maps.
+	void StopLoops();
 	int InitSounds();
 	int UpdateMaps();
 	tuple<double,double> GetViewVolume(int index,int x0,int y0,int x_sz,int y_sz);

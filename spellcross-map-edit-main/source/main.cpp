@@ -3419,6 +3419,11 @@ void MainFrame::ShowTacticalWindow()
 
 void MainFrame::HideTacticalWindow()
 {
+    // Hiding wxFrame does not stop MainFrame\'s timer or the asynchronous
+    // RtAudio streams. Silence map ambience before showing menu/strategy.
+    // The map and its sound/volume data remain loaded for a paused battle.
+    if (spell_map && spell_map->sounds)
+        spell_map->sounds->StopLoops();
     if (IsShown())
         Hide();
 }
@@ -4614,7 +4619,11 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
 // map animation periodic refresh tick
 void MainFrame::OnTimer(wxTimerEvent& event)
 {
-    if (!spell_map->IsLoaded())
+    // The tactical controller stays alive under the independent main menu and
+    // strategic frame. Never tick the hidden battlefield: Tick() would start
+    // its ambient loops (including the last_map restored on application startup)
+    // and could advance live tactical state while the player is elsewhere.
+    if (!IsShown() || !spell_map || !spell_map->IsLoaded())
         return;
 
     // Mission-end presentation must never be painted underneath a tactical
