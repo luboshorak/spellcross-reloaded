@@ -14362,6 +14362,12 @@ int SpellMap::AddUnit(MapUnit* unit)
 // try to place new unit to map (looks for nearest suitable place)
 int SpellMap::PlaceUnit(MapUnit* unit)
 {
+	// Event and summoned units can originate near an edge. The breadth-first
+	// search below indexes map-sized vectors, so reject invalid seed positions
+	// rather than accidentally treating ConvXY() == -1 as an array index.
+	if (!unit || !unit->unit || ConvXY(unit->coor) < 0)
+		return(1);
+
 	// resort units map for fast colision checks
 	SortUnits();
 
@@ -14374,6 +14380,8 @@ int SpellMap::PlaceUnit(MapUnit* unit)
 		for (auto& cand : cand_list)
 		{
 			auto pos_mxy = ConvXY(cand);
+			if (pos_mxy < 0)
+				continue;
 			// mark as tested position
 			used[pos_mxy] = 1;
 
@@ -14416,9 +14424,13 @@ int SpellMap::PlaceUnit(MapUnit* unit)
 			for (int k = 0; k < 4; k++)
 			{
 				auto n_pos = GetNeighborTile(cand, k);
-				if (used[ConvXY(n_pos)])
+				const int n_mxy = ConvXY(n_pos);
+				// GetNeighborTile() deliberately returns (-1,-1) at the border.
+				// Never index used[-1]: this previously wrote before the vector
+				// and could corrupt unrelated unit/map state.
+				if (n_mxy < 0 || used[n_mxy])
 					continue;
-				used[ConvXY(n_pos)] = 1;
+				used[n_mxy] = 1;
 				cand_list.push_back(n_pos);
 			}
 		}
