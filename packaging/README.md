@@ -150,14 +150,13 @@ Publish the ZIP and SFX as separate optional GitHub Release assets after a Windo
 
 After the release-preparation PR is merged to `main`:
 
-1. Run `.\\packaging\\Build-CombinedRelease.ps1 -Rebuild` on Windows, supplying `-WxRoot` and `-MovieSource` if required. The script must produce `Spellcross_Reloaded_v0.9.2.2.zip` and, with WinRAR available, `Spellcross_Reloaded_v0.9.2.2.exe`.
+1. Run `.\packaging\Build-CombinedRelease.ps1 -Rebuild` on Windows, supplying `-WxRoot` and `-MovieSource` if required. The script must produce `Spellcross_Reloaded_v0.9.2.2.zip` and, with WinRAR available, `Spellcross_Reloaded_v0.9.2.2.exe`.
 2. Open `Spellcross.exe` properties and verify **File version** and **Product version** are both **0.9.2.2**. Verify `BUILD-INFO.txt` contains the new source revision and executable SHA-256.
 3. Smoke-test a counter-attack with all assigned units, load a mission via lowercase `.def`, verify the menu is free of battlefield ambience, and check that melee attacks stay adjacent. Test the enemy's response after an attack.
 4. Group-move allied units toward all four map edges, select them again to verify the camera can locate them, and check enemy movement and combat near those edges.
 5. After verifying both ZIP and SFX on a clean installation, create the Git tag **`v0.9.2.2`** on the exact tested `main` commit and publish a GitHub Release with both packages. Use [release notes](./releases/v0.9.2.2.md) as its description.
 
 Do **not** tag or upload the release before the Windows build and gameplay checks pass. The sources do not contain the 37 MP4 fallback videos, so a complete distributable still requires access to the verified local movie files.
-
 
 ## Notes
 
