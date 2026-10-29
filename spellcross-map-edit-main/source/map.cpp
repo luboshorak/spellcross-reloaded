@@ -4049,6 +4049,16 @@ void MapSounds::ClearSounds()
 	}
 	list.clear();
 }
+// Silence the tactical battlefield while its window is hidden (main menu,
+// strategic map, or pause). Keep the original L7 loop definitions and volume
+// maps intact; UpdateVolumes() will restart audible loops when play resumes.
+void MapSounds::StopLoops()
+{
+	for (auto* snd : list)
+		if (snd && !snd->isDone())
+			snd->Stop();
+}
+
 // initialize looping sounds (call after modifying lists)
 //  make one SpellSound per unique looping sample
 int MapSounds::InitSounds()
