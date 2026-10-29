@@ -8431,7 +8431,10 @@ void SpellMap::PlanEnemyAIGroups()
         }
         if (group.order == AIGroupOrder::SUICIDE_DEFENCE)
             continue;
-        if (group.order == AIGroupOrder::SCOUT && !direct_contact)
+        // A patrol which was directly attacked must react to that contact,
+        // even when it cannot currently see the shooter. Attack() records the
+        // attacker's unit id in group.target_unit_id and marks contacted.
+        if (group.order == AIGroupOrder::SCOUT && !direct_contact && !group.contacted)
             continue;
         if (group.order == AIGroupOrder::SCOUT && direct_contact)
             SetGroupOrder(group, AIGroupOrder::NONE, seen_target ? seen_target->id : -1);
@@ -8439,7 +8442,10 @@ void SpellMap::PlanEnemyAIGroups()
         const bool committed_move = (group.order == AIGroupOrder::MOVE_TO || group.order == AIGroupOrder::JOIN ||
                                      group.order == AIGroupOrder::RETREAT || group.order == AIGroupOrder::DEEP_SCOUT ||
                                      group.order == AIGroupOrder::MOVE_ATTACK);
-        if (committed_move && !direct_contact)
+        // Do not let an old move/join/retreat order mask direct aggression.
+        // The player attacking this group records contact even if its members
+        // lack direct sight, so the group must be eligible for replanning.
+        if (committed_move && !direct_contact && !group.contacted)
             continue;
 
         // A NormalUnit group which has never seen the Alliance stays at order 0
@@ -8769,6 +8775,15 @@ bool SpellMap::MoveEnemyToward(MapUnit* enemy, MapXY goal, bool stop_in_attack_r
         }
         return true;
     };
+
+    // Once the unit reaches its non-combat destination, stop. Otherwise the
+    // zero-length path is discarded and the 8 neighboring candidates can
+    // force a pointless A->B->A move on successive AI decisions. If the exact
+    // goal is occupied, standing on an adjacent tile is the attainable end.
+    if (!stop_in_attack_range &&
+        (enemy->coor == goal ||
+         (!tile_free(goal) && enemy->coor.Distance(goal) <= 1.5)))
+        return false;
 
     std::vector<MapXY> destinations;
     destinations.reserve(9);
