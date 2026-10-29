@@ -13,7 +13,7 @@ git switch main
 git pull --ff-only origin main
 git submodule sync --recursive
 git submodule update --init --recursive
-.\packaging\Build-CombinedRelease.ps1
+.\packaging\Build-CombinedRelease.ps1 -Rebuild
 ```
 
 If PowerShell refuses to run `Build-CombinedRelease.ps1` because it is not digitally signed, allow scripts **for this PowerShell session only** and rerun the build:
@@ -24,6 +24,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 ```
 
 This does not change the execution policy permanently. A policy enforced by your organization may still prevent the script from running.
+
+Use `-Rebuild` when preparing an official release so the application version and embedded Windows EXE version resource are freshly compiled. If you only need an incremental developer build, running the script without `-Rebuild` is fine.
 
 If you're starting from scratch, first clone with submodules:
 
@@ -41,8 +43,8 @@ If the build can't find wxWidgets, specify the path to your vcpkg x64 installati
 The output is:
 
 ```text
-dist/Spellcross_Reloaded_v0.9.2.1.zip
-dist/Spellcross_Reloaded_v0.9.2.1.exe    (WinRAR SFX, when WinRAR is installed)
+dist/Spellcross_Reloaded_v0.9.2.2.zip
+dist/Spellcross_Reloaded_v0.9.2.2.exe    (WinRAR SFX, when WinRAR is installed)
 ```
 
 To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
@@ -51,7 +53,7 @@ To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
 .\packaging\Build-CombinedRelease.ps1 -SkipBuild -NoZip
 ```
 
-The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (currently `0.9.2.1`), so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
+The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (currently `0.9.2.2`), so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
 
 ### WinRAR SFX installer
 
@@ -97,9 +99,10 @@ Missing or mismatched clips cause packaging to stop, rather than producing an in
 
 | Option | When to use it |
 | --- | --- |
+| `-Rebuild` | Perform a clean MSVC rebuild (recommended when changing the release version) |
 | `-WxRoot <path>` | wxWidgets/vcpkg isn't detected automatically |
 | `-MovieSource <path>` | Point to existing copies of the fallback videos |
-| `-SkipBuild` | Repackage the already compiled Release executables |
+| `-SkipBuild` | Repackage already compiled Release executables (only after building this exact version) |
 | `-NoZip` | Prepare the staged files without creating the ZIP (SFX still created) |
 | `-NoSfx` | Skip the WinRAR installer even when WinRAR is installed |
 | `-WinRARPath <path>` | Supply an explicit path to `WinRAR.exe` |
@@ -140,6 +143,19 @@ A successful compile is a good start, but a portable release needs a quick hands
 7. On a clean Windows 10/11 x64 machine, confirm that the portable package needs only the [VC++ Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), not your development environment.
 
 Publish the ZIP and SFX as separate optional GitHub Release assets after a Windows smoke test.
+
+### Publishing v0.9.2.2
+
+After the release-preparation PR is merged to `main`:
+
+1. Run `.\\packaging\\Build-CombinedRelease.ps1 -Rebuild` on Windows, supplying `-WxRoot` and `-MovieSource` if required. The script must produce `Spellcross_Reloaded_v0.9.2.2.zip` and, with WinRAR available, `Spellcross_Reloaded_v0.9.2.2.exe`.
+2. Open `Spellcross.exe` properties and verify **File version** and **Product version** are both **0.9.2.2**. Verify `BUILD-INFO.txt` contains the new source revision and executable SHA-256.
+3. Smoke-test a counter-attack with all assigned units, load a mission via lowercase `.def`, verify the menu is free of battlefield ambience, and check that melee attacks stay adjacent. Test the enemy's response after an attack.
+4. Group-move allied units toward all four map edges, select them again to verify the camera can locate them, and check enemy movement and combat near those edges.
+5. After verifying both ZIP and SFX on a clean installation, create the Git tag **`v0.9.2.2`** on the exact tested `main` commit and publish a GitHub Release with both packages. Use [release notes](./releases/v0.9.2.2.md) as its description.
+
+Do **not** tag or upload the release before the Windows build and gameplay checks pass. The sources do not contain the 37 MP4 fallback videos, so a complete distributable still requires access to the verified local movie files.
+
 
 ## Notes
 
