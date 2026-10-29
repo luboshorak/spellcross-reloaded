@@ -128,6 +128,17 @@ if (-not $SkipBuild) {
 }
 Assert-File $gameExe
 Assert-File $editorExe
+# The package name and BUILD-INFO.txt must reflect the actual binary, not just
+# the current source header. This catches stale Release builds after a version
+# bump (especially when -SkipBuild is used).
+$builtVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($gameExe)
+$builtFileVersion = [string]$builtVersionInfo.FileVersion
+$builtProductVersion = [string]$builtVersionInfo.ProductVersion
+if ($builtFileVersion.Trim() -ne $releaseVersion -or
+    $builtProductVersion.Trim() -ne $releaseVersion) {
+    throw "Spellcross.exe version mismatch: expected $releaseVersion, got FileVersion='$builtFileVersion', ProductVersion='$builtProductVersion'. Run Build-CombinedRelease.ps1 -Rebuild before packaging."
+}
+Write-Host "Validated executable FileVersion/ProductVersion: $releaseVersion" -ForegroundColor Green
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'dist' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $name = 'Spellcross-Reloaded-Win64-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
