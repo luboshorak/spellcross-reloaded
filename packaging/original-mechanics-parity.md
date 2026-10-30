@@ -77,6 +77,15 @@ not full recovery of original source.
 
 ### Reaction queue lifecycle review
 
+Reaction selection changes now invalidate the shared movement-range cache as
+well as the attack map, matching ordinary `SelectUnit`. In particular the
+restored mover must not reuse a pre-volley range after damage/AP/occupancy
+changes. `GetUnitOptions` synchronously flushes this dirty range before using
+it for the next click. Null restoration also clears the dirty owner.
+Release x64 rebuild passed. The remaining manual regression is to interrupt
+movement with a nonlethal volley and click immediately after control returns;
+repeat with a killed mover, an exhausted defender, and stacked air/ground units.
+
 `CheckReactionFire` admits only active, idle shooters, but `ProcessReactionFire`
 previously did not repeat those checks after popping a delayed shot. It now
 checks both unit definitions and the shooter's activity/busy state before

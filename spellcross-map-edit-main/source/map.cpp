@@ -9569,6 +9569,7 @@ bool SpellMap::ProcessReactionFire()
         unit_selection = entry.shooter;
         unit_selection_mod = true;
         g_attack_map_dirty_for = entry.shooter;
+        g_move_range_dirty_for = entry.shooter;
 
         if (StartAttack_NoHUD(entry.shooter, entry.target))
             return true;
@@ -12683,6 +12684,10 @@ int SpellMap::Tick()
 				unit_selection = restore;
 				unit_selection_mod = true;
 				g_attack_map_dirty_for = restore;
+				// Damage, AP and occupancy may have changed during the volley.
+				// Flush the shared movement range before the next player click,
+				// just as SelectUnit does for an ordinary selection change.
+				g_move_range_dirty_for = restore;
 				unit = restore;
 				InvalidateHUDbuttons();
 			}
