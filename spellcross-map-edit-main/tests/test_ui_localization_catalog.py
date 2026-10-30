@@ -165,23 +165,55 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn("if (missingRequired || forceSourceSelection)", source)
         self.assertIn("runtime_root, executable_dir, forceSourceSelection)", source)
 
-    def test_original_unit_names_are_loaded_from_retail_common_fs_tables(self):
+    def test_all_original_language_resources_follow_selected_edition(self):
+        engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
+        header = (ROOT / "source" / "spellcross.h").read_text(encoding="utf-8")
+        for resource in (
+            "BIG_MAP", "BUTTONS", "DISPLAY", "HODNOSTI", "INFOTEXT",
+            "MESIACE", "MOSTY", "MURY", "OTHER", "RESEARCH",
+            "SELTAB", "SPECOBJ", "UNITS", "UPGRADES",
+        ):
+            self.assertIn('{"' + resource + '", ', engine)
+        self.assertIn('units->IsEnglish() ? ".ENG" : ".CZ"', engine)
+        self.assertIn("common_fs->GetFile(filename.c_str(), &data, &size)", engine)
+        self.assertIn("ParseOriginalLanguageLines(data, size)", engine)
+        self.assertIn("current[first] != ';'", engine)
+        self.assertIn("ch == 0x1A", engine)
+        self.assertIn("original_language_tables.emplace", engine)
+        self.assertIn("std::string GetOriginalText(const char* resource_stem, size_t index) const", header)
+        self.assertIn('resource.minimumEntries', engine)
+
+    def test_original_units_are_taken_from_retail_language_resource(self):
         engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
         loader = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
-
-        # Czech JEDNOTKY.DEF contains English names even in the original files.
-        # It supplies unit stats and record layout; the actual original names
-        # are positional CP895 text records in UNITS.CZ / UNITS.ENG.
-        self.assertIn('units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', engine)
-        self.assertIn("common_fs->GetFile(unitNamesResource, &data, &size)", engine)
-        self.assertIn("LoadOriginalUnitNames(units, data, size)", engine)
-        self.assertIn("static bool LoadOriginalUnitNames(SpellUnits* units", engine)
-        self.assertIn("value == 0x1A", engine)
+        self.assertIn('original_language_tables.find("UNITS")', engine)
+        self.assertIn("ApplyOriginalUnitNames(units, nameTable->second)", engine)
         self.assertIn("names.size() != records.size()", engine)
         self.assertIn("names[i].size() >= sizeof(records[i]->name)", engine)
         self.assertIn("std::memcpy(records[i]->name, names[i].data(), names[i].size())", engine)
         self.assertIn('spell_data->units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', loader)
-        self.assertNotIn("englishNameMatches", loader)
+
+    def test_original_rank_names_are_full_and_short_pairs(self):
+        source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        self.assertIn('RetailOriginalText(data, "HODNOSTI", static_cast<size_t>(rank * 2 + 1)', source)
+        self.assertIn('RetailOriginalText(m_spellData, "HODNOSTI",', source)
+        self.assertIn("static_cast<size_t>(rank * 2)", source)
+        self.assertIn("return LocalizedOriginalRankAbbrev(m_spellData, rank)", source)
+
+    def test_research_upgrades_and_objects_do_not_prefer_stale_czech_sources(self):
+        engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
+        ui = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        for group in ("MURY", "MOSTY", "SPECOBJ"):
+            self.assertIn('applyObjectNames("' + group + '"', engine)
+        self.assertIn('GetOriginalText("RESEARCH"', ui)
+        self.assertIn('GetOriginalText("UPGRADES"', ui)
+        self.assertNotIn('for (const char* name : { "RESEARCH.CZ", "RESEARCH.ENG" })', ui)
+        self.assertNotIn('for (const char* titleFile : { "UPGRADES.CZ", "UPGRADES.ENG" })', ui)
+
+    def test_original_strategic_screen_uses_retail_labels(self):
+        ui = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        for group in ("BIG_MAP", "BUTTONS", "OTHER", "INFOTEXT"):
+            self.assertIn('RetailOriginalText(m_spellData, "' + group + '"', ui)
 
     def test_original_text_is_not_in_ui_catalogs(self):
         # Mission text still comes from TEXTS.FS; catalogs contain only UI keys.
