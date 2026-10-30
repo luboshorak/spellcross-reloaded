@@ -30,7 +30,7 @@ static inline bool starts_with(const std::string& s, const std::string& prefix) 
 }
 
 static inline std::string strip_comment_semicolon(std::string s) {
-    // Spellcross DEF má komentáøe od ';' do konce øádku
+    // Spellcross DEF má komentáře od ';' do konce řádku
     auto pos = s.find(';');
     if (pos != std::string::npos) s = s.substr(0, pos);
     return s;
@@ -95,7 +95,7 @@ static bool parse_block_header(const std::string& line, std::string& blockName, 
     // Mission(...) { / Event(...) {
     std::string callName;
     std::vector<std::string> callArgs;
-    // vezmeme jen èást do '{', aby parse_call neshodil závorku
+    // vezmeme jen část do '{', aby parse_call neshodil závorku
     auto beforeBrace = trim(l.substr(0, l.find('{')));
     if (!parse_call(beforeBrace, callName, callArgs)) return false;
 
@@ -190,11 +190,11 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
             }
         }
 
-        // uvnitø bloku: øádkové calls
+        // uvnitř bloku: řádkové calls
         std::string cmd;
         std::vector<std::string> args;
         if (!parse_call(line, cmd, args)) {
-            // neznámý formát øádku
+            // neznámý formát řádku
             out.unknown_lines.push_back("L" + std::to_string(lineNo) + ": " + line);
             continue;
         }
@@ -303,7 +303,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 out.outro_video = args[0];
                 continue;
             }
-            // NextLevel - další level po dokonèení všech misí
+            // NextLevel - další level po dokončení všech misí
             if (cmd == "NextLevel" && args.size() >= 1) {
                 out.next_level_def = args[0];
                 continue;
@@ -331,7 +331,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 int v = 0; if (parse_int(args[0], v)) curMission.time_limit = v;
                 continue;
             }
-            // PlayEndDeltaAnim - video po dokonèení mise (success)
+            // PlayEndDeltaAnim - video po dokončení mise (success)
             if (cmd == "PlayEndDeltaAnim" && args.size() >= 1) {
                 curMission.end_ok_video = args[0];
                 continue;
@@ -341,7 +341,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 curMission.end_bad_video = args[0];
                 continue;
             }
-            // NextLevelDef - další level po dokonèení mise
+            // NextLevelDef - další level po dokončení mise
             if (cmd == "NextLevelDef" && args.size() >= 1) {
                 curMission.next_level_def = args[0];
                 curMission.is_level_final = true;
@@ -420,7 +420,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
         unknown_here();
     }
 
-    // kdyby soubor skonèil bez '}'
+    // kdyby soubor skončil bez '}'
     if (ctx == Ctx::Mission) flush_mission();
     if (ctx == Ctx::Event) flush_event();
 
