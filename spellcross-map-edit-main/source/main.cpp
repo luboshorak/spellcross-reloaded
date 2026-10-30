@@ -54,6 +54,7 @@
 #include "other.h"
 #include "simpleini.h"
 #include "spellcross.h"
+#include "spell_ui_locale.h"
 #include "map.h"
 
 #include "level.h"
@@ -2491,6 +2492,11 @@ bool MyApp::OnInit()
         return(false);
     }
 
+    // Use the retail edition identified from JEDNOTKY.DEF, never OS locale.
+    // Separate ISO imports can therefore use independent UI languages.
+    spellcross_ui_locale::SetLanguageFromEdition(
+        spell_data && spell_data->units && spell_data->units->IsEnglish());
+
     // --- restore the last tactical map only when the saved path is still valid.
     // A fresh/portable config intentionally starts without one and should land
     // cleanly in the main menu instead of showing a bogus map-load error.
@@ -2627,44 +2633,44 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     form_mmenu = NULL;
         
     wxMenu* menuFile = new wxMenu;
-    menuFile->Append(ID_LoadCustomMap, "Load &custom map...\tCtrl+Alt+O");
-    menuFile->Append(ID_MainMenu, "Main &menu\tCtrl+M");
+    menuFile->Append(ID_LoadCustomMap, spellcross_ui_locale::Tr("menu.load_custom_map", "Load &custom map...\\tCtrl+Alt+O"));
+    menuFile->Append(ID_MainMenu, spellcross_ui_locale::Tr("menu.main", "Main &menu\\tCtrl+M"));
     menuFile->AppendSeparator();
-    wxMenuItem* miLoadStrategic = menuFile->Append(wxID_ANY, "Load &strategic game...\tCtrl+Alt+L");
-    menuFile->Append(wxID_EXIT);
+    wxMenuItem* miLoadStrategic = menuFile->Append(wxID_ANY, spellcross_ui_locale::Tr("menu.load_strategic", "Load &strategic game...\\tCtrl+Alt+L"));
+    menuFile->Append(wxID_EXIT, spellcross_ui_locale::Tr("menu.exit", "E&xit"));
     wxMenu* menuGame = new wxMenu;
-    menuGame->Append(ID_mmSaveGameState, "Save game state...\tCtrl+Shift+S");
-    menuGame->Append(ID_mmLoadGameState, "Load game state...\tCtrl+Shift+L");
-    menuGame->Append(ID_mmOpenMapEditor, "Open mission in Map Editor...");
+    menuGame->Append(ID_mmSaveGameState, spellcross_ui_locale::Tr("menu.save_game", "Save game state...\\tCtrl+Shift+S"));
+    menuGame->Append(ID_mmLoadGameState, spellcross_ui_locale::Tr("menu.load_game", "Load game state...\\tCtrl+Shift+L"));
+    menuGame->Append(ID_mmOpenMapEditor, spellcross_ui_locale::Tr("menu.open_editor", "Open mission in Map Editor..."));
     menuGame->AppendSeparator();
-    menuGame->Append(ID_mmResetViewMap, "Reset view map");
-    menuGame->Append(ID_mmUnitViewMode, "View unit move/attack range (Space)");
+    menuGame->Append(ID_mmResetViewMap, spellcross_ui_locale::Tr("menu.reset_view", "Reset view map"));
+    menuGame->Append(ID_mmUnitViewMode, spellcross_ui_locale::Tr("menu.range", "View unit move/attack range (Space)"));
 
     // Help menu
     wxMenu* menuHelp = new wxMenu;
-    menuHelp->Append(wxID_ABOUT);
+    menuHelp->Append(wxID_ABOUT, spellcross_ui_locale::Tr("menu.about", "&About"));
 
     // Options menu (accessible in game mode too)
     wxMenu* menuOptions = new wxMenu;
-    menuOptions->Append(ID_OptionsAudio, "&Audio...", "Audio volume settings");
-    menuOptions->Append(ID_OptionsScreen, "&Screen...", "Brightness settings");
+    menuOptions->Append(ID_OptionsAudio, spellcross_ui_locale::Tr("menu.audio", "&Audio..."), spellcross_ui_locale::Tr("menu.audio_help", "Audio volume settings"));
+    menuOptions->Append(ID_OptionsScreen, spellcross_ui_locale::Tr("menu.screen", "&Screen..."), spellcross_ui_locale::Tr("menu.screen_help", "Brightness settings"));
     auto* menuDifficulty = new wxMenu;
     const bool englishDifficultyMenu = spell_data && spell_data->units && spell_data->units->IsEnglish();
     // Original Czech UI: Easy / Normal / Hard.  Original English UI contains
     // only two DIFF entries; its selector maps them to engine modes 1/2, i.e.
     // Normal / Hard.
     if(!englishDifficultyMenu)
-        menuDifficulty->AppendRadioItem(ID_OptionsDifficultyEasy, "&Easy");
-    menuDifficulty->AppendRadioItem(ID_OptionsDifficultyNormal, "&Normal");
-    menuDifficulty->AppendRadioItem(ID_OptionsDifficultyHard, "&Hard");
-    menuOptions->AppendSubMenu(menuDifficulty, "Game &Difficulty");
+        menuDifficulty->AppendRadioItem(ID_OptionsDifficultyEasy, spellcross_ui_locale::Tr("menu.easy", "&Easy"));
+    menuDifficulty->AppendRadioItem(ID_OptionsDifficultyNormal, spellcross_ui_locale::Tr("menu.normal", "&Normal"));
+    menuDifficulty->AppendRadioItem(ID_OptionsDifficultyHard, spellcross_ui_locale::Tr("menu.hard", "&Hard"));
+    menuOptions->AppendSubMenu(menuDifficulty, spellcross_ui_locale::Tr("menu.difficulty", "Game &Difficulty"));
 
     // Main menu
     wxMenuBar* menuBar = new wxMenuBar;    
-    menuBar->Append(menuFile, "&File");
-    menuBar->Append(menuGame, "&Game");
-    menuBar->Append(menuOptions, "&Options");
-    menuBar->Append(menuHelp, "&Help");
+    menuBar->Append(menuFile, spellcross_ui_locale::Tr("menu.file", "&File"));
+    menuBar->Append(menuGame, spellcross_ui_locale::Tr("menu.game", "&Game"));
+    menuBar->Append(menuOptions, spellcross_ui_locale::Tr("menu.options", "&Options"));
+    menuBar->Append(menuHelp, spellcross_ui_locale::Tr("menu.help", "&Help"));
     SetMenuBar(menuBar);
     
     CreateStatusBar(8);
@@ -4331,7 +4337,7 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
     if (!titleDrawn)
     {
         wxLogWarning("Mission result title resource is missing; using text fallback.");
-        drawText(m_mission_end_req.success ? L"MISSION ACCOMPLISHED" : L"MISSION FAILED",
+        drawText(m_mission_end_req.success ? spellcross_ui_locale::Tr("result.accomplished", "MISSION ACCOMPLISHED") : spellcross_ui_locale::Tr("result.failed", "MISSION FAILED"),
             150, 35, 340, true);
     }
 
@@ -4345,7 +4351,7 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
         if (m_mission_end_req.text)
             debrief = wxString(m_mission_end_req.text->text.c_str());
         if (debrief.empty())
-            debrief = m_mission_end_req.success ? L"Mission accomplished." : L"Mission failed.";
+            debrief = m_mission_end_req.success ? spellcross_ui_locale::Tr("result.debrief_success", "Mission accomplished.") : spellcross_ui_locale::Tr("result.debrief_failed", "Mission failed.");
 
         // Match the original post-mission debrief placement: a fixed framed
         // message box directly under the banner.  The earlier restoration sized
@@ -4489,10 +4495,10 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
     }
 
     // WM_STAT.LZ native grid: x=116..523, y=103..277 in 640x480 space.
-    drawText(L"Alliance - losses", 116 + 113, 103 + 25, 132, true);
-    drawText(L"Dark Side - losses", 116 + 246, 103 + 25, 144, true);
+    drawText(spellcross_ui_locale::Tr("result.alliance_losses", "Alliance - losses"), 116 + 113, 103 + 25, 132, true);
+    drawText(spellcross_ui_locale::Tr("result.enemy_losses", "Dark Side - losses"), 116 + 246, 103 + 25, 144, true);
 
-    const wxString labels[4] = { L"Light units", L"Heavy units", L"Air units", L"Commanders" };
+    const wxString labels[4] = { spellcross_ui_locale::Tr("result.light", "Light units"), spellcross_ui_locale::Tr("result.heavy", "Heavy units"), spellcross_ui_locale::Tr("result.air", "Air units"), spellcross_ui_locale::Tr("result.commanders", "Commanders") };
     const int alliance[4] = { m_mission_result_stats.alliance_light, m_mission_result_stats.alliance_heavy,
         m_mission_result_stats.alliance_air, m_mission_result_stats.alliance_commanders };
     const int enemy[4] = { m_mission_result_stats.enemy_light, m_mission_result_stats.enemy_heavy,

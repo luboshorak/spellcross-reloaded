@@ -107,6 +107,7 @@
     <ClInclude Include="spell_video.h" />
     <ClInclude Include="spell_filter.h" />
     <ClInclude Include="spell_texts.h" />
+    <ClInclude Include="spell_ui_locale.h" />
     <ClInclude Include="spell_map_event.h" />
     <ClInclude Include="RtAudio.h" />
     <ClInclude Include="spell_graphics.h" />
@@ -154,6 +155,9 @@
     <!-- Runtime sidecar data shipped next to Spellcross.exe.  These files are
          referenced by the strategic/game-mode code or by its documented fallback paths. -->
     <None Include="..\data\C_NAMES.DEF"><Link>data\C_NAMES.DEF</Link></None>
+    <None Include="..\locales\en.lang"><Link>locales\en.lang</Link></None>
+    <None Include="..\locales\cs.lang"><Link>locales\cs.lang</Link></None>
+    <None Include="..\locales\README.md"><Link>locales\README.md</Link></None>
     <None Include="..\data\DEVAST.fs"><Link>data\DEVAST.fs</Link></None>
     <None Include="..\data\PUST.fs"><Link>data\PUST.fs</Link></None>
     <None Include="..\data\T11.FS"><Link>data\T11.FS</Link></None>

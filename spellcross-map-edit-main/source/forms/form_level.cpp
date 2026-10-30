@@ -34,6 +34,7 @@
 #include <limits>
 #include "LZ_spell.h"
 #include "../strategic_original_renderer.h"
+#include "../spell_ui_locale.h"
 
 namespace
 {
@@ -2143,11 +2144,7 @@ static bool strategic_english(const SpellData* data)
     return data && data->units && data->units->IsEnglish();
 }
 
-static wxString strategic_label(const SpellData* data, const char* en, const char* cz)
-{
-    return wxString::FromUTF8(strategic_english(data) ? en : cz);
-}
-
+// Reloaded UI labels are resolved through external UTF-8 language catalogs.
 static void append_text_snippet(wxString& info, const std::string& label, const std::string& raw)
 {
     if (raw.empty())
@@ -2160,7 +2157,12 @@ static void append_text_snippet(wxString& info, const std::string& label, const 
     {
         unsigned char c = (unsigned char)raw[i];
         if (c == '\r')
+        {
+            s.push_back('\n');
+            if (i + 1 < raw.size() && raw[i + 1] == '\n')
+                ++i;
             continue;
+        }
         if (c == '~' || c == 0x1A)
             continue;
         s.push_back((char)c);
@@ -3225,9 +3227,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         m_originalScrollbarHeight = 429;
 
         const wxColour& selectedRed = colours.selected;
-        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Special", "Speciální"), 420, 8, heading, 132, true);
-        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Select all", "Vyber všechny"), 423, 27, text);
-        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Deselect all", "Odznač všechny"), 423, 42, text);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.special", "Special"), 420, 8, heading, 132, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.select_all", "Select all"), 423, 27, text);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.deselect_all", "Deselect all"), 423, 42, text);
 
         int specialY = 57;
         for (uint32_t commanderUid : activeFormationCommanders)
@@ -3243,7 +3245,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             specialY += kOriginalUnitRowH;
         }
 
-        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Units", "Jednotky"), 420, unitHeadingY, heading, 132, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.units", "Units"), 420, unitHeadingY, heading, 132, true);
 
         int flatRow = 0;
         int drawn = 0;
@@ -3271,7 +3273,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         }
 
         if (totalRows == 0)
-            OriginalDrawSpellText(image, font, strategic_label(m_spellData, "-- no units --", "-- bez jednotek --"), 421, unitRowsY + 1, dim, 130, true);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.no_units", "-- no units --"), 421, unitRowsY + 1, dim, 130, true);
 
         // Bottom action buttons use the actual BIGMB DOS button sprites.  The
         // previous hand-drawn rectangles were the source of the conspicuous
@@ -3289,21 +3291,21 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 enabled ? text : dim, kOriginalButtonW, true);
         };
         const bool canAttack = m_selectedTerritory > 0 && !m_selectedUnitsForMission.empty();
-        drawActionButton(kOriginalAttackDrawX, 0, L"\u00DAtok", canAttack);
-        drawActionButton(kOriginalCancelDrawX, 1, L"Zru\u0161it",
+        drawActionButton(kOriginalAttackDrawX, 0, spellcross_ui_locale::Tr("native.attack", "Attack"), canAttack);
+        drawActionButton(kOriginalCancelDrawX, 1, spellcross_ui_locale::Tr("native.cancel_button", "Cancel"),
             !m_selectedUnitsForMission.empty() || !m_selectedCommandersForMission.empty());
 
         // Original status panel values.
-        OriginalDrawSpellText(image, font, L"Pen\u00EDze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_money), 578, 31, text, 61, true);
-        OriginalDrawSpellText(image, font, L"V\u00FDzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_research), 578, 61, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_turn), 578, 91, text, 61, true);
 
         // Idle lower-right turn label.  The common post-pass below overlays
         // the native ET_BTN0 sprite as a left-to-right wipe on mouse hover.
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, text, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 579, 436, text, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", m_turn), 579, 452, text, 60, true);
 
         // Territory briefing text in the original lower frame.
@@ -3326,7 +3328,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         }
         else
         {
-            OriginalDrawSpellText(image, font, L"Vyber \u00FAzem\u00ED na map\u011B.", 22, 366, dim, 374, true);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.choose_territory", "Select a territory on the map."), 22, 366, dim, 374, true);
         }
     }
 
@@ -3379,7 +3381,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         m_originalScrollbarVisible = maxUnitRows;
         m_originalScrollbarHeight = 472;
 
-        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Units", "Jednotky"), 420, 12, heading, 132, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.units", "Units"), 420, 12, heading, 132, true);
         const int unitTextH = std::max(1, font->GetHeight());
         int unitRows = 0;
         for (int flat = m_originalHierarchyUnitScroll;
@@ -3401,9 +3403,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             ++unitRows;
         }
         if (hierarchyFlatUnits.empty())
-            OriginalDrawSpellText(image, font, strategic_label(m_spellData, "-- no units --", "-- bez jednotek --"), 421, 30, dim, 130, true);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.no_units", "-- no units --"), 421, 30, dim, 130, true);
 
-        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Commanders", "Velitelé"), 420, 292, heading, 132, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.commanders", "Commanders"), 420, 292, heading, 132, true);
         int cy = 309;
         int cmdRows = 0;
         for (const auto& commander : m_playerCommanders)
@@ -3422,7 +3424,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             ++cmdRows;
         }
         if (cmdRows == 0)
-            OriginalDrawSpellText(image, font, L"-- bez velitelů --", 421, 310, dim, 130, true);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.no_commanders", "-- no commanders --"), 421, 310, dim, 130, true);
 
         // Original active-formation overlays from COMMON.FS. These are not
         // hand-drawn approximations: UNT_ACT/PRP_ACT/PLK_ACT/BRG_ACT are the
@@ -3536,16 +3538,16 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
         // Native lower-right page selector: original BIGMB 70x28 sprite.
         OriginalDrawActionButton(image, font, loader, nativeUiPal, 323, 439,
-            wxString::Format(L"\u010C\u00E1st %d", m_originalHierarchyPage), true);
+            wxString::Format(spellcross_ui_locale::Tr("native.part", "Part %d"), m_originalHierarchyPage), true);
 
         // Common original status panel values.
-        OriginalDrawSpellText(image, font, L"Pen\u00EDze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_money), 578, 31, text, 61, true);
-        OriginalDrawSpellText(image, font, L"V\u00FDzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_research), 578, 61, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_turn), 578, 91, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, text, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 579, 436, text, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", m_turn), 579, 452, text, 60, true);
     }
 
@@ -3762,11 +3764,11 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // STRUPG.QH defines the three mode hit zones at x=346..403. Keep the
         // labels centred in that exact strip and draw only corner brackets at
         // its edges; unlike the previous workaround they never cross the text.
-        OriginalDrawSpellText(image, font, L"Mód", 346, 214, green, 58, true);
-        const struct { UnitsTab tab; const wchar_t* label; int y; } modes[] = {
-            { UNITS_TAB_UPGRADE, L"Úpravy", 232 },
-            { UNITS_TAB_RECRUIT, L"Nábor", 247 },
-            { UNITS_TAB_INFO,    L"Info", 262 }
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.mode", "Mode"), 346, 214, green, 58, true);
+        const struct { UnitsTab tab; wxString label; int y; } modes[] = {
+            { UNITS_TAB_UPGRADE, spellcross_ui_locale::Tr("native.tab_upgrade", "Upgrades"), 232 },
+            { UNITS_TAB_RECRUIT, spellcross_ui_locale::Tr("native.tab_recruit", "Recruit"), 247 },
+            { UNITS_TAB_INFO,    spellcross_ui_locale::Tr("native.tab_info", "Info"), 262 }
         };
         for (const auto& m : modes)
         {
@@ -3841,12 +3843,12 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             const auto& u = m_playerUnits[static_cast<size_t>(m_unitsSelectedUnit)];
             availableUpgrades = GetAvailableUpgradesForUnit(u.unit_id);
             rearmChoices = GetAvailableUnitTypesForUpgrade(u.unit_id);
-            addUpgradeGroup(UpgradeDefRec::Engine, L"Motory", availableUpgrades);
-            addUpgradeGroup(UpgradeDefRec::Weapon, L"Zbran\u011B", availableUpgrades);
-            addUpgradeGroup(UpgradeDefRec::Armor, L"Obrana", availableUpgrades);
+            addUpgradeGroup(UpgradeDefRec::Engine, spellcross_ui_locale::Tr("native.group_engines", "Engines"), availableUpgrades);
+            addUpgradeGroup(UpgradeDefRec::Weapon, spellcross_ui_locale::Tr("native.group_weapons", "Weapons"), availableUpgrades);
+            addUpgradeGroup(UpgradeDefRec::Armor, spellcross_ui_locale::Tr("native.defense", "Defense"), availableUpgrades);
             if (m_unitsCurrentTab == UNITS_TAB_UPGRADE && !rearmChoices.empty())
             {
-                optionRows.push_back({ L"Nov\u00FD typ", -1, -1, true });
+                optionRows.push_back({ spellcross_ui_locale::Tr("native.new_type", "New type"), -1, -1, true });
                 for (int id : rearmChoices)
                     optionRows.push_back({ GetUnitDisplayName(id), -1, id, false });
             }
@@ -3974,12 +3976,12 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
             if (m_unitsCurrentTab == UNITS_TAB_INFO)
             {
-                OriginalDrawSpellText(image, font, wxString(L"Typ: ") + GetUnitDisplayName(u.unit_id), 356, 319, text, 143);
-                OriginalDrawSpellText(image, font, wxString::Format(L"Stav: %d/%d", curHp, maxHp), 356, 334, text, 143);
-                OriginalDrawSpellText(image, font, wxString::Format(L"\u00DArove\u0148: %d", lvl), 356, 349, text, 143);
-                OriginalDrawSpellText(image, font, wxString::Format(L"Zku\u0161enost: %d", xp), 356, 364, text, 143);
+                OriginalDrawSpellText(image, font, wxString(spellcross_ui_locale::Tr("native.type_caption", "Type: ")) + GetUnitDisplayName(u.unit_id), 356, 319, text, 143);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.strength", "Strength: %d/%d"), curHp, maxHp), 356, 334, text, 143);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.level", "Level: %d"), lvl), 356, 349, text, 143);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.experience", "Experience: %d"), xp), 356, 364, text, 143);
                 OriginalDrawSpellText(image, font,
-                    IsTemporaryUnitIndex(static_cast<size_t>(m_unitsSelectedUnit)) ? L"Pomocn\u00E1 jednotka" : L"St\u00E1l\u00E1 jednotka",
+                    IsTemporaryUnitIndex(static_cast<size_t>(m_unitsSelectedUnit)) ? spellcross_ui_locale::Tr("native.temporary_unit", "Auxiliary unit") : spellcross_ui_locale::Tr("native.permanent_unit", "Permanent unit"),
                     356, 382, dim, 143);
 
                 if (m_spellData && m_spellData->units)
@@ -3991,8 +3993,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             }
             else if (m_unitsCurrentTab == UNITS_TAB_RECRUIT)
             {
-                OriginalDrawSpellText(image, font, wxString::Format(L"Stav: %d/%d", curHp, maxHp), 356, 320, text, 143);
-                OriginalDrawSpellText(image, font, wxString::Format(L"\u00DArove\u0148: %d   XP: %d", lvl, xp), 356, 336, text, 143);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.strength", "Strength: %d/%d"), curHp, maxHp), 356, 320, text, 143);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.level_xp", "Level: %d   XP: %d"), lvl, xp), 356, 336, text, 143);
 
                 if (m_spellData && m_spellData->units)
                 {
@@ -4003,8 +4005,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 int q = (m_unitsSelectedUpgrade >= 0 && m_unitsSelectedUpgrade < RECRUIT_QUALITY_COUNT)
                     ? m_unitsSelectedUpgrade : 1;
                 m_unitsSelectedUpgrade = q;
-                const wchar_t* labels[RECRUIT_QUALITY_COUNT] = {
-                    L"N\u00E1bor nov\u00E1\u010Dk\u016F", L"N\u00E1bor veter\u00E1n\u016F", L"N\u00E1bor elity"
+                const wxString labels[RECRUIT_QUALITY_COUNT] = {
+                    spellcross_ui_locale::Tr("native.recruit_rookies", "Recruit rookies"), spellcross_ui_locale::Tr("native.recruit_veterans", "Recruit veterans"), spellcross_ui_locale::Tr("native.recruit_elite", "Recruit elite")
                 };
                 for (int i = 0; i < RECRUIT_QUALITY_COUNT; ++i)
                 {
@@ -4023,8 +4025,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             }
             else if (m_unitsCurrentTab == UNITS_TAB_UPGRADE)
             {
-                OriginalDrawSpellText(image, font, wxString::Format(L"Stav: %d/%d", curHp, maxHp), 356, 320, text, 205);
-                OriginalDrawSpellText(image, font, wxString::Format(L"\u00DArove\u0148: %d   XP: %d", lvl, xp), 356, 336, text, 205);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.strength", "Strength: %d/%d"), curHp, maxHp), 356, 320, text, 205);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.level_xp", "Level: %d   XP: %d"), lvl, xp), 356, 336, text, 205);
 
                 wxString installedEngine = L"-";
                 wxString installedWeapon = L"-";
@@ -4062,9 +4064,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 appendPending(0, installedEngine);
                 appendPending(1, installedWeapon);
                 appendPending(2, installedArmor);
-                OriginalDrawSpellText(image, font, wxString(L"Motor: ") + installedEngine, 353, 351, green, 210);
-                OriginalDrawSpellText(image, font, wxString(L"Zbraň: ") + installedWeapon, 353, 364, green, 210);
-                OriginalDrawSpellText(image, font, wxString(L"Obrana: ") + installedArmor, 353, 377, green, 210);
+                OriginalDrawSpellText(image, font, wxString(spellcross_ui_locale::Tr("native.engine_caption", "Engine: ")) + installedEngine, 353, 351, green, 210);
+                OriginalDrawSpellText(image, font, wxString(spellcross_ui_locale::Tr("native.weapon_caption", "Weapon: ")) + installedWeapon, 353, 364, green, 210);
+                OriginalDrawSpellText(image, font, wxString(spellcross_ui_locale::Tr("native.armor_caption", "Armor: ")) + installedArmor, 353, 377, green, 210);
 
                 const bool hasUpgradeChoice = m_unitsSelectedUpgrade >= 0 && m_unitsSelectedRearmUnitId <= 0;
                 const bool hasRearmChoice = m_unitsSelectedRearmUnitId > 0;
@@ -4076,7 +4078,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                     if (label.empty())
                         for (const auto& r : m_researchDb)
                             if (r.data == m_unitsSelectedUpgrade && !r.title.empty()) { label = r.title; break; }
-                    if (label.empty()) label = wxString::Format(L"Vylep\u0161en\u00ED #%d", m_unitsSelectedUpgrade);
+                    if (label.empty()) label = wxString::Format(spellcross_ui_locale::Tr("native.upgrade_number", "Upgrade #%d"), m_unitsSelectedUpgrade);
                     OriginalFillRect(image, 350, 391, 216, 16, selectedBand);
                     OriginalDrawSpellText(image, font, label, 353, 393, wxColour(35,35,35), 210, true);
                     if (it != m_upgradeDefs.end())
@@ -4087,11 +4089,11 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                             if (!effects.empty()) effects += L"  ";
                             effects += n + wxString::Format(L" %+d", v);
                         };
-                        addEffect(L"Pohyb", it->second.move);
-                        addEffect(L"Obrana", it->second.defence);
-                        addEffect(L"Útok", it->second.attack);
-                        addEffect(L"Útoky", it->second.attackCount);
-                        addEffect(L"Dostřel", it->second.range);
+                        addEffect(spellcross_ui_locale::Tr("native.move", "Move"), it->second.move);
+                        addEffect(spellcross_ui_locale::Tr("native.defense", "Defense"), it->second.defence);
+                        addEffect(spellcross_ui_locale::Tr("native.attack", "Attack"), it->second.attack);
+                        addEffect(spellcross_ui_locale::Tr("native.attacks", "Attacks"), it->second.attackCount);
+                        addEffect(spellcross_ui_locale::Tr("native.range", "Range"), it->second.range);
                         if (!effects.empty())
                             OriginalDrawSpellText(image, font, effects, 353, 410, dim, 210, true);
                     }
@@ -4117,9 +4119,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 else if (hasRearmChoice)
                 {
                     OriginalFillRect(image, 350, 391, 216, 16, selectedBand);
-                    OriginalDrawSpellText(image, font, wxString(L"Nov\u00FD typ: ") + GetUnitDisplayName(m_unitsSelectedRearmUnitId),
+                    OriginalDrawSpellText(image, font, wxString(spellcross_ui_locale::Tr("native.new_type_caption", "New type: ")) + GetUnitDisplayName(m_unitsSelectedRearmUnitId),
                         353, 393, wxColour(35,35,35), 210, true);
-                    OriginalDrawSpellText(image, font, L"P\u0159ezbrojen\u00ED sn\u00ED\u017E\u00ED XP a odstran\u00ED vylep\u0161en\u00ED.",
+                    OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.rearm_warning", "Rearming reduces XP and removes upgrades."),
                         353, 410, dim, 210, true);
                     actionCost = GetUpgradeCost(u.unit_id, m_unitsSelectedRearmUnitId);
                     actionTime = GetUpgradeTime(m_unitsSelectedRearmUnitId);
@@ -4127,18 +4129,18 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 }
                 else
                 {
-                    OriginalDrawSpellText(image, font, L"Vyber vylep\u0161en\u00ED nebo nov\u00FD typ", 353, 397, dim, 210, true);
+                    OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.choose_upgrade", "Select upgrade or new type"), 353, 397, dim, 210, true);
                 }
             }
 
             if (hasCooldown)
                 OriginalDrawSpellText(image, font,
-                    wxString::Format(L"Nedostupná: %d kol", m_unitStates[m_unitsSelectedUnit].cooldown_turns),
+                    wxString::Format(spellcross_ui_locale::Tr("native.unavailable", "Unavailable: %d turns"), m_unitStates[m_unitsSelectedUnit].cooldown_turns),
                     350, 423, warn, 216, true);
         }
         else
         {
-            OriginalDrawSpellText(image, font, L"Vyber jednotku.", 350, 350, dim, 216, true);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.choose_unit", "Select a unit."), 350, 350, dim, 216, true);
         }
 
         const bool canDisband = m_unitsSelectedUnit >= 0 && !hasCooldown;
@@ -4147,22 +4149,22 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawActionButton(image, font, loader, nativeUiPal, 495, 438, L"OK", actionEnabled);
 
         // Time / cost text belongs inside the original VMU_LST1 inset.
-        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Time:", "Čas:"), 424, 439, text, 28);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.time_caption", "Time:"), 424, 439, text, 28);
         const wxString actionTimeText = actionTime >= 0 ? wxString::Format(L"%d", actionTime) : wxString(L"-");
         OriginalDrawSpellText(image, font, actionTimeText, 455, 439, text, 28, true);
-        OriginalDrawSpellText(image, font, L"Cena:", 424, 452, text, 28);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.cost", "Cost:"), 424, 452, text, 28);
         const wxString actionCostText = actionCost >= 0 ? wxString::Format(L"%d", actionCost) : wxString(L"-");
         OriginalDrawSpellText(image, font, actionCostText, 455, 452, text, 28, true);
 
         // Common status area.  The turn appears here AND on the end-turn plate,
         // matching the original game.
-        OriginalDrawSpellText(image, font, L"Pen\u00EDze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_money), 578, 31, text, 61, true);
-        OriginalDrawSpellText(image, font, L"V\u00FDzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_research), 578, 61, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_turn), 578, 91, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, text, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 579, 436, text, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", m_turn), 579, 452, text, 60, true);
     }
 
@@ -4315,13 +4317,13 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             if (auto* rec = m_spellData->units->GetUnit(tid))
             {
                 OriginalDrawSpellText(image, font, GetUnitDisplayName(tid), 346, 296, text, 217);
-                OriginalDrawSpellText(image, font, L"\u00DAtok:", 369, 312, text, 126);
-                OriginalDrawSpellText(image, font, wxString::Format(L"Lehk\u00E9: %d", rec->attack_light), 385, 327, text, 112);
-                OriginalDrawSpellText(image, font, wxString::Format(L"T\u011B\u017Ek\u00E9: %d", rec->attack_armored), 385, 342, text, 112);
-                OriginalDrawSpellText(image, font, wxString::Format(L"Vzdu\u0161n\u00E9: %d", rec->attack_air), 385, 357, text, 112);
+                OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.attack_caption", "Attack:"), 369, 312, text, 126);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.light_attack", "Light: %d"), rec->attack_light), 385, 327, text, 112);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.heavy_attack", "Heavy: %d"), rec->attack_armored), 385, 342, text, 112);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.air_attack", "Air: %d"), rec->attack_air), 385, 357, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(L"Objekty: %d", rec->attack_objects), 385, 372, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(L"Obrana: %d", rec->defence), 369, 387, text, 128);
-                OriginalDrawSpellText(image, font, wxString::Format(L"Dost\u0159el: %d", rec->fire_range), 369, 402, text, 128);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.range_value", "Range: %d"), rec->fire_range), 369, 402, text, 128);
                 OriginalDrawSpellText(image, font, wxString::Format(L"Dohled: %d", rec->sdir), 369, 417, text, 128);
 
                 if (rec->icon_glyph)
@@ -4373,7 +4375,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             const auto& commander = m_availableCommanders[static_cast<size_t>(m_originalBuySelectedCommander)];
             const wxString label = originalRankAbbrev(commander.rank) + L" " + wxString::FromUTF8(commander.name);
             OriginalDrawSpellText(image, font, label, 346, 296, text, 217);
-            OriginalDrawSpellText(image, font, L"Velitel Aliance", 369, 322, text, 128);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.alliance_commander", "Alliance commander"), 369, 322, text, 128);
             actionCost = 0;
             actionTime = 1;
             actionEnabled = static_cast<int>(m_playerCommanders.size()) < maxCommanders;
@@ -4382,23 +4384,23 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawActionButton(image, font, loader, nativeUiPal,
             495, 438, L"Koupit", actionEnabled);
 
-        OriginalDrawSpellText(image, font, L"\u010Cas:", 423, 438, text, 38);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.time", "Time:"), 423, 438, text, 38);
         OriginalDrawSpellText(image, font,
             actionTime >= 0 ? wxString::Format(L"%d", actionTime) : wxString(L"-"),
             469, 438, text, 25);
-        OriginalDrawSpellText(image, font, L"Cena:", 423, 454, text, 38);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.cost", "Cost:"), 423, 454, text, 38);
         OriginalDrawSpellText(image, font,
             actionCost >= 0 ? wxString::Format(L"%d", actionCost) : wxString(L"-"),
             469, 454, text, 25);
 
         // Common right-hand status and end-turn plate.
-        OriginalDrawSpellText(image, font, L"Pen\u00EDze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_money), 578, 31, text, 61, true);
-        OriginalDrawSpellText(image, font, L"V\u00FDzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_research), 578, 61, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_turn), 578, 91, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, text, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 579, 436, text, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", m_turn), 579, 452, text, 60, true);
     }
 
@@ -4427,10 +4429,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         constexpr int researchListH = 464; // STRRSR.QH
 
         auto groupLabel = [](const wxString& g) -> wxString {
-            if (g == "Global") return L"Globální";
-            if (g == "Technologies") return L"Technologie";
-            if (g == "Upgrades") return L"Vylepšení";
-            if (g == "Races") return L"Rasy a jednotky";
+            if (g == "Global") return spellcross_ui_locale::Tr("research.group.global", "Global");
+            if (g == "Technologies") return spellcross_ui_locale::Tr("research.group.technologies", "Technologies");
+            if (g == "Upgrades") return spellcross_ui_locale::Tr("research.group.upgrades", "Upgrades");
+            if (g == "Races") return spellcross_ui_locale::Tr("research.group.races", "Races and units");
             return g;
         };
         struct RRow { bool heading=false; int index=-1; wxString label; };
@@ -4608,10 +4610,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         constexpr int infoListH = 467; // STRINFO.QH
 
         auto groupLabel = [](const wxString& g) -> wxString {
-            if (g == "Global") return L"Globální";
-            if (g == "Technologies") return L"Technologie";
-            if (g == "Upgrades") return L"Vylepšení";
-            if (g == "Races") return L"Rasy a jednotky";
+            if (g == "Global") return spellcross_ui_locale::Tr("research.group.global", "Global");
+            if (g == "Technologies") return spellcross_ui_locale::Tr("research.group.technologies", "Technologies");
+            if (g == "Upgrades") return spellcross_ui_locale::Tr("research.group.upgrades", "Upgrades");
+            if (g == "Races") return spellcross_ui_locale::Tr("research.group.races", "Races and units");
             return g;
         };
         struct IRow { bool heading=false; int index=-1; wxString label; };
@@ -4674,9 +4676,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // The native INFO controls are actual green grid buttons inside the
         // metal recess, not bare labels. Their text is vertically centred in
         // the live button face (the previous hard-coded y=444 sat too high).
-        OriginalDrawActionButton(image, font, loader, nativeUiPal, 197, 438, L"Dolů",
+        OriginalDrawActionButton(image, font, loader, nativeUiPal, 197, 438, spellcross_ui_locale::Tr("native.down", "Down"),
             m_originalInfoTextScroll < maxTextScroll);
-        OriginalDrawActionButton(image, font, loader, nativeUiPal, 284, 438, L"Nahoru",
+        OriginalDrawActionButton(image, font, loader, nativeUiPal, 284, 438, spellcross_ui_locale::Tr("native.up", "Up"),
             m_originalInfoTextScroll > 0);
 
         OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
@@ -4829,9 +4831,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
         // Native lower information boxes.  Labels and values have different
         // baselines in the original; a shared offset is visibly wrong.
-        OriginalDrawSpellText(image, font, L"Výzkum", 167, 410, green, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 167, 410, green, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", R), 167, 430, green, 60, true);
-        OriginalDrawSpellText(image, font, L"Peníze", 342, 410, green, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 342, 410, green, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", M), 342, 430, green, 60, true);
 
         // FACTORY.LZ deliberately contains palette-index-131 pink placeholder
@@ -4904,11 +4906,11 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
         // Overall game panel. STRSTAT.QH bounds it at 132,38,362x146; the
         // decorative title/header/row cells are part of STATS.LZ.
-        drawCentered(L"Statistika celé hry", 152, 33, 475, 56, text);
-        drawCentered(L"Aliance - ztráty", kStatsLabelX1, 56, kStatsAllianceX1, 80, text);
-        drawCentered(L"Other Side - ztráty", kStatsAllianceX1, 56, kStatsX1, 80, text);
+        drawCentered(spellcross_ui_locale::Tr("stats.game", "Overall game statistics"), 152, 33, 475, 56, text);
+        drawCentered(spellcross_ui_locale::Tr("stats.alliance_losses", "Alliance - losses"), kStatsLabelX1, 56, kStatsAllianceX1, 80, text);
+        drawCentered(spellcross_ui_locale::Tr("stats.enemy_losses", "Other Side - losses"), kStatsAllianceX1, 56, kStatsX1, 80, text);
 
-        const std::array<wxString,4> labels = {L"Lehké j.", L"Těžké j.", L"Vzdušné j.", L"Velitelé"};
+        const std::array<wxString,4> labels = {spellcross_ui_locale::Tr("stats.light", "Light"), spellcross_ui_locale::Tr("stats.heavy", "Heavy"), spellcross_ui_locale::Tr("stats.air", "Air"), spellcross_ui_locale::Tr("stats.commanders", "Commanders")};
         const std::array<int,4> ay = {m_lossStats.alliance_all.light, m_lossStats.alliance_all.heavy,
                                       m_lossStats.alliance_all.air, m_lossStats.alliance_all.commanders};
         const std::array<int,4> ey = {m_lossStats.enemy_all.light, m_lossStats.enemy_all.heavy,
@@ -4924,9 +4926,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         }
 
         // Current-level panel.
-        drawCentered(L"Statistika aktuálního levelu", 152, 188, 475, 211, text);
-        drawCentered(L"Aliance - ztráty", kStatsLabelX1, 211, kStatsAllianceX1, 235, text);
-        drawCentered(L"Other Side - ztráty", kStatsAllianceX1, 211, kStatsX1, 235, text);
+        drawCentered(spellcross_ui_locale::Tr("stats.level", "Current level statistics"), 152, 188, 475, 211, text);
+        drawCentered(spellcross_ui_locale::Tr("stats.alliance_losses", "Alliance - losses"), kStatsLabelX1, 211, kStatsAllianceX1, 235, text);
+        drawCentered(spellcross_ui_locale::Tr("stats.enemy_losses", "Other Side - losses"), kStatsAllianceX1, 211, kStatsX1, 235, text);
 
         const std::array<int,4> al = {m_lossStats.alliance_level.light, m_lossStats.alliance_level.heavy,
                                       m_lossStats.alliance_level.air, m_lossStats.alliance_level.commanders};
@@ -4942,13 +4944,19 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             drawValue(el[static_cast<size_t>(r)], kStatsAllianceX1, lowerRows[r], kStatsX1, lowerRows[r + 1]);
         }
 
-        auto rankCz = [](int rank) -> wxString {
-            switch (rank) {
-            case 0: return L"Poručík"; case 1: return L"Nadporučík"; case 2: return L"Kapitán";
-            case 3: return L"Major"; case 4: return L"Podplukovník"; case 5: return L"Plukovník";
-            case 6: return L"Generálmajor"; case 7: return L"Generálporučík"; case 8: return L"Armádní Generál";
-            default: return wxString::Format(L"Hodnost %d", rank);
+        auto localizedRank = [](int rank) -> wxString {
+            static constexpr const char* ranks[] = {
+                "Lieutenant", "First lieutenant", "Captain", "Major",
+                "Lieutenant colonel", "Colonel", "Major general",
+                "Lieutenant general", "Army general"
+            };
+            if (rank >= 0 && rank < static_cast<int>(sizeof(ranks) / sizeof(ranks[0])))
+            {
+                const std::string key = "stats.rank." + std::to_string(rank);
+                return spellcross_ui_locale::Tr(key.c_str(), ranks[rank]);
             }
+            return spellcross_ui_locale::Tr("stats.rank_unknown", "Rank") +
+                wxString::Format(L" %d", rank);
         };
         int maxUnits = 0, maxCommanders = 0;
         if (const CommanderRankRec* rr = FindRankRec(m_player.rank))
@@ -4962,18 +4970,18 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // live lines inside that native rectangle using the original 18px row
         // cadence and fixed left insets.
         constexpr int playerX = 132, playerY = 344, playerW = 256;
-        OriginalDrawSpellText(image, font, wxString(L"Hráč - ") + wxString::FromUTF8(m_player.name),
+        OriginalDrawSpellText(image, font, wxString(spellcross_ui_locale::Tr("stats.player_prefix", "Player - ")) + wxString::FromUTF8(m_player.name),
             playerX + 10, playerY + 15, text, playerW - 20);
-        OriginalDrawSpellText(image, font, L"Hodnost:", playerX + 25, playerY + 36, green, 77);
-        OriginalDrawSpellText(image, font, rankCz(m_player.rank), playerX + 88, playerY + 36, dim, 158);
-        OriginalDrawSpellText(image, font, L"Zkušenost:", playerX + 25, playerY + 54, green, 87);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.rank_caption", "Rank:"), playerX + 25, playerY + 36, green, 77);
+        OriginalDrawSpellText(image, font, localizedRank(m_player.rank), playerX + 88, playerY + 36, dim, 158);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.experience_caption", "Experience:"), playerX + 25, playerY + 54, green, 87);
         OriginalDrawSpellText(image, font,
             nextExp > m_player.experience ? wxString::Format(L"%d (%d)", m_player.experience, nextExp)
                                           : wxString::Format(L"%d (-)", m_player.experience),
             playerX + 94, playerY + 54, dim, 152);
-        OriginalDrawSpellText(image, font, L"Max. počet stálých jednotek:", playerX + 25, playerY + 72, green, 205);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.max_units", "Max. permanent units:"), playerX + 25, playerY + 72, green, 205);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", maxUnits), playerX + 222, playerY + 72, dim, 30);
-        OriginalDrawSpellText(image, font, L"Max. počet velitelů:", playerX + 25, playerY + 90, green, 170);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.max_commanders", "Max. commanders:"), playerX + 25, playerY + 90, green, 170);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", maxCommanders), playerX + 194, playerY + 90, dim, 35);
 
         OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
@@ -5016,10 +5024,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             const auto path = GetStrategicSaveSlotPath(m_level, slot);
             std::error_code ec;
             const bool exists = std::filesystem::exists(path, ec);
-            OriginalDrawOptionsButton(image, font, loader, nativeUiPal, loadButton, L"Load", exists);
-            OriginalDrawOptionsButton(image, font, loader, nativeUiPal, saveButton, L"Save", true);
+            OriginalDrawOptionsButton(image, font, loader, nativeUiPal, loadButton, spellcross_ui_locale::Tr("options.load", "Load"), exists);
+            OriginalDrawOptionsButton(image, font, loader, nativeUiPal, saveButton, spellcross_ui_locale::Tr("options.save", "Save"), true);
 
-            wxString slotText = L"-= EMPTY =-";
+            wxString slotText = spellcross_ui_locale::Tr("options.empty", "-= EMPTY =-");
             if (exists)
             {
                 int money = 0, rank = 0, xp = 0;
@@ -5037,7 +5045,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                     else if (!ts.empty())
                         slotText = wxString::FromUTF8(ts);
                     else
-                        slotText = wxString::Format(L"SLOT %02d", slot);
+                        slotText = spellcross_ui_locale::Tr("options.slot", "SLOT") + wxString::Format(L" %02d", slot);
                 }
             }
             OriginalDrawSpellText(image, font, slotText, slotRow.x,
@@ -5048,13 +5056,13 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // Slider captions are centred in the exact 18 px header bands of the
         // three STROPT controls.  The +/- button chrome is already present in
         // OPTIONS.LZ; do not draw a second, shifted pair of glyphs on top.
-        OriginalDrawSpellText(image, font, L"Gamma Correction", kOptGammaTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.gamma", "Gamma Correction"), kOptGammaTitle.x,
             OriginalCenteredTextY(font, kOptGammaTitle.y, kOptGammaTitle.h),
             green, kOptGammaTitle.w, true);
-        OriginalDrawSpellText(image, font, L"Music Volume", kOptMusicTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.music", "Music Volume"), kOptMusicTitle.x,
             OriginalCenteredTextY(font, kOptMusicTitle.y, kOptMusicTitle.h),
             green, kOptMusicTitle.w, true);
-        OriginalDrawSpellText(image, font, L"Sound Volume", kOptSoundTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.sound", "Sound Volume"), kOptSoundTitle.x,
             OriginalCenteredTextY(font, kOptSoundTitle.y, kOptSoundTitle.h),
             green, kOptSoundTitle.w, true);
 
@@ -5073,7 +5081,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             OriginalHLine(image, kOptDifficultyInner.x + 1,
                 kOptDifficultyInner.x + kOptDifficultyInner.w - 2, gy, wxColour(16, 62, 16));
 
-        OriginalDrawSpellText(image, font, L"Game Difficulty", kOptDifficultyTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.difficulty", "Game Difficulty"), kOptDifficultyTitle.x,
             OriginalCenteredTextY(font, kOptDifficultyTitle.y, kOptDifficultyTitle.h),
             green, kOptDifficultyTitle.w, true);
 
@@ -5083,26 +5091,26 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         const bool englishDifficulty = m_spellData && m_spellData->units && m_spellData->units->IsEnglish();
         if (!englishDifficulty)
         {
-            OriginalDrawSpellText(image, font, L"Easy", kOptDifficultyEasy.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.easy", "Easy"), kOptDifficultyEasy.x,
                 OriginalCenteredTextY(font, kOptDifficultyEasy.y, kOptDifficultyEasy.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::EASY) ? selected : green,
                 kOptDifficultyEasy.w, true);
-            OriginalDrawSpellText(image, font, L"Normal", kOptDifficultyNormal.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.normal", "Normal"), kOptDifficultyNormal.x,
                 OriginalCenteredTextY(font, kOptDifficultyNormal.y, kOptDifficultyNormal.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::NORMAL) ? selected : green,
                 kOptDifficultyNormal.w, true);
-            OriginalDrawSpellText(image, font, L"Hard", kOptDifficultyHard.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.hard", "Hard"), kOptDifficultyHard.x,
                 OriginalCenteredTextY(font, kOptDifficultyHard.y, kOptDifficultyHard.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::HARD) ? selected : green,
                 kOptDifficultyHard.w, true);
         }
         else
         {
-            OriginalDrawSpellText(image, font, L"Normal", kOptDifficultyNormalEn.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.normal", "Normal"), kOptDifficultyNormalEn.x,
                 OriginalCenteredTextY(font, kOptDifficultyNormalEn.y, kOptDifficultyNormalEn.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::NORMAL) ? selected : green,
                 kOptDifficultyNormalEn.w, true);
-            OriginalDrawSpellText(image, font, L"Hard", kOptDifficultyHardEn.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.hard", "Hard"), kOptDifficultyHardEn.x,
                 OriginalCenteredTextY(font, kOptDifficultyHardEn.y, kOptDifficultyHardEn.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::HARD) ? selected : green,
                 kOptDifficultyHardEn.w, true);
@@ -5111,13 +5119,13 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // Quick Help live overlay inside STROPT.QH #2.  These sub-rectangles
         // are aligned to the original runtime overlay rather than offsetting
         // text from the parent rectangle by arbitrary constants.
-        OriginalDrawSpellText(image, font, L"Quick Help", kOptQuickTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.quick_help", "Quick Help"), kOptQuickTitle.x,
             OriginalCenteredTextY(font, kOptQuickTitle.y, kOptQuickTitle.h),
             green, kOptQuickTitle.w, true);
-        OriginalDrawSpellText(image, font, L"On", kOptQuickOn.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.on", "On"), kOptQuickOn.x,
             OriginalCenteredTextY(font, kOptQuickOn.y, kOptQuickOn.h),
             m_originalQuickHelp ? selected : green, kOptQuickOn.w, true);
-        OriginalDrawSpellText(image, font, L"Off", kOptQuickOff.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.off", "Off"), kOptQuickOff.x,
             OriginalCenteredTextY(font, kOptQuickOff.y, kOptQuickOff.h),
             !m_originalQuickHelp ? selected : green, kOptQuickOff.w, true);
 
@@ -5133,7 +5141,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
         // STROPT.QH #3 is the 113x41 active Exit region; the visible live
         // button inside it is the original 71x29 rectangle at 346,440.
-        OriginalDrawOptionsButton(image, font, loader, nativeUiPal, kOptExitButton, L"Exit", true);
+        OriginalDrawOptionsButton(image, font, loader, nativeUiPal, kOptExitButton, spellcross_ui_locale::Tr("options.exit", "Exit"), true);
 
         OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
     }
@@ -8510,11 +8518,11 @@ void StrategicLevelFrame::BuildUI()
         m_infoPanel->SetSizer(is);
     }
 
-    m_leftBook->AddPage(m_mapPanel, strategic_label(m_spellData, "Strategic map", "Strategická mapa"), true);
-    m_leftBook->AddPage(hierarchyPanel, strategic_label(m_spellData, "Hierarchy", "Hierarchie"), false);
-    m_leftBook->AddPage(m_resourcesPanel, strategic_label(m_spellData, "Resources", "Suroviny"), false);
-    m_leftBook->AddPage(m_statsPanel, strategic_label(m_spellData, "Statistics", "Statistiky"), false);
-    m_leftBook->AddPage(m_researchPanel, strategic_label(m_spellData, "Research", "Výzkum"), false);
+    m_leftBook->AddPage(m_mapPanel, spellcross_ui_locale::Tr("strategic.map", "Strategic map"), true);
+    m_leftBook->AddPage(hierarchyPanel, spellcross_ui_locale::Tr("strategic.hierarchy", "Hierarchy"), false);
+    m_leftBook->AddPage(m_resourcesPanel, spellcross_ui_locale::Tr("strategic.resources", "Resources"), false);
+    m_leftBook->AddPage(m_statsPanel, spellcross_ui_locale::Tr("strategic.statistics", "Statistics"), false);
+    m_leftBook->AddPage(m_researchPanel, spellcross_ui_locale::Tr("strategic.research", "Research"), false);
     m_leftBook->AddPage(m_infoPanel, "Info", false);
 
     mainSizer->Add(m_leftBook, 5, wxEXPAND);
@@ -8539,8 +8547,8 @@ void StrategicLevelFrame::BuildUI()
 
     m_cmdRoster = new wxListCtrl(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
     m_cmdRoster->SetFont(m_fontText);
-    m_cmdRoster->InsertColumn(0, strategic_label(m_spellData, "Commander", "Velitel"));
-    m_cmdRoster->InsertColumn(1, strategic_label(m_spellData, "Rank", "Hodnost"));
+    m_cmdRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.commander", "Commander"));
+    m_cmdRoster->InsertColumn(1, spellcross_ui_locale::Tr("strategic.rank", "Rank"));
     m_cmdRoster->Bind(wxEVT_LIST_BEGIN_DRAG, &StrategicLevelFrame::OnCommanderBeginDrag, this);
     m_cmdRoster->Bind(wxEVT_LIST_ITEM_SELECTED, &StrategicLevelFrame::OnCommanderSelectForMission, this);
     m_cmdRoster->SetDropTarget(new HierarchyPoolDropTarget(this, "commander"));
@@ -8562,9 +8570,9 @@ void StrategicLevelFrame::BuildUI()
     // v BuildUI(): úprava definice sloupců m_roster - selection managed manually via toggle
     m_roster = new wxListCtrl(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
     m_roster->SetFont(m_fontText);
-    // PŮVODNĚ: InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka")); InsertColumn(1, strategic_label(m_spellData, "Count", "Počet")); InsertColumn(2, "HP");
+    // PŮVODNĚ: InsertColumn(0, spellcross_ui_locale::Tr("strategic.unit", "Unit")); InsertColumn(1, spellcross_ui_locale::Tr("strategic.count", "Count")); InsertColumn(2, "HP");
     // NOVĚ: jen dva sloupce: Unit a HP
-    m_roster->InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka"));
+    m_roster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.unit", "Unit"));
     m_roster->InsertColumn(1, "HP");
     // Use SELECTED event for toggle behavior (click = toggle selection state)
     m_roster->Bind(wxEVT_LIST_ITEM_SELECTED, &StrategicLevelFrame::OnUnitSelectForMission, this);
@@ -8616,7 +8624,7 @@ void StrategicLevelFrame::BuildUI()
 
         m_midResearchPanel->SetSizer(rs);
     }
-    m_midBook->AddPage(m_midResearchPanel, strategic_label(m_spellData, "Research", "Výzkum"), false);
+    m_midBook->AddPage(m_midResearchPanel, spellcross_ui_locale::Tr("strategic.research", "Research"), false);
 
     // --- Middle Info/Encyclopedia page – categorized list (read-only browsing) ---
     m_midInfoPanel = new wxPanel(m_midBook);
@@ -8665,13 +8673,13 @@ void StrategicLevelFrame::BuildUI()
     m_midResourcesPanel->SetMinSize(wxSize(1, 1));
     BindStrategicScreenSlice(m_midResourcesPanel, m_spellData, "VMF_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
-    m_midBook->AddPage(m_midResourcesPanel, strategic_label(m_spellData, "Resources", "Suroviny"), false);
+    m_midBook->AddPage(m_midResourcesPanel, spellcross_ui_locale::Tr("strategic.resources", "Resources"), false);
 
     m_midStatsPanel = new wxPanel(m_midBook);
     m_midStatsPanel->SetMinSize(wxSize(1, 1));
     BindStrategicScreenSlice(m_midStatsPanel, m_spellData, "VMS_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
-    m_midBook->AddPage(m_midStatsPanel, strategic_label(m_spellData, "Statistics", "Statistiky"), false);
+    m_midBook->AddPage(m_midStatsPanel, spellcross_ui_locale::Tr("strategic.statistics", "Statistics"), false);
 
     // Build the native Statistics screen after both its left and middle panels exist.
     BuildStatsPage();
@@ -8701,9 +8709,9 @@ void StrategicLevelFrame::BuildUI()
             statusSizer->Add(outCaption, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
             statusSizer->Add(outValue, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_LEFT);
         };
-    makeStatusRow(strategic_label(m_spellData, "Money:", "Peníze:"), m_lblMoneyCaption, m_lblMoneyValue);
-    makeStatusRow(strategic_label(m_spellData, "Research:", "Výzkum:"), m_lblResearchCaption, m_lblResearchValue);
-    makeStatusRow(strategic_label(m_spellData, "Turn:", "Tah:"), m_lblTurnCaption, m_lblTurnValue);
+    makeStatusRow(spellcross_ui_locale::Tr("strategic.money_caption", "Money:"), m_lblMoneyCaption, m_lblMoneyValue);
+    makeStatusRow(spellcross_ui_locale::Tr("strategic.research_caption", "Research:"), m_lblResearchCaption, m_lblResearchValue);
+    makeStatusRow(spellcross_ui_locale::Tr("strategic.turn_caption", "Turn:"), m_lblTurnCaption, m_lblTurnValue);
     status->SetSizer(statusSizer);
     rightSizer->Add(status, 0, wxALL | wxEXPAND, kCleanUiMargin);
 
@@ -8722,15 +8730,15 @@ void StrategicLevelFrame::BuildUI()
 
     // Buttons (consistent order across all pages)
 
-    m_btnStrategicMap = makeBtn(ID_BTN_STRATEGIC_MAP, strategic_label(m_spellData, "Strategic map", "Strategická mapa"), "strategic_map");
-    m_btnHierarchy = makeBtn(ID_BTN_HIERARCHY, strategic_label(m_spellData, "Hierarchy", "Hierarchie"), "hierarchy");
-    m_btnUnitsShop = makeBtn(ID_BTN_UNITS, strategic_label(m_spellData, "Units", "Jednotky"), "units");
-    m_btnBuyShop = makeBtn(ID_BTN_BUY_SHOP, strategic_label(m_spellData, "Buy / Sell", "Nákup / prodej"), "buy_sell");
-    m_btnResearch = makeBtn(ID_BTN_RESEARCH, strategic_label(m_spellData, "Research", "Výzkum"), "research");
+    m_btnStrategicMap = makeBtn(ID_BTN_STRATEGIC_MAP, spellcross_ui_locale::Tr("strategic.map", "Strategic map"), "strategic_map");
+    m_btnHierarchy = makeBtn(ID_BTN_HIERARCHY, spellcross_ui_locale::Tr("strategic.hierarchy", "Hierarchy"), "hierarchy");
+    m_btnUnitsShop = makeBtn(ID_BTN_UNITS, spellcross_ui_locale::Tr("strategic.units", "Units"), "units");
+    m_btnBuyShop = makeBtn(ID_BTN_BUY_SHOP, spellcross_ui_locale::Tr("strategic.buy_sell", "Buy / Sell"), "buy_sell");
+    m_btnResearch = makeBtn(ID_BTN_RESEARCH, spellcross_ui_locale::Tr("strategic.research", "Research"), "research");
     m_btnInfo = makeBtn(ID_BTN_INFO, "Info", "info");
-    m_btnResources = makeBtn(ID_BTN_RESOURCES, strategic_label(m_spellData, "Resources", "Suroviny"), "resources");
-    m_btnStats = makeBtn(ID_BTN_STATS, strategic_label(m_spellData, "Statistics", "Statistiky"), "statistics");
-    m_btnLaunch = makeBtn(ID_BTN_LAUNCH, strategic_label(m_spellData, "Launch mission", "Spustit misi"));  // No icon in original game
+    m_btnResources = makeBtn(ID_BTN_RESOURCES, spellcross_ui_locale::Tr("strategic.resources", "Resources"), "resources");
+    m_btnStats = makeBtn(ID_BTN_STATS, spellcross_ui_locale::Tr("strategic.statistics", "Statistics"), "statistics");
+    m_btnLaunch = makeBtn(ID_BTN_LAUNCH, spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission"));  // No icon in original game
 
     // Turn number is already visible in the status rows; keep the action itself plain.
     m_btnEndTurn = CreateStrategicButton(right, ID_BTN_ENDTURN,
@@ -8835,7 +8843,7 @@ void StrategicLevelFrame::BuildBuyPage()
         unitRoster->SetFont(m_fontText);
 
         // Exactly the needed columns (no empty columns).
-        unitRoster->InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka"));
+        unitRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.unit", "Unit"));
         unitRoster->InsertColumn(1, "HP");
 
         BindListGridOverlay(unitRoster);
@@ -8854,8 +8862,8 @@ void StrategicLevelFrame::BuildBuyPage()
         cmdRoster->SetFont(m_fontText);
 
         // Exactly the needed columns (no empty columns).
-        cmdRoster->InsertColumn(0, strategic_label(m_spellData, "Commander", "Velitel"));
-        cmdRoster->InsertColumn(1, strategic_label(m_spellData, "Rank", "Hodnost"));
+        cmdRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.commander", "Commander"));
+        cmdRoster->InsertColumn(1, spellcross_ui_locale::Tr("strategic.rank", "Rank"));
 
         BindListGridOverlay(cmdRoster);
         leftSizer->Add(cmdRoster, 1, wxALL | wxEXPAND, 4);
@@ -8974,9 +8982,9 @@ void StrategicLevelFrame::BuildBuyPage()
                 statusSizer->Add(outCaption, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
                 statusSizer->Add(outValue, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_LEFT);
             };
-        makeStatusRow(strategic_label(m_spellData, "Money:", "Peníze:"), m_buyLblMoneyCaption, m_buyLblMoneyValue);
-        makeStatusRow(strategic_label(m_spellData, "Research:", "Výzkum:"), m_buyLblResearchCaption, m_buyLblResearchValue);
-        makeStatusRow(strategic_label(m_spellData, "Turn:", "Tah:"), m_buyLblTurnCaption, m_buyLblTurnValue);
+        makeStatusRow(spellcross_ui_locale::Tr("strategic.money_caption", "Money:"), m_buyLblMoneyCaption, m_buyLblMoneyValue);
+        makeStatusRow(spellcross_ui_locale::Tr("strategic.research_caption", "Research:"), m_buyLblResearchCaption, m_buyLblResearchValue);
+        makeStatusRow(spellcross_ui_locale::Tr("strategic.turn_caption", "Turn:"), m_buyLblTurnCaption, m_buyLblTurnValue);
         status->SetSizer(statusSizer);
         sideSizer->Add(status, 0, wxALL | wxEXPAND, kCleanUiMargin);
     }
@@ -8996,31 +9004,31 @@ void StrategicLevelFrame::BuildBuyPage()
 
     auto* btnSizer = new wxBoxSizer(wxVERTICAL);
 
-    auto* btnStrategicMap = makeBtn(strategic_label(m_spellData, "Strategic map", "Strategická mapa"), "strategic_map");
+    auto* btnStrategicMap = makeBtn(spellcross_ui_locale::Tr("strategic.map", "Strategic map"), "strategic_map");
     btnStrategicMap->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowStrategicMap(ev); });
 
-    auto* btnHierarchy = makeBtn(strategic_label(m_spellData, "Hierarchy", "Hierarchie"), "hierarchy");
+    auto* btnHierarchy = makeBtn(spellcross_ui_locale::Tr("strategic.hierarchy", "Hierarchy"), "hierarchy");
     btnHierarchy->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowHierarchy(ev); });
 
-    auto* btnUnits = makeBtn(strategic_label(m_spellData, "Units", "Jednotky"), "units");
+    auto* btnUnits = makeBtn(spellcross_ui_locale::Tr("strategic.units", "Units"), "units");
     btnUnits->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); EnterUnitsMode(); });
 
-    auto* btnBuySell = makeBtn(strategic_label(m_spellData, "Buy / Sell", "Nákup / prodej"), "buy_sell");
+    auto* btnBuySell = makeBtn(spellcross_ui_locale::Tr("strategic.buy_sell", "Buy / Sell"), "buy_sell");
     btnBuySell->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { LeaveBuyMode(); });
 
-    auto* btnResearch = makeBtn(strategic_label(m_spellData, "Research", "Výzkum"), "research");
+    auto* btnResearch = makeBtn(spellcross_ui_locale::Tr("strategic.research", "Research"), "research");
     btnResearch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnResearch(ev); });
 
     auto* btnInfo = makeBtn("Info", "info");
     btnInfo->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowInfo(ev); });
 
-    auto* btnResources = makeBtn(strategic_label(m_spellData, "Resources", "Suroviny"), "resources");
+    auto* btnResources = makeBtn(spellcross_ui_locale::Tr("strategic.resources", "Resources"), "resources");
     btnResources->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowResources(ev); });
 
-    auto* btnStats = makeBtn(strategic_label(m_spellData, "Statistics", "Statistiky"), "statistics");
+    auto* btnStats = makeBtn(spellcross_ui_locale::Tr("strategic.statistics", "Statistics"), "statistics");
     btnStats->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowStats(ev); });
 
-    auto* btnLaunch = makeBtn(strategic_label(m_spellData, "Launch mission", "Spustit misi"));
+    auto* btnLaunch = makeBtn(spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission"));
     btnLaunch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnLaunch(ev); });
     // Launch mission must only be enabled on the Strategic map page.
     btnLaunch->Enable(false);
@@ -9458,9 +9466,9 @@ void StrategicLevelFrame::BuildUnitsPage()
     m_unitsRoster->SetFont(m_fontText);
 
     // Spellcross-like roster: Unit + Level + Status (NO HP column here; details are in the info panel).
-    m_unitsRoster->InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka"));
+    m_unitsRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.unit", "Unit"));
     m_unitsRoster->InsertColumn(1, "Lvl");
-    m_unitsRoster->InsertColumn(2, strategic_label(m_spellData, "Status", "Stav"));
+    m_unitsRoster->InsertColumn(2, spellcross_ui_locale::Tr("strategic.status", "Status"));
 
     m_unitsRoster->Bind(wxEVT_LIST_ITEM_SELECTED, [this](wxListEvent& ev) {
         // ItemData stores the original m_playerUnits index (not the expanded row index)
@@ -9486,9 +9494,9 @@ void StrategicLevelFrame::BuildUnitsPage()
         wxLC_REPORT | wxLC_SINGLE_SEL);
     m_unitsTempRoster->SetFont(m_fontText);
 
-    m_unitsTempRoster->InsertColumn(0, strategic_label(m_spellData, "Temporary", "Dočasné"));
+    m_unitsTempRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.temporary", "Temporary"));
     m_unitsTempRoster->InsertColumn(1, "Lvl");
-    m_unitsTempRoster->InsertColumn(2, strategic_label(m_spellData, "Status", "Stav"));
+    m_unitsTempRoster->InsertColumn(2, spellcross_ui_locale::Tr("strategic.status", "Status"));
 
     m_unitsTempRoster->Bind(wxEVT_LIST_ITEM_SELECTED, [this](wxListEvent& ev) {
         m_unitsSelectedUnit = static_cast<int>(m_unitsTempRoster->GetItemData(ev.GetIndex()));
@@ -9720,9 +9728,9 @@ void StrategicLevelFrame::BuildUnitsPage()
                 statusSizer->Add(outCaption, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
                 statusSizer->Add(outValue, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_LEFT);
             };
-        makeStatusRow(strategic_label(m_spellData, "Money:", "Peníze:"), m_unitsLblMoneyCaption, m_unitsLblMoneyValue);
-        makeStatusRow(strategic_label(m_spellData, "Research:", "Výzkum:"), m_unitsLblResearchCaption, m_unitsLblResearchValue);
-        makeStatusRow(strategic_label(m_spellData, "Turn:", "Tah:"), m_unitsLblTurnCaption, m_unitsLblTurnValue);
+        makeStatusRow(spellcross_ui_locale::Tr("strategic.money_caption", "Money:"), m_unitsLblMoneyCaption, m_unitsLblMoneyValue);
+        makeStatusRow(spellcross_ui_locale::Tr("strategic.research_caption", "Research:"), m_unitsLblResearchCaption, m_unitsLblResearchValue);
+        makeStatusRow(spellcross_ui_locale::Tr("strategic.turn_caption", "Turn:"), m_unitsLblTurnCaption, m_unitsLblTurnValue);
         status->SetSizer(statusSizer);
         sideSizer->Add(status, 0, wxALL | wxEXPAND, kCleanUiMargin);
     }
@@ -9742,31 +9750,31 @@ void StrategicLevelFrame::BuildUnitsPage()
 
     auto* btnSizer = new wxBoxSizer(wxVERTICAL);
 
-    auto* btnStrategicMap = makeBtn(strategic_label(m_spellData, "Strategic map", "Strategická mapa"), "strategic_map");
+    auto* btnStrategicMap = makeBtn(spellcross_ui_locale::Tr("strategic.map", "Strategic map"), "strategic_map");
     btnStrategicMap->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowStrategicMap(ev); });
 
-    auto* btnHierarchy = makeBtn(strategic_label(m_spellData, "Hierarchy", "Hierarchie"), "hierarchy");
+    auto* btnHierarchy = makeBtn(spellcross_ui_locale::Tr("strategic.hierarchy", "Hierarchy"), "hierarchy");
     btnHierarchy->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowHierarchy(ev); });
 
-    auto* btnUnits = makeBtn(strategic_label(m_spellData, "Units", "Jednotky"), "units");
+    auto* btnUnits = makeBtn(spellcross_ui_locale::Tr("strategic.units", "Units"), "units");
     btnUnits->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { LeaveUnitsMode(); });
 
-    auto* btnBuySell = makeBtn(strategic_label(m_spellData, "Buy / Sell", "Nákup / prodej"), "buy_sell");
+    auto* btnBuySell = makeBtn(spellcross_ui_locale::Tr("strategic.buy_sell", "Buy / Sell"), "buy_sell");
     btnBuySell->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { LeaveUnitsMode(); EnterBuyMode(); });
 
-    auto* btnResearch = makeBtn(strategic_label(m_spellData, "Research", "Výzkum"), "research");
+    auto* btnResearch = makeBtn(spellcross_ui_locale::Tr("strategic.research", "Research"), "research");
     btnResearch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnResearch(ev); });
 
     auto* btnInfo = makeBtn("Info", "info");
     btnInfo->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowInfo(ev); });
 
-    auto* btnResources = makeBtn(strategic_label(m_spellData, "Resources", "Suroviny"), "resources");
+    auto* btnResources = makeBtn(spellcross_ui_locale::Tr("strategic.resources", "Resources"), "resources");
     btnResources->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowResources(ev); });
 
-    auto* btnStats = makeBtn(strategic_label(m_spellData, "Statistics", "Statistiky"), "statistics");
+    auto* btnStats = makeBtn(spellcross_ui_locale::Tr("strategic.statistics", "Statistics"), "statistics");
     btnStats->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowStats(ev); });
 
-    auto* btnLaunch = makeBtn(strategic_label(m_spellData, "Launch mission", "Spustit misi"));
+    auto* btnLaunch = makeBtn(spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission"));
     btnLaunch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnLaunch(ev); });
     btnLaunch->Enable(false);
 
@@ -13328,8 +13336,8 @@ void StrategicLevelFrame::RefreshUI()
     {
         while (m_cmdRoster->GetColumnCount() > 0)
             m_cmdRoster->DeleteColumn(0);
-        m_cmdRoster->InsertColumn(0, strategic_label(m_spellData, "Commander", "Velitel"));
-        m_cmdRoster->InsertColumn(1, strategic_label(m_spellData, "Rank", "Hodnost"));
+        m_cmdRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.commander", "Commander"));
+        m_cmdRoster->InsertColumn(1, spellcross_ui_locale::Tr("strategic.rank", "Rank"));
 
         m_cmdRoster->DeleteAllItems();
 
@@ -13367,7 +13375,7 @@ void StrategicLevelFrame::RefreshUI()
     while (m_roster->GetColumnCount() > 0)
         m_roster->DeleteColumn(0);
 
-    m_roster->InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka"));
+    m_roster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.unit", "Unit"));
     m_roster->InsertColumn(1, "HP");
 
     // v RefreshUI(): rozbalení jednotek podle count a odstranění sloupce Count
