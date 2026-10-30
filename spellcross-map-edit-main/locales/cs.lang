@@ -82,3 +82,14 @@ stats.rank.6=Generálmajor
 stats.rank.7=Generálporučík
 stats.rank.8=Armádní generál
 stats.rank_unknown=Hodnost
+
+result.accomplished=MISE SPLNĚNA
+result.failed=MISE NEÚSPĚŠNÁ
+result.debrief_success=Mise byla splněna.
+result.debrief_failed=Mise nebyla splněna.
+result.alliance_losses=Aliance - ztráty
+result.enemy_losses=Druhá strana - ztráty
+result.light=Lehké jednotky
+result.heavy=Těžké jednotky
+result.air=Vzdušné jednotky
+result.commanders=Velitelé
