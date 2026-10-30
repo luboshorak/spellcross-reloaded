@@ -1052,7 +1052,8 @@ namespace
     static bool EnsureSpellcrossSourceConfiguration(CSimpleIniA& ini,
         const std::filesystem::path& config_path,
         const std::filesystem::path& runtime_root,
-        const std::filesystem::path& executable_dir)
+        const std::filesystem::path& executable_dir,
+        bool forceSourceSelection)
     {
         namespace fs = std::filesystem;
 
@@ -1176,7 +1177,7 @@ namespace
             }
         }
 
-        if (missingRequired)
+        if (missingRequired || forceSourceSelection)
         {
             const fs::path localDataDir = runtime_root / "game_data" / "DATA";
 
@@ -1239,9 +1240,10 @@ namespace
                     return true;
                 };
 
+                bool infoImported = false;
                 if (iso)
                 {
-                    copyIsoSidecar("INFO.FS", "INFO.FS");
+                    infoImported = copyIsoSidecar("INFO.FS", "INFO.FS");
                     if (!copyIsoSidecar("MOVIE.FS", "MOVIE.FS"))
                         copyIsoSidecar("MOVIES.FS", "MOVIE.FS");
                     copyIsoSidecar("SPEAKER.FS", "SPEAKER.FS");
@@ -1249,21 +1251,56 @@ namespace
                 else
                 {
                     const fs::path cdDataDir = installDta.parent_path();
-                    CopyCdArchiveIfPresent(cdDataDir, localDataDir, "INFO.FS", "INFO.FS");
+                    infoImported = CopyCdArchiveIfPresent(cdDataDir, localDataDir, "INFO.FS", "INFO.FS");
                     if (!CopyCdArchiveIfPresent(cdDataDir, localDataDir, "MOVIE.FS", "MOVIE.FS"))
                         CopyCdArchiveIfPresent(cdDataDir, localDataDir, "MOVIES.FS", "MOVIE.FS");
                     CopyCdArchiveIfPresent(cdDataDir, localDataDir, "SPEAKER.FS", "SPEAKER.FS");
                 }
 
-                // A newly imported edition must replace old configured paths,
-                // including valid paths into a different retail installation.
+                // Only archives verified against THIS INSTALL.DTA may become
+                // configured game sources. Files left in game_data/DATA by a
+                // previous EN/CZ import are not proof of this edition.
+                std::vector<fs::path> currentSources;
                 for (const auto& req : reqs)
                 {
-                    const fs::path imported = FindFileCaseInsensitive(localDataDir, req.filename);
-                    if (IsValidSourceFile(imported, req.filename))
-                        storeSource(req, imported);
+                    fs::path imported;
+                    for (const auto& fresh : extracted)
+                    {
+                        if (FileNameEquals(fresh, req.filename) &&
+                            IsValidSourceFile(fresh, req.filename))
+                        {
+                            imported = fresh;
+                            break;
+                        }
+                    }
+                    if (imported.empty() && std::string(req.filename) == "INFO.FS" &&
+                        infoImported)
+                        imported = FindFileCaseInsensitive(localDataDir, req.filename);
+                    if (!req.optional && !IsValidSourceFile(imported, req.filename))
+                    {
+                        wxMessageBox(wxString("The selected edition did not provide ") +
+                            wxString::FromUTF8(req.filename) +
+                            ".\n\nThe previous installation's archives will not be substituted. "
+                            "Choose a complete ISO/CD or supply the original files manually.",
+                            "Incomplete Spellcross import", wxOK | wxICON_ERROR);
+                        return false;
+                    }
+                    currentSources.push_back(imported);
                 }
-                autoDiscoverFrom(localDataDir);
+
+                for (size_t i = 0; i < currentSources.size(); ++i)
+                {
+                    const auto& req = reqs[i];
+                    if (IsValidSourceFile(currentSources[i], req.filename))
+                        storeSource(req, currentSources[i]);
+                    else
+                    {
+                        // Never retain stale optional audio from another edition.
+                        ini.SetValue("FILES", req.key, "");
+                        if (req.skip_key)
+                            ini.SetBoolValue("FILES", req.skip_key, true, nullptr, true);
+                    }
+                }
                 if (!saveNow())
                 {
                     wxMessageBox("The imported paths could not be saved in config.ini.",
@@ -1275,8 +1312,6 @@ namespace
                     wxString::Format("%lu", static_cast<unsigned long>(extracted.size())) +
                     " game-data files into:\n" + wxString(localDataDir.wstring()) +
                     "\n\nYou do not need to keep the disc inserted or the ISO mounted.";
-                if (!IsValidSourceFile(configuredPath(reqs[6]), reqs[6].filename))
-                    summary += "\n\nINFO.FS was not found. Select it when prompted.";
                 wxMessageBox(summary, "Spellcross game data",
                     wxOK | wxICON_INFORMATION);
                 return true;
@@ -1303,7 +1338,15 @@ namespace
 
                 const int option = choice.GetSelection();
                 if (option == 3)
-                    break; // use the existing per-file fallback below
+                {
+                    if (!forceSourceSelection)
+                        break; // use existing per-file fallback for missing files
+                    wxMessageBox("To switch an installed edition, select a complete "
+                        "ISO/CD or DATA directory. Individual files could mix "
+                        "different editions.", "Spellcross game data",
+                        wxOK | wxICON_INFORMATION);
+                    continue;
+                }
 
                 if (option == 0 || option == 4 || option == 5)
                 {
@@ -1399,8 +1442,44 @@ namespace
                         "Spellcross game data", wxOK | wxICON_WARNING);
                     continue;
                 }
-                autoDiscoverFrom(dataPath);
-                saveNow();
+                // Selecting an installed DATA directory is an explicit choice
+                // of edition. Do not keep valid entries from a prior location.
+                std::vector<fs::path> selectedSources;
+                bool complete = true;
+                for (const auto& req : reqs)
+                {
+                    const fs::path candidate = FindFileCaseInsensitive(dataPath, req.filename);
+                    if (!req.optional && !IsValidSourceFile(candidate, req.filename))
+                    {
+                        wxMessageBox(wxString("Selected folder is missing ") +
+                            wxString::FromUTF8(req.filename) +
+                            ". Please select a complete game DATA folder.",
+                            "Incomplete Spellcross edition", wxOK | wxICON_WARNING);
+                        complete = false;
+                        break;
+                    }
+                    selectedSources.push_back(candidate);
+                }
+                if (!complete)
+                    continue;
+                for (size_t i = 0; i < selectedSources.size(); ++i)
+                {
+                    const auto& req = reqs[i];
+                    if (IsValidSourceFile(selectedSources[i], req.filename))
+                        storeSource(req, selectedSources[i]);
+                    else
+                    {
+                        ini.SetValue("FILES", req.key, "");
+                        if (req.skip_key)
+                            ini.SetBoolValue("FILES", req.skip_key, true, nullptr, true);
+                    }
+                }
+                if (!saveNow())
+                {
+                    wxMessageBox("Selected game data could not be saved in config.ini.",
+                        "Spellcross game data", wxOK | wxICON_ERROR);
+                    return false;
+                }
                 break;
             }
         }
@@ -2487,7 +2566,14 @@ bool MyApp::OnInit()
     // Resolve/repair the external Spellcross data sources on the UI thread
     // before FormLoader starts. Required archives are requested individually;
     // optional audio sources can be skipped and that choice is remembered.
-    if (!EnsureSpellcrossSourceConfiguration(ini, fs::path(config_path), runtime_root, executable_dir))
+    // Existing valid archive paths normally skip the setup wizard. Launch
+    // Spellcross.exe --select-game-data to switch CZ/EN without editing INI.
+    bool forceSourceSelection = false;
+    for (int i = 1; i < argc; ++i)
+        if (wxString(argv[i]) == "--select-game-data")
+            forceSourceSelection = true;
+    if (!EnsureSpellcrossSourceConfiguration(ini, fs::path(config_path),
+        runtime_root, executable_dir, forceSourceSelection))
         return false;
 
     // --- try load Spellcross data
