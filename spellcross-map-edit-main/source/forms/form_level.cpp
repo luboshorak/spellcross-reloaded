@@ -1025,19 +1025,19 @@ namespace
     }
 
     static void OriginalDrawStrategicStatus(wxImage& image, SpellFont* font,
-        int money, int research, int turn)
+        int money, int research, int turn, bool english)
     {
         const auto& colours = OriginalStrategicTextPalette();
         const wxColour& white = colours.usable;
         const wxColour& green = colours.active;
         const wxColour& grey = colours.statusValue;
-        OriginalDrawSpellText(image, font, L"Peníze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, (english ? L"Money" : L"Peníze"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", money), 578, 31, grey, 61, true);
-        OriginalDrawSpellText(image, font, L"Výzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, (english ? L"Research" : L"Výzkum"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", research), 578, 61, grey, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, (english ? L"Turn" : L"Kolo"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", turn), 578, 91, grey, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, white, 60, true);
+        OriginalDrawSpellText(image, font, (english ? L"Turn" : L"Kolo"), 579, 436, white, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", turn), 579, 452, white, 60, true);
     }
 
@@ -3225,9 +3225,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         m_originalScrollbarHeight = 429;
 
         const wxColour& selectedRed = colours.selected;
-        OriginalDrawSpellText(image, font, L"Speci\u00E1ln\u00ED", 420, 8, heading, 132, true);
-        OriginalDrawSpellText(image, font, L"Vyber v\u0161echny", 423, 27, text);
-        OriginalDrawSpellText(image, font, L"Odzna\u010D v\u0161echny", 423, 42, text);
+        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Special", "Speciální"), 420, 8, heading, 132, true);
+        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Select all", "Vyber všechny"), 423, 27, text);
+        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Deselect all", "Odznač všechny"), 423, 42, text);
 
         int specialY = 57;
         for (uint32_t commanderUid : activeFormationCommanders)
@@ -3243,7 +3243,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             specialY += kOriginalUnitRowH;
         }
 
-        OriginalDrawSpellText(image, font, L"Jednotky", 420, unitHeadingY, heading, 132, true);
+        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Units", "Jednotky"), 420, unitHeadingY, heading, 132, true);
 
         int flatRow = 0;
         int drawn = 0;
@@ -3271,7 +3271,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         }
 
         if (totalRows == 0)
-            OriginalDrawSpellText(image, font, L"-- bez jednotek --", 421, unitRowsY + 1, dim, 130, true);
+            OriginalDrawSpellText(image, font, strategic_label(m_spellData, "-- no units --", "-- bez jednotek --"), 421, unitRowsY + 1, dim, 130, true);
 
         // Bottom action buttons use the actual BIGMB DOS button sprites.  The
         // previous hand-drawn rectangles were the source of the conspicuous
@@ -3379,7 +3379,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         m_originalScrollbarVisible = maxUnitRows;
         m_originalScrollbarHeight = 472;
 
-        OriginalDrawSpellText(image, font, L"Jednotky", 420, 12, heading, 132, true);
+        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Units", "Jednotky"), 420, 12, heading, 132, true);
         const int unitTextH = std::max(1, font->GetHeight());
         int unitRows = 0;
         for (int flat = m_originalHierarchyUnitScroll;
@@ -3401,9 +3401,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             ++unitRows;
         }
         if (hierarchyFlatUnits.empty())
-            OriginalDrawSpellText(image, font, L"-- bez jednotek --", 421, 30, dim, 130, true);
+            OriginalDrawSpellText(image, font, strategic_label(m_spellData, "-- no units --", "-- bez jednotek --"), 421, 30, dim, 130, true);
 
-        OriginalDrawSpellText(image, font, L"Velitelé", 420, 292, heading, 132, true);
+        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Commanders", "Velitelé"), 420, 292, heading, 132, true);
         int cy = 309;
         int cmdRows = 0;
         for (const auto& commander : m_playerCommanders)
@@ -4147,7 +4147,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawActionButton(image, font, loader, nativeUiPal, 495, 438, L"OK", actionEnabled);
 
         // Time / cost text belongs inside the original VMU_LST1 inset.
-        OriginalDrawSpellText(image, font, L"Čas:", 424, 439, text, 28);
+        OriginalDrawSpellText(image, font, strategic_label(m_spellData, "Time:", "Čas:"), 424, 439, text, 28);
         const wxString actionTimeText = actionTime >= 0 ? wxString::Format(L"%d", actionTime) : wxString(L"-");
         OriginalDrawSpellText(image, font, actionTimeText, 455, 439, text, 28, true);
         OriginalDrawSpellText(image, font, L"Cena:", 424, 452, text, 28);
@@ -4586,7 +4586,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawActionButton(image, font, loader, nativeUiPal, 304, 224, L"STOP", researchRunning);
         OriginalDrawActionButton(image, font, loader, nativeUiPal, 304, 436, L"OK", canConfirm);
 
-        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn);
+        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
     }
 
     if (image.IsOk() && m_spellData->font &&
@@ -4679,7 +4679,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawActionButton(image, font, loader, nativeUiPal, 284, 438, L"Nahoru",
             m_originalInfoTextScroll > 0);
 
-        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn);
+        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
     }
 
     if (image.IsOk() && m_spellData->font &&
@@ -4866,7 +4866,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             const int fill = std::clamp((R * meterW) / maxResearch, 1, meterW);
             OriginalFillRect(image, meterX, meterY, fill, meterH, meterFill);
         }
-        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn);
+        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
     }
 
     if (image.IsOk() && m_spellData->font &&
@@ -4976,7 +4976,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawSpellText(image, font, L"Max. počet velitelů:", playerX + 25, playerY + 90, green, 170);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", maxCommanders), playerX + 194, playerY + 90, dim, 35);
 
-        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn);
+        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
     }
 
     if (image.IsOk() && m_spellData->font &&
@@ -5135,7 +5135,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // button inside it is the original 71x29 rectangle at 346,440.
         OriginalDrawOptionsButton(image, font, loader, nativeUiPal, kOptExitButton, L"Exit", true);
 
-        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn);
+        OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
     }
 
     // Native end-turn animation, shared by every reconstructed strategic page.
