@@ -724,6 +724,28 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		original_language_tables.emplace(stem, std::move(lines));
 	}
 
+	// Destructible classes were initialized before the edition was known;
+	// their older SpellStringTable fallback prefers CZ if both exist.
+	// Reattach their display names from THIS edition's original language tables.
+	// Keep class IDs, HP, defence and gameplay data completely unchanged.
+	if (L2_classes)
+	{
+		const auto applyObjectNames = [&](const char* group,
+			const std::vector<SpellL2classRec*>& objects)
+		{
+			for (auto* object : objects)
+			{
+				if (!object || object->index < 0) continue;
+				const auto name = GetOriginalText(group, static_cast<size_t>(object->index));
+				if (!name.empty())
+					object->name = name;
+			}
+		};
+		applyObjectNames("MURY", L2_classes->GetWallList());
+		applyObjectNames("MOSTY", L2_classes->GetBridgeList());
+		applyObjectNames("SPECOBJ", L2_classes->GetSpecList());
+	}
+
 	// JEDNOTKY.DEF contains the binary unit definitions, but its name fields
 	// are English even in an untouched Czech retail installation. The game's
 	// original UNITS.CZ/UNITS.ENG are the authoritative displayed names.
