@@ -82,3 +82,14 @@ stats.rank.6=Major general
 stats.rank.7=Lieutenant general
 stats.rank.8=Army general
 stats.rank_unknown=Rank
+
+result.accomplished=MISSION ACCOMPLISHED
+result.failed=MISSION FAILED
+result.debrief_success=Mission accomplished.
+result.debrief_failed=Mission failed.
+result.alliance_losses=Alliance - losses
+result.enemy_losses=Dark Side - losses
+result.light=Light units
+result.heavy=Heavy units
+result.air=Air units
+result.commanders=Commanders
