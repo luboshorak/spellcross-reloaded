@@ -81,3 +81,25 @@ resolve ambiguity in pre-existing saves containing multiple active attacks for
 one sector. No in-game strategic regression or Windows build was run in this
 follow-up; verify repeated load, an Army event during a scheduled defence,
 and the recapture/defence cycle before merging into `main`.
+
+### Tactical launch and roster reconciliation safeguards
+
+The strategic launch path previously retried a failed DEF load with an **empty**
+player deployment while retaining the pending list of sent roster indices/UIDs.
+That could let a tactical battle proceed with a different force from the one
+whose health, deaths and commanders would subsequently be reconciled. The
+fallback has been removed: a failed tactical load now reports failure and
+clears the pending mission. This is a remake integrity fix, not recovered DOS
+behavior.
+
+The post-battle type/order compatibility matcher previously allowed a survivor
+with a nonzero strategic UID to be consumed by a different company of the same
+type when its own UID lookup failed. Legacy type matching now considers only
+tactical companies **without** a strategic UID. New saves must match exact UIDs;
+legacy battle saves without tactical UID metadata can still use type/order.
+
+Verification still required at the M1 release candidate: load-failure path,
+multiple companies with the same type and different casualties, commanders
+attached to a killed company, an old UID-less tactical save, and mission
+recovery after a failed load. Static review and GitHub diffs only; no Windows
+build or interactive tactical test was performed in this session.
