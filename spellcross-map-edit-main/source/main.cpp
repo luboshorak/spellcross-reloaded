@@ -1255,6 +1255,14 @@ namespace
                     CopyCdArchiveIfPresent(cdDataDir, localDataDir, "SPEAKER.FS", "SPEAKER.FS");
                 }
 
+                // A newly imported edition must replace old configured paths,
+                // including valid paths into a different retail installation.
+                for (const auto& req : reqs)
+                {
+                    const fs::path imported = FindFileCaseInsensitive(localDataDir, req.filename);
+                    if (IsValidSourceFile(imported, req.filename))
+                        storeSource(req, imported);
+                }
                 autoDiscoverFrom(localDataDir);
                 if (!saveNow())
                 {
