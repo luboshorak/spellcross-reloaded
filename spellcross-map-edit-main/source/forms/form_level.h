@@ -336,6 +336,7 @@ public:
     
     // Counter-attack tracking
     std::vector<CounterAttackState> m_counterAttacks;
+    int m_nextCounterAttackId = 1;
     
     // Territory timeouts (territory_id -> deadline turn)
     std::unordered_map<int, int> m_territoryTimeoutTurn;

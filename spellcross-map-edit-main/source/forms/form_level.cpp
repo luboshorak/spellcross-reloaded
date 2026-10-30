@@ -2791,6 +2791,7 @@ struct MissionFlowPersistSaveView
     const std::set<int>* triggeredEvents = nullptr;
     const std::unordered_map<int, int>* activatedEvents = nullptr;
     const std::vector<StrategicLevelFrame::CounterAttackState>* counterAttacks = nullptr;
+    const int* nextAttackId = nullptr;
 };
 
 struct MissionFlowPersistLoadView
@@ -2799,6 +2800,7 @@ struct MissionFlowPersistLoadView
     std::set<int>* triggeredEvents = nullptr;
     std::unordered_map<int, int>* activatedEvents = nullptr;
     std::vector<StrategicLevelFrame::CounterAttackState>* counterAttacks = nullptr;
+    int* nextAttackId = nullptr;
 };
 
 static thread_local const MissionFlowPersistSaveView* g_missionFlowPersistSave = nullptr;
@@ -7255,6 +7257,7 @@ void StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& p
     mfsv.triggeredEvents = &m_triggeredLevelEvents;
     mfsv.activatedEvents = &m_activatedEvents;
     mfsv.counterAttacks = &m_counterAttacks;
+    mfsv.nextAttackId = &m_nextCounterAttackId;
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
@@ -7344,6 +7347,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     mflv.triggeredEvents = &m_triggeredLevelEvents;
     mflv.activatedEvents = &m_activatedEvents;
     mflv.counterAttacks = &m_counterAttacks;
+    mflv.nextAttackId = &m_nextCounterAttackId;
     MissionFlowPersistLoadView* prevMFL = g_missionFlowPersistLoad;
     g_missionFlowPersistLoad = &mflv;
 
@@ -16409,6 +16413,7 @@ static bool LoadStrategicStateFile(
         if (g_missionFlowPersistLoad->triggeredEvents) g_missionFlowPersistLoad->triggeredEvents->clear();
         if (g_missionFlowPersistLoad->activatedEvents) g_missionFlowPersistLoad->activatedEvents->clear();
         if (g_missionFlowPersistLoad->counterAttacks) g_missionFlowPersistLoad->counterAttacks->clear();
+        if (g_missionFlowPersistLoad->nextAttackId) *g_missionFlowPersistLoad->nextAttackId = 1;
 
         const std::string mf = ExtractJsonBlock(data, "mission_flow");
         if (!mf.empty() && mf != "null")
@@ -16469,18 +16474,30 @@ static bool LoadStrategicStateFile(
                 for (auto& attack : attacks)
                 {
                     if (attack.attack_id > 0 && usedIds.insert(attack.attack_id).second)
-                        nextId = std::max(nextId, attack.attack_id + (attack.attack_id < INT_MAX ? 1 : 0));
+                        nextId = std::max(nextId, attack.attack_id + (attack.attack_id < std::numeric_limits<int>::max() ? 1 : 0));
                     else
                         attack.attack_id = 0;
                 }
                 for (auto& attack : attacks)
                 {
                     if (attack.attack_id != 0) continue;
-                    while (usedIds.count(nextId) && nextId < INT_MAX)
+                    while (usedIds.count(nextId) && nextId < std::numeric_limits<int>::max())
                         ++nextId;
                     if (usedIds.count(nextId)) break;
                     attack.attack_id = nextId;
                     usedIds.insert(nextId);
+                }
+                if (g_missionFlowPersistLoad->nextAttackId)
+                {
+                    int storedNextId = 1;
+                    (void)ParseJsonIntField(mf, "next_counter_attack_id", storedNextId);
+                    // Persisted allocator survives pruning completed records.
+                    *g_missionFlowPersistLoad->nextAttackId =
+                        std::max(storedNextId, nextId);
+                    for (const auto& attack : attacks)
+                        if (attack.attack_id < std::numeric_limits<int>::max())
+                            *g_missionFlowPersistLoad->nextAttackId =
+                                std::max(*g_missionFlowPersistLoad->nextAttackId, attack.attack_id + 1);
                 }
             }
         }
@@ -16838,6 +16855,9 @@ static void SaveStrategicStateFile(
         g_missionFlowPersistSave->counterAttacks)
     {
         f << "  \"mission_flow\": {\n";
+        f << "    \"next_counter_attack_id\": "
+          << (g_missionFlowPersistSave->nextAttackId ? *g_missionFlowPersistSave->nextAttackId : 1)
+          << ",\n";
         f << "    \"timeouts\": {";
         bool firstT = true;
         for (const auto& kv : *g_missionFlowPersistSave->timeoutTurn)
@@ -17455,6 +17475,7 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
     m_stats = MissionStats{};
     m_pendingMission = PendingMissionResult{};
     m_counterAttacks.clear();
+    m_nextCounterAttackId = 1;
     m_selectedUnitsForMission.clear();
     m_selectedCommandersForMission.clear();
     m_cmdGenWindowStartTurn = ((m_turn - 1) / 25) * 25 + 1;
@@ -17568,6 +17589,7 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
     mflv.triggeredEvents = &m_triggeredLevelEvents;
     mflv.activatedEvents = &m_activatedEvents;
     mflv.counterAttacks = &m_counterAttacks;
+    mflv.nextAttackId = &m_nextCounterAttackId;
     MissionFlowPersistLoadView* prevMF = g_missionFlowPersistLoad;
     g_missionFlowPersistLoad = &mflv;
 
@@ -17875,6 +17897,7 @@ void StrategicLevelFrame::SaveStrategicState() const
     mfsv.triggeredEvents = &m_triggeredLevelEvents;
     mfsv.activatedEvents = &m_activatedEvents;
     mfsv.counterAttacks = &m_counterAttacks;
+    mfsv.nextAttackId = &m_nextCounterAttackId;
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
@@ -20290,9 +20313,9 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
         !terr->counter_attack_mission.empty())
     {
         CounterAttackState ca;
-        for (const auto& existing : m_counterAttacks)
-            ca.attack_id = std::max(ca.attack_id, existing.attack_id);
-        if (ca.attack_id < INT_MAX) ++ca.attack_id;
+        ca.attack_id = m_nextCounterAttackId;
+        if (m_nextCounterAttackId < std::numeric_limits<int>::max())
+            ++m_nextCounterAttackId;
         ca.territory_id = territory_id;
         ca.conquest_turn = m_turn;
         ca.trigger_turn = m_turn + terr->counter_attack_turn;
@@ -20698,9 +20721,9 @@ void StrategicLevelFrame::ProcessLevelEvents()
             const int target_tid = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
 
             CounterAttackState eventAttack;
-            for (const auto& existing : m_counterAttacks)
-                eventAttack.attack_id = std::max(eventAttack.attack_id, existing.attack_id);
-            if (eventAttack.attack_id < INT_MAX) ++eventAttack.attack_id;
+            eventAttack.attack_id = m_nextCounterAttackId;
+            if (m_nextCounterAttackId < std::numeric_limits<int>::max())
+                ++m_nextCounterAttackId;
             eventAttack.territory_id = target_tid;
             eventAttack.conquest_turn = m_turn;
             eventAttack.trigger_turn = m_turn;
