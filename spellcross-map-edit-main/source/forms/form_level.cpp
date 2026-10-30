@@ -4944,13 +4944,19 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             drawValue(el[static_cast<size_t>(r)], kStatsAllianceX1, lowerRows[r], kStatsX1, lowerRows[r + 1]);
         }
 
-        auto rankCz = [](int rank) -> wxString {
-            switch (rank) {
-            case 0: return L"Poručík"; case 1: return L"Nadporučík"; case 2: return L"Kapitán";
-            case 3: return L"Major"; case 4: return L"Podplukovník"; case 5: return L"Plukovník";
-            case 6: return L"Generálmajor"; case 7: return L"Generálporučík"; case 8: return L"Armádní Generál";
-            default: return wxString::Format(L"Hodnost %d", rank);
+        auto localizedRank = [](int rank) -> wxString {
+            static constexpr const char* ranks[] = {
+                "Lieutenant", "First lieutenant", "Captain", "Major",
+                "Lieutenant colonel", "Colonel", "Major general",
+                "Lieutenant general", "Army general"
+            };
+            if (rank >= 0 && rank < static_cast<int>(sizeof(ranks) / sizeof(ranks[0])))
+            {
+                const std::string key = "stats.rank." + std::to_string(rank);
+                return spellcross_ui_locale::Tr(key.c_str(), ranks[rank]);
             }
+            return spellcross_ui_locale::Tr("stats.rank_unknown", "Rank") +
+                wxString::Format(L" %d", rank);
         };
         int maxUnits = 0, maxCommanders = 0;
         if (const CommanderRankRec* rr = FindRankRec(m_player.rank))
@@ -4967,7 +4973,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawSpellText(image, font, wxString(spellcross_ui_locale::Tr("stats.player_prefix", "Player - ")) + wxString::FromUTF8(m_player.name),
             playerX + 10, playerY + 15, text, playerW - 20);
         OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.rank_caption", "Rank:"), playerX + 25, playerY + 36, green, 77);
-        OriginalDrawSpellText(image, font, rankCz(m_player.rank), playerX + 88, playerY + 36, dim, 158);
+        OriginalDrawSpellText(image, font, localizedRank(m_player.rank), playerX + 88, playerY + 36, dim, 158);
         OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.experience_caption", "Experience:"), playerX + 25, playerY + 54, green, 87);
         OriginalDrawSpellText(image, font,
             nextExp > m_player.experience ? wxString::Format(L"%d (%d)", m_player.experience, nextExp)
@@ -5018,10 +5024,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             const auto path = GetStrategicSaveSlotPath(m_level, slot);
             std::error_code ec;
             const bool exists = std::filesystem::exists(path, ec);
-            OriginalDrawOptionsButton(image, font, loader, nativeUiPal, loadButton, L"Load", exists);
-            OriginalDrawOptionsButton(image, font, loader, nativeUiPal, saveButton, L"Save", true);
+            OriginalDrawOptionsButton(image, font, loader, nativeUiPal, loadButton, spellcross_ui_locale::Tr("options.load", "Load"), exists);
+            OriginalDrawOptionsButton(image, font, loader, nativeUiPal, saveButton, spellcross_ui_locale::Tr("options.save", "Save"), true);
 
-            wxString slotText = L"-= EMPTY =-";
+            wxString slotText = spellcross_ui_locale::Tr("options.empty", "-= EMPTY =-");
             if (exists)
             {
                 int money = 0, rank = 0, xp = 0;
@@ -5039,7 +5045,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                     else if (!ts.empty())
                         slotText = wxString::FromUTF8(ts);
                     else
-                        slotText = wxString::Format(L"SLOT %02d", slot);
+                        slotText = spellcross_ui_locale::Tr("options.slot", "SLOT") + wxString::Format(L" %02d", slot);
                 }
             }
             OriginalDrawSpellText(image, font, slotText, slotRow.x,
@@ -5050,13 +5056,13 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // Slider captions are centred in the exact 18 px header bands of the
         // three STROPT controls.  The +/- button chrome is already present in
         // OPTIONS.LZ; do not draw a second, shifted pair of glyphs on top.
-        OriginalDrawSpellText(image, font, L"Gamma Correction", kOptGammaTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.gamma", "Gamma Correction"), kOptGammaTitle.x,
             OriginalCenteredTextY(font, kOptGammaTitle.y, kOptGammaTitle.h),
             green, kOptGammaTitle.w, true);
-        OriginalDrawSpellText(image, font, L"Music Volume", kOptMusicTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.music", "Music Volume"), kOptMusicTitle.x,
             OriginalCenteredTextY(font, kOptMusicTitle.y, kOptMusicTitle.h),
             green, kOptMusicTitle.w, true);
-        OriginalDrawSpellText(image, font, L"Sound Volume", kOptSoundTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.sound", "Sound Volume"), kOptSoundTitle.x,
             OriginalCenteredTextY(font, kOptSoundTitle.y, kOptSoundTitle.h),
             green, kOptSoundTitle.w, true);
 
@@ -5075,7 +5081,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             OriginalHLine(image, kOptDifficultyInner.x + 1,
                 kOptDifficultyInner.x + kOptDifficultyInner.w - 2, gy, wxColour(16, 62, 16));
 
-        OriginalDrawSpellText(image, font, L"Game Difficulty", kOptDifficultyTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.difficulty", "Game Difficulty"), kOptDifficultyTitle.x,
             OriginalCenteredTextY(font, kOptDifficultyTitle.y, kOptDifficultyTitle.h),
             green, kOptDifficultyTitle.w, true);
 
@@ -5085,26 +5091,26 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         const bool englishDifficulty = m_spellData && m_spellData->units && m_spellData->units->IsEnglish();
         if (!englishDifficulty)
         {
-            OriginalDrawSpellText(image, font, L"Easy", kOptDifficultyEasy.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.easy", "Easy"), kOptDifficultyEasy.x,
                 OriginalCenteredTextY(font, kOptDifficultyEasy.y, kOptDifficultyEasy.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::EASY) ? selected : green,
                 kOptDifficultyEasy.w, true);
-            OriginalDrawSpellText(image, font, L"Normal", kOptDifficultyNormal.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.normal", "Normal"), kOptDifficultyNormal.x,
                 OriginalCenteredTextY(font, kOptDifficultyNormal.y, kOptDifficultyNormal.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::NORMAL) ? selected : green,
                 kOptDifficultyNormal.w, true);
-            OriginalDrawSpellText(image, font, L"Hard", kOptDifficultyHard.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.hard", "Hard"), kOptDifficultyHard.x,
                 OriginalCenteredTextY(font, kOptDifficultyHard.y, kOptDifficultyHard.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::HARD) ? selected : green,
                 kOptDifficultyHard.w, true);
         }
         else
         {
-            OriginalDrawSpellText(image, font, L"Normal", kOptDifficultyNormalEn.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.normal", "Normal"), kOptDifficultyNormalEn.x,
                 OriginalCenteredTextY(font, kOptDifficultyNormalEn.y, kOptDifficultyNormalEn.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::NORMAL) ? selected : green,
                 kOptDifficultyNormalEn.w, true);
-            OriginalDrawSpellText(image, font, L"Hard", kOptDifficultyHardEn.x,
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.hard", "Hard"), kOptDifficultyHardEn.x,
                 OriginalCenteredTextY(font, kOptDifficultyHardEn.y, kOptDifficultyHardEn.h),
                 difficultyValue == static_cast<int>(SpellMap::GameDifficulty::HARD) ? selected : green,
                 kOptDifficultyHardEn.w, true);
