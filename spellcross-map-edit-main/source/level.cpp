@@ -318,7 +318,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
         if (ctx == Ctx::Mission && hasMission) {
             if (cmd == "EndOKMission" && args.size() >= 1) { curMission.end_ok_mission = args[0]; continue; }
             if (cmd == "EndBadMission" && args.size() >= 1) { curMission.end_bad_mission = args[0]; continue; }
-            if (cmd == "EndBadEvent" && args.size() >= 1) { int v = 0; if (parse_int(args[0], v)) curMission.end_bad_event = v; continue; }
+            if (cmd == "EndOKEvent" && args.size() >= 1) { int v = 0; if (parse_int(args[0], v)) curMission.end_ok_event = v; continue; }\n            if (cmd == "EndBadEvent" && args.size() >= 1) { int v = 0; if (parse_int(args[0], v)) curMission.end_bad_event = v; continue; }
             if (cmd == "EndOK" && args.size() >= 2) { parse_int(args[0], curMission.end_ok_x); parse_int(args[1], curMission.end_ok_y); continue; }
             if (cmd == "MissionMusic" && args.size() >= 1) { curMission.music = args[0]; continue; }
             if (cmd == "FrequencyOfRandomAttacks" && args.size() >= 2) {
