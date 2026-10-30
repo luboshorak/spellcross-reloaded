@@ -20490,6 +20490,22 @@ void StrategicLevelFrame::CheckCounterAttacks()
 
         if (m_turn >= ca.trigger_turn)
         {
+            // Legacy saves can contain several unresolved attacks for the
+            // same territory. Do not display a second defence prompt or
+            // replace the live mission if another attack is already active.
+            const bool alreadyUnderAttack = std::any_of(
+                m_counterAttacks.begin(), m_counterAttacks.end(),
+                [&ca](const CounterAttackState& other)
+                {
+                    return &other != &ca && other.territory_id == ca.territory_id &&
+                        other.triggered && !other.completed;
+                });
+            if (alreadyUnderAttack)
+            {
+                // Keep the scheduled entry pending until the active attack
+                // finishes; it can be discarded on recapture if obsolete.
+                continue;
+            }
             ca.triggered = true;
 
             // Set the counter-attack mission on the territory
