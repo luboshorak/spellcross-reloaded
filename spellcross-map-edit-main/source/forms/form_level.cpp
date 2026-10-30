@@ -3296,16 +3296,16 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             !m_selectedUnitsForMission.empty() || !m_selectedCommandersForMission.empty());
 
         // Original status panel values.
-        OriginalDrawSpellText(image, font, L"Pen\u00EDze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_money), 578, 31, text, 61, true);
-        OriginalDrawSpellText(image, font, L"V\u00FDzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_research), 578, 61, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_turn), 578, 91, text, 61, true);
 
         // Idle lower-right turn label.  The common post-pass below overlays
         // the native ET_BTN0 sprite as a left-to-right wipe on mouse hover.
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, text, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 579, 436, text, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", m_turn), 579, 452, text, 60, true);
 
         // Territory briefing text in the original lower frame.
@@ -3328,7 +3328,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         }
         else
         {
-            OriginalDrawSpellText(image, font, L"Vyber \u00FAzem\u00ED na map\u011B.", 22, 366, dim, 374, true);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.choose_territory", "Select a territory on the map."), 22, 366, dim, 374, true);
         }
     }
 
@@ -3424,7 +3424,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             ++cmdRows;
         }
         if (cmdRows == 0)
-            OriginalDrawSpellText(image, font, L"-- bez velitelů --", 421, 310, dim, 130, true);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.no_commanders", "-- no commanders --"), 421, 310, dim, 130, true);
 
         // Original active-formation overlays from COMMON.FS. These are not
         // hand-drawn approximations: UNT_ACT/PRP_ACT/PLK_ACT/BRG_ACT are the
@@ -3541,13 +3541,13 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             wxString::Format(L"\u010C\u00E1st %d", m_originalHierarchyPage), true);
 
         // Common original status panel values.
-        OriginalDrawSpellText(image, font, L"Pen\u00EDze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_money), 578, 31, text, 61, true);
-        OriginalDrawSpellText(image, font, L"V\u00FDzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_research), 578, 61, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_turn), 578, 91, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, text, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 579, 436, text, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", m_turn), 579, 452, text, 60, true);
     }
 
@@ -3764,7 +3764,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // STRUPG.QH defines the three mode hit zones at x=346..403. Keep the
         // labels centred in that exact strip and draw only corner brackets at
         // its edges; unlike the previous workaround they never cross the text.
-        OriginalDrawSpellText(image, font, L"Mód", 346, 214, green, 58, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.mode", "Mode"), 346, 214, green, 58, true);
         const struct { UnitsTab tab; const wchar_t* label; int y; } modes[] = {
             { UNITS_TAB_UPGRADE, L"Úpravy", 232 },
             { UNITS_TAB_RECRUIT, L"Nábor", 247 },
@@ -4121,7 +4121,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                     OriginalFillRect(image, 350, 391, 216, 16, selectedBand);
                     OriginalDrawSpellText(image, font, wxString(L"Nov\u00FD typ: ") + GetUnitDisplayName(m_unitsSelectedRearmUnitId),
                         353, 393, wxColour(35,35,35), 210, true);
-                    OriginalDrawSpellText(image, font, L"P\u0159ezbrojen\u00ED sn\u00ED\u017E\u00ED XP a odstran\u00ED vylep\u0161en\u00ED.",
+                    OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.rearm_warning", "Rearming reduces XP and removes upgrades."),
                         353, 410, dim, 210, true);
                     actionCost = GetUpgradeCost(u.unit_id, m_unitsSelectedRearmUnitId);
                     actionTime = GetUpgradeTime(m_unitsSelectedRearmUnitId);
@@ -4129,7 +4129,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 }
                 else
                 {
-                    OriginalDrawSpellText(image, font, L"Vyber vylep\u0161en\u00ED nebo nov\u00FD typ", 353, 397, dim, 210, true);
+                    OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.choose_upgrade", "Select upgrade or new type"), 353, 397, dim, 210, true);
                 }
             }
 
@@ -4140,7 +4140,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         }
         else
         {
-            OriginalDrawSpellText(image, font, L"Vyber jednotku.", 350, 350, dim, 216, true);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.choose_unit", "Select a unit."), 350, 350, dim, 216, true);
         }
 
         const bool canDisband = m_unitsSelectedUnit >= 0 && !hasCooldown;
@@ -4152,19 +4152,19 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.time_caption", "Time:"), 424, 439, text, 28);
         const wxString actionTimeText = actionTime >= 0 ? wxString::Format(L"%d", actionTime) : wxString(L"-");
         OriginalDrawSpellText(image, font, actionTimeText, 455, 439, text, 28, true);
-        OriginalDrawSpellText(image, font, L"Cena:", 424, 452, text, 28);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.cost", "Cost:"), 424, 452, text, 28);
         const wxString actionCostText = actionCost >= 0 ? wxString::Format(L"%d", actionCost) : wxString(L"-");
         OriginalDrawSpellText(image, font, actionCostText, 455, 452, text, 28, true);
 
         // Common status area.  The turn appears here AND on the end-turn plate,
         // matching the original game.
-        OriginalDrawSpellText(image, font, L"Pen\u00EDze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_money), 578, 31, text, 61, true);
-        OriginalDrawSpellText(image, font, L"V\u00FDzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_research), 578, 61, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_turn), 578, 91, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, text, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 579, 436, text, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", m_turn), 579, 452, text, 60, true);
     }
 
@@ -4317,7 +4317,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             if (auto* rec = m_spellData->units->GetUnit(tid))
             {
                 OriginalDrawSpellText(image, font, GetUnitDisplayName(tid), 346, 296, text, 217);
-                OriginalDrawSpellText(image, font, L"\u00DAtok:", 369, 312, text, 126);
+                OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.attack", "Attack:"), 369, 312, text, 126);
                 OriginalDrawSpellText(image, font, wxString::Format(L"Lehk\u00E9: %d", rec->attack_light), 385, 327, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(L"T\u011B\u017Ek\u00E9: %d", rec->attack_armored), 385, 342, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(L"Vzdu\u0161n\u00E9: %d", rec->attack_air), 385, 357, text, 112);
@@ -4375,7 +4375,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             const auto& commander = m_availableCommanders[static_cast<size_t>(m_originalBuySelectedCommander)];
             const wxString label = originalRankAbbrev(commander.rank) + L" " + wxString::FromUTF8(commander.name);
             OriginalDrawSpellText(image, font, label, 346, 296, text, 217);
-            OriginalDrawSpellText(image, font, L"Velitel Aliance", 369, 322, text, 128);
+            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.alliance_commander", "Alliance commander"), 369, 322, text, 128);
             actionCost = 0;
             actionTime = 1;
             actionEnabled = static_cast<int>(m_playerCommanders.size()) < maxCommanders;
@@ -4384,23 +4384,23 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawActionButton(image, font, loader, nativeUiPal,
             495, 438, L"Koupit", actionEnabled);
 
-        OriginalDrawSpellText(image, font, L"\u010Cas:", 423, 438, text, 38);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.time", "Time:"), 423, 438, text, 38);
         OriginalDrawSpellText(image, font,
             actionTime >= 0 ? wxString::Format(L"%d", actionTime) : wxString(L"-"),
             469, 438, text, 25);
-        OriginalDrawSpellText(image, font, L"Cena:", 423, 454, text, 38);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.cost", "Cost:"), 423, 454, text, 38);
         OriginalDrawSpellText(image, font,
             actionCost >= 0 ? wxString::Format(L"%d", actionCost) : wxString(L"-"),
             469, 454, text, 25);
 
         // Common right-hand status and end-turn plate.
-        OriginalDrawSpellText(image, font, L"Pen\u00EDze", 578, 17, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 578, 17, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_money), 578, 31, text, 61, true);
-        OriginalDrawSpellText(image, font, L"V\u00FDzkum", 578, 47, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 578, 47, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_research), 578, 61, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 578, 77, green, 61, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 578, 77, green, 61, true);
         OriginalDrawSpellText(image, font, wxString::Format("%d", m_turn), 578, 91, text, 61, true);
-        OriginalDrawSpellText(image, font, L"Kolo", 579, 436, text, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.turn", "Turn"), 579, 436, text, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format("%02d", m_turn), 579, 452, text, 60, true);
     }
 
@@ -4831,9 +4831,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
         // Native lower information boxes.  Labels and values have different
         // baselines in the original; a shared offset is visibly wrong.
-        OriginalDrawSpellText(image, font, L"Výzkum", 167, 410, green, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.research", "Research"), 167, 410, green, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", R), 167, 430, green, 60, true);
-        OriginalDrawSpellText(image, font, L"Peníze", 342, 410, green, 60, true);
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.money", "Money"), 342, 410, green, 60, true);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", M), 342, 430, green, 60, true);
 
         // FACTORY.LZ deliberately contains palette-index-131 pink placeholder
@@ -5119,13 +5119,13 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // Quick Help live overlay inside STROPT.QH #2.  These sub-rectangles
         // are aligned to the original runtime overlay rather than offsetting
         // text from the parent rectangle by arbitrary constants.
-        OriginalDrawSpellText(image, font, L"Quick Help", kOptQuickTitle.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.quick_help", "Quick Help"), kOptQuickTitle.x,
             OriginalCenteredTextY(font, kOptQuickTitle.y, kOptQuickTitle.h),
             green, kOptQuickTitle.w, true);
-        OriginalDrawSpellText(image, font, L"On", kOptQuickOn.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.on", "On"), kOptQuickOn.x,
             OriginalCenteredTextY(font, kOptQuickOn.y, kOptQuickOn.h),
             m_originalQuickHelp ? selected : green, kOptQuickOn.w, true);
-        OriginalDrawSpellText(image, font, L"Off", kOptQuickOff.x,
+        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("options.off", "Off"), kOptQuickOff.x,
             OriginalCenteredTextY(font, kOptQuickOff.y, kOptQuickOff.h),
             !m_originalQuickHelp ? selected : green, kOptQuickOff.w, true);
 
@@ -5141,7 +5141,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
         // STROPT.QH #3 is the 113x41 active Exit region; the visible live
         // button inside it is the original 71x29 rectangle at 346,440.
-        OriginalDrawOptionsButton(image, font, loader, nativeUiPal, kOptExitButton, L"Exit", true);
+        OriginalDrawOptionsButton(image, font, loader, nativeUiPal, kOptExitButton, spellcross_ui_locale::Tr("options.exit", "Exit"), true);
 
         OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
     }
