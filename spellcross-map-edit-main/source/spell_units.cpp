@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <random>
 #include <algorithm>
+#include <cstring>
 
 using namespace std;
 
