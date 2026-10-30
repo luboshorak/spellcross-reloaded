@@ -14,6 +14,9 @@
 
 #include "other.h"
 #include "simpleini.h"
+#include "spell_units.h"
+#include <algorithm>
+#include <string>
 
 namespace
 {
@@ -205,6 +208,21 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
 	UpdateList(string_format(" - MUSIC.FS: %ls", files.music_fs.empty() ? L"<disabled>" : files.music_fs.c_str()));
 	UpdateList(string_format(" - program data: %ls", spec_folder.c_str()));
 
+    // Archives are configured individually. A stale COMMON.FS from another ISO
+    // can silently supply English unit names beside Czech TEXTS.FS briefings.
+    // Report divergent source folders instead of silently pretending one
+    // "selected ISO" controls all game assets.
+    if (!files.common_fs.empty() && !files.texts_fs.empty())
+    {
+        std::error_code sourceEc;
+        const std::filesystem::path unitSource = std::filesystem::path(files.common_fs).parent_path();
+        const std::filesystem::path textSource = std::filesystem::path(files.texts_fs).parent_path();
+        const bool sameDirectory = std::filesystem::equivalent(unitSource, textSource, sourceEc);
+        if (!sourceEc && !sameDirectory)
+            UpdateList("WARNING: COMMON.FS and TEXTS.FS come from different directories. "
+                "This can mix English unit names and Czech mission texts.");
+    }
+
 	// try load spellcross data
 	try{
 		spell_data = new SpellData(files,spec_folder,bind(&FormLoader::UpdateList,this,placeholders::_1),bind(&FormLoader::UpdateItem,this,placeholders::_1));
@@ -214,6 +232,25 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
 		return;
 	}
 	
+    // Diagnostic evidence of the edition and original unit-name bytes.
+    // Do not replace these names with guessed translations: the authoritative
+    // names must be from the same edition's retail JEDNOTKY.DEF inside COMMON.FS.
+    if (spell_data && spell_data->units)
+    {
+        UpdateList(string_format(" - JEDNOTKY.DEF layout: %s",
+            spell_data->units->IsEnglish() ? "EN (207-byte records)" : "CZ (206-byte records)"));
+        for (int typeId = 0; typeId < 5; ++typeId)
+        {
+            if (auto* unit = spell_data->units->GetUnit(typeId))
+            {
+                const char* begin = unit->name;
+                const char* end = std::find(begin, begin + sizeof(unit->name), '\0');
+                const std::string rawName(begin, end);
+                UpdateList(string_format(" - unit #%d in COMMON.FS: %s", typeId, rawName.c_str()));
+            }
+        }
+    }
+
 	// try load units.fsu aux metadata (optional)
 	UpdateList("Loading units aux data...");
 	if (spell_data->units_fsu->LoadAuxData(units_aux_data_path))
