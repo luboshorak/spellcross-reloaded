@@ -20650,12 +20650,160 @@ void StrategicLevelFrame::ProcessLevelEvents()
         if (!evt)
             continue;
 
-        // Resolve the Army target *before* marking this event consumed or
-        // executing any of its other scripted actions. A missing target
-        // defers the entire event safely, including mixed Army/AddUnit/RunEvents.
+        // Determine the Army target before committing ANY event side effects.
+        // If no sector is available, retry the whole event next turn.
         int armyTargetId = -1;
         if (!evt->armies.empty())
         {
+            std::unordered_set<int> owned(m_ownedTerritories.begin(), m_ownedTerritories.end());
+            std::unordered_set<int> frontLine;
+            if (m_clkW > 0 && m_clkH > 0 &&
+                m_clkValues.size() == static_cast<size_t>(m_clkW) * m_clkH)
+            {
+                auto territoryAt = [this](int x, int y) -> int {
+                    const uint8_t raw = m_clkValues[static_cast<size_t>(y) * m_clkW + x];
+                    return raw >= 129 ? raw - 128 : raw;
+                };
+                for (int y = 0; y < m_clkH; ++y)
+                {
+                    for (int x = 0; x < m_clkW; ++x)
+                    {
+                        const int a = territoryAt(x, y);
+                        if (a <= 0) continue;
+                        auto markBorder = [&](int b) {
+                            if (b <= 0 || a == b) return;
+                            if (owned.count(a) && !owned.count(b))
+                                frontLine.insert(a);
+                            if (owned.count(b) && !owned.count(a))
+                                frontLine.insert(b);
+                        };
+                        if (x + 1 < m_clkW) markBorder(territoryAt(x + 1, y));
+                        if (y + 1 < m_clkH) markBorder(territoryAt(x, y + 1));
+                    }
+                }
+            }
+            std::vector<int> eligible;
+            for (const int id : m_ownedTerritories)
+                if (id != m_level.start_territory &&
+                    std::none_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+                        [id](const CounterAttackState& attack) {
+                            // A scheduled scripted defence is also unresolved.
+                            // Do not stack an Army event on the same sector;
+                            // its later timer would otherwise overwrite the
+                            // active attack's mission while the battle waits.
+                            return attack.territory_id == id && !attack.completed;
+                        }) &&
+                    (frontLine.empty() || frontLine.count(id) != 0) &&
+                    std::find_if(m_level.territories.begin(), m_level.territories.end(),
+                        [id](const LevelTerritory& t) { return t.id == id; })
+                        != m_level.territories.end())
+                    eligible.push_back(id);
+            if (eligible.empty())
+            {
+                wxLogDebug("[STRATEGY] Army event %d deferred: no eligible sector.", eid);
+                continue;
+            }
+            armyTargetId = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
+        }
+
+        m_triggeredLevelEvents.insert(eid);
+        processed_this_turn.insert(eid);
+
+        // --- Execute event actions ---
+
+        // Show EventText in strategic level window (not on the tactical map canvas)
+        if (!evt->text_id.empty() && m_spellData && m_spellData->texts)
+        {
+            std::string text_name = evt->text_id;
+            SpellTextRec* txt = m_spellData->texts->GetText(text_name);
+            if (txt)
+            {
+                // Use the text content for a dialog in the strategic level window
+                wxString msg = txt->text.empty()
+                    ? wxString::FromUTF8(text_name)
+                    : wxString(txt->text);
+                wxMessageBox(msg, "Event", wxOK | wxICON_INFORMATION, this);
+            }
+        }
+
+        // ChangeMission
+        if (evt->change_mission_territory >= 0 && !evt->change_mission_name.empty())
+        {
+            m_territoryCurrentMission[evt->change_mission_territory] = to_lower(evt->change_mission_name);
+        }
+
+        // AddUnitToPlayer(unit, experience_level, health, name).  The second
+        // argument in the original LEVEL_xx.DEF files is the company's combat
+        // experience level (values such as 7, 9 or 10 occur in later chapters),
+        // not a quantity. Each command therefore contributes exactly ONE support
+        // company, which lasts only for the current large strategic map.
+        for (const auto& ua : evt->add_units)
+        {
+            LevelData::PlayerUnitAdd pu;
+            pu.unit_id = ua.unit_id;
+            pu.count = 1;
+            pu.health = ua.health;
+            pu.extra = ua.name;
+            pu.experience_level = std::clamp(ua.experience_level, 1, 12);
+            m_playerUnits.push_back(pu);
+
+            UnitInstanceState st;
+            st.uid = m_nextRosterUid++;
+            st.temporary = true;
+            st.level = pu.experience_level;
+            if (m_spellData && m_spellData->units)
+            {
+                if (auto* rec = m_spellData->units->GetUnit(pu.unit_id))
+                    st.experience = std::max(0, rec->GetExperiencePts(st.level));
+            }
+            if (st.experience <= 0 && st.level > 1)
+                st.experience = std::max(0, (st.level - 1) * 100);
+            if (!ua.name.empty() && ua.name != "-")
+                st.custom_name = ua.name;
+            m_unitStates.push_back(std::move(st));
+        }
+        RebuildRosterRowUidsFromUnitStates();
+
+        // SetResearchFlag
+        for (int flag : evt->research_flags)
+        {
+            if (std::find(m_level.research_flags.begin(), m_level.research_flags.end(), flag) == m_level.research_flags.end())
+                m_level.research_flags.push_back(flag);
+        }
+
+        // SetPlayersTerritory
+        if (evt->set_player_territory >= 0)
+        {
+            int tid = evt->set_player_territory;
+            if (std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(), tid) == m_ownedTerritories.end())
+            {
+                m_ownedTerritories.push_back(tid);
+                ApplyTerritoryVisibility();
+            }
+        }
+
+        // RunEvents: activate referenced events
+        for (int run_id : evt->run_events)
+        {
+            if (!m_triggeredLevelEvents.count(run_id) && !processed_this_turn.count(run_id))
+            {
+                // For Time-based events, record activation turn
+                m_activatedEvents[run_id] = m_turn;
+                queue.push_back(run_id);
+            }
+        }
+
+        // Army: counter-attack on a player-owned territory
+        if (!evt->armies.empty())
+        {
+            // Army(...) defines the scripted attacking force; it does NOT
+            // designate the last owned territory as the target. In particular,
+            // the first Start(n) sector is the initial command foothold, not a
+            // normal candidate for a random counter-attack.
+            //
+            // Prefer actual front-line territory borders from LEVEL_XX.CLK.
+            // If the CLK is unavailable (e.g. custom map), any other owned
+            // territory is eligible; never silently attack the command sector.
             const int target_tid = armyTargetId;
 
             CounterAttackState eventAttack;
