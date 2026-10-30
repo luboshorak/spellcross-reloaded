@@ -327,35 +327,54 @@ static SpellDataFiles BuildLegacySpellDataFiles(const std::wstring& data_path, c
 	return files;
 }
 
-// Read the original retail type-name table directly from COMMON.FS.
-// JEDNOTKY.DEF provides type IDs/attributes, not translated display labels.
-// The text has one CP895 byte string per type ID, separated by DOS newlines.
-static bool LoadOriginalUnitNames(SpellUnits* units, const uint8_t* data, int length)
+// Original retail language resources are independent positional text tables in
+// COMMON.FS, not Reloaded-authored translations. Keep their original 8-bit
+// spelling (DOS CP895); convert only at wx rendering boundaries.
+static std::vector<std::string> ParseOriginalLanguageLines(const uint8_t* data, int length)
 {
-	if (!units || !data || length <= 0 || length > 65536)
-		return false;
-	auto& records = units->GetUnits();
-	std::vector<std::string> names;
-	names.reserve(records.size());
-	std::string line;
+	std::vector<std::string> lines;
+	if (!data || length <= 0 || length > 65536)
+		return lines;
+
+	std::string current;
+	const auto flush = [&]()
+	{
+		// Comments beginning with ';' annotate blocks/IDs in BUTTONS, OTHER,
+		// HODNOSTI, MOSTY, MURY, SPECOBJ etc. They are NOT display entries.
+		const auto first = current.find_first_not_of(" \t");
+		if (first != std::string::npos && current[first] != ';')
+			lines.push_back(current);
+		current.clear();
+	};
 	for (int i = 0; i < length; ++i)
 	{
-		const uint8_t value = data[i];
-		if (value == 0x1A) // DOS EOF marker (present at end of UNITS.CZ)
-			break;
-		if (value == '\r' || value == '\n')
+		const uint8_t ch = data[i];
+		if (ch == 0x1A) // optional DOS EOF, notably UNITS.CZ/MESIACE.CZ
 		{
-			names.push_back(line);
-			line.clear();
-			if (value == '\r' && i + 1 < length && data[i + 1] == '\n')
+			flush();
+			break;
+		}
+		if (ch == '\r' || ch == '\n')
+		{
+			flush();
+			if (ch == '\r' && i + 1 < length && data[i + 1] == '\n')
 				++i;
 		}
 		else
-			line.push_back(static_cast<char>(value));
+			current.push_back(static_cast<char>(ch));
 	}
-	if (!line.empty())
-		names.push_back(line);
-	// Reject incomplete/shifted tables before changing any unit names.
+	if (!current.empty())
+		flush();
+	return lines;
+}
+
+static bool ApplyOriginalUnitNames(SpellUnits* units, const std::vector<std::string>& names)
+{
+	if (!units)
+		return false;
+	auto& records = units->GetUnits();
+	// Never partly overwrite definitions if the table is incomplete, shifted
+	// or contains names larger than the game's 28-byte record name field.
 	if (names.size() != records.size())
 		return false;
 	for (size_t i = 0; i < names.size(); ++i)
@@ -369,6 +388,16 @@ static bool LoadOriginalUnitNames(SpellUnits* units, const uint8_t* data, int le
 		std::memcpy(records[i]->name, names[i].data(), names[i].size());
 	}
 	return true;
+}
+
+std::string SpellData::GetOriginalText(const char* resource_stem, size_t index) const
+{
+	if (!resource_stem)
+		return {};
+	const auto it = original_language_tables.find(resource_stem);
+	if (it == original_language_tables.end() || index >= it->second.size())
+		return {};
+	return it->second[index]; // original CP895 bytes
 }
 
 SpellData::SpellData(wstring &data_path,wstring& cd_data_path,wstring& spec_path,std::function<void(std::string)> status_list,std::function<void(std::string)> status_item)
@@ -649,21 +678,51 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		throw runtime_error(string_format("Decoding JEDNOTKY.DEF failed (%s)!",error.what()));
 	}
 
-	// The original game stores its localized unit type names in UNITS.CZ /
-	// UNITS.ENG, not in the first 28 bytes of JEDNOTKY.DEF. Both tables are
-	// members of the same COMMON.FS and follow JEDNOTKY.DEF type-ID order.
-	// The binary record layout still selects the matching retail language.
-	const char* unitNamesResource = units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ";
-	if(status_list)
-		status_list(string_format("Loading original unit names (%s)...", unitNamesResource));
-	if(common_fs->GetFile(unitNamesResource, &data, &size) ||
-		!LoadOriginalUnitNames(units, data, size))
+	// All fourteen original language tables belong to COMMON.FS and share
+	// the retail edition selected by JEDNOTKY.DEF (not the OS locale).
+	// Store the tables separately: an index in OTHER is not an index in
+	// BIG_MAP, and neither is a unit ID unless the source specifies so.
+	static constexpr const char* kOriginalLanguageResources[] = {
+		"BIG_MAP", "BUTTONS", "DISPLAY", "HODNOSTI", "INFOTEXT",
+		"MESIACE", "MOSTY", "MURY", "OTHER", "RESEARCH",
+		"SELTAB", "SPECOBJ", "UNITS", "UPGRADES"
+	};
+	const char* extension = units->IsEnglish() ? ".ENG" : ".CZ";
+	for (const char* stem : kOriginalLanguageResources)
 	{
-		// Keep the legacy names if modded/incomplete resources are missing, but
-		// report the source problem instead of silently showing the wrong names.
-		if(status_list)
-			status_list(string_format("WARNING: Missing or invalid %s in COMMON.FS; "
-				"falling back to JEDNOTKY.DEF names.", unitNamesResource));
+		const std::string filename = std::string(stem) + extension;
+		if (common_fs->GetFile(filename.c_str(), &data, &size))
+		{
+			if (status_list)
+				status_list(string_format("WARNING: %s missing in COMMON.FS.", filename.c_str()));
+			continue;
+		}
+		auto lines = ParseOriginalLanguageLines(data, size);
+		// These two original tables have strict fixed offsets relied upon by
+		// the engine: 87 type IDs, nine (full name, abbreviation) rank pairs.
+		if ((std::string(stem) == "UNITS" && lines.size() != units->GetUnits().size()) ||
+			(std::string(stem) == "HODNOSTI" && lines.size() != 18) ||
+			lines.empty())
+		{
+			if (status_list)
+				status_list(string_format("WARNING: Invalid original table %s (%zu entries).",
+					filename.c_str(), lines.size()));
+			continue;
+		}
+		if (status_list)
+			status_list(string_format(" - original %s: %zu entries", filename.c_str(), lines.size()));
+		original_language_tables.emplace(stem, std::move(lines));
+	}
+
+	// JEDNOTKY.DEF contains the binary unit definitions, but its name fields
+	// are English even in an untouched Czech retail installation. The game's
+	// original UNITS.CZ/UNITS.ENG are the authoritative displayed names.
+	const auto nameTable = original_language_tables.find("UNITS");
+	if (nameTable == original_language_tables.end() ||
+		!ApplyOriginalUnitNames(units, nameTable->second))
+	{
+		if (status_list)
+			status_list("WARNING: UNITS language table unavailable; using raw JEDNOTKY.DEF names.");
 	}
 
 	// load font file
