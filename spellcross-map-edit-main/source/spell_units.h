@@ -346,10 +346,6 @@ public:
 	int Count();
 	SpellUnitRec* GetUnit(int uid);
 	vector<SpellUnitRec*> &GetUnits();
-	// Original names are positional CR/LF records in COMMON.FS: UNITS.CZ/UNITS.ENG.
-	// JEDNOTKY.DEF describes unit attributes and binary edition layout.
-	// Validate the complete table before changing any displayed name.
-	bool LoadOriginalNames(const uint8_t* data, int length);
 	bool IsEnglish() const { return is_eng != 0; }
 };
 
@@ -594,7 +590,7 @@ public:
 	// list of other units in view range
 	std::vector<int> units_in_view;
 
-	// PÃ¸idejte tuto metodu do veÃ¸ejnÃ© sekce tÃ¸Ã­dy MapUnit:
+	// Pøidejte tuto metodu do veøejné sekce tøídy MapUnit:
 	int GetAP() const { return action_points; }
 	int GetFireRange() const { const int range = (unit ? unit->fire_range : 0) + upgrade_range_bonus; return range > 0 ? range : 0; }
 
