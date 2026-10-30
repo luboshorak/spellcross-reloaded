@@ -8333,28 +8333,16 @@ bool StrategicLevelFrame::EnsureUpgradeDefsLoaded() const
         }
     }
 
-    // Original upgrade display names are line-indexed by upgrade id.  Prefer
-    // the Czech table because the restored UI uses the original CP895 font.
-    for (const char* titleFile : { "UPGRADES.CZ", "UPGRADES.ENG" })
-    {
-        const fs::path tp = commonDir.empty() ? fs::path() : (commonDir / titleFile);
-        std::ifstream tf;
-        if (!tp.empty()) tf.open(tp, std::ios::binary);
-        if (!tf)
-            continue;
-        std::string line;
-        int idx = 0;
-        while (std::getline(tf, line))
+    // The correct original UPGRADES.CZ/ENG was selected while COMMON.FS was
+    // opened. Never prefer a stale loose CZ file when running the EN edition.
+    if (m_spellData)
+        for (auto& kv : m_upgradeDefs)
         {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            while (!line.empty() && static_cast<unsigned char>(line.back()) < 0x20) line.pop_back();
-            auto it = m_upgradeDefs.find(idx);
-            if (it != m_upgradeDefs.end() && !line.empty())
-                it->second.title = wxString(char2wstringCP895(line.c_str()));
-            ++idx;
+            if (kv.first < 0) continue;
+            const std::string name = m_spellData->GetOriginalText("UPGRADES", static_cast<size_t>(kv.first));
+            if (!name.empty())
+                kv.second.title = wxString(char2wstringCP895(name.c_str()));
         }
-        break;
-    }
 
     m_upgradeDefsLoaded = true;
     return !m_upgradeDefs.empty();
@@ -14025,28 +14013,17 @@ void StrategicLevelFrame::EnsureResearchLoaded()
     }
 
     // ----------------------------------------------------------------
-    // 2. Item titles from RESEARCH.CZ / fallback RESEARCH.ENG.
+    // 2. Research/encyclopedia titles from the current retail COMMON.FS.
+    // These are positional RESEARCH.CZ/ENG entries indexed by Item(N).
     // ----------------------------------------------------------------
     std::vector<wxString> titleByIndex;
+    if (m_spellData)
     {
-        std::string raw;
-        for (const char* name : { "RESEARCH.CZ", "RESEARCH.ENG" })
+        for (size_t index = 0; index < 512; ++index)
         {
-            raw = loadExtracted(commonDirs, name);
-            if (raw.empty()) raw = loadArchiveMember(L"COMMON.FS", name);
-            if (!raw.empty()) break;
-        }
-        if (!raw.empty())
-        {
-            std::istringstream ss(raw);
-            std::string line;
-            while (std::getline(ss, line))
-            {
-                if (!line.empty() && line.back() == '\r') line.pop_back();
-                while (!line.empty() && static_cast<unsigned char>(line.back()) < 0x20)
-                    line.pop_back();
-                titleByIndex.push_back(DecodeCp895Text(line));
-            }
+            const std::string original = m_spellData->GetOriginalText("RESEARCH", index);
+            if (original.empty()) break;
+            titleByIndex.push_back(DecodeCp895Text(original));
         }
     }
 
