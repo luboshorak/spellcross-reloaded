@@ -299,6 +299,9 @@ public:
     // Retain enemy occupiers for the recapture; transfer land only once.
     void SurrenderCounterAttack(CounterAttackState& attack);
 
+    // An owned sector can launch a battle only for an active defence.
+    bool CanLaunchTerritoryBattle(int territoryId) const;
+
     // Process Level Events from DEF (AbsTime/Time events with armies, texts, etc.)
     void ProcessLevelEvents();
 
