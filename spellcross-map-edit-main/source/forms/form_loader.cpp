@@ -239,6 +239,10 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
     {
         UpdateList(string_format(" - JEDNOTKY.DEF layout: %s",
             spell_data->units->IsEnglish() ? "EN (207-byte records)" : "CZ (206-byte records)"));
+        int englishNameMatches = 0;
+        static constexpr const char* kVerifiedEnglishNames[] = {
+            "Light infantry", "Heavy infantry", "Rangers", "Commando"
+        };
         for (int typeId = 0; typeId < 5; ++typeId)
         {
             if (auto* unit = spell_data->units->GetUnit(typeId))
@@ -247,8 +251,17 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
                 const char* end = std::find(begin, begin + sizeof(unit->name), '\0');
                 const std::string rawName(begin, end);
                 UpdateList(string_format(" - unit #%d in COMMON.FS: %s", typeId, rawName.c_str()));
+                if (typeId < 4 && rawName == kVerifiedEnglishNames[typeId])
+                    ++englishNameMatches;
             }
         }
+        // The record stride describes the binary schema, not the language
+        // of user-modified name fields. Warn instead of fabricating CZ names.
+        if (!spell_data->units->IsEnglish() && englishNameMatches >= 3)
+            UpdateList("WARNING: Czech-layout JEDNOTKY.DEF contains English "
+                "unit names matching the retail EN edition. COMMON.FS may "
+                "have been modified or mixed; use an original Czech COMMON.FS "
+                "to restore Czech names.");
     }
 
 	// try load units.fsu aux metadata (optional)

@@ -27,6 +27,8 @@ The idea is simple: **keep Spellcross looking, sounding and playing like Spellcr
 3. Start `Spellcross.exe`.
 4. On first launch, follow the game-data wizard. You can download a supported Czech or English ISO through the wizard, or point it to your original CD, ISO or existing Spellcross `DATA` folder.
 
+**Switching Czech/English editions:** Close the game and launch `Spellcross.exe --select-game-data` to reopen the source wizard, even if the configured archives are still valid. Select a *complete* original ISO/CD or installed `DATA` directory. Reloaded does not silently mix archives from two editions or translate names inside the original `COMMON.FS`; the retail names come from `JEDNOTKY.DEF`. Imported editions are stored in separate folders under `game_data/imports/` so switching versions or a failed import does not overwrite your existing game data.
+
 You may also need the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) on a fresh Windows installation.
 
 **Please note:** Original commercial Spellcross game data is not included in this repository or release package.

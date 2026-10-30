@@ -46,7 +46,7 @@ SpellTextRec::SpellTextRec(std::string str, SpellLang lang, const char* name,Spe
                 ++pstr;
             if(last_sym == '.' || last_sym == '\n')
                 *data++ = '\n';
-            else if(data > buf && data[-1] != ' ' && data[-1] != '\n')
+            else if(data > buf.data() && data[-1] != ' ' && data[-1] != '\n')
                 *data++ = ' ';
             last_sym = '\n';
             ++pstr;

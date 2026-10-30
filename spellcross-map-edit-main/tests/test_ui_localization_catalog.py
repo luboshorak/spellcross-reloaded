@@ -132,6 +132,45 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn('spell_data->units->IsEnglish()', loader)
         self.assertIn('unit->name', loader)
 
+    def test_imports_cannot_mix_archives_from_previous_editions(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        # The new edition must be selected as a complete set of sources.
+        self.assertIn("for (const auto& fresh : extracted)", source)
+        self.assertIn("bool infoImported = false;", source)
+        self.assertIn("if (!req.optional && !IsValidSourceFile(imported, req.filename))", source)
+        self.assertIn("if (!req.optional && !IsValidSourceFile(candidate, req.filename))", source)
+        self.assertNotIn("autoDiscoverFrom(localDataDir);", source)
+        self.assertNotIn("autoDiscoverFrom(dataPath);", source)
+
+    def test_imports_are_isolated_and_failed_attempts_are_cleaned(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn('runtime_root / "game_data" / "imports"', source)
+        self.assertIn("fs::create_directory(candidate, dirError)", source)
+        self.assertIn("const auto cleanupFailedImport", source)
+        self.assertIn("fs::remove_all(localDataDir, cleanupError)", source)
+        self.assertRegex(source, r"if \(!extractedOk\)\s*\{\s*cleanupFailedImport\(\);")
+        self.assertIn("const fs::path temporaryRoot = runtime_root / \"game_data\";", source)
+        self.assertIn("fs::create_directories(temporaryRoot, stagingError)", source)
+        self.assertIn("for (const auto& fresh : extracted)", source)
+
+    def test_skipped_optional_audio_cannot_be_rediscovered_from_old_install(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn('ini.GetBoolValue("FILES", req.skip_key, false)', source)
+        self.assertIn('ini.SetValue("FILES", req.key, "");', source)
+        self.assertIn('ini.SetBoolValue("FILES", req.skip_key, true, nullptr, true)', source)
+
+    def test_force_edition_selection_with_existing_valid_archives(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn('wxString(argv[i]) == "--select-game-data"', source)
+        self.assertIn("if (missingRequired || forceSourceSelection)", source)
+        self.assertIn("runtime_root, executable_dir, forceSourceSelection)", source)
+
+    def test_czech_binary_layout_is_not_treated_as_proof_of_czech_names(self):
+        source = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
+        self.assertIn('"Light infantry", "Heavy infantry", "Rangers", "Commando"', source)
+        self.assertIn("!spell_data->units->IsEnglish() && englishNameMatches >= 3", source)
+        self.assertIn("WARNING: Czech-layout JEDNOTKY.DEF contains English", source)
+
     def test_original_text_is_not_in_ui_catalogs(self):
         # Mission text still comes from TEXTS.FS; catalogs contain only UI keys.
         engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")

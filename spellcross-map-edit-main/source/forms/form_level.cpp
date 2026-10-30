@@ -2902,34 +2902,35 @@ void StrategicLevelFrame::BuildMenu()
     if (GetMenuBar() != nullptr)
         return;
 
+    spellcross_ui_locale::SetLanguageFromEdition(strategic_english(m_spellData));
     auto* bar = new wxMenuBar();
 
     auto* file = new wxMenu();
-    file->Append(ID_MENU_SAVE_GAME, (L"&Save game...\tCtrl+S"));
-    file->Append(ID_MENU_LOAD_GAME, (L"&Load game...\tCtrl+L"));
-    bar->Append(file, "&File");
+    file->Append(ID_MENU_SAVE_GAME, spellcross_ui_locale::Tr("menu.strategic.save", "&Save game...\tCtrl+S"));
+    file->Append(ID_MENU_LOAD_GAME, spellcross_ui_locale::Tr("menu.strategic.load", "&Load game...\tCtrl+L"));
+    bar->Append(file, spellcross_ui_locale::Tr("menu.file", "&File"));
 
     auto* options = new wxMenu();
-    options->Append(ID_MENU_OPTIONS_AUDIO, (L"&Audio...\tCtrl+O"));
-    options->Append(ID_MENU_OPTIONS_SCREEN, (L"&Screen...\tCtrl+B"));
+    options->Append(ID_MENU_OPTIONS_AUDIO, spellcross_ui_locale::Tr("menu.strategic.audio", "&Audio...\tCtrl+O"));
+    options->Append(ID_MENU_OPTIONS_SCREEN, spellcross_ui_locale::Tr("menu.strategic.screen", "&Screen...\tCtrl+B"));
     auto* difficulty = new wxMenu();
     const bool englishDifficultyMenu = m_spellData && m_spellData->units && m_spellData->units->IsEnglish();
     if(!englishDifficultyMenu)
-        difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_EASY, L"&Easy");
-    difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_NORMAL, L"&Normal");
-    difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_HARD, L"&Hard");
-    options->AppendSubMenu(difficulty, L"Game &Difficulty");
-    bar->Append(options, "&Options");
+        difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_EASY, spellcross_ui_locale::Tr("menu.easy", "&Easy"));
+    difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_NORMAL, spellcross_ui_locale::Tr("menu.normal", "&Normal"));
+    difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_HARD, spellcross_ui_locale::Tr("menu.hard", "&Hard"));
+    options->AppendSubMenu(difficulty, spellcross_ui_locale::Tr("menu.difficulty", "Game &Difficulty"));
+    bar->Append(options, spellcross_ui_locale::Tr("menu.options", "&Options"));
 
     // Game mode is internal campaign state, not a user-facing editor toggle.
     // Keep the underlying flag and loading logic, but hide the obsolete menu.
 
     // Parallel UI switch: the old implementation remains intact and usable.
     auto* strategicUi = new wxMenu();
-    strategicUi->AppendRadioItem(ID_MENU_STRATEGIC_UI_CURRENT, L"&Native wx UI");
-    strategicUi->AppendRadioItem(ID_MENU_STRATEGIC_UI_ORIGINAL, L"&Reconstructed original UI");
+    strategicUi->AppendRadioItem(ID_MENU_STRATEGIC_UI_CURRENT, spellcross_ui_locale::Tr("menu.strategic.native", "&Native wx UI"));
+    strategicUi->AppendRadioItem(ID_MENU_STRATEGIC_UI_ORIGINAL, spellcross_ui_locale::Tr("menu.strategic.original", "&Reconstructed original UI"));
     strategicUi->Check(ID_MENU_STRATEGIC_UI_ORIGINAL, true);
-    bar->Append(strategicUi, "Strategic &UI");
+    bar->Append(strategicUi, spellcross_ui_locale::Tr("menu.strategic_ui", "Strategic &UI"));
 
     SetMenuBar(bar);
     SyncDifficultyMenu();
@@ -15089,7 +15090,7 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
         else
         {
             // Owned territory
-            info << (english ? "Territory secured.\n" : "Území zajištěno.\n");
+            info << spellcross_ui_locale::Tr("strategic.territory_secured", "Territory secured.") << "\n";
 
             if (counterTurnsLeft > 0)
                 info << wxString::Format(english ? "\nCounter-attack expected in %d turns.\n" : "\nProtiútok očekáván za %d tahů.\n", counterTurnsLeft);
