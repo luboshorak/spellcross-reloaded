@@ -20346,6 +20346,16 @@ void StrategicLevelFrame::CheckCounterAttacks()
         if (ca.triggered || ca.completed)
             continue;
 
+        // A scheduled defence belongs to the ownership epoch in which it was
+        // created.  If the sector has since been lost, it must never overwrite
+        // the hostile mission token or ask the player to defend enemy land.
+        if (std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+                ca.territory_id) == m_ownedTerritories.end())
+        {
+            ca.completed = true;
+            continue;
+        }
+
         if (m_turn >= ca.trigger_turn)
         {
             ca.triggered = true;
