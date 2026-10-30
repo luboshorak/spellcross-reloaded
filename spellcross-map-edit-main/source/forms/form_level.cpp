@@ -18033,6 +18033,7 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
         // launch. An exact tactical UID must be paired with its own strategic
         // company; collecting UIDs separately from indices used to misalign
         // them whenever different unit types or casualties were interleaved.
+        std::vector<int> exactMatches(m_playerUnits.size(), 0);
         size_t row = 0;
         for (size_t i = 0; i < m_playerUnits.size(); ++i)
         {
@@ -18047,6 +18048,7 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
                     continue;
                 recovered.sent_unit_indices.push_back(i);
                 recovered.sent_unit_uids.push_back(uid);
+                ++exactMatches[i];
                 tacticalUidTypes.erase(match);
             }
         }
@@ -18056,7 +18058,7 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
         for (size_t i = 0; i < m_playerUnits.size(); ++i)
         {
             int& count = needed[m_playerUnits[i].unit_id];
-            const int take = std::min(std::max(0, m_playerUnits[i].count), count);
+            const int take = std::min(std::max(0, m_playerUnits[i].count - exactMatches[i]), count);
             for (int k = 0; k < take; ++k)
             {
                 recovered.sent_unit_indices.push_back(i);
