@@ -232,6 +232,9 @@ public:
         bool valid = false;
         int territory_id = -1;
         std::string mission_token;
+        // Stable identity of the strategic counter-attack launched by this
+        // tactical mission (0 for ordinary missions and older saves).
+        int counter_attack_id = 0;
         // Indices into m_playerUnits of units sent to this mission. Kept for
         // compatibility with older campaign saves; concrete roster UIDs are the
         // authoritative identity for hierarchy/commander loss tracking.
@@ -242,6 +245,9 @@ public:
     // Counter-attack state for owned territories
     struct CounterAttackState
     {
+        // Monotonic within the saved chapter. Zero is reserved for legacy
+        // states awaiting migration during loading.
+        int attack_id = 0;
         int territory_id = 0;
         int conquest_turn = 0;
         int trigger_turn = 0;

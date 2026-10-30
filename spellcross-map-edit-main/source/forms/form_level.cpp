@@ -15874,6 +15874,15 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
     m_pendingMission.valid = true;
     m_pendingMission.territory_id = terr_id;
     m_pendingMission.mission_token = token;
+    m_pendingMission.counter_attack_id = 0;
+    for (auto it = m_counterAttacks.rbegin(); it != m_counterAttacks.rend(); ++it)
+    {
+        if (it->territory_id == terr_id && it->triggered && !it->completed)
+        {
+            m_pendingMission.counter_attack_id = it->attack_id;
+            break;
+        }
+    }
     // Record both legacy player-unit indices and the concrete roster UIDs.
     // UIDs are required to identify the exact company (and therefore the
     // exact commander host) that died in the tactical battle.
@@ -16437,6 +16446,7 @@ static bool LoadStrategicStateFile(
                 {
                     const std::string obj = (*it)[0].str();
                     StrategicLevelFrame::CounterAttackState ca;
+                    (void)ParseJsonIntField(obj, "attack_id", ca.attack_id);
                     (void)ParseJsonIntField(obj, "territory_id", ca.territory_id);
                     (void)ParseJsonIntField(obj, "conquest_turn", ca.conquest_turn);
                     (void)ParseJsonIntField(obj, "trigger_turn", ca.trigger_turn);
@@ -16449,6 +16459,28 @@ static bool LoadStrategicStateFile(
                     for (auto uit = std::sregex_iterator(enemyUnits.begin(), enemyUnits.end(), enemy_num_re); uit != std::sregex_iterator(); ++uit)
                         ca.enemy_units.push_back(std::stoi((*uit)[1].str()));
                     if (ca.territory_id > 0) g_missionFlowPersistLoad->counterAttacks->push_back(std::move(ca));
+                }
+                // Pre-ID saves lack attack_id. Repair absent/duplicate IDs
+                // deterministically in file order without changing the attack
+                // history or assigning a different force to a territory.
+                auto& attacks = *g_missionFlowPersistLoad->counterAttacks;
+                std::set<int> usedIds;
+                int nextId = 1;
+                for (auto& attack : attacks)
+                {
+                    if (attack.attack_id > 0 && usedIds.insert(attack.attack_id).second)
+                        nextId = std::max(nextId, attack.attack_id + (attack.attack_id < INT_MAX ? 1 : 0));
+                    else
+                        attack.attack_id = 0;
+                }
+                for (auto& attack : attacks)
+                {
+                    if (attack.attack_id != 0) continue;
+                    while (usedIds.count(nextId) && nextId < INT_MAX)
+                        ++nextId;
+                    if (usedIds.count(nextId)) break;
+                    attack.attack_id = nextId;
+                    usedIds.insert(nextId);
                 }
             }
         }
@@ -16834,7 +16866,8 @@ static void SaveStrategicStateFile(
         for (const auto& ca : *g_missionFlowPersistSave->counterAttacks)
         {
             if (!firstC) f << ", "; firstC = false;
-            f << "{\"territory_id\":" << ca.territory_id
+            f << "{\"attack_id\":" << ca.attack_id
+              << ",\"territory_id\":" << ca.territory_id
               << ",\"conquest_turn\":" << ca.conquest_turn
               << ",\"trigger_turn\":" << ca.trigger_turn
               << ",\"counter_mission\":\"" << EscapeJson(ca.counter_mission) << "\""
@@ -19733,7 +19766,12 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
     for (auto attack = m_counterAttacks.rbegin(); attack != m_counterAttacks.rend(); ++attack)
     {
         auto& ca = *attack;
-        if (ca.territory_id == territory_id && ca.triggered && !ca.completed)
+        if (ca.territory_id == territory_id && ca.triggered && !ca.completed &&
+            // A battle's result may only complete the attack that launched
+            // it. Older v1-v3 tactical saves have no ID and retain the
+            // previous latest-first fallback.
+            (m_pendingMission.counter_attack_id == 0 ||
+             ca.attack_id == m_pendingMission.counter_attack_id))
         {
             wasCounterAttack = true;
             if (success)
@@ -20252,6 +20290,9 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
         !terr->counter_attack_mission.empty())
     {
         CounterAttackState ca;
+        for (const auto& existing : m_counterAttacks)
+            ca.attack_id = std::max(ca.attack_id, existing.attack_id);
+        if (ca.attack_id < INT_MAX) ++ca.attack_id;
         ca.territory_id = territory_id;
         ca.conquest_turn = m_turn;
         ca.trigger_turn = m_turn + terr->counter_attack_turn;
@@ -20657,6 +20698,9 @@ void StrategicLevelFrame::ProcessLevelEvents()
             const int target_tid = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
 
             CounterAttackState eventAttack;
+            for (const auto& existing : m_counterAttacks)
+                eventAttack.attack_id = std::max(eventAttack.attack_id, existing.attack_id);
+            if (eventAttack.attack_id < INT_MAX) ++eventAttack.attack_id;
             eventAttack.territory_id = target_tid;
             eventAttack.conquest_turn = m_turn;
             eventAttack.trigger_turn = m_turn;
