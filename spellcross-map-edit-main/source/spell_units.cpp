@@ -1508,12 +1508,12 @@ int MapUnit::AddExperience(int points)
 		experience_level++;
 	return(old_level != experience_level);
 }
-// add experience for casualties caused to a target unit.
+// calculate experience for casualties caused to a target unit.
 // Original DOS routines EN 0x7CC81 / CZ 0x74BE3 distinguish killed and
 // wounded casualties.  This must be called before the target's man/wounded
 // counters are updated, because destroying the last active member also turns
 // all previously wounded members into dead casualties for the XP award.
-int MapUnit::AddExperience(MapUnit* target,int affected,int killed)
+static int CalculateCasualtyExperiencePoints(MapUnit* target,int affected,int killed)
 {
 	if(!target || !target->unit || target->unit->cnt <= 0 || affected <= 0)
 		return 0;
@@ -1555,9 +1555,16 @@ int MapUnit::AddExperience(MapUnit* target,int affected,int killed)
 		static_cast<long double>(kWoundedWeight));
 	const float total_xp = static_cast<float>(
 		static_cast<long double>(killed_xp) + static_cast<long double>(wounded_xp));
-	const int points = static_cast<int>(static_cast<float>(
-		static_cast<long double>(total_xp) + 0.5L));
 
+	return static_cast<int>(static_cast<float>(
+		static_cast<long double>(total_xp) + 0.5L));
+}
+
+// Legacy two-argument helper retained for source compatibility.  Tactical
+// combat uses the recovered total-affected/killed path below.
+int MapUnit::AddExperience(MapUnit* target,int killed)
+{
+	const int points = CalculateCasualtyExperiencePoints(target, killed, killed);
 	return points > 0 ? AddExperience(points) : 0;
 }
 // update morale level with limits protection
@@ -2329,7 +2336,8 @@ MapUnit::AttackResult MapUnit::DamageTarget(MapUnit* target)
 	// Award XP while target->man and target->wounded still describe the
 	// pre-hit state.  The original routine needs both values when this hit
 	// destroys the unit.
-	int level_up = AddExperience(target, affected, killed);
+	const int casualty_xp = CalculateCasualtyExperiencePoints(target, affected, killed);
+	int level_up = casualty_xp > 0 ? AddExperience(casualty_xp) : 0;
 
 	if(target->unit->isSingleMan())
 	{
