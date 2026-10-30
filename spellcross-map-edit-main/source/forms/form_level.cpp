@@ -7741,6 +7741,11 @@ static int PickStartTerritoryIdForGameMode(const LevelData& level, const SpellDa
 
 void StrategicLevelFrame::ApplyTerritoryVisibility()
 {
+    // Any previously assigned territory proves this campaign was initialized;
+    // subsequent loss of the last sector must never trigger Start(n) again.
+    if (!m_ownedTerritories.empty())
+        m_campaignOwnershipInitialized = true;
+
     // Determine max territory id
     int maxId = 0;
     for (const auto& t : m_level.territories)
