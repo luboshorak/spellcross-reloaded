@@ -20724,18 +20724,19 @@ void StrategicLevelFrame::CheckCounterAttacks()
             // Visual indicator update
             MarkOverlayDirty();
 
-            int result = wxMessageBox(
-                wxString::Format(
-                    "COUNTER-ATTACK!\n\n"
-                    "Enemy forces are attacking territory %d!\n\n"
-                    "You must defend this territory or lose it.\n"
-                    "Launch defense mission now?",
-                    ca.territory_id
-                ),
-                "Counter-Attack Warning",
-                wxYES_NO | wxICON_EXCLAMATION,
-                this
-            );
+            const bool english = strategic_english(m_spellData);
+            const wxString warning = english
+                ? wxString::Format(
+                    "COUNTER-ATTACK!\n\nEnemy forces are attacking territory %d!\n\n"
+                    "You must defend this territory or lose it.\nLaunch defense mission now?",
+                    ca.territory_id)
+                : wxString::Format(
+                    L"PROTIÚTOK!\n\nNepřítel útočí na území %d!\n\n"
+                    L"Musíte území ubránit, jinak o něj přijdete.\nZahájit obranu?",
+                    ca.territory_id);
+            int result = wxMessageBox(warning,
+                english ? wxString("Counter-Attack Warning") : wxString(L"Varování před protiútokem"),
+                wxYES_NO | wxICON_EXCLAMATION, this);
 
             if (result == wxYES)
             {
@@ -21042,17 +21043,13 @@ void StrategicLevelFrame::ProcessLevelEvents()
             SelectTerritoryById(target_tid);
             MarkOverlayDirty();
 
-            int result = wxMessageBox(
-                wxString::Format(
-                    "COUNTER-ATTACK!\n\n"
-                    "Enemy forces are attacking territory %d!\n\n"
-                    "Defend this territory?",
-                    target_tid
-                ),
-                "Counter-Attack",
-                wxYES_NO | wxICON_EXCLAMATION,
-                this
-            );
+            const bool english = strategic_english(m_spellData);
+            const wxString warning = english
+                ? wxString::Format("COUNTER-ATTACK!\n\nEnemy forces are attacking territory %d!\n\nDefend this territory?", target_tid)
+                : wxString::Format(L"PROTIÚTOK!\n\nNepřítel útočí na území %d!\n\nBránit toto území?", target_tid);
+            int result = wxMessageBox(warning,
+                english ? wxString("Counter-Attack") : wxString(L"Protiútok"),
+                wxYES_NO | wxICON_EXCLAMATION, this);
 
             if (result == wxYES)
             {
