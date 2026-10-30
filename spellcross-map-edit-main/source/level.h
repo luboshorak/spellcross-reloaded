@@ -76,7 +76,7 @@ struct LevelEventArmy {
 struct LevelEvent {
     int id = 0;
     bool abs_time = false;      // AbsTime(...) vs Time(...)
-    int time_value = 0;         // mùže být -1
+    int time_value = -1;        // -1 = no relative timer (condition/mission-triggered event)
     std::string text_id;        // EventText(E02_0001)
     std::vector<LevelEventArmy> armies;
 
