@@ -20216,8 +20216,30 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
         PlayVideo(terr->conquest_video);
     }
     
-    // Schedule counter-attack if defined
-    if (terr && terr->counter_attack_turn > 0 && !terr->counter_attack_mission.empty())
+    // A recaptured territory starts a fresh ownership epoch.  A scheduled
+    // defence from an earlier conquest must not fire after the recapture,
+    // and a completed attack must not shadow the new defence when restoring
+    // strategic saves.  Preserve active attacks: they represent an unresolved
+    // battle and must be resolved by the mission-result flow instead.
+    m_counterAttacks.erase(
+        std::remove_if(m_counterAttacks.begin(), m_counterAttacks.end(),
+            [territory_id](const CounterAttackState& ca)
+            {
+                return ca.territory_id == territory_id && (ca.completed || !ca.triggered);
+            }),
+        m_counterAttacks.end());
+
+    // Schedule at most one new defence for this ownership epoch.  In
+    // particular, do not add a second record if a scripted Army attack is
+    // already active for the territory.
+    const bool unresolvedAttack = std::any_of(
+        m_counterAttacks.begin(), m_counterAttacks.end(),
+        [territory_id](const CounterAttackState& ca)
+        {
+            return ca.territory_id == territory_id && ca.triggered && !ca.completed;
+        });
+    if (!unresolvedAttack && terr && terr->counter_attack_turn > 0 &&
+        !terr->counter_attack_mission.empty())
     {
         CounterAttackState ca;
         ca.territory_id = territory_id;
