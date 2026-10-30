@@ -590,7 +590,7 @@ public:
 	// list of other units in view range
 	std::vector<int> units_in_view;
 
-	// Pøidejte tuto metodu do veøejné sekce tøídy MapUnit:
+	// PÃ¸idejte tuto metodu do veÃ¸ejnÃ© sekce tÃ¸Ã­dy MapUnit:
 	int GetAP() const { return action_points; }
 	int GetFireRange() const { const int range = (unit ? unit->fire_range : 0) + upgrade_range_bonus; return range > 0 ? range : 0; }
 
@@ -723,6 +723,6 @@ public:
 	int isActive();	
 	int InitExperience(int level=1);
 	int AddExperience(int points=0);
-	int AddExperience(MapUnit *target, int killed);
+	int AddExperience(MapUnit *target, int affected, int killed);
 	int UpdateModale(double points);
 };

@@ -1508,10 +1508,57 @@ int MapUnit::AddExperience(int points)
 		experience_level++;
 	return(old_level != experience_level);
 }
-// add points of experience based on target unit killed men
-int MapUnit::AddExperience(MapUnit* target,int killed)
-{	
-	return(AddExperience((killed*(std::max)(target->experience,target->unit->GetNextExperiencePts(1)/2))/target->unit->cnt));
+// add experience for casualties caused to a target unit.
+// Original DOS routines EN 0x7CC81 / CZ 0x74BE3 distinguish killed and
+// wounded casualties.  This must be called before the target's man/wounded
+// counters are updated, because destroying the last active member also turns
+// all previously wounded members into dead casualties for the XP award.
+int MapUnit::AddExperience(MapUnit* target,int affected,int killed)
+{
+	if(!target || !target->unit || target->unit->cnt <= 0 || affected <= 0)
+		return 0;
+
+	affected = (std::max)(affected, 0);
+	killed = (std::clamp)(killed, 0, affected);
+	int killed_for_xp = killed;
+	int wounded_for_xp = affected - killed;
+
+	// When the hit destroys the unit, the original game awards death XP for
+	// every active and already-wounded member that disappears with the unit.
+	if(target->man <= affected)
+	{
+		killed_for_xp = (std::max)(target->man, 0) + (std::max)(target->wounded, 0);
+		wounded_for_xp = 0;
+	}
+
+	// The DOS code only substitutes half of the first threshold when the
+	// target's actual XP is exactly zero.  Do not clamp small positive XP up.
+	int base_xp = target->experience;
+	if(base_xp == 0)
+		base_xp = target->unit->GetNextExperiencePts(1)/2;
+	if(base_xp <= 0)
+		return 0;
+
+	// EN/CZ both store XP-per-member and weighted partial results as single
+	// precision.  The constants are identical in both executables:
+	// killed = 0.16, wounded = 0.06.  Positive totals are rounded by adding
+	// 0.5 before Watcom's integer conversion helper.
+	const float xp_per_member = static_cast<float>(
+		static_cast<long double>(base_xp) / static_cast<long double>(target->unit->cnt));
+	constexpr double kKilledWeight = 0.16;
+	constexpr double kWoundedWeight = 0.06;
+	const float killed_xp = static_cast<float>(
+		static_cast<long double>(killed_for_xp) * static_cast<long double>(xp_per_member) *
+		static_cast<long double>(kKilledWeight));
+	const float wounded_xp = static_cast<float>(
+		static_cast<long double>(wounded_for_xp) * static_cast<long double>(xp_per_member) *
+		static_cast<long double>(kWoundedWeight));
+	const float total_xp = static_cast<float>(
+		static_cast<long double>(killed_xp) + static_cast<long double>(wounded_xp));
+	const int points = static_cast<int>(static_cast<float>(
+		static_cast<long double>(total_xp) + 0.5L));
+
+	return points > 0 ? AddExperience(points) : 0;
 }
 // update morale level with limits protection
 int MapUnit::UpdateModale(double points)
@@ -2279,6 +2326,11 @@ MapUnit::AttackResult MapUnit::DamageTarget(MapUnit* target)
 	int killed = (int)(kill_fraction * affected);
 	killed = (std::clamp)(killed, 0, affected);
 
+	// Award XP while target->man and target->wounded still describe the
+	// pre-hit state.  The original routine needs both values when this hit
+	// destroys the unit.
+	int level_up = AddExperience(target, affected, killed);
+
 	if(target->unit->isSingleMan())
 	{
 		// One accumulated whole unit of effect destroys the vehicle/monster.
@@ -2297,9 +2349,6 @@ MapUnit::AttackResult MapUnit::DamageTarget(MapUnit* target)
 			target->wounded = 0;
 	}
 
-	int level_up = false;
-	if(killed > 0)
-		level_up = AddExperience(target, killed);
 	if(level_up)
 		PlayLevelUp();
 

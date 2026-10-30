@@ -82,6 +82,28 @@ not full recovery of original source.
 
 ## Next evidence required
 
+### Hit casualty XP award recovered
+
+EN `FUN_0007cc81` at `0x7cc81` and CZ `FUN_00074be3` at `0x74be3`
+are structurally identical casualty-XP routines.  The attack resolver passes
+the total affected count and the killed subset before mutating the target.
+The routine derives XP per member from the target's actual experience divided
+by its maximum unit count; only an exactly zero target XP falls back to half
+of the first positive threshold.
+
+Killed casualties are weighted by 0.16 and wounded casualties by 0.06 in both
+executables.  If the hit destroys the target, the wounded contribution is
+discarded and all currently active plus previously wounded members are counted
+as dead, matching the original rule that wounded members die with a destroyed
+unit.  Intermediate values are stored as single precision and the positive
+result is rounded by adding 0.5 before integer conversion.
+
+Reloaded previously awarded one full XP-per-member for each killed member,
+ignored wounded casualties, clamped small positive target XP up to half the
+first threshold, and calculated the award after target health mutation.  The
+`reverse` branch now follows the recovered EN/CZ routine.  In-game comparison
+against the DOS release remains pending.
+
 ### Reaction queue lifecycle review
 
 Reaction selection changes now invalidate the shared movement-range cache as
@@ -111,7 +133,7 @@ of the rest of Reloaded with either original release.
 | Maximum XP termination | Reloaded defect demonstrated; original rank loop bounded | In-game regression check |
 | Initial XP distribution | Original EN uses half-interval random helper; Reloaded uses 10..20% | Verify helper endpoints, caller flags and CZ counterpart |
 | XP thresholds | Original functions located in EN and CZ; Reloaded explicitly approximates | Recover x87 arithmetic and compare per-unit boundaries |
-| Kill XP awards | Reloaded implementation available | Locate and trace original award routine |
+| Kill/wound XP awards | EN 0x7cc81 / CZ 0x74be3 recovered and implemented | In-game comparison against original |
 | Attack flags | Reloaded comments leave some meanings uncertain | Trace flag consumers in both originals |
 | Spotting/reaction fire | Reloaded has a TODO for newly spotted enemies | Trace original trigger and eligibility rules |
 | Morale, damage, movement and AI | No systematic comparison completed in this pass | Independent subsystem investigations |
