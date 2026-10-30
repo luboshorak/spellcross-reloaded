@@ -17717,7 +17717,21 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
 
         m_gameModeEnabled = gm;
         m_ownedTerritories = std::move(owned);
-        m_campaignOwnershipInitialized = true; // even if save has zero owners
+        // Legacy saves may not have an ownership field at all. A present
+        // empty array means the player lost every sector, while a missing
+        // field means only that the old format could not store ownership.
+        std::ifstream ownershipFile(path, std::ios::binary);
+        const std::string ownershipJson(
+            (std::istreambuf_iterator<char>(ownershipFile)),
+            std::istreambuf_iterator<char>());
+        const bool hasExplicitOwnership =
+            ownershipJson.find("\"owned_territories\"") != std::string::npos;
+        m_campaignOwnershipInitialized = hasExplicitOwnership;
+        if (!hasExplicitOwnership && m_gameModeEnabled && m_ownedTerritories.empty())
+        {
+            m_ownedTerritories = ChooseStartTerritories_NoBriefing(m_level, m_spellData);
+            m_campaignOwnershipInitialized = true;
+        }
 
         // Repair saves produced by the old missing-TEXTS bug. It classified
         // every territory as a starting territory; such a fresh state has all
