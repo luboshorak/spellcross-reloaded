@@ -103,3 +103,28 @@ multiple companies with the same type and different casualties, commanders
 attached to a killed company, an old UID-less tactical save, and mission
 recovery after a failed load. Static review and GitHub diffs only; no Windows
 build or interactive tactical test was performed in this session.
+
+### M1: persisted counter-attack identity (2026-10-30)
+
+Each strategic `CounterAttackState` now has an `attack_id`. The strategic save
+stores it under `mission_flow.counter_attacks[].attack_id` and persists
+`mission_flow.next_counter_attack_id`, so allocating a new attack after
+recapturing/pruning old records does not reuse an earlier ID. Older strategic
+saves without IDs are migrated deterministically in file order. The next-ID
+allocator is reset when importing an original DOS campaign snapshot.
+
+The pending tactical mission records the active attack ID, and tactical
+`.scsave` campaign-context version 4 appends that ID after its existing
+v3 fields. The reader still accepts v1-v3 contexts and sets their ID to zero
+(legacy latest-first fallback). Modern returns resolve only the recorded
+attack ID; a missing/mismatched attack is rejected *before* tactical losses,
+EndOK rewards or territorial changes can be applied. This blocks accidental
+attribution of one defence to a later attack on the same sector.
+
+This is a **Reloaded consistency invariant**, not a claim that DOS stored
+monotonic attack IDs. Windows compilation and in-game coverage remain pending.
+Required milestone scenarios include: (1) launch an Army defence, save in
+battle, reload and finish; (2) refuse an attack, recapture, trigger a new
+attack, save/reload; (3) load a pre-ID strategic save; (4) load a v3 or older
+tactical context; (5) verify an orphaned new-format battle cannot award the
+conquest mission's EndOK; (6) verify multiple historic attacks for one sector.
