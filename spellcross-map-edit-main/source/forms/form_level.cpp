@@ -4317,7 +4317,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             if (auto* rec = m_spellData->units->GetUnit(tid))
             {
                 OriginalDrawSpellText(image, font, GetUnitDisplayName(tid), 346, 296, text, 217);
-                OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.attack", "Attack:"), 369, 312, text, 126);
+                OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.attack_caption", "Attack:"), 369, 312, text, 126);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.light_attack", "Light: %d"), rec->attack_light), 385, 327, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.heavy_attack", "Heavy: %d"), rec->attack_armored), 385, 342, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.air_attack", "Air: %d"), rec->attack_air), 385, 357, text, 112);
