@@ -12,6 +12,7 @@
 #include <vector>
 #include <list>
 #include <string>
+#include <unordered_map>
 #include "fs_archive.h"
 #include "fsu_archive.h"
 #include "sprites.h"
@@ -169,6 +170,10 @@ public:
 	SpellMIDI* midi;
 	// texts.fs
 	SpellTexts* texts;
+	// Original COMMON.FS text tables selected by retail edition (CP895 bytes).
+	// Keys are the original resource stems, e.g. HODNOSTI, BIG_MAP, OTHER.
+	std::unordered_map<std::string, std::vector<std::string>> original_language_tables;
+	std::string GetOriginalText(const char* resource_stem, size_t index) const;
 	// L2 object class parameters
 	SpellL2classes *L2_classes;
 	// unit bonuses (BONUSES.DEF)
