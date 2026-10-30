@@ -15730,6 +15730,17 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
         return;
 
     std::wstring defPath = ResolveMapDefPathForMissionToken(token);
+    // DOS creates a separate RxxYY battle for Army attacks even where the
+    // territory's ordinary conquest mission has a DEF.
+    for (auto it = m_counterAttacks.rbegin(); it != m_counterAttacks.rend(); ++it)
+    {
+        if (it->territory_id == terr_id && !it->enemy_units.empty() &&
+            ((it->triggered && !it->completed) || it->territory_lost))
+        {
+            defPath.clear();
+            break;
+        }
+    }
     std::wstring dtaPath;
     bool generatedDtaBattle = false;
     std::vector<int> generatedEnemyUnits;
@@ -19711,8 +19722,9 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
 
     // Check if this was a counter-attack mission
     bool wasCounterAttack = false;
-    for (auto& ca : m_counterAttacks)
+    for (auto attack = m_counterAttacks.rbegin(); attack != m_counterAttacks.rend(); ++attack)
     {
+        auto& ca = *attack;
         if (ca.territory_id == territory_id && ca.triggered && !ca.completed)
         {
             wasCounterAttack = true;
@@ -19737,6 +19749,11 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
             break;
         }
     }
+
+    // Generated defence has its own outcome; conquest DEF rewards, successor
+    // missions and chapter completion do not belong to this battle.
+    if (wasCounterAttack)
+        mission = nullptr;
 
     if (success)
     {
@@ -19804,7 +19821,7 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
         // mission on that territory.  If that mission has EndOKMission(next), the
         // territory remains hostile and the next stage must be completed first.
         bool isLevelComplete = false;
-        if (!hasSuccessor)
+        if (!hasSuccessor && !wasCounterAttack)
         {
             if (m_level.end_territory > 0)
             {
@@ -19826,7 +19843,7 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
                         (!baseUp.empty() && baseUp != "NONE" && tokenUp.rfind(baseUp, 0) == 0) ||
                         (!introUp.empty() && introUp != "NONE" && tokenUp.rfind(introUp, 0) == 0);
                 }
-                isLevelComplete = (territory_id == m_level.end_territory) && tokenMatchesFinal;
+                isLevelComplete = !wasCounterAttack && (territory_id == m_level.end_territory) && tokenMatchesFinal;
             }
             else if (mission && mission->is_level_final)
             {
@@ -20574,6 +20591,10 @@ void StrategicLevelFrame::ProcessLevelEvents()
             std::vector<int> eligible;
             for (const int id : m_ownedTerritories)
                 if (id != m_level.start_territory &&
+                    std::none_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+                        [id](const CounterAttackState& attack) {
+                            return attack.territory_id == id && attack.triggered && !attack.completed;
+                        }) &&
                     (frontLine.empty() || frontLine.count(id) != 0) &&
                     std::find_if(m_level.territories.begin(), m_level.territories.end(),
                         [id](const LevelTerritory& t) { return t.id == id; })
