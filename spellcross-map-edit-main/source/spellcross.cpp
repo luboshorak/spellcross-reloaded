@@ -604,6 +604,23 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		throw runtime_error(string_format("Decoding JEDNOTKY.DEF failed (%s)!",error.what()));
 	}
 
+	// The original game stores its localized unit type names in UNITS.CZ /
+	// UNITS.ENG, not in the first 28 bytes of JEDNOTKY.DEF. Both tables are
+	// members of the same COMMON.FS and follow JEDNOTKY.DEF type-ID order.
+	// The binary record layout still selects the matching retail language.
+	const char* unitNamesResource = units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ";
+	if(status_list)
+		status_list(string_format("Loading original unit names (%s)...", unitNamesResource));
+	if(common_fs->GetFile(unitNamesResource, &data, &size) ||
+		!units->LoadOriginalNames(data, size))
+	{
+		// Keep the legacy names if modded/incomplete resources are missing, but
+		// report the source problem instead of silently showing the wrong names.
+		if(status_list)
+			status_list(string_format("WARNING: Missing or invalid %s in COMMON.FS; "
+				"falling back to JEDNOTKY.DEF names.", unitNamesResource));
+	}
+
 	// load font file
 	if(status_list)
 		status_list("Loading font files...");
