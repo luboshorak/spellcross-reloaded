@@ -148,7 +148,7 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn("fs::create_directory(candidate, dirError)", source)
         self.assertIn("const auto cleanupFailedImport", source)
         self.assertIn("fs::remove_all(localDataDir, cleanupError)", source)
-        self.assertRegex(source, r"if \\(!extractedOk\\)\\s*\\{\\s*cleanupFailedImport\\(\\);")
+        self.assertRegex(source, r"if \(!extractedOk\)\s*\{\s*cleanupFailedImport\(\);")
         self.assertIn("const fs::path temporaryRoot = runtime_root / \"game_data\";", source)
         self.assertIn("fs::create_directories(temporaryRoot, stagingError)", source)
         self.assertIn("for (const auto& fresh : extracted)", source)
