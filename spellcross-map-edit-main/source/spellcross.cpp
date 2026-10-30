@@ -635,7 +635,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	wstring texts_path = files.texts_fs;
 	FSarchive* texts_fs = new FSarchive(texts_path);
 	try{
-		texts = new SpellTexts(texts_fs, SpellLang::CZE, sounds); // ###todo: decode language somehow?
+		texts = new SpellTexts(texts_fs, units && units->IsEnglish() ? SpellLang::ENG : SpellLang::CZE, sounds);
 	}catch(const runtime_error& error) {
 		delete texts_fs;
 		this->~SpellData();
