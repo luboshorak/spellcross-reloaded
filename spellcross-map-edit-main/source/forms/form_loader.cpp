@@ -232,17 +232,14 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
 		return;
 	}
 	
-    // Diagnostic evidence of the edition and original unit-name bytes.
-    // Do not replace these names with guessed translations: the authoritative
-    // names must be from the same edition's retail JEDNOTKY.DEF inside COMMON.FS.
+    // Show the selected original display-name resource separately from the
+    // JEDNOTKY.DEF layout. The DEF name bytes are not localized in CZ retail.
     if (spell_data && spell_data->units)
     {
         UpdateList(string_format(" - JEDNOTKY.DEF layout: %s",
             spell_data->units->IsEnglish() ? "EN (207-byte records)" : "CZ (206-byte records)"));
-        int englishNameMatches = 0;
-        static constexpr const char* kVerifiedEnglishNames[] = {
-            "Light infantry", "Heavy infantry", "Rangers", "Commando"
-        };
+        UpdateList(string_format(" - original unit name table: %s",
+            spell_data->units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"));
         for (int typeId = 0; typeId < 5; ++typeId)
         {
             if (auto* unit = spell_data->units->GetUnit(typeId))
@@ -250,18 +247,9 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
                 const char* begin = unit->name;
                 const char* end = std::find(begin, begin + sizeof(unit->name), '\0');
                 const std::string rawName(begin, end);
-                UpdateList(string_format(" - unit #%d in COMMON.FS: %s", typeId, rawName.c_str()));
-                if (typeId < 4 && rawName == kVerifiedEnglishNames[typeId])
-                    ++englishNameMatches;
+                UpdateList(string_format(" - unit #%d display name: %s", typeId, rawName.c_str()));
             }
         }
-        // The record stride describes the binary schema, not the language
-        // of user-modified name fields. Warn instead of fabricating CZ names.
-        if (!spell_data->units->IsEnglish() && englishNameMatches >= 3)
-            UpdateList("WARNING: Czech-layout JEDNOTKY.DEF contains English "
-                "unit names matching the retail EN edition. COMMON.FS may "
-                "have been modified or mixed; use an original Czech COMMON.FS "
-                "to restore Czech names.");
     }
 
 	// try load units.fsu aux metadata (optional)
