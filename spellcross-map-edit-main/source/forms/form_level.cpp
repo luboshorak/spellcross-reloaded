@@ -35,6 +35,7 @@
 #include "LZ_spell.h"
 #include "../strategic_original_renderer.h"
 #include "../spell_ui_locale.h"
+#include "../strategic_countdown_rules.h"
 
 namespace
 {
@@ -16054,19 +16055,49 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
         }
         if (!undefended.empty())
         {
-            const int answer = wxMessageBox(
-                wxString::Format(
+            const auto count = static_cast<unsigned long long>(undefended.size());
+            const bool english = strategic_english(m_spellData);
+            const wxString message = english
+                ? wxString::Format(
                     "There are %llu unresolved enemy attacks on your territory.\n\n"
                     "End the turn without defending? The Other Side will capture "
                     "those territories and their attacking units will remain "
-                    "for recapture missions.",
-                    static_cast<unsigned long long>(undefended.size())),
-                "Unresolved enemy attack",
+                    "for recapture missions.", count)
+                : wxString::Format(
+                    L"Na vašich územích probíhá %llu nevyřešených nepřátelských útoků.\n\n"
+                    L"Ukončit kolo bez obrany? Druhá strana tato území obsadí. "
+                    L"Útočící jednotky zůstanou na místě pro následné znovudobytí.", count);
+            const int answer = wxMessageBox(message,
+                english ? wxString("Unresolved enemy attack") : wxString(L"Nevyřešený nepřátelský útok"),
                 wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
             if (answer != wxYES)
                 return;
             for (auto* attack : undefended)
                 SurrenderCounterAttack(*attack);
+        }
+    }
+
+    // Retail BIG_MAP.SAV keeps a Time(n) countdown unchanged while its
+    // territory is inaccessible (confirmed in original EN saves: LEVEL_05
+    // turn 6 and turn 9 both store 10 for inaccessible territory 6).
+    // Our persistence uses absolute target turns: move the target forward
+    // once for each inactive turn instead of consuming a hidden deadline.
+    if (m_gameModeEnabled)
+    {
+        for (const auto& territory : m_level.territories)
+        {
+            const int tid = territory.id;
+            const bool owned = std::find(m_ownedTerritories.begin(),
+                m_ownedTerritories.end(), tid) != m_ownedTerritories.end();
+            const bool accessible = tid > 0 &&
+                tid < static_cast<int>(m_visibleTerritory.size()) &&
+                m_visibleTerritory[tid] != 0;
+            if (owned || accessible)
+                continue;
+            auto deadline = m_territoryTimeoutTurn.find(tid);
+            if (deadline != m_territoryTimeoutTurn.end())
+                deadline->second = spellcross_strategy::PauseDeadlineForInactiveTurn(
+                    deadline->second, false);
         }
     }
 
@@ -16077,6 +16108,11 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
 
     // Process Level Events from DEF (counter-attacks, reinforcements, texts, etc.)
     ProcessLevelEvents();
+
+    // ChangeMission events can introduce Time(n) on another territory.
+    // Start the successor's deadline on the activation turn, not one turn
+    // after it. Already-ticked deadlines remain untouched.
+    CheckTimeouts();
 
     // Check counter-attacks (legacy territory-based)
     CheckCounterAttacks();
@@ -20893,7 +20929,16 @@ void StrategicLevelFrame::ProcessLevelEvents()
         // ChangeMission
         if (evt->change_mission_territory >= 0 && !evt->change_mission_name.empty())
         {
-            m_territoryCurrentMission[evt->change_mission_territory] = to_lower(evt->change_mission_name);
+            const int tid = evt->change_mission_territory;
+            const std::string successor = to_lower(evt->change_mission_name);
+            if (to_lower(ResolveMissionTokenForTerritory(tid)) != successor)
+            {
+                // A mission variant owns its own Time(n). Reusing an older
+                // deadline for a newly activated stage causes resets and
+                // premature expiry when ChangeMission is scripted.
+                m_territoryCurrentMission[tid] = successor;
+                m_territoryTimeoutTurn.erase(tid);
+            }
         }
 
         // AddUnitToPlayer(unit, experience_level, health, name).  The second
