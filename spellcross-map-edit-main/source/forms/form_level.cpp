@@ -16020,6 +16020,40 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
         }
     }
 
+    // Accepting an enemy attack does not mean the enemy vanishes if the
+    // player skips the defence. Previous builds left an unresolved active
+    // record forever because CheckCounterAttacks() ignores triggered attacks.
+    // Ask before committing turn progression; a rejected end-turn leaves
+    // all campaign data untouched.
+    if (m_gameModeEnabled)
+    {
+        std::vector<CounterAttackState*> undefended;
+        for (auto& attack : m_counterAttacks)
+        {
+            if (!attack.triggered || attack.completed)
+                continue;
+            if (std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+                    attack.territory_id) != m_ownedTerritories.end())
+                undefended.push_back(&attack);
+        }
+        if (!undefended.empty())
+        {
+            const int answer = wxMessageBox(
+                wxString::Format(
+                    "There are %llu unresolved enemy attacks on your territory.\n\n"
+                    "End the turn without defending? The Other Side will capture "
+                    "those territories and their attacking units will remain "
+                    "for recapture missions.",
+                    static_cast<unsigned long long>(undefended.size())),
+                "Unresolved enemy attack",
+                wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
+            if (answer != wxYES)
+                return;
+            for (auto* attack : undefended)
+                SurrenderCounterAttack(*attack);
+        }
+    }
+
     m_turn += 1;
 
     // Check timeouts (auto-BAD for territories)
@@ -20514,6 +20548,29 @@ void StrategicLevelFrame::CheckTimeouts()
     MarkOverlayDirty();
 }
 
+void StrategicLevelFrame::SurrenderCounterAttack(CounterAttackState& attack)
+{
+    if (attack.completed)
+        return;
+
+    // Refusing an active defence, failing it in battle, or leaving the turn
+    // without defending must all produce the same ownership transition.
+    // Keep the event's original Army(...) units: they occupy this territory
+    // and are needed for the subsequent generated Rxxxx recapture mission.
+    auto it = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+        attack.territory_id);
+    if (it != m_ownedTerritories.end())
+    {
+        m_ownedTerritories.erase(it);
+        ++m_stats.territories_lost;
+    }
+    attack.triggered = true;
+    attack.completed = true;
+    attack.territory_lost = true;
+    ApplyTerritoryVisibility();
+    MarkOverlayDirty();
+}
+
 void StrategicLevelFrame::CheckCounterAttacks()
 {
     if (!m_gameModeEnabled)
@@ -20587,18 +20644,7 @@ void StrategicLevelFrame::CheckCounterAttacks()
             }
             else
             {
-                auto it = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(), ca.territory_id);
-                if (it != m_ownedTerritories.end())
-                {
-                    m_ownedTerritories.erase(it);
-                }
-
-                m_stats.territories_lost++;
-                ca.completed = true;
-                ca.territory_lost = true;
-
-                ApplyTerritoryVisibility();
-                MarkOverlayDirty();
+                SurrenderCounterAttack(ca);
             }
         }
     }
@@ -20896,17 +20942,9 @@ void StrategicLevelFrame::ProcessLevelEvents()
             }
             else
             {
-                // Player refuses to defend — lose the territory, but retain
-                // the occupiers for the later recapture battle.
-                auto it = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(), target_tid);
-                if (it != m_ownedTerritories.end())
-                    m_ownedTerritories.erase(it);
-
-                m_stats.territories_lost++;
-                activeAttack.completed = true;
-                activeAttack.territory_lost = true;
-                ApplyTerritoryVisibility();
-                MarkOverlayDirty();
+                // Player refuses to defend: enemy takes the territory
+                // immediately, preserving its Army force for recapture.
+                SurrenderCounterAttack(activeAttack);
             }
         }
     }
