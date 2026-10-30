@@ -24,3 +24,9 @@ jobs:
             spellcross-map-edit-main/source/level.cpp \
             -o /tmp/spellcross-level-event-regression
           /tmp/spellcross-level-event-regression
+      - name: Compile and test retail territory countdown freeze
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \\
+            spellcross-map-edit-main/tests/test_original_strategy_deadlines.cpp \\
+            -o /tmp/spellcross-strategy-deadline-regression
+          /tmp/spellcross-strategy-deadline-regression
