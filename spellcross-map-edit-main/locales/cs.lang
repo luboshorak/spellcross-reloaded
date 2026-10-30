@@ -58,3 +58,27 @@ menu.difficulty=&Obtížnost hry
 menu.easy=&Lehká
 menu.normal=&Normální
 menu.hard=&Těžká
+
+menu.exit=&Konec
+menu.about=&O programu
+options.load=Načíst
+options.save=Uložit
+options.empty=-= PRÁZDNÉ =-
+options.slot=POZICE
+options.gamma=Korekce jasu
+options.music=Hlasitost hudby
+options.sound=Hlasitost zvuků
+options.difficulty=Obtížnost hry
+options.easy=Lehká
+options.normal=Normální
+options.hard=Těžká
+stats.rank.0=Poručík
+stats.rank.1=Nadporučík
+stats.rank.2=Kapitán
+stats.rank.3=Major
+stats.rank.4=Podplukovník
+stats.rank.5=Plukovník
+stats.rank.6=Generálmajor
+stats.rank.7=Generálporučík
+stats.rank.8=Armádní generál
+stats.rank_unknown=Hodnost
