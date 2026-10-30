@@ -3331,7 +3331,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             OriginalDrawSpellText(image, font, caption, x, kOriginalAttackDrawY + 7,
                 enabled ? text : dim, kOriginalButtonW, true);
         };
-        const bool canAttack = m_selectedTerritory > 0 && !m_selectedUnitsForMission.empty();
+        const bool canAttack = CanLaunchTerritoryMission(m_selectedTerritory) &&
+            !m_selectedUnitsForMission.empty();
         drawActionButton(kOriginalAttackDrawX, 0, RetailOriginalText(m_spellData, "BUTTONS", 37, spellcross_ui_locale::Tr("native.attack", "Attack")), canAttack);
         drawActionButton(kOriginalCancelDrawX, 1, RetailOriginalText(m_spellData, "BUTTONS", 38, spellcross_ui_locale::Tr("native.cancel_button", "Cancel")),
             !m_selectedUnitsForMission.empty() || !m_selectedCommandersForMission.empty());
@@ -13195,7 +13196,8 @@ void StrategicLevelFrame::UpdateRosterSelectionVisuals()
     // Update launch button enable state
     const bool onStrategicMap = (m_leftBook && m_leftBook->GetSelection() == 0 && !m_buyModeActive);
     if (m_btnLaunch)
-        m_btnLaunch->Enable(onStrategicMap && m_selectedTerritory >= 0 && !m_selectedUnitsForMission.empty());
+        m_btnLaunch->Enable(onStrategicMap && CanLaunchTerritoryMission(m_selectedTerritory) &&
+            !m_selectedUnitsForMission.empty());
 }
 
 void StrategicLevelFrame::UpdateCommanderRosterSelectionVisuals()
@@ -13450,7 +13452,7 @@ void StrategicLevelFrame::RefreshUI()
             // Also requires at least one unit selected.
             const bool onStrategicMap = (m_leftBook && m_leftBook->GetSelection() == 0 && !m_buyModeActive);
             const bool hasSelection = !m_selectedUnitsForMission.empty();
-            m_btnLaunch->Enable(onStrategicMap && m_selectedTerritory >= 0 && hasSelection);
+            m_btnLaunch->Enable(onStrategicMap && CanLaunchTerritoryMission(m_selectedTerritory) && hasSelection);
             if (m_btnBuyShop)
                 m_btnBuyShop->Enable(true);
 
@@ -15724,9 +15726,44 @@ std::wstring StrategicLevelFrame::ResolveMapDtaPathForMissionToken(const std::st
     return L"";
 }
 
+bool StrategicLevelFrame::CanLaunchTerritoryMission(int territory_id) const
+{
+    if (territory_id <= 0)
+        return false;
+
+    const bool knownTerritory = std::any_of(m_level.territories.begin(),
+        m_level.territories.end(),
+        [territory_id](const LevelTerritory& t) { return t.id == territory_id; });
+    if (!knownTerritory)
+        return false;
+
+    // The level editor may deliberately launch any map. Campaign mode must
+    // respect the same territorial ownership used by the strategic renderer.
+    if (!m_gameModeEnabled)
+        return true;
+
+    if (territory_id >= static_cast<int>(m_visibleTerritory.size()) ||
+        m_visibleTerritory[territory_id] == 0)
+        return false;
+
+    const bool owned = std::find(m_ownedTerritories.begin(),
+        m_ownedTerritories.end(), territory_id) != m_ownedTerritories.end();
+    if (!owned)
+        return true; // Revealed hostile territory or a lost sector to recapture.
+
+    // Defence on still-owned territory is legitimate ONLY during a triggered,
+    // unresolved counter-attack. A future scheduled defence is not yet playable.
+    return std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+        [territory_id](const CounterAttackState& attack)
+        {
+            return attack.territory_id == territory_id &&
+                attack.triggered && !attack.completed;
+        });
+}
+
 void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 {
-    if (m_selectedTerritory < 0 || !m_main)
+    if (!m_main || !CanLaunchTerritoryMission(m_selectedTerritory))
         return;
 
     // Get selected units for this mission
