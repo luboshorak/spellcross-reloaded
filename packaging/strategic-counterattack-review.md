@@ -148,3 +148,19 @@ reconstructed from survivor-only data.
 This was inspected statically only. Include a legacy mixed-type save with
 interleaved roster/tactical order in milestone regression testing, alongside a
 battle with duplicate companies of the same type and different commanders.
+
+### M1 legacy overlapping defences and battle restoration
+
+When recovering a battle from older `.scsave` files with no embedded campaign
+context, the reconstructed pending mission now adopts the newest active
+strategic attack ID for the recovered territory, if one exists. It is still a
+best-effort recovery; the original save does not identify which historical
+attack launched the mission.
+
+The scheduled defence trigger now refuses to activate another pending defence
+on a territory that already has an active one. This protects imported/legacy
+saves containing overlapping records from duplicate prompts and mission-token
+overwrites. It leaves the waiting defence pending until the active defence is
+resolved, rather than silently consuming a scripted event. Both changes are
+Reloaded lifecycle safeguards; no claim of original DOS parity or in-game
+validation is made.
