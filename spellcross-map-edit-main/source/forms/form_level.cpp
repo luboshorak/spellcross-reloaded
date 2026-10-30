@@ -15088,7 +15088,9 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
             // has no text resource, fall back to the mission declared by
             // LEVEL_XX.DEF instead of leaving the panel blank.
             if (timeoutRemaining > 0)
-                info << wxString::Format(english ? "Time remaining: %d turns\n\n" : "Zbývající čas: %d tahů\n\n", timeoutRemaining);
+                info << (english
+                    ? wxString::Format(L"Time remaining: %d turns\n\n", timeoutRemaining)
+                    : wxString::Format(L"Zbývající čas: %d tahů\n\n", timeoutRemaining));
 
             bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
                 texts_dir, cur, "", english ? "Briefing" : "Instrukce", false, false);
@@ -15102,7 +15104,9 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
             info << spellcross_ui_locale::Tr("strategic.territory_secured", "Territory secured.") << "\n";
 
             if (counterTurnsLeft > 0)
-                info << wxString::Format(english ? "\nCounter-attack expected in %d turns.\n" : "\nProtiútok očekáván za %d tahů.\n", counterTurnsLeft);
+                info << (english
+                    ? wxString::Format(L"\nCounter-attack expected in %d turns.\n", counterTurnsLeft)
+                    : wxString::Format(L"\nProtiútok očekáván za %d tahů.\n", counterTurnsLeft));
         }
     }
     else
