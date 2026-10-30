@@ -19768,6 +19768,27 @@ void StrategicLevelFrame::RecordStandaloneMissionStatistics(const LossBlock& all
 
 void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, const std::string& mission_token)
 {
+    // A resumed tactical save must resolve the exact strategic attack that
+    // launched it. Never apply an orphaned defence result as an ordinary
+    // conquest: that would grant unrelated EndOK rewards and change ownership.
+    // Legacy tactical saves (no attack ID) keep the old matching behavior.
+    if (m_pendingMission.counter_attack_id != 0)
+    {
+        const bool matchingAttack = std::any_of(m_counterAttacks.begin(),
+            m_counterAttacks.end(), [this, territory_id](const CounterAttackState& ca)
+            {
+                return ca.attack_id == m_pendingMission.counter_attack_id &&
+                    ca.territory_id == territory_id && ca.triggered && !ca.completed;
+            });
+        if (!matchingAttack)
+        {
+            wxLogError("[STRATEGY] Orphaned defence result: territory %d, attack ID %d. Campaign left unchanged.",
+                territory_id, m_pendingMission.counter_attack_id);
+            m_pendingMission.valid = false;
+            return;
+        }
+    }
+
     // Collect battle results from the tactical map (losses, damage, unit experience).
     // John Alexander's *strategic* XP is not derived from kill counts; the
     // original campaign scripts provide the mission rewards explicitly via
