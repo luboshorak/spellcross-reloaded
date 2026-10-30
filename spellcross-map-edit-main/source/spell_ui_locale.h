@@ -80,19 +80,31 @@ namespace spellcross_ui_locale
     {
         namespace fs = std::filesystem;
         std::vector<fs::path> paths;
+
+        // Source checkouts often launch from builds/x64/Release or source/,
+        // whereas portable releases ship locales/ beside Spellcross.exe.
+        // Include each ancestor of both the executable and current working
+        // directory so the same catalogs work during development and in ZIP/SFX.
+        const auto addParents = [&](fs::path dir)
+        {
+            for (int depth = 0; depth < 7 && !dir.empty(); ++depth)
+            {
+                paths.push_back(dir / "locales");
+                paths.push_back(dir / "spellcross-map-edit-main" / "locales");
+                const fs::path parent = dir.parent_path();
+                if (parent.empty() || parent == dir)
+                    break;
+                dir = parent;
+            }
+        };
+
         const fs::path exe(wxStandardPaths::Get().GetExecutablePath().ToStdWstring());
         if (!exe.empty())
-        {
-            paths.push_back(exe.parent_path() / "locales");
-            paths.push_back(exe.parent_path().parent_path() / "locales");
-        }
+            addParents(exe.parent_path());
         std::error_code ec;
         const fs::path cwd = fs::current_path(ec);
         if (!ec)
-        {
-            paths.push_back(cwd / "locales");
-            paths.push_back(cwd / "spellcross-map-edit-main" / "locales");
-        }
+            addParents(cwd);
         return paths;
     }
 
