@@ -15,8 +15,8 @@ SOURCE = ROOT / "source" / "forms" / "form_level.cpp"
 HEADER = ROOT / "source" / "forms" / "form_level.h"
 
 
-def extract_policy(source: str) -> str:
-    anchor = "bool StrategicLevelFrame::CanLaunchTerritoryMission(int territory_id) const"
+def extract_method(source: str, name: str) -> str:
+    anchor = "bool StrategicLevelFrame::" + name + "(int territory_id) const"
     begin = source.index(anchor)
     start = source.index("{", begin)
     depth = 0
@@ -37,6 +37,8 @@ class StrategicAttackOwnershipTests(unittest.TestCase):
         self.assertIn("bool CanLaunchTerritoryMission(int territory_id) const;", header)
         self.assertIn("bool StrategicLevelFrame::CanLaunchTerritoryMission(", source)
         self.assertIn("const bool canAttack = CanLaunchTerritoryMission(m_selectedTerritory)", source)
+        self.assertIn("const wxString actionCaption = IsActiveTerritoryDefense(m_selectedTerritory)", source)
+        self.assertIn("return IsActiveTerritoryDefense(territory_id);", source)
         self.assertIn("m_btnLaunch->Enable(onStrategicMap && CanLaunchTerritoryMission(m_selectedTerritory)", source)
         self.assertEqual(source.count("m_btnLaunch->Enable(onStrategicMap && CanLaunchTerritoryMission("), 2)
         self.assertIn("if (!m_main || !CanLaunchTerritoryMission(m_selectedTerritory))", source)
@@ -46,7 +48,9 @@ class StrategicAttackOwnershipTests(unittest.TestCase):
         if not compiler:
             self.skipTest("C++ compiler not installed (run on CI/dev machine)")
 
-        method = extract_policy(SOURCE.read_text(encoding="utf-8"))
+        source = SOURCE.read_text(encoding="utf-8")
+        method = extract_method(source, "CanLaunchTerritoryMission")
+        defence = extract_method(source, "IsActiveTerritoryDefense")
         harness = """
 #include <algorithm>
 #include <cstdint>
@@ -64,8 +68,9 @@ public:
     std::vector<int> m_ownedTerritories;
     std::vector<CounterAttackState> m_counterAttacks;
     bool CanLaunchTerritoryMission(int territory_id) const;
+    bool IsActiveTerritoryDefense(int territory_id) const;
 };
-""" + method + """
+""" + method + "\n" + defence + """
 int main() {
     StrategicLevelFrame f;
     f.m_level.territories = {{1}, {2}, {3}};
