@@ -164,3 +164,22 @@ overwrites. It leaves the waiting defence pending until the active defence is
 resolved, rather than silently consuming a scripted event. Both changes are
 Reloaded lifecycle safeguards; no claim of original DOS parity or in-game
 validation is made.
+
+### M1 Army event preflight
+
+The earlier retry-only-when-Army-only workaround was insufficient: mixed events
+with `Army` alongside `AddUnitToPlayer`, `RunEvents`, `ChangeMission` or
+other actions were consumed when they had no valid attack target, losing their
+Army action permanently. Retrying such events after executing their other
+actions would duplicate units or event triggers.
+
+Target discovery and the random target draw now happen *before* marking the
+whole event consumed and before executing any side effects. If no sector is
+eligible, the entire event remains pending for a later turn. Once a target is
+found, all actions execute once and the selected territory is used for the
+Army attack. This also handles a chapter with no owned eligible territory.
+
+This is a safe campaign lifecycle correction in Reloaded; exact DOS event
+ordering and RNG consumption remain unverified. Verify a timed Army-only event
+and a mixed Army/AddUnit/RunEvents event with initially no eligible sector,
+then territory conquest and save/reload before eventual activation.
