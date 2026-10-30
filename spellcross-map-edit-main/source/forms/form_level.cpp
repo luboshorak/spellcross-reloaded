@@ -15843,7 +15843,8 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
             if (m_level.attack_flags.size() >= 4)
             {
                 normalCount = std::max(1, (m_level.attack_flags[0] + m_level.attack_flags[1]) / 2);
-                specialCount = std::max(0, (m_level.attack_flags[2] + m_level.attack_flags[3]) / 2);
+                // Arguments 3/4 are XP bounds, not special-company counts.
+                specialCount = m_level.attack_special_units.empty() ? 0 : 1;
             }
             else
             {
@@ -15910,7 +15911,9 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
     }
 
     bool ok = generatedDtaBattle
-        ? m_main->LoadGeneratedStrategicBattleFromDtaPath(dtaPath, unitsForMission, generatedEnemyUnits)
+        ? m_main->LoadGeneratedStrategicBattleFromDtaPath(dtaPath, unitsForMission, generatedEnemyUnits,
+            m_level.attack_flags.size() >= 4 ? m_level.attack_flags[2] : 1,
+            m_level.attack_flags.size() >= 4 ? m_level.attack_flags[3] : 1)
         : m_main->LoadMapFromDefPath(defPath, unitsForMission);
 
     if (!generatedDtaBattle && !ok && !unitsForMission.empty())

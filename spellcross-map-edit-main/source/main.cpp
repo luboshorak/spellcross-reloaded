@@ -1840,7 +1840,7 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
 
 bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_path,
     const std::vector<LevelData::PlayerUnitAdd>& player_units,
-    const std::vector<int>& enemy_unit_ids)
+    const std::vector<int>& enemy_unit_ids, int enemy_level_min, int enemy_level_max)
 {
     if (!spell_map || !spell_data || dta_path.empty())
         return false;
@@ -1972,6 +1972,12 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
     // band. PlaceUnit() is deliberately used instead of trusting a raw tile: it
     // resolves local terrain restrictions for walkers, hover units and air units.
     size_t enemySeedIndex = 0;
+    // DOS FUN_00085550: AttackFlags arguments 3/4 bound the shared base
+    // rank and each company's additional random 0..2 levels.
+    enemy_level_min = std::clamp(enemy_level_min, 1, 12);
+    enemy_level_max = std::clamp(enemy_level_max, enemy_level_min, 12);
+    const int baseEnemyLevel = std::max(enemy_level_min,
+        enemy_level_min + std::rand() % (enemy_level_max - enemy_level_min + 1) - 1);
     for (int unitId : enemy_unit_ids)
     {
         SpellUnitRec* unitRec = spell_data->units ? spell_data->units->GetUnit(unitId) : nullptr;
@@ -1985,7 +1991,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
         unit->behave = MapUnitType::NormalUnit;
         unit->is_enemy = 1;
         unit->is_active = 1;
-        unit->InitExperience(0);
+        unit->InitExperience(std::min(enemy_level_max, baseEnemyLevel + std::rand() % 3));
         unit->man = std::max(1, unitRec->cnt);
         unit->wounded = 0;
         unit->morale = 100.0;

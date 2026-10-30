@@ -30,6 +30,27 @@ The precise target-selection and generated reward algorithms remain unresolved.
 
 ## Validation and remaining work
 
+### Generated enemy experience follow-up
+
+The original LevelInit parser writes AttackFlags arguments 3 and 4 to offsets
+0x69/0x6b. EN FUN_00085550 reads those exact offsets: base = max(min,
+min + random(max-min+1) - 1), then company level = min(max, base+random(3)).
+It initializes each company's XP through FUN_000880cc(type, level, 1).
+Reloaded now passes these chapter bounds into the generated battle loader and
+uses the recovered shared-base/per-company procedure rather than level zero.
+LEVEL_05.DEF supplies AttackFlags(12,17,4,8,20,6), hence levels 4..8.
+The legacy fallback also no longer treats arguments 3/4 as a special-unit
+quantity. Original FUN_0004d3da selects at most one special type; fallback
+uses one if the special pool exists. Fallback normal force size remains an
+approximation, and retained scripted Army lists still take precedence.
+Malformed/custom bounds are clamped to supported levels 1..12.
+RNG sequence identity with DOS is not claimed. Release x64 builds passed.
+
+EN FUN_0004d234 selects from a stored territory adjacency bitmask, preferring
+frontier sectors adjacent to the territory index stored at chapter offset 3,
+then falling back to all frontier sectors. The meaning of that preferred
+index still needs tracing; the remake's CLK heuristic has not been changed.
+
 Release x64 MSBuild compilation and diff whitespace checks passed.
 Interactive tactical/strategic integration tests have not been performed.
 Review scenarios: defend an owned sector with an existing DEF; refuse then
