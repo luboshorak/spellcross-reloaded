@@ -4337,7 +4337,7 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
     if (!titleDrawn)
     {
         wxLogWarning("Mission result title resource is missing; using text fallback.");
-        drawText(m_mission_end_req.success ? L"MISSION ACCOMPLISHED" : L"MISSION FAILED",
+        drawText(m_mission_end_req.success ? spellcross_ui_locale::Tr("result.accomplished", "MISSION ACCOMPLISHED") : spellcross_ui_locale::Tr("result.failed", "MISSION FAILED"),
             150, 35, 340, true);
     }
 
@@ -4351,7 +4351,7 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
         if (m_mission_end_req.text)
             debrief = wxString(m_mission_end_req.text->text.c_str());
         if (debrief.empty())
-            debrief = m_mission_end_req.success ? L"Mission accomplished." : L"Mission failed.";
+            debrief = m_mission_end_req.success ? spellcross_ui_locale::Tr("result.debrief_success", "Mission accomplished.") : spellcross_ui_locale::Tr("result.debrief_failed", "Mission failed.");
 
         // Match the original post-mission debrief placement: a fixed framed
         // message box directly under the banner.  The earlier restoration sized
@@ -4495,10 +4495,10 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
     }
 
     // WM_STAT.LZ native grid: x=116..523, y=103..277 in 640x480 space.
-    drawText(L"Alliance - losses", 116 + 113, 103 + 25, 132, true);
-    drawText(L"Dark Side - losses", 116 + 246, 103 + 25, 144, true);
+    drawText(spellcross_ui_locale::Tr("result.alliance_losses", "Alliance - losses"), 116 + 113, 103 + 25, 132, true);
+    drawText(spellcross_ui_locale::Tr("result.enemy_losses", "Dark Side - losses"), 116 + 246, 103 + 25, 144, true);
 
-    const wxString labels[4] = { L"Light units", L"Heavy units", L"Air units", L"Commanders" };
+    const wxString labels[4] = { spellcross_ui_locale::Tr("result.light", "Light units"), spellcross_ui_locale::Tr("result.heavy", "Heavy units"), spellcross_ui_locale::Tr("result.air", "Air units"), spellcross_ui_locale::Tr("result.commanders", "Commanders") };
     const int alliance[4] = { m_mission_result_stats.alliance_light, m_mission_result_stats.alliance_heavy,
         m_mission_result_stats.alliance_air, m_mission_result_stats.alliance_commanders };
     const int enemy[4] = { m_mission_result_stats.enemy_light, m_mission_result_stats.enemy_heavy,
