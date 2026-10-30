@@ -682,14 +682,24 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	// the retail edition selected by JEDNOTKY.DEF (not the OS locale).
 	// Store the tables separately: an index in OTHER is not an index in
 	// BIG_MAP, and neither is a unit ID unless the source specifies so.
-	static constexpr const char* kOriginalLanguageResources[] = {
-		"BIG_MAP", "BUTTONS", "DISPLAY", "HODNOSTI", "INFOTEXT",
-		"MESIACE", "MOSTY", "MURY", "OTHER", "RESEARCH",
-		"SELTAB", "SPECOBJ", "UNITS", "UPGRADES"
+	struct OriginalLanguageResource
+	{
+		const char* stem;
+		size_t minimumEntries;
+	};
+	// Minimum verified from original CZ/EN retail archives. Some EN releases
+	// have additional BUTTONS, OTHER, RESEARCH and SPECOBJ entries.
+	static constexpr OriginalLanguageResource kOriginalLanguageResources[] = {
+		{"BIG_MAP", 30}, {"BUTTONS", 72}, {"DISPLAY", 2},
+		{"HODNOSTI", 18}, {"INFOTEXT", 35}, {"MESIACE", 12},
+		{"MOSTY", 4}, {"MURY", 4}, {"OTHER", 59},
+		{"RESEARCH", 140}, {"SELTAB", 5}, {"SPECOBJ", 11},
+		{"UNITS", 87}, {"UPGRADES", 22}
 	};
 	const char* extension = units->IsEnglish() ? ".ENG" : ".CZ";
-	for (const char* stem : kOriginalLanguageResources)
+	for (const auto& resource : kOriginalLanguageResources)
 	{
+		const char* stem = resource.stem;
 		const std::string filename = std::string(stem) + extension;
 		if (common_fs->GetFile(filename.c_str(), &data, &size))
 		{
@@ -700,9 +710,9 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		auto lines = ParseOriginalLanguageLines(data, size);
 		// These two original tables have strict fixed offsets relied upon by
 		// the engine: 87 type IDs, nine (full name, abbreviation) rank pairs.
-		if ((std::string(stem) == "UNITS" && lines.size() != units->GetUnits().size()) ||
-			(std::string(stem) == "HODNOSTI" && lines.size() != 18) ||
-			lines.empty())
+		if (lines.size() < resource.minimumEntries ||
+			(std::string(stem) == "UNITS" && lines.size() != units->GetUnits().size()) ||
+			(std::string(stem) == "HODNOSTI" && lines.size() != 18))
 		{
 			if (status_list)
 				status_list(string_format("WARNING: Invalid original table %s (%zu entries).",
