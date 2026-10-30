@@ -42,6 +42,7 @@ class LocalizationCatalogTests(unittest.TestCase):
         referenced = set(CALL.findall(sources))
         # Dynamically constructed rank keys are intentionally not literal.
         referenced.update(f"stats.rank.{i}" for i in range(9))
+        referenced.update(f"buy.rank.{i}" for i in range(9))
         for lang in ("en", "cs"):
             missing = referenced - catalog(lang).keys()
             self.assertFalse(missing, f"Missing {lang} keys: {sorted(missing)}")
@@ -53,6 +54,48 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn('SetLanguage(englishRetailEdition ? "en" : "cs")', helper)
         self.assertIn("state.english.find(key)", helper)
         self.assertIn("englishFallback", helper)
+
+    def test_native_buy_screen_uses_translations(self):
+        source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        for key in (
+            "buy.category.infantry",
+            "buy.category.tanks",
+            "buy.category.artillery",
+            "buy.category.transporters",
+            "buy.category.radars",
+            "buy.category.air_defense",
+            "buy.category.other",
+            "buy.action.buy",
+            "buy.stats.objects",
+            "buy.stats.defense",
+            "buy.stats.sight",
+        ):
+            self.assertIn(f'spellcross_ui_locale::Tr("{key}"', source)
+        self.assertIn("LocalizedOriginalRankAbbrev(commander.rank)", source)
+        self.assertNotIn('L"Koupit"', source)
+        self.assertNotIn(r'L"P\u011Bchota"', source)
+
+    def test_menu_fallbacks_use_real_cpp_tab_escapes(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        menu_lines = [
+            line for line in source.splitlines()
+            if 'spellcross_ui_locale::Tr("menu.' in line
+        ]
+        self.assertEqual(sum(r"\t" in line for line in menu_lines), 5)
+        # Double-escaped C++ source would display a literal \t in wx menus.
+        self.assertFalse(any(r"\\t" in line for line in menu_lines))
+        for lang in ("en", "cs"):
+            entries = catalog(lang)
+            for key in ("menu.load_custom_map", "menu.main",
+                        "menu.load_strategic", "menu.save_game", "menu.load_game"):
+                self.assertIn("\t", entries[key])
+
+    def test_catalogs_resolve_from_release_and_development_roots(self):
+        helper = (ROOT / "source" / "spell_ui_locale.h").read_text(encoding="utf-8")
+        self.assertIn('dir / "locales"', helper)
+        self.assertIn('dir / "spellcross-map-edit-main" / "locales"', helper)
+        self.assertIn("addParents(exe.parent_path())", helper)
+        self.assertIn("addParents(cwd)", helper)
 
     def test_original_text_is_not_in_ui_catalogs(self):
         # Mission text still comes from TEXTS.FS; catalogs contain only UI keys.
