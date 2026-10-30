@@ -63,3 +63,21 @@ no target exists, original enemy placement/experience and generated rewards.
 Newest-first matching plus excluding new duplicates reduces ambiguity but does
 not resolve duplicate attacks already stored in old saves. This is a partial
 repair, not complete original strategic parity.
+
+## Strategic save lifecycle follow-up (M1)
+
+- Loading `mission_flow.counter_attacks` now replaces the prior in-memory vector
+  instead of appending records. This makes repeated loads of the same strategic
+  snapshot idempotent. It fixes a Reloaded persistence bug, not an asserted DOS rule.
+- New `Army` attacks exclude territories with *any* unresolved defence, including
+  a scheduled but not yet triggered counter-attack. This prevents the later
+  scheduled timer from overriding the already active Army mission token.
+- On recapture, completed and untriggered obsolete attack records are removed
+  before scheduling a fresh defence, while active attacks are retained for
+  explicit mission resolution.
+
+These safeguards do **not** yet provide persisted unique battle identities or
+resolve ambiguity in pre-existing saves containing multiple active attacks for
+one sector. No in-game strategic regression or Windows build was run in this
+follow-up; verify repeated load, an Army event during a scheduled defence,
+and the recapture/defence cycle before merging into `main`.
