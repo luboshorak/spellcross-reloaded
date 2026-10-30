@@ -18003,6 +18003,9 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
             break;
         }
     }
+    // Legacy battle saves lack explicit mission identity. A mission family
+    // can occur on several territories, so never guess a different sector
+    // based on the first partial token match.
     if (territory_id < 0)
         return false;
 
@@ -18010,6 +18013,17 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
     recovered.valid = true;
     recovered.territory_id = territory_id;
     recovered.mission_token = mission_token;
+    // If this is an active strategic defence, bind it to the specific attack
+    // found in the restored campaign snapshot. This is best-effort for legacy
+    // saves, but prevents applying the recovered result as conquest rewards.
+    for (auto it = m_counterAttacks.rbegin(); it != m_counterAttacks.rend(); ++it)
+    {
+        if (it->territory_id == territory_id && it->triggered && !it->completed)
+        {
+            recovered.counter_attack_id = it->attack_id;
+            break;
+        }
+    }
 
     // Old .scsave files did not store the sent-roster mapping.  Reconstruct it
     // from tactical Alliance unit types and the strategic roster.  This is a
