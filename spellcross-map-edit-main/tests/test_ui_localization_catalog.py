@@ -165,11 +165,23 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn("if (missingRequired || forceSourceSelection)", source)
         self.assertIn("runtime_root, executable_dir, forceSourceSelection)", source)
 
-    def test_czech_binary_layout_is_not_treated_as_proof_of_czech_names(self):
-        source = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
-        self.assertIn('"Light infantry", "Heavy infantry", "Rangers", "Commando"', source)
-        self.assertIn("!spell_data->units->IsEnglish() && englishNameMatches >= 3", source)
-        self.assertIn("WARNING: Czech-layout JEDNOTKY.DEF contains English", source)
+    def test_original_unit_names_are_loaded_from_retail_common_fs_tables(self):
+        engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
+        loader = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
+
+        # Czech JEDNOTKY.DEF contains English names even in the original files.
+        # It supplies unit stats and record layout; the actual original names
+        # are positional CP895 text records in UNITS.CZ / UNITS.ENG.
+        self.assertIn('units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', engine)
+        self.assertIn("common_fs->GetFile(unitNamesResource, &data, &size)", engine)
+        self.assertIn("LoadOriginalUnitNames(units, data, size)", engine)
+        self.assertIn("static bool LoadOriginalUnitNames(SpellUnits* units", engine)
+        self.assertIn("value == 0x1A", engine)
+        self.assertIn("names.size() != records.size()", engine)
+        self.assertIn("names[i].size() >= sizeof(records[i]->name)", engine)
+        self.assertIn("std::memcpy(records[i]->name, names[i].data(), names[i].size())", engine)
+        self.assertIn('spell_data->units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', loader)
+        self.assertNotIn("englishNameMatches", loader)
 
     def test_original_text_is_not_in_ui_catalogs(self):
         # Mission text still comes from TEXTS.FS; catalogs contain only UI keys.

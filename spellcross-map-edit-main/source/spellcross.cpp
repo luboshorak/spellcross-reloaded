@@ -22,6 +22,7 @@
 #include <regex>
 #include <filesystem>
 #include <algorithm>
+#include <cstring>
 
 
 //using namespace std;
@@ -326,6 +327,50 @@ static SpellDataFiles BuildLegacySpellDataFiles(const std::wstring& data_path, c
 	return files;
 }
 
+// Read the original retail type-name table directly from COMMON.FS.
+// JEDNOTKY.DEF provides type IDs/attributes, not translated display labels.
+// The text has one CP895 byte string per type ID, separated by DOS newlines.
+static bool LoadOriginalUnitNames(SpellUnits* units, const uint8_t* data, int length)
+{
+	if (!units || !data || length <= 0 || length > 65536)
+		return false;
+	auto& records = units->GetUnits();
+	std::vector<std::string> names;
+	names.reserve(records.size());
+	std::string line;
+	for (int i = 0; i < length; ++i)
+	{
+		const uint8_t value = data[i];
+		if (value == 0x1A) // DOS EOF marker (present at end of UNITS.CZ)
+			break;
+		if (value == '\r' || value == '\n')
+		{
+			names.push_back(line);
+			line.clear();
+			if (value == '\r' && i + 1 < length && data[i + 1] == '\n')
+				++i;
+		}
+		else
+			line.push_back(static_cast<char>(value));
+	}
+	if (!line.empty())
+		names.push_back(line);
+	// Reject incomplete/shifted tables before changing any unit names.
+	if (names.size() != records.size())
+		return false;
+	for (size_t i = 0; i < names.size(); ++i)
+		if (!records[i] || names[i].empty() ||
+			names[i].size() >= sizeof(records[i]->name) ||
+			names[i].find('\0') != std::string::npos)
+			return false;
+	for (size_t i = 0; i < names.size(); ++i)
+	{
+		std::memset(records[i]->name, 0, sizeof(records[i]->name));
+		std::memcpy(records[i]->name, names[i].data(), names[i].size());
+	}
+	return true;
+}
+
 SpellData::SpellData(wstring &data_path,wstring& cd_data_path,wstring& spec_path,std::function<void(std::string)> status_list,std::function<void(std::string)> status_item)
 	: SpellData(BuildLegacySpellDataFiles(data_path, cd_data_path), spec_path, status_list, status_item)
 {
@@ -602,6 +647,23 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		if(status_list)
 			status_list(" - decoding failed!");
 		throw runtime_error(string_format("Decoding JEDNOTKY.DEF failed (%s)!",error.what()));
+	}
+
+	// The original game stores its localized unit type names in UNITS.CZ /
+	// UNITS.ENG, not in the first 28 bytes of JEDNOTKY.DEF. Both tables are
+	// members of the same COMMON.FS and follow JEDNOTKY.DEF type-ID order.
+	// The binary record layout still selects the matching retail language.
+	const char* unitNamesResource = units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ";
+	if(status_list)
+		status_list(string_format("Loading original unit names (%s)...", unitNamesResource));
+	if(common_fs->GetFile(unitNamesResource, &data, &size) ||
+		!LoadOriginalUnitNames(units, data, size))
+	{
+		// Keep the legacy names if modded/incomplete resources are missing, but
+		// report the source problem instead of silently showing the wrong names.
+		if(status_list)
+			status_list(string_format("WARNING: Missing or invalid %s in COMMON.FS; "
+				"falling back to JEDNOTKY.DEF names.", unitNamesResource));
 	}
 
 	// load font file
