@@ -34,6 +34,24 @@ wxWidgets/vcpkg dependencies. In-game verification remains pending.
 
 ## Original experience routines located
 
+### Instruction follow-up: thresholds implemented
+
+Read-only Ghidra disassembly of EN `0x88146` and CZ `0x7f9b9` resolves
+the missing x87 calculation. Both multiply `(original_level - 2)` by a
+single-precision 0.125, square it, multiply by `(exp_max - exp_min)`, storing
+each intermediate to float. Levels below 2 return zero; level 2 returns
+`exp_min`; higher levels add `2 * exp_min` before integer conversion.
+The constants at EN `0x103ea6` and CZ `0xf39c6` both contain `00 00 00 3e`.
+Reloaded now implements this using its zero-based threshold-table index.
+The old logarithmic approximation and its division by exp_min are removed.
+
+EN random helper `0x575dc` explicitly returns zero for a zero limit and
+otherwise uses the remainder of unsigned 16-bit division by the limit.
+Initialization now samples `[0, half_interval)` instead of 10..20 percent.
+Reloaded retains its own RNG; this does not reproduce the DOS random sequence.
+The initialization caller flags and maximum-rank special cases still merit
+additional tracing. Release x64 rebuild passed after these changes.
+
 EN `0x88146` and CZ `0x7f9b9` calculate thresholds. Their floating-point x87
 expressions were not recovered completely in the initial C export; inspect
 instructions before substituting a formula.

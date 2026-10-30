@@ -489,13 +489,17 @@ int SpellUnitRec::isSingleMan()
 // calculate base experience points for given exp. level 1-12 (use for precalculation only)
 int SpellUnitRec::CalcExperiencePts(int level)
 {
-	// very crude approximation of strange Spellcross experience boundaries
-	// note: it's not accurate, but decently close...
-	double a = (double)exp_min;
-	double b = log(200.0*exp_max/exp_min)/log(12);
 	level = (std::min)((std::max)(level,0),11);
-	int points = (int)(a*pow((double)level,b));
-	return(points);
+	// Zero-based table index; DOS threshold routine takes index + 1.
+	// EN 0x88146: preserve its single-precision intermediate stores.
+	if(level == 0)
+		return 0;
+	if(level == 1)
+		return exp_min;
+	float scaled = (level - 1)*0.125f;
+	float squared = scaled*scaled;
+	float growth = (exp_max - exp_min)*squared;
+	return (int)(2.0L*exp_min + (long double)growth);
 }
 // get base experience points for given exp. level 1-12
 int SpellUnitRec::GetExperiencePts(int level)
@@ -1481,11 +1485,11 @@ int MapUnit::InitExperience(int level)
 	experience_init = (std::min)((std::max)(level,0),12);
 	experience_level = (std::min)((std::max)(level,1),12);
 	
-	// generate random experience points based on level
-	// note: crude approximation of Spellcross, it seems actual experience is always somewhere around 20% of current level
-	int lev_a = unit->GetExperiencePts(level);
-	int lev_b = unit->GetNextExperiencePts(level);
-	experience = lev_a + (10 + rand()%11)*(lev_b - lev_a)/100;
+	// DOS adds a random offset below half the interval to the next rank.
+	int lev_a = unit->GetExperiencePts(experience_level);
+	int lev_b = unit->GetNextExperiencePts(experience_level);
+	int half_interval = (lev_b - lev_a)/2;
+	experience = lev_a + (half_interval > 0 ? rand()%half_interval : 0);
 
 	return(experience);
 }
