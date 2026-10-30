@@ -20793,7 +20793,13 @@ void StrategicLevelFrame::ProcessLevelEvents()
                     eligible.push_back(id);
             if (eligible.empty())
             {
-                wxLogDebug("[STRATEGY] Army event %d has no eligible defending territory.", evt->id);
+                // This event has not actually happened.  Leave it eligible to
+                // run on a later turn when a valid frontier sector exists.
+                // Otherwise marking it consumed above silently loses the
+                // scripted Army attack forever (including after save/load).
+                m_triggeredLevelEvents.erase(eid);
+                processed_this_turn.erase(eid);
+                wxLogDebug("[STRATEGY] Army event %d deferred: no eligible defending territory.", evt->id);
                 continue;
             }
             const int target_tid = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
