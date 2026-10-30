@@ -293,6 +293,11 @@ public:
     // Check and trigger counter-attacks (called in OnEndTurn)
     void CheckCounterAttacks();
 
+    // A still-owned sector can have an unresolved defensive battle. The
+    // renderer and launch controls must agree on this exceptional state.
+    bool HasActiveCounterAttack(int territoryId) const;
+    bool CanLaunchTerritoryBattle(int territoryId) const;
+
     // Process Level Events from DEF (AbsTime/Time events with armies, texts, etc.)
     void ProcessLevelEvents();
 
