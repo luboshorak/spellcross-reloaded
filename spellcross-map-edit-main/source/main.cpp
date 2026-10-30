@@ -1142,6 +1142,11 @@ namespace
             {
                 if (IsValidSourceFile(configuredPath(req), req.filename))
                     continue;
+                // Do not resurrect audio from an older edition when the new
+                // source explicitly omitted an optional original archive.
+                if (req.optional && req.skip_key &&
+                    ini.GetBoolValue("FILES", req.skip_key, false))
+                    continue;
                 for (const auto& dir : dirs)
                 {
                     fs::path p = FindFileCaseInsensitive(dir, req.filename);
@@ -1179,13 +1184,56 @@ namespace
 
         if (missingRequired || forceSourceSelection)
         {
-            const fs::path localDataDir = runtime_root / "game_data" / "DATA";
-
             // Preserve the old INSTALL.DTA decoder. Both the physical-CD and
             // raw-ISO entry points feed the same importer and config discovery.
             auto importInstaller = [&](const fs::path& installDta,
                                        spellcross_iso::Reader* iso) -> bool
             {
+                // Keep every import in a fresh directory. Writing directly
+                // into game_data/DATA would overwrite the previously working
+                // edition before a new ISO had passed completeness checks.
+                // Existing installs and their config paths remain untouched
+                // until the import has been verified and committed.
+                const fs::path importsRoot = runtime_root / "game_data" / "imports";
+                std::error_code dirError;
+                fs::create_directories(importsRoot, dirError);
+                if (dirError)
+                {
+                    wxMessageBox("Could not create the game-data imports directory.",
+                        "Spellcross game data", wxOK | wxICON_ERROR);
+                    return false;
+                }
+                const auto stamp = std::chrono::steady_clock::now()
+                    .time_since_epoch().count();
+                fs::path localDataDir;
+                bool created = false;
+                for (unsigned attempt = 0; attempt < 64; ++attempt)
+                {
+                    const fs::path candidate = importsRoot /
+                        ("DATA-" + std::to_string(stamp) + "-" + std::to_string(attempt));
+                    created = fs::create_directory(candidate, dirError);
+                    if (created)
+                    {
+                        localDataDir = candidate;
+                        break;
+                    }
+                    if (dirError)
+                        break;
+                }
+                if (!created)
+                {
+                    wxMessageBox("Could not create a unique directory for this game-data import.",
+                        "Spellcross game data", wxOK | wxICON_ERROR);
+                    return false;
+                }
+
+                // Only remove a directory created by this import attempt,
+                // never an existing installed game or an earlier import.
+                const auto cleanupFailedImport = [&]()
+                {
+                    std::error_code cleanupError;
+                    fs::remove_all(localDataDir, cleanupError);
+                };
                 std::vector<fs::path> extracted;
                 std::string importError;
                 bool extractedOk = false;
@@ -1196,6 +1244,7 @@ namespace
                 }
                 if (!extractedOk)
                 {
+                    cleanupFailedImport();
                     wxMessageBox(
                         wxString("Importing INSTALL.DTA failed:\n\n") +
                         wxString::FromUTF8(importError.c_str()),
@@ -1278,6 +1327,7 @@ namespace
                         imported = FindFileCaseInsensitive(localDataDir, req.filename);
                     if (!req.optional && !IsValidSourceFile(imported, req.filename))
                     {
+                        cleanupFailedImport();
                         wxMessageBox(wxString("The selected edition did not provide ") +
                             wxString::FromUTF8(req.filename) +
                             ".\n\nThe previous installation's archives will not be substituted. "
@@ -1303,6 +1353,7 @@ namespace
                 }
                 if (!saveNow())
                 {
+                    cleanupFailedImport();
                     wxMessageBox("The imported paths could not be saved in config.ini.",
                         "Spellcross game data", wxOK | wxICON_ERROR);
                     return false;
@@ -1381,7 +1432,16 @@ namespace
                         }
                     }
 
-                    const fs::path temporary = localDataDir / "INSTALL.DTA.iso-import.partial";
+                    const fs::path temporaryRoot = runtime_root / "game_data";
+                    std::error_code stagingError;
+                    fs::create_directories(temporaryRoot, stagingError);
+                    if (stagingError)
+                    {
+                        wxMessageBox("Could not prepare the ISO import folder.",
+                            "ISO import", wxOK | wxICON_ERROR);
+                        continue;
+                    }
+                    const fs::path temporary = temporaryRoot / "INSTALL.DTA.iso-import.partial";
                     bool staged = false;
                     {
                         wxBusyCursor busy;
