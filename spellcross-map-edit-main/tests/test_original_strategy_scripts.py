@@ -57,7 +57,8 @@ class OriginalStrategyScriptsTest(unittest.TestCase):
     def test_total_territory_loss_is_not_undone_by_autoload_or_visibility(self):
         self.assertIn("bool m_campaignOwnershipInitialized = false;", self.strat_h)
         self.assertIn("m_ownedTerritories.empty() && !m_campaignOwnershipInitialized", self.strat)
-        self.assertIn("m_campaignOwnershipInitialized = true; // even if save has zero owners", self.strat)
+        self.assertIn("m_campaignOwnershipInitialized = hasExplicitOwnership;", self.strat)
+        self.assertIn('ownershipJson.find("\\\"owned_territories\\\"")', self.strat)
         self.assertNotIn("if (m_gameModeEnabled && m_ownedTerritories.empty())", self.strat)
         self.assertIn("newWin->m_campaignOwnershipInitialized = true;", self.strat)
 
