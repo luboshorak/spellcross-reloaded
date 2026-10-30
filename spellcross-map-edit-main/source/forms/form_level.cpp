@@ -3333,7 +3333,13 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         };
         const bool canAttack = CanLaunchTerritoryMission(m_selectedTerritory) &&
             !m_selectedUnitsForMission.empty();
-        drawActionButton(kOriginalAttackDrawX, 0, RetailOriginalText(m_spellData, "BUTTONS", 37, spellcross_ui_locale::Tr("native.attack", "Attack")), canAttack);
+        // A threatened but still-owned territory stays friendly on the map:
+        // the permitted action is DEFENCE, not a second conquest.
+        const wxString actionCaption = IsActiveTerritoryDefense(m_selectedTerritory)
+            ? spellcross_ui_locale::Tr("native.defense", "Defense")
+            : RetailOriginalText(m_spellData, "BUTTONS", 37,
+                spellcross_ui_locale::Tr("native.attack", "Attack"));
+        drawActionButton(kOriginalAttackDrawX, 0, actionCaption, canAttack);
         drawActionButton(kOriginalCancelDrawX, 1, RetailOriginalText(m_spellData, "BUTTONS", 38, spellcross_ui_locale::Tr("native.cancel_button", "Cancel")),
             !m_selectedUnitsForMission.empty() || !m_selectedCommandersForMission.empty());
 
@@ -15753,12 +15759,18 @@ bool StrategicLevelFrame::CanLaunchTerritoryMission(int territory_id) const
 
     // Defence on still-owned territory is legitimate ONLY during a triggered,
     // unresolved counter-attack. A future scheduled defence is not yet playable.
-    return std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
-        [territory_id](const CounterAttackState& attack)
-        {
-            return attack.territory_id == territory_id &&
-                attack.triggered && !attack.completed;
-        });
+    return IsActiveTerritoryDefense(territory_id);
+}
+
+bool StrategicLevelFrame::IsActiveTerritoryDefense(int territory_id) const
+{
+    return territory_id > 0 &&
+        std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+            [territory_id](const CounterAttackState& attack)
+            {
+                return attack.territory_id == territory_id &&
+                    attack.triggered && !attack.completed;
+            });
 }
 
 void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
