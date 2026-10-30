@@ -36,6 +36,13 @@ wxWidgets/vcpkg dependencies. In-game verification remains pending.
 
 ### Instruction follow-up: thresholds implemented
 
+The rank lookup's zero-threshold exception is now preserved in
+`MapUnit::AddExperience`: EN `0x881fd` and CZ `0x7fa70` both immediately
+return zero-based rank zero when the first threshold is zero, independently
+of XP. Reloaded previously advanced to level 12 for an all-zero table.
+The one-based level now remains 1 for these types. Positive-threshold types
+retain the existing bounded level progression. Release x64 rebuild passed.
+
 Read-only Ghidra disassembly of EN `0x88146` and CZ `0x7f9b9` resolves
 the missing x87 calculation. Both multiply `(original_level - 2)` by a
 single-precision 0.125, square it, multiply by `(exp_max - exp_min)`, storing

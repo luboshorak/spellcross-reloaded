@@ -1501,7 +1501,10 @@ int MapUnit::AddExperience(int points)
 	experience_level = 1;
 	// The threshold lookup clamps to the last entry at level 12.  Stop here
 	// so reaching the maximum XP cannot keep advancing against that entry.
-	while(experience_level < 12 && experience >= unit->GetNextExperiencePts(experience_level))
+	// DOS rank lookup (EN 0x881fd / CZ 0x7fa70) leaves types with a
+	// zero first threshold at rank zero, regardless of accumulated points.
+	while(unit->GetNextExperiencePts(1) != 0 && experience_level < 12 &&
+		experience >= unit->GetNextExperiencePts(experience_level))
 		experience_level++;
 	return(old_level != experience_level);
 }
