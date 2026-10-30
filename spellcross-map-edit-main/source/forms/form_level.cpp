@@ -3086,10 +3086,15 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         const bool visible = !m_gameModeEnabled ||
             (tid < static_cast<int>(m_visibleTerritory.size()) && m_visibleTerritory[tid] != 0);
 
-        state.territories[static_cast<std::size_t>(tid)] = owned
-            ? StrategicOriginalRenderer::TerritoryVisualState::Revealed
-            : (visible ? StrategicOriginalRenderer::TerritoryVisualState::EnemyHatched
-                       : StrategicOriginalRenderer::TerritoryVisualState::Hidden);
+        // An active counter-attack is an unresolved hostile battle ON a
+        // player-owned sector. Keep real ownership for economy/saves, but show
+        // the sector as contested (red hatch) until the defence is resolved.
+        const bool contested = m_gameModeEnabled && HasActiveCounterAttack(tid);
+        state.territories[static_cast<std::size_t>(tid)] =
+            visible && (!owned || contested)
+                ? StrategicOriginalRenderer::TerritoryVisualState::EnemyHatched
+                : (owned ? StrategicOriginalRenderer::TerritoryVisualState::Revealed
+                         : StrategicOriginalRenderer::TerritoryVisualState::Hidden);
     }
 
     // Asset loader is deliberately redundant. Normally COMMON.FS is opened with
@@ -3331,7 +3336,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             OriginalDrawSpellText(image, font, caption, x, kOriginalAttackDrawY + 7,
                 enabled ? text : dim, kOriginalButtonW, true);
         };
-        const bool canAttack = m_selectedTerritory > 0 && !m_selectedUnitsForMission.empty();
+        const bool canAttack = CanLaunchTerritoryBattle(m_selectedTerritory) &&
+            !m_selectedUnitsForMission.empty();
         drawActionButton(kOriginalAttackDrawX, 0, RetailOriginalText(m_spellData, "BUTTONS", 37, spellcross_ui_locale::Tr("native.attack", "Attack")), canAttack);
         drawActionButton(kOriginalCancelDrawX, 1, RetailOriginalText(m_spellData, "BUTTONS", 38, spellcross_ui_locale::Tr("native.cancel_button", "Cancel")),
             !m_selectedUnitsForMission.empty() || !m_selectedCommandersForMission.empty());
@@ -7086,9 +7092,9 @@ void StrategicLevelFrame::OnOriginalStrategicMouseMove(wxMouseEvent& ev)
                         (tid < static_cast<int>(m_visibleTerritory.size()) && m_visibleTerritory[tid] != 0);
                     const bool owned = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(), tid)
                         != m_ownedTerritories.end();
-                    // The native animated hatch belongs only to revealed enemy
-                    // territory; owned and fogged regions stay still.
-                    if (visible && !owned)
+                    // Enemy territories and our contested sectors animate;
+                    // safe owned territory and fogged regions stay still.
+                    if (visible && (!owned || HasActiveCounterAttack(tid)))
                         newTerritory = tid;
                 }
             }
@@ -13195,7 +13201,8 @@ void StrategicLevelFrame::UpdateRosterSelectionVisuals()
     // Update launch button enable state
     const bool onStrategicMap = (m_leftBook && m_leftBook->GetSelection() == 0 && !m_buyModeActive);
     if (m_btnLaunch)
-        m_btnLaunch->Enable(onStrategicMap && m_selectedTerritory >= 0 && !m_selectedUnitsForMission.empty());
+        m_btnLaunch->Enable(onStrategicMap &&
+            CanLaunchTerritoryBattle(m_selectedTerritory) && !m_selectedUnitsForMission.empty());
 }
 
 void StrategicLevelFrame::UpdateCommanderRosterSelectionVisuals()
@@ -13450,7 +13457,8 @@ void StrategicLevelFrame::RefreshUI()
             // Also requires at least one unit selected.
             const bool onStrategicMap = (m_leftBook && m_leftBook->GetSelection() == 0 && !m_buyModeActive);
             const bool hasSelection = !m_selectedUnitsForMission.empty();
-            m_btnLaunch->Enable(onStrategicMap && m_selectedTerritory >= 0 && hasSelection);
+            m_btnLaunch->Enable(onStrategicMap &&
+                CanLaunchTerritoryBattle(m_selectedTerritory) && hasSelection);
             if (m_btnBuyShop)
                 m_btnBuyShop->Enable(true);
 
@@ -15727,6 +15735,12 @@ std::wstring StrategicLevelFrame::ResolveMapDtaPathForMissionToken(const std::st
 void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 {
     if (m_selectedTerritory < 0 || !m_main)
+        return;
+
+    // Never start an ordinary conquest mission on a safe owned territory.
+    // A triggered, unresolved counter-attack is the one valid exception.
+    // The same predicate powers both original and current-UI attack buttons.
+    if (!CanLaunchTerritoryBattle(m_selectedTerritory))
         return;
 
     // Get selected units for this mission
@@ -20479,6 +20493,39 @@ void StrategicLevelFrame::CheckTimeouts()
     }
 
     MarkOverlayDirty();
+}
+
+bool StrategicLevelFrame::HasActiveCounterAttack(int territoryId) const
+{
+    return territoryId > 0 && std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+        [territoryId](const CounterAttackState& attack)
+        {
+            return attack.territory_id == territoryId && attack.triggered && !attack.completed;
+        });
+}
+
+bool StrategicLevelFrame::CanLaunchTerritoryBattle(int territoryId) const
+{
+    if (territoryId <= 0)
+        return false;
+
+    const bool exists = std::any_of(m_level.territories.begin(), m_level.territories.end(),
+        [territoryId](const LevelTerritory& territory) { return territory.id == territoryId; });
+    if (!exists)
+        return false;
+
+    // Editor mode retains the ability to launch custom/owned missions.
+    if (!m_gameModeEnabled)
+        return true;
+
+    if (!m_visibleTerritory.empty() &&
+        (territoryId >= static_cast<int>(m_visibleTerritory.size()) ||
+         m_visibleTerritory[territoryId] == 0))
+        return false;
+
+    const bool owned = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+        territoryId) != m_ownedTerritories.end();
+    return !owned || HasActiveCounterAttack(territoryId);
 }
 
 void StrategicLevelFrame::CheckCounterAttacks()
