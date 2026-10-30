@@ -20885,9 +20885,16 @@ void StrategicLevelFrame::ProcessLevelEvents()
         {
             if (!m_triggeredLevelEvents.count(run_id) && !processed_this_turn.count(run_id))
             {
-                // For Time-based events, record activation turn
-                m_activatedEvents[run_id] = m_turn;
-                queue.push_back(run_id);
+                // RunEvents activates the referenced event. In the retail
+                // scripts (e.g. LEVEL_09 Event(0) -> Events(5..8)), Time(N)
+                // postpones its execution by N turns; queuing it immediately
+                // used to ignore that delay and fire later attacks too early.
+                m_activatedEvents.emplace(run_id, m_turn);
+                const auto target = std::find_if(m_level.events.begin(), m_level.events.end(),
+                    [run_id](const LevelEvent& candidate) { return candidate.id == run_id; });
+                if (target != m_level.events.end() &&
+                    (target->abs_time || target->time_value <= 0))
+                    queue.push_back(run_id);
             }
         }
 
