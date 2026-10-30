@@ -34,6 +34,17 @@ class OriginalStrategyScriptsTest(unittest.TestCase):
         self.assertIn("m_activatedEvents.emplace(eventId, m_turn)", self.strat)
         self.assertIn("ProcessLevelEvents();", self.strat)
 
+    def test_expired_original_intro_variant_cannot_restart_its_time_limit(self):
+        resolver = self.strat.split(
+            "std::string StrategicLevelFrame::ResolveMissionTokenForTerritory(", 1
+        )[1].split(
+            "std::wstring StrategicLevelFrame::ResolveMapDefPathForMissionToken(", 1
+        )[0]
+        self.assertIn("spellcross_strategy::ResolveActiveMissionToken(", resolver)
+        self.assertNotIn("if (launches == 0 &&", resolver)
+        self.assertIn('m_territoryCurrentMission[t.id] = to_lower(mission->end_bad_mission)', self.strat)
+        self.assertIn('L"Zbývající čas: %d tahů', self.strat)
+
     def test_timed_events_are_not_executed_as_immediate_runevents(self):
         self.assertIn("target->time_value <= 0", self.strat)
         self.assertIn("m_activatedEvents.emplace(run_id, m_turn)", self.strat)

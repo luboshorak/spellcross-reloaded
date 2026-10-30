@@ -36,6 +36,7 @@
 #include "../strategic_original_renderer.h"
 #include "../spell_ui_locale.h"
 #include "../strategic_countdown_rules.h"
+#include "../strategic_mission_flow.h"
 
 namespace
 {
@@ -15087,7 +15088,9 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
             // has no text resource, fall back to the mission declared by
             // LEVEL_XX.DEF instead of leaving the panel blank.
             if (timeoutRemaining > 0)
-                info << wxString::Format(english ? "Time remaining: %d turns\n\n" : "Zbývající čas: %d tahů\n\n", timeoutRemaining);
+                info << (english
+                    ? wxString::Format(L"Time remaining: %d turns\n\n", timeoutRemaining)
+                    : wxString::Format(L"Zbývající čas: %d tahů\n\n", timeoutRemaining));
 
             bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
                 texts_dir, cur, "", english ? "Briefing" : "Instrukce", false, false);
@@ -15101,7 +15104,9 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
             info << spellcross_ui_locale::Tr("strategic.territory_secured", "Territory secured.") << "\n";
 
             if (counterTurnsLeft > 0)
-                info << wxString::Format(english ? "\nCounter-attack expected in %d turns.\n" : "\nProtiútok očekáván za %d tahů.\n", counterTurnsLeft);
+                info << (english
+                    ? wxString::Format(L"\nCounter-attack expected in %d turns.\n", counterTurnsLeft)
+                    : wxString::Format(L"\nProtiútok očekáván za %d tahů.\n", counterTurnsLeft));
         }
     }
     else
@@ -15605,7 +15610,9 @@ const LevelMission* StrategicLevelFrame::FindMissionByNameUpper(const std::strin
 
 std::string StrategicLevelFrame::ResolveMissionTokenForTerritory(int territory_id) const
 {
-    // first play can use intro
+    // The original Territory(..., intro, base, ...) intro is the first
+    // mission only; an explicit scripted successor must always win, even
+    // when the player has not yet launched an attack.
     int launches = 0;
     auto itL = m_territoryLaunchCount.find(territory_id);
     if (itL != m_territoryLaunchCount.end()) launches = itL->second;
@@ -15618,14 +15625,11 @@ std::string StrategicLevelFrame::ResolveMissionTokenForTerritory(int territory_i
     if (!terr)
         return std::string();
 
-    if (launches == 0 && !terr->intro_mission.empty() && terr->intro_mission != "none")
-        return terr->intro_mission;
-
-    auto it = m_territoryCurrentMission.find(territory_id);
-    if (it != m_territoryCurrentMission.end() && !it->second.empty() && it->second != "none")
-        return it->second;
-
-    return terr->mission;
+    const auto it = m_territoryCurrentMission.find(territory_id);
+    const std::string current = it == m_territoryCurrentMission.end()
+        ? std::string() : it->second;
+    return spellcross_strategy::ResolveActiveMissionToken(
+        terr->mission, terr->intro_mission, current, launches);
 }
 
 std::wstring StrategicLevelFrame::ResolveMapDefPathForMissionToken(const std::string& mission_token) const
