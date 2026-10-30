@@ -128,3 +128,23 @@ battle, reload and finish; (2) refuse an attack, recapture, trigger a new
 attack, save/reload; (3) load a pre-ID strategic save; (4) load a v3 or older
 tactical context; (5) verify an orphaned new-format battle cannot award the
 conquest mission's EndOK; (6) verify multiple historic attacks for one sector.
+
+### Legacy tactical save UID reconciliation
+
+The pre-context tactical recovery path previously assembled
+`sent_unit_indices` in roster order but collected `sent_unit_uids` in tactical
+map iteration order. Since post-battle damage/death reconciliation indexes
+these two arrays together, mixed company types or a different tactical
+iteration order could attribute losses to the wrong roster company.
+
+Recovery now binds each surviving tactical `strategic_uid` to the matching
+expanded strategic roster row *and its unit type*, appending the index and UID
+as one pair. UID-less legacy companies retain type-based best-effort matching
+with explicit zero UID slots. Exact matches are counted first to avoid
+allocating the same roster capacity twice to UID-less survivors. Missing
+companies in old saves remain fundamentally ambiguous and cannot be perfectly
+reconstructed from survivor-only data.
+
+This was inspected statically only. Include a legacy mixed-type save with
+interleaved roster/tactical order in milestone regression testing, alongside a
+battle with duplicate companies of the same type and different commanders.
