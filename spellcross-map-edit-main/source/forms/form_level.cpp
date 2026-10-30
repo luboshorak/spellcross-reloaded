@@ -19181,6 +19181,17 @@ void StrategicLevelFrame::OnMapPaint(wxPaintEvent& ev)
                     {
                         return t > 0 && t <= maxId && ownedLookup[static_cast<size_t>(t)] != 0;
                     };
+                // Mirror the original renderer's visual precedence: an active
+                // defence is hatched even though the player still owns the land.
+                std::vector<uint8_t> contestedLookup(ownedLookup.size(), 0);
+                for (const auto& attack : m_counterAttacks)
+                    if (attack.triggered && !attack.completed && attack.territory_id > 0 &&
+                        attack.territory_id <= maxId)
+                        contestedLookup[static_cast<size_t>(attack.territory_id)] = 1;
+                auto isContestedTid = [&](int t) -> bool
+                    {
+                        return t > 0 && t <= maxId && contestedLookup[static_cast<size_t>(t)] != 0;
+                    };
 
                 for (int py = 0; py < bh; ++py)
                 {
@@ -19279,9 +19290,10 @@ void StrategicLevelFrame::OnMapPaint(wxPaintEvent& ev)
                             r = fogR; g = fogG; b = fogB;
                             a = fogInteriorA;
                         }
-                        else if (!isOwned)
+                        else if (!isOwned || isContestedTid(tid))
                         {
-                            // visible but not owned: red tint + simple hatch (interior only)
+                            // Enemy or actively contested owned sector: red hatch
+                            // (interior only; ownership itself remains unchanged).
                             r = 200; g = 40; b = 40;
                             a = 70;
                             if (((px + py) / 6) % 2 == 0)
