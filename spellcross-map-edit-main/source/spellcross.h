@@ -12,6 +12,7 @@
 #include <vector>
 #include <list>
 #include <string>
+#include <unordered_map>
 #include "fs_archive.h"
 #include "fsu_archive.h"
 #include "sprites.h"
@@ -132,9 +133,12 @@ private:
 
 	FSarchive* common_fs;
 	FSarchive* terrain_fs;
+	// Original retail CP895 tables, grouped by COMMON.FS resource stem.
+	std::unordered_map<std::string, std::vector<std::string>> original_language_tables;
 
 public:
 	FSarchive* GetCommonFS() { return common_fs; }
+	std::string GetOriginalText(const char* resource_stem, size_t index) const;
 	// data paths
 	std::wstring data_path;
 	std::wstring cd_data_path;

@@ -181,6 +181,14 @@ foreach ($f in @('C_NAMES.DEF','DEVAST.fs','PUST.fs','T11.FS',
     }
 }
 Copy-Item -LiteralPath (Join-Path $gameAssets 'menu') -Destination $gameData -Recurse -Force
+# UI translations are project-authored files, independent of licensed retail assets.
+# Keep them editable beside Spellcross.exe so additional translations require no rebuild.
+$localeSource = Join-Path $game 'locales'
+$localeTarget = Join-Path $stage 'locales'
+foreach ($language in @('en', 'cs')) {
+    Assert-File (Join-Path $localeSource ($language + '.lang'))
+}
+Copy-Item -LiteralPath $localeSource -Destination $localeTarget -Recurse -Force
 $movieDir = Join-Path $gameData 'movie_fallback'
 New-Item -ItemType Directory -Path $movieDir -Force | Out-Null
 # Local Markdown notes are intentionally not included in clean source clones.
@@ -332,7 +340,7 @@ Map editor: Editor\spellcross_map_editor.exe
    SFX EXE: choose a writable installation folder in the installer.
 2. Launch Spellcross.exe first. Configure your own original Spellcross
    game archives, or download CZ/EN ISO, choose a local ISO, or use a CD.
-3. The game can place imported archives in game_data\DATA.
+3. The game keeps new imported archives in game_data\imports\DATA-*.
 4. Launch Editor\spellcross_map_editor.exe. It locates that game-data folder.
 5. Game and editor have SEPARATE config.ini files in their executable folders.
 MP4 fallback videos: 37 files, verified against MANIFEST.tsv.

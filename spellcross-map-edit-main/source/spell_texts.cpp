@@ -37,15 +37,19 @@ SpellTextRec::SpellTextRec(std::string str, SpellLang lang, const char* name,Spe
             pstr++;
             continue;
         }        
-        if(pstr[0] == '\r' && &pstr[1] < strend && pstr[1] == '\n')
+        // Original text archives use hard display-width line breaks. Accept
+        // CRLF, lone CR and lone LF as wrapping boundaries; none is part of
+        // a word. Keep existing paragraph heuristics for sentence endings.
+        if(*pstr == '\r' || *pstr == '\n')
         {
-            // line break
-            if(last_sym == '.' || last_sym == '\n') // discard word wrapping
+            if(*pstr == '\r' && &pstr[1] < strend && pstr[1] == '\n')
+                ++pstr;
+            if(last_sym == '.' || last_sym == '\n')
                 *data++ = '\n';
-            else if(data > buf && data[-1] != ' ')
-                *data++ = ' ';                
+            else if(data > buf.data() && data[-1] != ' ' && data[-1] != '\n')
+                *data++ = ' ';
             last_sym = '\n';
-            pstr += 2;
+            ++pstr;
             continue;
         }
         if(*pstr != ' ')

@@ -1,5 +1,7 @@
 #include "form_mmenu.h"
 #include "app_identity.h"
+#include "../spell_ui_locale.h"
+#include "../spell_units.h"
 
 #include <wx/wx.h>
 #include <wx/dcbuffer.h>
@@ -227,6 +229,8 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
 {
     m_spell_map = spell_map;
     m_spelldata = spell_data;
+    spellcross_ui_locale::SetLanguageFromEdition(
+        m_spelldata && m_spelldata->units && m_spelldata->units->IsEnglish());
     m_action_cb = std::move(action_cb);
     m_event_parent = parent;
     m_hover_index = -1;
@@ -269,12 +273,12 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     // menu bar: Options > Audio, Screen
     auto* bar = new wxMenuBar();
     auto* optMenu = new wxMenu();
-    optMenu->Append(ID_MMENU_OPTIONS_AUDIO, L"&Audio...\tCtrl+A");
-    optMenu->Append(ID_MMENU_OPTIONS_SCREEN, L"&Screen...\tCtrl+S");
-    bar->Append(optMenu, "&Options");
+    optMenu->Append(ID_MMENU_OPTIONS_AUDIO, spellcross_ui_locale::Tr("menu.home.audio", "&Audio...\tCtrl+A"));
+    optMenu->Append(ID_MMENU_OPTIONS_SCREEN, spellcross_ui_locale::Tr("menu.home.screen", "&Screen...\tCtrl+S"));
+    bar->Append(optMenu, spellcross_ui_locale::Tr("menu.options", "&Options"));
     auto* editorMenu = new wxMenu();
-    editorMenu->Append(ID_MMENU_OPEN_EDITOR, "Open Map Editor...", "Launch the standalone Spellcross map editor");
-    bar->Append(editorMenu, "&Map Editor");
+    editorMenu->Append(ID_MMENU_OPEN_EDITOR, spellcross_ui_locale::Tr("menu.home.open_editor", "Open Map Editor..."), spellcross_ui_locale::Tr("menu.home.editor_help", "Launch the standalone Spellcross map editor"));
+    bar->Append(editorMenu, spellcross_ui_locale::Tr("menu.home.editor", "&Map Editor"));
     form->SetMenuBar(bar);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsAudio, this, ID_MMENU_OPTIONS_AUDIO);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsScreen, this, ID_MMENU_OPTIONS_SCREEN);

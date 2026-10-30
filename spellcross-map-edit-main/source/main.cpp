@@ -54,6 +54,7 @@
 #include "other.h"
 #include "simpleini.h"
 #include "spellcross.h"
+#include "spell_ui_locale.h"
 #include "map.h"
 
 #include "level.h"
@@ -1051,7 +1052,8 @@ namespace
     static bool EnsureSpellcrossSourceConfiguration(CSimpleIniA& ini,
         const std::filesystem::path& config_path,
         const std::filesystem::path& runtime_root,
-        const std::filesystem::path& executable_dir)
+        const std::filesystem::path& executable_dir,
+        bool forceSourceSelection)
     {
         namespace fs = std::filesystem;
 
@@ -1140,6 +1142,11 @@ namespace
             {
                 if (IsValidSourceFile(configuredPath(req), req.filename))
                     continue;
+                // Do not resurrect audio from an older edition when the new
+                // source explicitly omitted an optional original archive.
+                if (req.optional && req.skip_key &&
+                    ini.GetBoolValue("FILES", req.skip_key, false))
+                    continue;
                 for (const auto& dir : dirs)
                 {
                     fs::path p = FindFileCaseInsensitive(dir, req.filename);
@@ -1175,15 +1182,58 @@ namespace
             }
         }
 
-        if (missingRequired)
+        if (missingRequired || forceSourceSelection)
         {
-            const fs::path localDataDir = runtime_root / "game_data" / "DATA";
-
             // Preserve the old INSTALL.DTA decoder. Both the physical-CD and
             // raw-ISO entry points feed the same importer and config discovery.
             auto importInstaller = [&](const fs::path& installDta,
                                        spellcross_iso::Reader* iso) -> bool
             {
+                // Keep every import in a fresh directory. Writing directly
+                // into game_data/DATA would overwrite the previously working
+                // edition before a new ISO had passed completeness checks.
+                // Existing installs and their config paths remain untouched
+                // until the import has been verified and committed.
+                const fs::path importsRoot = runtime_root / "game_data" / "imports";
+                std::error_code dirError;
+                fs::create_directories(importsRoot, dirError);
+                if (dirError)
+                {
+                    wxMessageBox("Could not create the game-data imports directory.",
+                        "Spellcross game data", wxOK | wxICON_ERROR);
+                    return false;
+                }
+                const auto stamp = std::chrono::steady_clock::now()
+                    .time_since_epoch().count();
+                fs::path localDataDir;
+                bool created = false;
+                for (unsigned attempt = 0; attempt < 64; ++attempt)
+                {
+                    const fs::path candidate = importsRoot /
+                        ("DATA-" + std::to_string(stamp) + "-" + std::to_string(attempt));
+                    created = fs::create_directory(candidate, dirError);
+                    if (created)
+                    {
+                        localDataDir = candidate;
+                        break;
+                    }
+                    if (dirError)
+                        break;
+                }
+                if (!created)
+                {
+                    wxMessageBox("Could not create a unique directory for this game-data import.",
+                        "Spellcross game data", wxOK | wxICON_ERROR);
+                    return false;
+                }
+
+                // Only remove a directory created by this import attempt,
+                // never an existing installed game or an earlier import.
+                const auto cleanupFailedImport = [&]()
+                {
+                    std::error_code cleanupError;
+                    fs::remove_all(localDataDir, cleanupError);
+                };
                 std::vector<fs::path> extracted;
                 std::string importError;
                 bool extractedOk = false;
@@ -1194,6 +1244,7 @@ namespace
                 }
                 if (!extractedOk)
                 {
+                    cleanupFailedImport();
                     wxMessageBox(
                         wxString("Importing INSTALL.DTA failed:\n\n") +
                         wxString::FromUTF8(importError.c_str()),
@@ -1238,9 +1289,10 @@ namespace
                     return true;
                 };
 
+                bool infoImported = false;
                 if (iso)
                 {
-                    copyIsoSidecar("INFO.FS", "INFO.FS");
+                    infoImported = copyIsoSidecar("INFO.FS", "INFO.FS");
                     if (!copyIsoSidecar("MOVIE.FS", "MOVIE.FS"))
                         copyIsoSidecar("MOVIES.FS", "MOVIE.FS");
                     copyIsoSidecar("SPEAKER.FS", "SPEAKER.FS");
@@ -1248,15 +1300,60 @@ namespace
                 else
                 {
                     const fs::path cdDataDir = installDta.parent_path();
-                    CopyCdArchiveIfPresent(cdDataDir, localDataDir, "INFO.FS", "INFO.FS");
+                    infoImported = CopyCdArchiveIfPresent(cdDataDir, localDataDir, "INFO.FS", "INFO.FS");
                     if (!CopyCdArchiveIfPresent(cdDataDir, localDataDir, "MOVIE.FS", "MOVIE.FS"))
                         CopyCdArchiveIfPresent(cdDataDir, localDataDir, "MOVIES.FS", "MOVIE.FS");
                     CopyCdArchiveIfPresent(cdDataDir, localDataDir, "SPEAKER.FS", "SPEAKER.FS");
                 }
 
-                autoDiscoverFrom(localDataDir);
+                // Only archives verified against THIS INSTALL.DTA may become
+                // configured game sources. Files left in game_data/DATA by a
+                // previous EN/CZ import are not proof of this edition.
+                std::vector<fs::path> currentSources;
+                for (const auto& req : reqs)
+                {
+                    fs::path imported;
+                    for (const auto& fresh : extracted)
+                    {
+                        if (FileNameEquals(fresh, req.filename) &&
+                            IsValidSourceFile(fresh, req.filename))
+                        {
+                            imported = fresh;
+                            break;
+                        }
+                    }
+                    if (imported.empty() && std::string(req.filename) == "INFO.FS" &&
+                        infoImported)
+                        imported = FindFileCaseInsensitive(localDataDir, req.filename);
+                    if (!req.optional && !IsValidSourceFile(imported, req.filename))
+                    {
+                        cleanupFailedImport();
+                        wxMessageBox(wxString("The selected edition did not provide ") +
+                            wxString::FromUTF8(req.filename) +
+                            ".\n\nThe previous installation's archives will not be substituted. "
+                            "Choose a complete ISO/CD or supply the original files manually.",
+                            "Incomplete Spellcross import", wxOK | wxICON_ERROR);
+                        return false;
+                    }
+                    currentSources.push_back(imported);
+                }
+
+                for (size_t i = 0; i < currentSources.size(); ++i)
+                {
+                    const auto& req = reqs[i];
+                    if (IsValidSourceFile(currentSources[i], req.filename))
+                        storeSource(req, currentSources[i]);
+                    else
+                    {
+                        // Never retain stale optional audio from another edition.
+                        ini.SetValue("FILES", req.key, "");
+                        if (req.skip_key)
+                            ini.SetBoolValue("FILES", req.skip_key, true, nullptr, true);
+                    }
+                }
                 if (!saveNow())
                 {
+                    cleanupFailedImport();
                     wxMessageBox("The imported paths could not be saved in config.ini.",
                         "Spellcross game data", wxOK | wxICON_ERROR);
                     return false;
@@ -1266,8 +1363,6 @@ namespace
                     wxString::Format("%lu", static_cast<unsigned long>(extracted.size())) +
                     " game-data files into:\n" + wxString(localDataDir.wstring()) +
                     "\n\nYou do not need to keep the disc inserted or the ISO mounted.";
-                if (!IsValidSourceFile(configuredPath(reqs[6]), reqs[6].filename))
-                    summary += "\n\nINFO.FS was not found. Select it when prompted.";
                 wxMessageBox(summary, "Spellcross game data",
                     wxOK | wxICON_INFORMATION);
                 return true;
@@ -1294,7 +1389,15 @@ namespace
 
                 const int option = choice.GetSelection();
                 if (option == 3)
-                    break; // use the existing per-file fallback below
+                {
+                    if (!forceSourceSelection)
+                        break; // use existing per-file fallback for missing files
+                    wxMessageBox("To switch an installed edition, select a complete "
+                        "ISO/CD or DATA directory. Individual files could mix "
+                        "different editions.", "Spellcross game data",
+                        wxOK | wxICON_INFORMATION);
+                    continue;
+                }
 
                 if (option == 0 || option == 4 || option == 5)
                 {
@@ -1329,7 +1432,16 @@ namespace
                         }
                     }
 
-                    const fs::path temporary = localDataDir / "INSTALL.DTA.iso-import.partial";
+                    const fs::path temporaryRoot = runtime_root / "game_data";
+                    std::error_code stagingError;
+                    fs::create_directories(temporaryRoot, stagingError);
+                    if (stagingError)
+                    {
+                        wxMessageBox("Could not prepare the ISO import folder.",
+                            "ISO import", wxOK | wxICON_ERROR);
+                        continue;
+                    }
+                    const fs::path temporary = temporaryRoot / "INSTALL.DTA.iso-import.partial";
                     bool staged = false;
                     {
                         wxBusyCursor busy;
@@ -1390,8 +1502,44 @@ namespace
                         "Spellcross game data", wxOK | wxICON_WARNING);
                     continue;
                 }
-                autoDiscoverFrom(dataPath);
-                saveNow();
+                // Selecting an installed DATA directory is an explicit choice
+                // of edition. Do not keep valid entries from a prior location.
+                std::vector<fs::path> selectedSources;
+                bool complete = true;
+                for (const auto& req : reqs)
+                {
+                    const fs::path candidate = FindFileCaseInsensitive(dataPath, req.filename);
+                    if (!req.optional && !IsValidSourceFile(candidate, req.filename))
+                    {
+                        wxMessageBox(wxString("Selected folder is missing ") +
+                            wxString::FromUTF8(req.filename) +
+                            ". Please select a complete game DATA folder.",
+                            "Incomplete Spellcross edition", wxOK | wxICON_WARNING);
+                        complete = false;
+                        break;
+                    }
+                    selectedSources.push_back(candidate);
+                }
+                if (!complete)
+                    continue;
+                for (size_t i = 0; i < selectedSources.size(); ++i)
+                {
+                    const auto& req = reqs[i];
+                    if (IsValidSourceFile(selectedSources[i], req.filename))
+                        storeSource(req, selectedSources[i]);
+                    else
+                    {
+                        ini.SetValue("FILES", req.key, "");
+                        if (req.skip_key)
+                            ini.SetBoolValue("FILES", req.skip_key, true, nullptr, true);
+                    }
+                }
+                if (!saveNow())
+                {
+                    wxMessageBox("Selected game data could not be saved in config.ini.",
+                        "Spellcross game data", wxOK | wxICON_ERROR);
+                    return false;
+                }
                 break;
             }
         }
@@ -2478,7 +2626,14 @@ bool MyApp::OnInit()
     // Resolve/repair the external Spellcross data sources on the UI thread
     // before FormLoader starts. Required archives are requested individually;
     // optional audio sources can be skipped and that choice is remembered.
-    if (!EnsureSpellcrossSourceConfiguration(ini, fs::path(config_path), runtime_root, executable_dir))
+    // Existing valid archive paths normally skip the setup wizard. Launch
+    // Spellcross.exe --select-game-data to switch CZ/EN without editing INI.
+    bool forceSourceSelection = false;
+    for (int i = 1; i < argc; ++i)
+        if (wxString(argv[i]) == "--select-game-data")
+            forceSourceSelection = true;
+    if (!EnsureSpellcrossSourceConfiguration(ini, fs::path(config_path),
+        runtime_root, executable_dir, forceSourceSelection))
         return false;
 
     // --- try load Spellcross data
@@ -2490,6 +2645,11 @@ bool MyApp::OnInit()
         wxMessageBox("Loading Spellcross data failed!\nPossibly incorrect game paths in ''config.ini''?","Error",wxICON_ERROR);
         return(false);
     }
+
+    // Use the retail edition identified from JEDNOTKY.DEF, never OS locale.
+    // Separate ISO imports can therefore use independent UI languages.
+    spellcross_ui_locale::SetLanguageFromEdition(
+        spell_data && spell_data->units && spell_data->units->IsEnglish());
 
     // --- restore the last tactical map only when the saved path is still valid.
     // A fresh/portable config intentionally starts without one and should land
@@ -2614,6 +2774,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     // store local reference to initial map and data
     spell_map = map;
     spell_data = spelldata;
+    // Reassert the language before building the tactical menu bar. The
+    // independent main-menu window uses the same catalog and source edition.
+    spellcross_ui_locale::SetLanguageFromEdition(
+        spell_data && spell_data->units && spell_data->units->IsEnglish());
     SetTitle(BuildSpellcrossWindowTitle(spell_map));
 
     // subforms
@@ -2627,44 +2791,44 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     form_mmenu = NULL;
         
     wxMenu* menuFile = new wxMenu;
-    menuFile->Append(ID_LoadCustomMap, "Load &custom map...\tCtrl+Alt+O");
-    menuFile->Append(ID_MainMenu, "Main &menu\tCtrl+M");
+    menuFile->Append(ID_LoadCustomMap, spellcross_ui_locale::Tr("menu.load_custom_map", "Load &custom map...\tCtrl+Alt+O"));
+    menuFile->Append(ID_MainMenu, spellcross_ui_locale::Tr("menu.main", "Main &menu\tCtrl+M"));
     menuFile->AppendSeparator();
-    wxMenuItem* miLoadStrategic = menuFile->Append(wxID_ANY, "Load &strategic game...\tCtrl+Alt+L");
-    menuFile->Append(wxID_EXIT);
+    wxMenuItem* miLoadStrategic = menuFile->Append(wxID_ANY, spellcross_ui_locale::Tr("menu.load_strategic", "Load &strategic game...\tCtrl+Alt+L"));
+    menuFile->Append(wxID_EXIT, spellcross_ui_locale::Tr("menu.exit", "E&xit"));
     wxMenu* menuGame = new wxMenu;
-    menuGame->Append(ID_mmSaveGameState, "Save game state...\tCtrl+Shift+S");
-    menuGame->Append(ID_mmLoadGameState, "Load game state...\tCtrl+Shift+L");
-    menuGame->Append(ID_mmOpenMapEditor, "Open mission in Map Editor...");
+    menuGame->Append(ID_mmSaveGameState, spellcross_ui_locale::Tr("menu.save_game", "Save game state...\tCtrl+Shift+S"));
+    menuGame->Append(ID_mmLoadGameState, spellcross_ui_locale::Tr("menu.load_game", "Load game state...\tCtrl+Shift+L"));
+    menuGame->Append(ID_mmOpenMapEditor, spellcross_ui_locale::Tr("menu.open_editor", "Open mission in Map Editor..."));
     menuGame->AppendSeparator();
-    menuGame->Append(ID_mmResetViewMap, "Reset view map");
-    menuGame->Append(ID_mmUnitViewMode, "View unit move/attack range (Space)");
+    menuGame->Append(ID_mmResetViewMap, spellcross_ui_locale::Tr("menu.reset_view", "Reset view map"));
+    menuGame->Append(ID_mmUnitViewMode, spellcross_ui_locale::Tr("menu.range", "View unit move/attack range (Space)"));
 
     // Help menu
     wxMenu* menuHelp = new wxMenu;
-    menuHelp->Append(wxID_ABOUT);
+    menuHelp->Append(wxID_ABOUT, spellcross_ui_locale::Tr("menu.about", "&About"));
 
     // Options menu (accessible in game mode too)
     wxMenu* menuOptions = new wxMenu;
-    menuOptions->Append(ID_OptionsAudio, "&Audio...", "Audio volume settings");
-    menuOptions->Append(ID_OptionsScreen, "&Screen...", "Brightness settings");
+    menuOptions->Append(ID_OptionsAudio, spellcross_ui_locale::Tr("menu.audio", "&Audio..."), spellcross_ui_locale::Tr("menu.audio_help", "Audio volume settings"));
+    menuOptions->Append(ID_OptionsScreen, spellcross_ui_locale::Tr("menu.screen", "&Screen..."), spellcross_ui_locale::Tr("menu.screen_help", "Brightness settings"));
     auto* menuDifficulty = new wxMenu;
     const bool englishDifficultyMenu = spell_data && spell_data->units && spell_data->units->IsEnglish();
     // Original Czech UI: Easy / Normal / Hard.  Original English UI contains
     // only two DIFF entries; its selector maps them to engine modes 1/2, i.e.
     // Normal / Hard.
     if(!englishDifficultyMenu)
-        menuDifficulty->AppendRadioItem(ID_OptionsDifficultyEasy, "&Easy");
-    menuDifficulty->AppendRadioItem(ID_OptionsDifficultyNormal, "&Normal");
-    menuDifficulty->AppendRadioItem(ID_OptionsDifficultyHard, "&Hard");
-    menuOptions->AppendSubMenu(menuDifficulty, "Game &Difficulty");
+        menuDifficulty->AppendRadioItem(ID_OptionsDifficultyEasy, spellcross_ui_locale::Tr("menu.easy", "&Easy"));
+    menuDifficulty->AppendRadioItem(ID_OptionsDifficultyNormal, spellcross_ui_locale::Tr("menu.normal", "&Normal"));
+    menuDifficulty->AppendRadioItem(ID_OptionsDifficultyHard, spellcross_ui_locale::Tr("menu.hard", "&Hard"));
+    menuOptions->AppendSubMenu(menuDifficulty, spellcross_ui_locale::Tr("menu.difficulty", "Game &Difficulty"));
 
     // Main menu
     wxMenuBar* menuBar = new wxMenuBar;    
-    menuBar->Append(menuFile, "&File");
-    menuBar->Append(menuGame, "&Game");
-    menuBar->Append(menuOptions, "&Options");
-    menuBar->Append(menuHelp, "&Help");
+    menuBar->Append(menuFile, spellcross_ui_locale::Tr("menu.file", "&File"));
+    menuBar->Append(menuGame, spellcross_ui_locale::Tr("menu.game", "&Game"));
+    menuBar->Append(menuOptions, spellcross_ui_locale::Tr("menu.options", "&Options"));
+    menuBar->Append(menuHelp, spellcross_ui_locale::Tr("menu.help", "&Help"));
     SetMenuBar(menuBar);
     
     CreateStatusBar(8);
@@ -4331,7 +4495,7 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
     if (!titleDrawn)
     {
         wxLogWarning("Mission result title resource is missing; using text fallback.");
-        drawText(m_mission_end_req.success ? L"MISSION ACCOMPLISHED" : L"MISSION FAILED",
+        drawText(m_mission_end_req.success ? spellcross_ui_locale::Tr("result.accomplished", "MISSION ACCOMPLISHED") : spellcross_ui_locale::Tr("result.failed", "MISSION FAILED"),
             150, 35, 340, true);
     }
 
@@ -4345,7 +4509,7 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
         if (m_mission_end_req.text)
             debrief = wxString(m_mission_end_req.text->text.c_str());
         if (debrief.empty())
-            debrief = m_mission_end_req.success ? L"Mission accomplished." : L"Mission failed.";
+            debrief = m_mission_end_req.success ? spellcross_ui_locale::Tr("result.debrief_success", "Mission accomplished.") : spellcross_ui_locale::Tr("result.debrief_failed", "Mission failed.");
 
         // Match the original post-mission debrief placement: a fixed framed
         // message box directly under the banner.  The earlier restoration sized
@@ -4489,10 +4653,10 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
     }
 
     // WM_STAT.LZ native grid: x=116..523, y=103..277 in 640x480 space.
-    drawText(L"Alliance - losses", 116 + 113, 103 + 25, 132, true);
-    drawText(L"Dark Side - losses", 116 + 246, 103 + 25, 144, true);
+    drawText(spellcross_ui_locale::Tr("result.alliance_losses", "Alliance - losses"), 116 + 113, 103 + 25, 132, true);
+    drawText(spellcross_ui_locale::Tr("result.enemy_losses", "Dark Side - losses"), 116 + 246, 103 + 25, 144, true);
 
-    const wxString labels[4] = { L"Light units", L"Heavy units", L"Air units", L"Commanders" };
+    const wxString labels[4] = { spellcross_ui_locale::Tr("result.light", "Light units"), spellcross_ui_locale::Tr("result.heavy", "Heavy units"), spellcross_ui_locale::Tr("result.air", "Air units"), spellcross_ui_locale::Tr("result.commanders", "Commanders") };
     const int alliance[4] = { m_mission_result_stats.alliance_light, m_mission_result_stats.alliance_heavy,
         m_mission_result_stats.alliance_air, m_mission_result_stats.alliance_commanders };
     const int enemy[4] = { m_mission_result_stats.enemy_light, m_mission_result_stats.enemy_heavy,

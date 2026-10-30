@@ -289,9 +289,18 @@ public:
     
     // Check and trigger timeouts (called in OnEndTurn)
     void CheckTimeouts();
+
+    // Activate EndOKEvent/EndBadEvent; Time(N) starts from this turn.
+    void ActivateMissionEvent(int eventId);
     
     // Check and trigger counter-attacks (called in OnEndTurn)
     void CheckCounterAttacks();
+
+    // Retain enemy occupiers for the recapture; transfer land only once.
+    void SurrenderCounterAttack(CounterAttackState& attack);
+
+    // An owned sector can launch a battle only for an active defence.
+    bool CanLaunchTerritoryBattle(int territoryId) const;
 
     // Process Level Events from DEF (AbsTime/Time events with armies, texts, etc.)
     void ProcessLevelEvents();
@@ -517,6 +526,9 @@ public:
     // Game mode (campaign progression)
     bool m_gameModeEnabled = false;
     std::vector<int> m_ownedTerritories;
+    // Empty after a loaded/started campaign means defeat, not a request
+    // to re-grant the original Start(n) command territory.
+    bool m_campaignOwnershipInitialized = false;
 
     struct TerritoryResourceState
     {

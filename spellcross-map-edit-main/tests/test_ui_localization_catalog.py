@@ -1,0 +1,235 @@
+"""Checks that Reloaded UI catalogs stay complete as the interface grows.
+
+Run from any directory: python spellcross-map-edit-main/tests/test_ui_localization_catalog.py
+No commercial game files or third-party packages are needed.
+"""
+from pathlib import Path
+import re
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+LOCALES = ROOT / "locales"
+SOURCES = [
+    ROOT / "source" / "main.cpp",
+    ROOT / "source" / "forms" / "form_level.cpp",
+    ROOT / "source" / "forms" / "form_mmenu.cpp",
+]
+CALL = re.compile(r'spellcross_ui_locale::Tr\(\s*"([^"]+)"')
+
+
+def catalog(lang):
+    data = {}
+    for number, line in enumerate((LOCALES / f"{lang}.lang").read_text(encoding="utf-8-sig").splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith(("#", ";")):
+            continue
+        assert "=" in line, f"{lang}.lang:{number}: missing ="
+        key, value = line.split("=", 1)
+        key = key.strip()
+        assert key, f"{lang}.lang:{number}: empty key"
+        assert key not in data, f"{lang}.lang:{number}: duplicate {key}"
+        assert value.strip(), f"{lang}.lang:{number}: empty translation {key}"
+        data[key] = value
+    return data
+
+
+class LocalizationCatalogTests(unittest.TestCase):
+    def test_all_languages_have_identical_nonempty_keys(self):
+        en, cs = catalog("en"), catalog("cs")
+        self.assertGreaterEqual(len(en), 80)
+        self.assertEqual(en.keys(), cs.keys())
+
+    def test_referenced_strings_are_translated(self):
+        sources = "\n".join(src.read_text(encoding="utf-8") for src in SOURCES)
+        referenced = set(CALL.findall(sources))
+        # Dynamically constructed rank keys are intentionally not literal.
+        referenced.update(f"stats.rank.{i}" for i in range(9))
+        referenced.update(f"buy.rank.{i}" for i in range(9))
+        for lang in ("en", "cs"):
+            missing = referenced - catalog(lang).keys()
+            self.assertFalse(missing, f"Missing {lang} keys: {sorted(missing)}")
+
+    def test_edition_selection_and_fallback(self):
+        app = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        helper = (ROOT / "source" / "spell_ui_locale.h").read_text(encoding="utf-8")
+        self.assertIn("spellcross_ui_locale::SetLanguageFromEdition(", app)
+        self.assertIn('SetLanguage(englishRetailEdition ? "en" : "cs")', helper)
+        self.assertIn("state.english.find(key)", helper)
+        self.assertIn("englishFallback", helper)
+
+    def test_native_buy_screen_uses_translations(self):
+        source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        for key in (
+            "buy.category.infantry",
+            "buy.category.tanks",
+            "buy.category.artillery",
+            "buy.category.transporters",
+            "buy.category.radars",
+            "buy.category.air_defense",
+            "buy.category.other",
+            "buy.action.buy",
+            "buy.stats.objects",
+            "buy.stats.defense",
+            "buy.stats.sight",
+        ):
+            self.assertIn(f'spellcross_ui_locale::Tr("{key}"', source)
+        self.assertIn("LocalizedOriginalRankAbbrev(m_spellData, commander.rank)", source)
+        self.assertNotIn('L"Koupit"', source)
+        self.assertNotIn(r'L"P\u011Bchota"', source)
+
+    def test_menu_fallbacks_use_real_cpp_tab_escapes(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        menu_lines = [
+            line for line in source.splitlines()
+            if 'spellcross_ui_locale::Tr("menu.' in line
+        ]
+        self.assertEqual(sum(r"\t" in line for line in menu_lines), 5)
+        # Double-escaped C++ source would display a literal \t in wx menus.
+        self.assertFalse(any(r"\\t" in line for line in menu_lines))
+        for lang in ("en", "cs"):
+            entries = catalog(lang)
+            for key in ("menu.load_custom_map", "menu.main",
+                        "menu.load_strategic", "menu.save_game", "menu.load_game"):
+                self.assertIn("\t", entries[key])
+
+    def test_catalogs_resolve_from_release_and_development_roots(self):
+        helper = (ROOT / "source" / "spell_ui_locale.h").read_text(encoding="utf-8")
+        self.assertIn('dir / "locales"', helper)
+        self.assertIn('dir / "spellcross-map-edit-main" / "locales"', helper)
+        self.assertIn("addParents(exe.parent_path())", helper)
+        self.assertIn("addParents(cwd)", helper)
+
+    def test_both_native_windows_use_catalogs(self):
+        tactical = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        standalone = (ROOT / "source" / "forms" / "form_mmenu.cpp").read_text(encoding="utf-8")
+        self.assertIn('spellcross_ui_locale::Tr("menu.file"', tactical)
+        self.assertIn('spellcross_ui_locale::Tr("menu.options"', standalone)
+        self.assertIn('spellcross_ui_locale::Tr("menu.home.editor"', standalone)
+        self.assertIn('spellcross_ui_locale::Tr("menu.home.audio"', standalone)
+        self.assertIn('spellcross_ui_locale::Tr("menu.home.screen"', standalone)
+        for lang in ("en", "cs"):
+            strings = catalog(lang)
+            for key in ("menu.home.editor", "menu.home.editor_help",
+                        "menu.home.open_editor", "menu.home.audio", "menu.home.screen"):
+                self.assertIn(key, strings)
+            self.assertIn("\t", strings["menu.home.audio"])
+            self.assertIn("\t", strings["menu.home.screen"])
+
+    def test_native_briefing_has_no_invented_caption(self):
+        source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        self.assertIn("bool showCaption = true", source)
+        self.assertIn("if (showCaption)", source)
+        # Game-mode original text calls explicitly hide debug captions.
+        self.assertEqual(source.count('english ? "Briefing" : "Instrukce", false, false'), 4)
+        self.assertEqual(source.count('english ? "Counter-Attack Briefing" : "Instrukce k obraně", false, false'), 4)
+        self.assertNotIn('info << (english ? "*** COUNTER-ATTACK', source)
+        self.assertIn('text.Replace("\\r\\n", "\\n");', source)
+        self.assertIn('text.Replace("\\r", "\\n");', source)
+
+    def test_retail_name_origin_is_reported_not_guessed(self):
+        loader = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
+        self.assertIn('files.common_fs', loader)
+        self.assertIn('files.texts_fs', loader)
+        self.assertIn('spell_data->units->IsEnglish()', loader)
+        self.assertIn('unit->name', loader)
+
+    def test_imports_cannot_mix_archives_from_previous_editions(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        # The new edition must be selected as a complete set of sources.
+        self.assertIn("for (const auto& fresh : extracted)", source)
+        self.assertIn("bool infoImported = false;", source)
+        self.assertIn("if (!req.optional && !IsValidSourceFile(imported, req.filename))", source)
+        self.assertIn("if (!req.optional && !IsValidSourceFile(candidate, req.filename))", source)
+        self.assertNotIn("autoDiscoverFrom(localDataDir);", source)
+        self.assertNotIn("autoDiscoverFrom(dataPath);", source)
+
+    def test_imports_are_isolated_and_failed_attempts_are_cleaned(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn('runtime_root / "game_data" / "imports"', source)
+        self.assertIn("fs::create_directory(candidate, dirError)", source)
+        self.assertIn("const auto cleanupFailedImport", source)
+        self.assertIn("fs::remove_all(localDataDir, cleanupError)", source)
+        self.assertRegex(source, r"if \(!extractedOk\)\s*\{\s*cleanupFailedImport\(\);")
+        self.assertIn("const fs::path temporaryRoot = runtime_root / \"game_data\";", source)
+        self.assertIn("fs::create_directories(temporaryRoot, stagingError)", source)
+        self.assertIn("for (const auto& fresh : extracted)", source)
+
+    def test_skipped_optional_audio_cannot_be_rediscovered_from_old_install(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn('ini.GetBoolValue("FILES", req.skip_key, false)', source)
+        self.assertIn('ini.SetValue("FILES", req.key, "");', source)
+        self.assertIn('ini.SetBoolValue("FILES", req.skip_key, true, nullptr, true)', source)
+
+    def test_force_edition_selection_with_existing_valid_archives(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn('wxString(argv[i]) == "--select-game-data"', source)
+        self.assertIn("if (missingRequired || forceSourceSelection)", source)
+        self.assertIn("runtime_root, executable_dir, forceSourceSelection)", source)
+
+    def test_all_original_language_resources_follow_selected_edition(self):
+        engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
+        header = (ROOT / "source" / "spellcross.h").read_text(encoding="utf-8")
+        for resource in (
+            "BIG_MAP", "BUTTONS", "DISPLAY", "HODNOSTI", "INFOTEXT",
+            "MESIACE", "MOSTY", "MURY", "OTHER", "RESEARCH",
+            "SELTAB", "SPECOBJ", "UNITS", "UPGRADES",
+        ):
+            self.assertIn('{"' + resource + '", ', engine)
+        self.assertIn('units->IsEnglish() ? ".ENG" : ".CZ"', engine)
+        self.assertIn("common_fs->GetFile(filename.c_str(), &data, &size)", engine)
+        self.assertIn("ParseOriginalLanguageLines(data, size)", engine)
+        self.assertIn("current[first] != ';'", engine)
+        self.assertIn("ch == 0x1A", engine)
+        self.assertIn("original_language_tables.emplace", engine)
+        self.assertIn("std::string GetOriginalText(const char* resource_stem, size_t index) const", header)
+        self.assertIn('resource.minimumEntries', engine)
+
+    def test_original_units_are_taken_from_retail_language_resource(self):
+        engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
+        loader = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
+        self.assertIn('original_language_tables.find("UNITS")', engine)
+        self.assertIn("ApplyOriginalUnitNames(units, nameTable->second)", engine)
+        self.assertIn("names.size() != records.size()", engine)
+        self.assertIn("names[i].size() >= sizeof(records[i]->name)", engine)
+        self.assertIn("std::memcpy(records[i]->name, names[i].data(), names[i].size())", engine)
+        self.assertIn('spell_data->units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', loader)
+
+    def test_original_rank_names_are_full_and_short_pairs(self):
+        source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        self.assertIn('RetailOriginalText(data, "HODNOSTI", static_cast<size_t>(rank * 2 + 1)', source)
+        self.assertIn('RetailOriginalText(m_spellData, "HODNOSTI",', source)
+        self.assertIn("static_cast<size_t>(rank * 2)", source)
+        self.assertIn("return LocalizedOriginalRankAbbrev(m_spellData, rank)", source)
+
+    def test_research_upgrades_and_objects_do_not_prefer_stale_czech_sources(self):
+        engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
+        ui = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        for group in ("MURY", "MOSTY", "SPECOBJ"):
+            self.assertIn('applyObjectNames("' + group + '"', engine)
+        self.assertIn('GetOriginalText("RESEARCH"', ui)
+        self.assertIn('GetOriginalText("UPGRADES"', ui)
+        self.assertNotIn('for (const char* name : { "RESEARCH.CZ", "RESEARCH.ENG" })', ui)
+        self.assertNotIn('for (const char* titleFile : { "UPGRADES.CZ", "UPGRADES.ENG" })', ui)
+
+    def test_original_strategic_screen_uses_retail_labels(self):
+        ui = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        for group in ("BIG_MAP", "BUTTONS", "OTHER", "INFOTEXT"):
+            self.assertIn('RetailOriginalText(m_spellData, "' + group + '"', ui)
+
+    def test_original_text_is_not_in_ui_catalogs(self):
+        # Mission text still comes from TEXTS.FS; catalogs contain only UI keys.
+        engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
+        self.assertIn('units && units->IsEnglish() ? SpellLang::ENG : SpellLang::CZE', engine)
+        for lang in ("en", "cs"):
+            keys = catalog(lang)
+            self.assertFalse(any(k.startswith(("mission.text.", "texts_fs.")) for k in keys))
+
+    def test_cr_only_original_wrapping_is_not_discarded(self):
+        source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        self.assertRegex(
+            source,
+            r"if \(c == '\\r'\)\s*\{\s*s\.push_back\('\\n'\);",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
