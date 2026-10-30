@@ -165,11 +165,26 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn("if (missingRequired || forceSourceSelection)", source)
         self.assertIn("runtime_root, executable_dir, forceSourceSelection)", source)
 
-    def test_czech_binary_layout_is_not_treated_as_proof_of_czech_names(self):
-        source = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
-        self.assertIn('"Light infantry", "Heavy infantry", "Rangers", "Commando"', source)
-        self.assertIn("!spell_data->units->IsEnglish() && englishNameMatches >= 3", source)
-        self.assertIn("WARNING: Czech-layout JEDNOTKY.DEF contains English", source)
+    def test_original_unit_names_are_loaded_from_retail_common_fs_tables(self):
+        engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
+        units = (ROOT / "source" / "spell_units.cpp").read_text(encoding="utf-8")
+        header = (ROOT / "source" / "spell_units.h").read_text(encoding="utf-8")
+        loader = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
+
+        # Czech JEDNOTKY.DEF contains English names even in the original files.
+        # It supplies unit stats and record layout; the actual original names
+        # are positional CP895 text records in UNITS.CZ / UNITS.ENG.
+        self.assertIn('units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', engine)
+        self.assertIn("common_fs->GetFile(unitNamesResource, &data, &size)", engine)
+        self.assertIn("units->LoadOriginalNames(data, size)", engine)
+        self.assertIn("bool LoadOriginalNames(const uint8_t* data, int length)", header)
+        self.assertIn("bool SpellUnits::LoadOriginalNames(", units)
+        self.assertIn("value == 0x1A", units)
+        self.assertIn("names.size() != units.size()", units)
+        self.assertIn("names[i].size() >= sizeof(units[i]->name)", units)
+        self.assertIn("std::memcpy(units[i]->name, names[i].data(), names[i].size())", units)
+        self.assertIn('spell_data->units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', loader)
+        self.assertNotIn("englishNameMatches", loader)
 
     def test_original_text_is_not_in_ui_catalogs(self):
         # Mission text still comes from TEXTS.FS; catalogs contain only UI keys.
