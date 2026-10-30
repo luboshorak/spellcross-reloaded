@@ -133,9 +133,12 @@ private:
 
 	FSarchive* common_fs;
 	FSarchive* terrain_fs;
+	// Original retail CP895 tables, grouped by COMMON.FS resource stem.
+	std::unordered_map<std::string, std::vector<std::string>> original_language_tables;
 
 public:
 	FSarchive* GetCommonFS() { return common_fs; }
+	std::string GetOriginalText(const char* resource_stem, size_t index) const;
 	// data paths
 	std::wstring data_path;
 	std::wstring cd_data_path;
@@ -170,10 +173,6 @@ public:
 	SpellMIDI* midi;
 	// texts.fs
 	SpellTexts* texts;
-	// Original COMMON.FS text tables selected by retail edition (CP895 bytes).
-	// Keys are the original resource stems, e.g. HODNOSTI, BIG_MAP, OTHER.
-	std::unordered_map<std::string, std::vector<std::string>> original_language_tables;
-	std::string GetOriginalText(const char* resource_stem, size_t index) const;
 	// L2 object class parameters
 	SpellL2classes *L2_classes;
 	// unit bonuses (BONUSES.DEF)
