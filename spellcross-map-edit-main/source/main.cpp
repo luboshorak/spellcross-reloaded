@@ -2620,6 +2620,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     // store local reference to initial map and data
     spell_map = map;
     spell_data = spelldata;
+    // Reassert the language before building the tactical menu bar. The
+    // independent main-menu window uses the same catalog and source edition.
+    spellcross_ui_locale::SetLanguageFromEdition(
+        spell_data && spell_data->units && spell_data->units->IsEnglish());
     SetTitle(BuildSpellcrossWindowTitle(spell_map));
 
     // subforms

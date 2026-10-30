@@ -955,7 +955,10 @@ namespace
 
     static wxString OriginalCleanBriefing(wxString text)
     {
-        text.Replace("\r", "");
+        // Retail files may use CR-only or CRLF. Removing CR outright glued
+        // consecutive words together; normalize boundaries before wrapping.
+        text.Replace("\r\n", "\n");
+        text.Replace("\r", "\n");
         wxArrayString lines = wxSplit(text, '\n', '\0');
         wxString out;
         for (const auto& raw : lines)
@@ -2159,7 +2162,7 @@ static wxString LocalizedOriginalRankAbbrev(int rank)
     return spellcross_ui_locale::Tr(key.c_str(), english[rank]);
 }
 
-static void append_text_snippet(wxString& info, const std::string& label, const std::string& raw)
+static void append_text_snippet(wxString& info, const std::string& label, const std::string& raw, bool showCaption)
 {
     if (raw.empty())
         return;
@@ -2222,8 +2225,11 @@ static void append_text_snippet(wxString& info, const std::string& label, const 
         s = std::move(reflowed);
     }
 
-    info << "\n" << label << "\n";
-    info << wxString(char2wstringCP895(s.c_str())) << "\n";
+    if (showCaption)
+        info << "\n" << label << "\n";
+    info << wxString(char2wstringCP895(s.c_str()));
+    if (showCaption)
+        info << "\n";
 }
 
 static std::string mission_text_resource_name(std::string mission_token, const std::string& suffix)
@@ -2240,7 +2246,7 @@ static std::string mission_text_resource_name(std::string mission_token, const s
 
 static bool append_text_from_loaded_archive(wxString& info, SpellTexts* texts,
     const std::string& mission_token, const std::string& suffix, const char* caption,
-    bool includeResourceName = false)
+    bool includeResourceName = false, bool showCaption = true)
 {
     if (!texts || mission_token.empty())
         return false;
@@ -2253,17 +2259,24 @@ static bool append_text_from_loaded_archive(wxString& info, SpellTexts* texts,
     if (!rec || rec->text.empty())
         return false;
 
-    if (includeResourceName)
-        info << "\n" << wxString::Format("%s (%s)", caption, resource) << "\n";
-    else
-        info << "\n" << caption << "\n";
-    info << wxString(rec->text) << "\n";
+    // Runtime native briefing displays only the original TEXTS.FS message.
+    // Captions/resource IDs are useful in the editor inspector, not in-game.
+    if (showCaption)
+    {
+        if (includeResourceName)
+            info << "\n" << wxString::Format("%s (%s)", caption, resource) << "\n";
+        else
+            info << "\n" << caption << "\n";
+    }
+    info << wxString(rec->text);
+    if (showCaption)
+        info << "\n";
     return true;
 }
 
 static bool append_text_from_disk(wxString& info, const std::filesystem::path& base_dir,
     const std::string& mission_token, const std::string& suffix, const char* caption,
-    bool includeResourceName = false)
+    bool includeResourceName = false, bool showCaption = true)
 {
     if (base_dir.empty() || mission_token.empty())
         return false;
@@ -2290,7 +2303,7 @@ static bool append_text_from_disk(wxString& info, const std::filesystem::path& b
         const std::string label = includeResourceName
             ? wxString::Format("%s (%s)", caption, resource).ToStdString()
             : std::string(caption);
-        append_text_snippet(info, label, raw);
+        append_text_snippet(info, label, raw, showCaption);
         return true;
     }
     return false;
@@ -2298,15 +2311,15 @@ static bool append_text_from_disk(wxString& info, const std::filesystem::path& b
 
 static bool try_append_single_text(wxString& info, SpellTexts* texts,
     const std::filesystem::path& base_dir, std::string mission_token,
-    const std::string& suffix, const char* caption, bool includeResourceName = false)
+    const std::string& suffix, const char* caption, bool includeResourceName = false, bool showCaption = true)
 {
     // TEXTS.FS is already loaded by SpellData.  Use it as the authoritative
     // source so strategic briefings do not depend on an externally unpacked
     // DATA/TEXTS directory.  The directory remains a useful fallback for
     // custom/modded loose files.
-    if (append_text_from_loaded_archive(info, texts, mission_token, suffix, caption, includeResourceName))
+    if (append_text_from_loaded_archive(info, texts, mission_token, suffix, caption, includeResourceName, showCaption))
         return true;
-    return append_text_from_disk(info, base_dir, mission_token, suffix, caption, includeResourceName);
+    return append_text_from_disk(info, base_dir, mission_token, suffix, caption, includeResourceName, showCaption);
 }
 
 static void try_append_text_set(wxString& info, SpellTexts* texts,
@@ -15052,12 +15065,11 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
         {
             // Counter-attack active: show .S text. TEXTS.FS is authoritative;
             // loose DATA/TEXTS is only a modding fallback.
-            info << (english ? "*** COUNTER-ATTACK ***\n\n" : "*** PROTIÚTOK ***\n\n");
-            bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                texts_dir, cur, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně");
+                bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
+                texts_dir, cur, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně", false, false);
             if (!found && to_lower(cur) != to_lower(t.mission))
                 try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                    texts_dir, t.mission, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně");
+                    texts_dir, t.mission, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně", false, false);
         }
         else if (!isOwned)
         {
@@ -15069,10 +15081,10 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
                 info << wxString::Format(english ? "Time remaining: %d turns\n\n" : "Zbývající čas: %d tahů\n\n", timeoutRemaining);
 
             bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                texts_dir, cur, "", english ? "Briefing" : "Instrukce");
+                texts_dir, cur, "", english ? "Briefing" : "Instrukce", false, false);
             if (!found && to_lower(cur) != to_lower(t.mission))
                 try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                    texts_dir, t.mission, "", english ? "Briefing" : "Instrukce");
+                    texts_dir, t.mission, "", english ? "Briefing" : "Instrukce", false, false);
         }
         else
         {
@@ -20913,20 +20925,19 @@ void StrategicLevelFrame::ShowBriefing(int territory_id)
     const bool english = strategic_english(m_spellData);
     if (isCounterAttack)
     {
-        info << (english ? "*** COUNTER-ATTACK ***\n\n" : "*** PROTIÚTOK ***\n\n");
         bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-            texts_dir, token, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně");
+            texts_dir, token, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně", false, false);
         if (!found && !fallbackToken.empty() && to_lower(token) != to_lower(fallbackToken))
             try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                texts_dir, fallbackToken, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně");
+                texts_dir, fallbackToken, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně", false, false);
     }
     else
     {
         bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-            texts_dir, token, "", english ? "Briefing" : "Instrukce");
+            texts_dir, token, "", english ? "Briefing" : "Instrukce", false, false);
         if (!found && !fallbackToken.empty() && to_lower(token) != to_lower(fallbackToken))
             try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                texts_dir, fallbackToken, "", english ? "Briefing" : "Instrukce");
+                texts_dir, fallbackToken, "", english ? "Briefing" : "Instrukce", false, false);
     }
 
     if (info.IsEmpty())

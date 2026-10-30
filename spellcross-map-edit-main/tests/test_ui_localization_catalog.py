@@ -12,6 +12,7 @@ LOCALES = ROOT / "locales"
 SOURCES = [
     ROOT / "source" / "main.cpp",
     ROOT / "source" / "forms" / "form_level.cpp",
+    ROOT / "source" / "forms" / "form_mmenu.cpp",
 ]
 CALL = re.compile(r'spellcross_ui_locale::Tr\(\s*"([^"]+)"')
 
@@ -96,6 +97,40 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn('dir / "spellcross-map-edit-main" / "locales"', helper)
         self.assertIn("addParents(exe.parent_path())", helper)
         self.assertIn("addParents(cwd)", helper)
+
+    def test_both_native_windows_use_catalogs(self):
+        tactical = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        standalone = (ROOT / "source" / "forms" / "form_mmenu.cpp").read_text(encoding="utf-8")
+        self.assertIn('spellcross_ui_locale::Tr("menu.file"', tactical)
+        self.assertIn('spellcross_ui_locale::Tr("menu.options"', standalone)
+        self.assertIn('spellcross_ui_locale::Tr("menu.home.editor"', standalone)
+        self.assertIn('spellcross_ui_locale::Tr("menu.home.audio"', standalone)
+        self.assertIn('spellcross_ui_locale::Tr("menu.home.screen"', standalone)
+        for lang in ("en", "cs"):
+            strings = catalog(lang)
+            for key in ("menu.home.editor", "menu.home.editor_help",
+                        "menu.home.open_editor", "menu.home.audio", "menu.home.screen"):
+                self.assertIn(key, strings)
+            self.assertIn("\t", strings["menu.home.audio"])
+            self.assertIn("\t", strings["menu.home.screen"])
+
+    def test_native_briefing_has_no_invented_caption(self):
+        source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        self.assertIn("bool showCaption = true", source)
+        self.assertIn("if (showCaption)", source)
+        # Game-mode original text calls explicitly hide debug captions.
+        self.assertEqual(source.count('english ? "Briefing" : "Instrukce", false, false'), 4)
+        self.assertEqual(source.count('english ? "Counter-Attack Briefing" : "Instrukce k obraně", false, false'), 4)
+        self.assertNotIn('info << (english ? "*** COUNTER-ATTACK', source)
+        self.assertIn('text.Replace("\\r\\n", "\\n");', source)
+        self.assertIn('text.Replace("\\r", "\\n");', source)
+
+    def test_retail_name_origin_is_reported_not_guessed(self):
+        loader = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
+        self.assertIn('files.common_fs', loader)
+        self.assertIn('files.texts_fs', loader)
+        self.assertIn('spell_data->units->IsEnglish()', loader)
+        self.assertIn('unit->name', loader)
 
     def test_original_text_is_not_in_ui_catalogs(self):
         # Mission text still comes from TEXTS.FS; catalogs contain only UI keys.

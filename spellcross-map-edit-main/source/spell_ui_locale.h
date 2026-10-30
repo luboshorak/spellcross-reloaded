@@ -118,6 +118,11 @@ namespace spellcross_ui_locale
             std::error_code ec;
             if (!std::filesystem::is_regular_file(dir / "en.lang", ec))
                 continue;
+            // An old/partial EN-only build directory must not mask a complete
+            // Czech catalog located further up the Visual Studio source tree.
+            if (state.language == "cs" &&
+                !std::filesystem::is_regular_file(dir / "cs.lang", ec))
+                continue;
             ReadCatalog(dir / "en.lang", state.english);
             if (state.language != "en")
                 ReadCatalog(dir / (state.language + ".lang"), state.selected);
