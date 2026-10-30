@@ -289,9 +289,15 @@ public:
     
     // Check and trigger timeouts (called in OnEndTurn)
     void CheckTimeouts();
+
+    // Activate EndOKEvent/EndBadEvent; Time(N) starts from this turn.
+    void ActivateMissionEvent(int eventId);
     
     // Check and trigger counter-attacks (called in OnEndTurn)
     void CheckCounterAttacks();
+
+    // Retain enemy occupiers for the recapture; transfer land only once.
+    void SurrenderCounterAttack(CounterAttackState& attack);
 
     // Process Level Events from DEF (AbsTime/Time events with armies, texts, etc.)
     void ProcessLevelEvents();
