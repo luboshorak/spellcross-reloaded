@@ -20622,7 +20622,11 @@ void StrategicLevelFrame::ProcessLevelEvents()
                 if (id != m_level.start_territory &&
                     std::none_of(m_counterAttacks.begin(), m_counterAttacks.end(),
                         [id](const CounterAttackState& attack) {
-                            return attack.territory_id == id && attack.triggered && !attack.completed;
+                            // A scheduled scripted defence is also unresolved.
+                            // Do not stack an Army event on the same sector;
+                            // its later timer would otherwise overwrite the
+                            // active attack's mission while the battle waits.
+                            return attack.territory_id == id && !attack.completed;
                         }) &&
                     (frontLine.empty() || frontLine.count(id) != 0) &&
                     std::find_if(m_level.territories.begin(), m_level.territories.end(),
