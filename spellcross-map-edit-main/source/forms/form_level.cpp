@@ -20407,6 +20407,20 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
     MarkOverlayDirty();
 }
 
+void StrategicLevelFrame::ActivateMissionEvent(int eventId)
+{
+    if (eventId < 0 || m_triggeredLevelEvents.count(eventId))
+        return;
+    // EndOKEvent/EndBadEvent are *activations*, not unconditional actions:
+    // a referenced Time(N) event must wait N turns from this mission result.
+    // Keep the first activation to prevent repeated mission results from
+    // resetting the timer or duplicating a previously scheduled attack.
+    const bool exists = std::any_of(m_level.events.begin(), m_level.events.end(),
+        [eventId](const LevelEvent& event) { return event.id == eventId; });
+    if (exists)
+        m_activatedEvents.emplace(eventId, m_turn);
+}
+
 void StrategicLevelFrame::CheckTimeouts()
 {
     if (!m_gameModeEnabled)
@@ -20471,9 +20485,13 @@ void StrategicLevelFrame::CheckTimeouts()
                 {
                     // No replacement mission: keep an expired sentinel so this
                     // one-shot timeout cannot be restarted by visibility refresh.
-                    m_stats.territories_lost++;
+                    // Expiring a mission timer does not imply ownership was
+                    // lost: the original EndBadMission/EndBadEvent scripts decide
+                    // subsequent objectives independently of territorial control.
                     it->second = -1;
                 }
+                if (mission)
+                    ActivateMissionEvent(mission->end_bad_event);
             }
         }
     }
@@ -20605,8 +20623,12 @@ void StrategicLevelFrame::ProcessLevelEvents()
         }
         else
         {
-            // time_value == -1: event is condition-only, check WaitForTerritories
-            if (!evt.wait_for_territories.empty())
+            // time_value == -1: an EndOKEvent/EndBadEvent or RunEvents
+            // activation fires an un-timed event; purely conditional events
+            // remain driven by WaitForTerritories.
+            if (m_activatedEvents.count(evt.id) != 0)
+                should_fire = true;
+            else if (!evt.wait_for_territories.empty())
             {
                 bool all_owned = true;
                 for (int tid : evt.wait_for_territories)
@@ -20623,7 +20645,7 @@ void StrategicLevelFrame::ProcessLevelEvents()
         }
 
         // WaitForTerritories gate (for AbsTime/Time events that also have this condition)
-        if (should_fire && !evt.wait_for_territories.empty() && (evt.abs_time || evt.time_value >= 0))
+        if (should_fire && !evt.wait_for_territories.empty())
         {
             bool all_owned = true;
             for (int tid : evt.wait_for_territories)
