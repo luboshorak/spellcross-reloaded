@@ -17249,9 +17249,11 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
             m_ownedTerritories.push_back(territory.id);
             if (firstOwned < 0) firstOwned = territory.id;
         }
-        else if (firstAttackable < 0 &&
-            (flags == 0x0D || flags == 0x1D || flags == 0x0C))
+        else if (firstAttackable < 0 && flags == 0x0D)
         {
+            // Original Mod Launcher SpellSaveTerritories::isAccessible()
+            // recognizes ONLY 0x0D. 0x0C = was accessible; 0x1D = was
+            // unlocked (bug). Neither means a currently attackable target.
             firstAttackable = territory.id;
         }
 
