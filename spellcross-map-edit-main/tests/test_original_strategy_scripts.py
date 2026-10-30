@@ -40,7 +40,7 @@ class OriginalStrategyScriptsTest(unittest.TestCase):
         self.assertIn("m_turn >= target_turn", self.strat)
 
     def test_original_intro_events_fire_and_condition_only_events_wait(self):
-        self.assertIn("evt.time_value == -1 ||", self.strat)
+        self.assertIn("evt.time_value == -1 && m_turn <= 1", self.strat)
         self.assertIn("m_activatedEvents.count(evt.id) != 0", self.strat)
         self.assertIn("if (should_fire && !evt.wait_for_territories.empty())", self.strat)
 
@@ -49,6 +49,10 @@ class OriginalStrategyScriptsTest(unittest.TestCase):
             "void StrategicLevelFrame::SurrenderCounterAttack(", 1)[0]
         self.assertNotIn("m_stats.territories_lost++", portion)
         self.assertIn("ActivateMissionEvent(mission->end_bad_event)", portion)
+
+    def test_imported_original_save_only_selects_currently_accessible_sector(self):
+        self.assertIn("firstAttackable < 0 && flags == 0x0D", self.strat)
+        self.assertNotIn("flags == 0x1D || flags == 0x0C", self.strat)
 
     def test_all_counterattack_declines_use_one_transition(self):
         self.assertIn("void StrategicLevelFrame::SurrenderCounterAttack(", self.strat)
