@@ -1,0 +1,26 @@
+name: Original strategy regression
+on:
+  pull_request:
+    paths:
+      - 'spellcross-map-edit-main/source/level.cpp'
+      - 'spellcross-map-edit-main/source/level.h'
+      - 'spellcross-map-edit-main/source/forms/form_level.cpp'
+      - 'spellcross-map-edit-main/source/forms/form_level.h'
+      - 'spellcross-map-edit-main/tests/**'
+      - '.github/workflows/strategy-regression.yml'
+  workflow_dispatch:
+
+jobs:
+  original-script-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source and localization invariants
+        run: python3 -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py' -v
+      - name: Compile and run the real LevelLoader against original script fixtures
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_original_level_events.cpp \
+            spellcross-map-edit-main/source/level.cpp \
+            -o /tmp/spellcross-level-event-regression
+          /tmp/spellcross-level-event-regression

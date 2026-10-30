@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // Map and Levels handling functions, wxWidgets GUI.
 // 
-// This code is part of Spellcross – restoration tools project.
+// This code is part of Spellcross â€“ restoration tools project.
 // (c) 2025-2026, Lubos Horak
 // url: https://github.com/luboshorak/spellcross_restoration_tools
 // Distributed under MIT license, https://opensource.org/licenses/MIT.
@@ -26,16 +26,16 @@ struct LevelTerritory {
     int strategic_points_per_turn = 0;
     int strategic_x = 0;
     int strategic_y = 0;
-    // Finální území (LASTTERT) - ikona zkøíenıch meèù
+    // FinÃ¡lnÃ­ ÃºzemÃ­ (LASTTERT) - ikona zkÃ¸Ã­Å¾enÃ½ch meÃ¨Ã¹
     bool is_final = false;
 
-    // Video pøi dobytí území
+    // Video pÃ¸i dobytÃ­ ÃºzemÃ­
     std::string conquest_video;
 
-    // Timeout v tazích (0 = bez timeoutu)
+    // Timeout v tazÃ­ch (0 = bez timeoutu)
     int timeout_turns = 0;
 
-    // Counter-attack: nepøítel útoèí po N tazích od dobytí
+    // Counter-attack: nepÃ¸Ã­tel ÃºtoÃ¨Ã­ po N tazÃ­ch od dobytÃ­
     int counter_attack_turn = 0;
     std::string counter_attack_mission;
 };
@@ -53,19 +53,20 @@ struct LevelMission {
     int freq_random_a = -1;     // FrequencyOfRandomAttacks(a,b)
     int freq_random_b = -1;
 
+    int end_ok_event = -1;      // EndOKEvent(n), activates a scripted Level Event on success
     int end_bad_event = -1;     // EndBadEvent(n) (viz M02_05A)
 
-    // Èasovı limit mise v tazích (0 = bez limitu), z Time(X) v DEF
+    // ÃˆasovÃ½ limit mise v tazÃ­ch (0 = bez limitu), z Time(X) v DEF
     int time_limit = 0;
 
-    // Videa po dokonèení mise
+    // Videa po dokonÃ¨enÃ­ mise
     std::string end_ok_video;
     std::string end_bad_video;
 
-    // Dokonèení této mise dokonèí level
+    // DokonÃ¨enÃ­ tÃ©to mise dokonÃ¨Ã­ level
     bool is_level_final = false;
 
-    // Další level DEF
+    // DalÅ¡Ã­ level DEF
     std::string next_level_def;
 };
 
@@ -76,7 +77,7 @@ struct LevelEventArmy {
 struct LevelEvent {
     int id = 0;
     bool abs_time = false;      // AbsTime(...) vs Time(...)
-    int time_value = 0;         // mùe bıt -1
+    int time_value = -1;        // -1 = no relative timer (condition/mission-triggered event)
     std::string text_id;        // EventText(E02_0001)
     std::vector<LevelEventArmy> armies;
 
@@ -160,7 +161,7 @@ struct LevelData {
     std::string outro_can_video;
     std::string outro_video;
 
-    // Vıchozí další level
+    // VÃ½chozÃ­ dalÅ¡Ã­ level
     std::string next_level_def;
 };
 

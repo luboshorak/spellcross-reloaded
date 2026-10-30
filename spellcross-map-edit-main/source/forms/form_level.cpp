@@ -3331,7 +3331,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             OriginalDrawSpellText(image, font, caption, x, kOriginalAttackDrawY + 7,
                 enabled ? text : dim, kOriginalButtonW, true);
         };
-        const bool canAttack = m_selectedTerritory > 0 && !m_selectedUnitsForMission.empty();
+        const bool canAttack = CanLaunchTerritoryBattle(m_selectedTerritory) &&
+            !m_selectedUnitsForMission.empty();
         drawActionButton(kOriginalAttackDrawX, 0, RetailOriginalText(m_spellData, "BUTTONS", 37, spellcross_ui_locale::Tr("native.attack", "Attack")), canAttack);
         drawActionButton(kOriginalCancelDrawX, 1, RetailOriginalText(m_spellData, "BUTTONS", 38, spellcross_ui_locale::Tr("native.cancel_button", "Cancel")),
             !m_selectedUnitsForMission.empty() || !m_selectedCommandersForMission.empty());
@@ -7740,6 +7741,11 @@ static int PickStartTerritoryIdForGameMode(const LevelData& level, const SpellDa
 
 void StrategicLevelFrame::ApplyTerritoryVisibility()
 {
+    // Any previously assigned territory proves this campaign was initialized;
+    // subsequent loss of the last sector must never trigger Start(n) again.
+    if (!m_ownedTerritories.empty())
+        m_campaignOwnershipInitialized = true;
+
     // Determine max territory id
     int maxId = 0;
     for (const auto& t : m_level.territories)
@@ -7753,9 +7759,13 @@ void StrategicLevelFrame::ApplyTerritoryVisibility()
     // In game mode: visible = owned + neighbors(owned)
     std::fill(m_visibleTerritory.begin(), m_visibleTerritory.end(), 0);
 
-    // Ensure we always have a start territory; otherwise everything becomes "fog".
-    if (m_ownedTerritories.empty())
-        m_ownedTerritories.push_back(PickStartTerritoryIdForGameMode(m_level, m_spellData));
+    // Only bootstrap an uninitialized new campaign. An empty owned set in
+    // an already loaded or played campaign is a real defeat, not an error.
+    if (m_ownedTerritories.empty() && !m_campaignOwnershipInitialized)
+    {
+        m_ownedTerritories = ChooseStartTerritories_NoBriefing(m_level, m_spellData);
+        m_campaignOwnershipInitialized = true;
+    }
 
 
     auto mark = [&](int tid)
@@ -7786,15 +7796,17 @@ void StrategicLevelFrame::OnToggleGameMode(wxCommandEvent& ev)
 
     if (m_gameModeEnabled)
     {
-        // Ensure at least one owned territory (start territory).
-        if (m_ownedTerritories.empty())
+        // Bootstrap only for an actual new campaign. Switching editor/game
+        // modes must not resurrect lost territories from an existing game.
+        if (m_ownedTerritories.empty() && !m_campaignOwnershipInitialized)
         {
-            // Some levels start with MULTIPLE owned territories = those WITHOUT briefing
+            // Some levels begin with several Start(n) sectors.
             m_ownedTerritories = ChooseStartTerritories_NoBriefing(m_level, m_spellData);
 
             // Fallback: at least one
             if (m_ownedTerritories.empty() && !m_level.territories.empty())
                 m_ownedTerritories.push_back(m_level.territories.front().id);
+            m_campaignOwnershipInitialized = true;
         }
 
         m_hoverTerritory = 0;
@@ -13195,7 +13207,9 @@ void StrategicLevelFrame::UpdateRosterSelectionVisuals()
     // Update launch button enable state
     const bool onStrategicMap = (m_leftBook && m_leftBook->GetSelection() == 0 && !m_buyModeActive);
     if (m_btnLaunch)
-        m_btnLaunch->Enable(onStrategicMap && m_selectedTerritory >= 0 && !m_selectedUnitsForMission.empty());
+        m_btnLaunch->Enable(onStrategicMap &&
+            CanLaunchTerritoryBattle(m_selectedTerritory) &&
+            !m_selectedUnitsForMission.empty());
 }
 
 void StrategicLevelFrame::UpdateCommanderRosterSelectionVisuals()
@@ -13450,7 +13464,8 @@ void StrategicLevelFrame::RefreshUI()
             // Also requires at least one unit selected.
             const bool onStrategicMap = (m_leftBook && m_leftBook->GetSelection() == 0 && !m_buyModeActive);
             const bool hasSelection = !m_selectedUnitsForMission.empty();
-            m_btnLaunch->Enable(onStrategicMap && m_selectedTerritory >= 0 && hasSelection);
+            m_btnLaunch->Enable(onStrategicMap &&
+                CanLaunchTerritoryBattle(m_selectedTerritory) && hasSelection);
             if (m_btnBuyShop)
                 m_btnBuyShop->Enable(true);
 
@@ -15726,7 +15741,8 @@ std::wstring StrategicLevelFrame::ResolveMapDtaPathForMissionToken(const std::st
 
 void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 {
-    if (m_selectedTerritory < 0 || !m_main)
+    if (m_selectedTerritory < 0 || !m_main ||
+        !CanLaunchTerritoryBattle(m_selectedTerritory))
         return;
 
     // Get selected units for this mission
@@ -16017,6 +16033,40 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
                 this);
             if (answer != wxYES)
                 return;
+        }
+    }
+
+    // Accepting an enemy attack does not mean the enemy vanishes if the
+    // player skips the defence. Previous builds left an unresolved active
+    // record forever because CheckCounterAttacks() ignores triggered attacks.
+    // Ask before committing turn progression; a rejected end-turn leaves
+    // all campaign data untouched.
+    if (m_gameModeEnabled)
+    {
+        std::vector<CounterAttackState*> undefended;
+        for (auto& attack : m_counterAttacks)
+        {
+            if (!attack.triggered || attack.completed)
+                continue;
+            if (std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+                    attack.territory_id) != m_ownedTerritories.end())
+                undefended.push_back(&attack);
+        }
+        if (!undefended.empty())
+        {
+            const int answer = wxMessageBox(
+                wxString::Format(
+                    "There are %llu unresolved enemy attacks on your territory.\n\n"
+                    "End the turn without defending? The Other Side will capture "
+                    "those territories and their attacking units will remain "
+                    "for recapture missions.",
+                    static_cast<unsigned long long>(undefended.size())),
+                "Unresolved enemy attack",
+                wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
+            if (answer != wxYES)
+                return;
+            for (auto* attack : undefended)
+                SurrenderCounterAttack(*attack);
         }
     }
 
@@ -17189,6 +17239,7 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
     // Territory state. Original territory record N corresponds to territory
     // id N+1; LEVEL_xx.DEF ids are built on the same numbering.
     m_ownedTerritories.clear();
+    m_campaignOwnershipInitialized = true; // original save owns exactly its 0x0F flags
     m_territoryCurrentMission.clear();
     m_territoryLaunchCount.clear();
     m_territoryResources.clear();
@@ -17215,9 +17266,11 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
             m_ownedTerritories.push_back(territory.id);
             if (firstOwned < 0) firstOwned = territory.id;
         }
-        else if (firstAttackable < 0 &&
-            (flags == 0x0D || flags == 0x1D || flags == 0x0C))
+        else if (firstAttackable < 0 && flags == 0x0D)
         {
+            // Original Mod Launcher SpellSaveTerritories::isAccessible()
+            // recognizes ONLY 0x0D. 0x0C = was accessible; 0x1D = was
+            // unlocked (bug). Neither means a currently attackable target.
             firstAttackable = territory.id;
         }
 
@@ -17669,6 +17722,21 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
 
         m_gameModeEnabled = gm;
         m_ownedTerritories = std::move(owned);
+        // Legacy saves may not have an ownership field at all. A present
+        // empty array means the player lost every sector, while a missing
+        // field means only that the old format could not store ownership.
+        std::ifstream ownershipFile(path, std::ios::binary);
+        const std::string ownershipJson(
+            (std::istreambuf_iterator<char>(ownershipFile)),
+            std::istreambuf_iterator<char>());
+        const bool hasExplicitOwnership =
+            ownershipJson.find("\"owned_territories\"") != std::string::npos;
+        m_campaignOwnershipInitialized = hasExplicitOwnership;
+        if (!hasExplicitOwnership && m_gameModeEnabled && m_ownedTerritories.empty())
+        {
+            m_ownedTerritories = ChooseStartTerritories_NoBriefing(m_level, m_spellData);
+            m_campaignOwnershipInitialized = true;
+        }
 
         // Repair saves produced by the old missing-TEXTS bug. It classified
         // every territory as a starting territory; such a fresh state has all
@@ -17719,10 +17787,8 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
             ? std::max(0, metaIt->second.researchCarry) : 0;
         SetGlobalResearchAllocation(m_resourcesGlobalResearch);
 
-        // Ensure start territory when loading older saves / empty campaign state.
-        if (m_gameModeEnabled && m_ownedTerritories.empty())
-            m_ownedTerritories.push_back(PickStartTerritoryIdForGameMode(m_level, m_spellData));
-
+        // A valid strategic save with zero owned sectors represents a defeat.
+        // Never silently restore Start(n) after the Other Side captured it.
         if (GetMenuBar())
         {
             auto* item = GetMenuBar()->FindItem(ID_MENU_GAME_MODE_TOGGLE);
@@ -17840,7 +17906,8 @@ void StrategicLevelFrame::LoadPlayerStateFromPreviousLevel()
         if (item) item->Check(m_gameModeEnabled);
     }
 
-    // Ensure at least one owned territory (start territory for the new level)
+    // The new chapter gets its own original Start(n) territory set.
+    m_campaignOwnershipInitialized = true;
     if (m_ownedTerritories.empty())
         m_ownedTerritories = ChooseStartTerritories_NoBriefing(m_level, m_spellData);
     if (m_ownedTerritories.empty() && !m_level.territories.empty())
@@ -19954,6 +20021,16 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
             }
         }
 
+        // Original mission results can activate a Level Event independently
+        // from ownership, rewards or a successor mission. Execute immediate
+        // events (e.g. LEVEL_03 Event(5)) only after conquest and mission
+        // successor state have been updated.
+        if (mission && mission->end_ok_event >= 0)
+        {
+            ActivateMissionEvent(mission->end_ok_event);
+            ProcessLevelEvents();
+        }
+
         // Campaign progression is driven by LevelInit::End(n).  Earlier builds
         // also treated "all territories conquered" (and a mission-level flag)
         // as an unconditional completion trigger.  That is NOT the original
@@ -20026,6 +20103,11 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
             m_territoryCurrentMission[territory_id] = to_lower(mission->end_bad_mission);
             // The replacement mission owns its own Time(...) rule.
             m_territoryTimeoutTurn.erase(territory_id);
+        }
+        if (mission && mission->end_bad_event >= 0)
+        {
+            ActivateMissionEvent(mission->end_bad_event);
+            ProcessLevelEvents();
         }
     }
 
@@ -20331,6 +20413,7 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
         return;
     }
     m_ownedTerritories.push_back(territory_id);
+    m_campaignOwnershipInitialized = true;
     m_stats.territories_conquered++;
     
     {
@@ -20407,6 +20490,20 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
     MarkOverlayDirty();
 }
 
+void StrategicLevelFrame::ActivateMissionEvent(int eventId)
+{
+    if (eventId < 0 || m_triggeredLevelEvents.count(eventId))
+        return;
+    // EndOKEvent/EndBadEvent are *activations*, not unconditional actions:
+    // a referenced Time(N) event must wait N turns from this mission result.
+    // Keep the first activation to prevent repeated mission results from
+    // resetting the timer or duplicating a previously scheduled attack.
+    const bool exists = std::any_of(m_level.events.begin(), m_level.events.end(),
+        [eventId](const LevelEvent& event) { return event.id == eventId; });
+    if (exists)
+        m_activatedEvents.emplace(eventId, m_turn);
+}
+
 void StrategicLevelFrame::CheckTimeouts()
 {
     if (!m_gameModeEnabled)
@@ -20471,13 +20568,70 @@ void StrategicLevelFrame::CheckTimeouts()
                 {
                     // No replacement mission: keep an expired sentinel so this
                     // one-shot timeout cannot be restarted by visibility refresh.
-                    m_stats.territories_lost++;
+                    // Expiring a mission timer does not imply ownership was
+                    // lost: the original EndBadMission/EndBadEvent scripts decide
+                    // subsequent objectives independently of territorial control.
                     it->second = -1;
                 }
+                if (mission)
+                    ActivateMissionEvent(mission->end_bad_event);
             }
         }
     }
 
+    MarkOverlayDirty();
+}
+
+bool StrategicLevelFrame::CanLaunchTerritoryBattle(int territoryId) const
+{
+    if (territoryId <= 0)
+        return false;
+    if (!m_gameModeEnabled)
+        return true; // keep custom/editor mission launching unchanged
+
+    if (territoryId >= static_cast<int>(m_visibleTerritory.size()) ||
+        m_visibleTerritory[territoryId] == 0)
+        return false;
+
+    const bool exists = std::any_of(m_level.territories.begin(), m_level.territories.end(),
+        [territoryId](const LevelTerritory& territory) { return territory.id == territoryId; });
+    if (!exists)
+        return false;
+    const bool owned = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+        territoryId) != m_ownedTerritories.end();
+    if (!owned)
+        return true; // visible enemy territory
+
+    // Time(N) on a normal scripted objective is NOT an attack on player land.
+    // Only a genuinely triggered, unresolved Army/defence event permits it.
+    return std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+        [territoryId](const CounterAttackState& attack)
+        {
+            return attack.territory_id == territoryId &&
+                attack.triggered && !attack.completed;
+        });
+}
+
+void StrategicLevelFrame::SurrenderCounterAttack(CounterAttackState& attack)
+{
+    if (attack.completed)
+        return;
+
+    // Refusing an active defence, failing it in battle, or leaving the turn
+    // without defending must all produce the same ownership transition.
+    // Keep the event's original Army(...) units: they occupy this territory
+    // and are needed for the subsequent generated Rxxxx recapture mission.
+    auto it = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+        attack.territory_id);
+    if (it != m_ownedTerritories.end())
+    {
+        m_ownedTerritories.erase(it);
+        ++m_stats.territories_lost;
+    }
+    attack.triggered = true;
+    attack.completed = true;
+    attack.territory_lost = true;
+    ApplyTerritoryVisibility();
     MarkOverlayDirty();
 }
 
@@ -20554,18 +20708,7 @@ void StrategicLevelFrame::CheckCounterAttacks()
             }
             else
             {
-                auto it = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(), ca.territory_id);
-                if (it != m_ownedTerritories.end())
-                {
-                    m_ownedTerritories.erase(it);
-                }
-
-                m_stats.territories_lost++;
-                ca.completed = true;
-                ca.territory_lost = true;
-
-                ApplyTerritoryVisibility();
-                MarkOverlayDirty();
+                SurrenderCounterAttack(ca);
             }
         }
     }
@@ -20589,7 +20732,11 @@ void StrategicLevelFrame::ProcessLevelEvents()
         if (evt.abs_time)
         {
             // AbsTime: fires at absolute turn number
-            if (evt.time_value >= 0 && m_turn >= evt.time_value)
+            // AbsTime(-1) is the original chapter-intro event (Event(0)):
+            // it fires only on the first campaign turn, NEVER on loading
+            // a mid-chapter legacy save which lacks the triggered-event bit.
+            if ((evt.time_value == -1 && m_turn <= 1) ||
+                (evt.time_value >= 0 && m_turn >= evt.time_value))
                 should_fire = true;
         }
         else if (evt.time_value >= 0)
@@ -20605,8 +20752,12 @@ void StrategicLevelFrame::ProcessLevelEvents()
         }
         else
         {
-            // time_value == -1: event is condition-only, check WaitForTerritories
-            if (!evt.wait_for_territories.empty())
+            // time_value == -1: an EndOKEvent/EndBadEvent or RunEvents
+            // activation fires an un-timed event; purely conditional events
+            // remain driven by WaitForTerritories.
+            if (m_activatedEvents.count(evt.id) != 0)
+                should_fire = true;
+            else if (!evt.wait_for_territories.empty())
             {
                 bool all_owned = true;
                 for (int tid : evt.wait_for_territories)
@@ -20623,7 +20774,7 @@ void StrategicLevelFrame::ProcessLevelEvents()
         }
 
         // WaitForTerritories gate (for AbsTime/Time events that also have this condition)
-        if (should_fire && !evt.wait_for_territories.empty() && (evt.abs_time || evt.time_value >= 0))
+        if (should_fire && !evt.wait_for_territories.empty())
         {
             bool all_owned = true;
             for (int tid : evt.wait_for_territories)
@@ -20800,9 +20951,16 @@ void StrategicLevelFrame::ProcessLevelEvents()
         {
             if (!m_triggeredLevelEvents.count(run_id) && !processed_this_turn.count(run_id))
             {
-                // For Time-based events, record activation turn
-                m_activatedEvents[run_id] = m_turn;
-                queue.push_back(run_id);
+                // RunEvents activates the referenced event. In the retail
+                // scripts (e.g. LEVEL_09 Event(0) -> Events(5..8)), Time(N)
+                // postpones its execution by N turns; queuing it immediately
+                // used to ignore that delay and fire later attacks too early.
+                m_activatedEvents.emplace(run_id, m_turn);
+                const auto target = std::find_if(m_level.events.begin(), m_level.events.end(),
+                    [run_id](const LevelEvent& candidate) { return candidate.id == run_id; });
+                if (target != m_level.events.end() &&
+                    (target->abs_time || target->time_value <= 0))
+                    queue.push_back(run_id);
             }
         }
 
@@ -20859,17 +21017,9 @@ void StrategicLevelFrame::ProcessLevelEvents()
             }
             else
             {
-                // Player refuses to defend — lose the territory, but retain
-                // the occupiers for the later recapture battle.
-                auto it = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(), target_tid);
-                if (it != m_ownedTerritories.end())
-                    m_ownedTerritories.erase(it);
-
-                m_stats.territories_lost++;
-                activeAttack.completed = true;
-                activeAttack.territory_lost = true;
-                ApplyTerritoryVisibility();
-                MarkOverlayDirty();
+                // Player refuses to defend: enemy takes the territory
+                // immediately, preserving its Army force for recapture.
+                SurrenderCounterAttack(activeAttack);
             }
         }
     }
@@ -21336,6 +21486,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     // ownership from the old map and do not collapse multiple Start(n)
     // directives to one territory during a level transition.
     newWin->m_ownedTerritories = ChooseStartTerritories_NoBriefing(lvl, newWin->m_spellData);
+    newWin->m_campaignOwnershipInitialized = true;
     if (newWin->m_ownedTerritories.empty() && !lvl.territories.empty())
         newWin->m_ownedTerritories.push_back(lvl.territories.front().id);
 
