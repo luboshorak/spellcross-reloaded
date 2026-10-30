@@ -16426,6 +16426,10 @@ static bool LoadStrategicStateFile(
             }
             if (g_missionFlowPersistLoad->counterAttacks)
             {
+                // Replace the campaign's attack records rather than appending
+                // them to whatever state the frame had before loading.  A
+                // repeated load must be idempotent, including legacy saves.
+                g_missionFlowPersistLoad->counterAttacks->clear();
                 const std::string arr = ExtractJsonBlock(mf, "counter_attacks");
                 std::regex obj_re("\\{[^\\}]*\\}");
                 for (auto it = std::sregex_iterator(arr.begin(), arr.end(), obj_re); it != std::sregex_iterator(); ++it)
