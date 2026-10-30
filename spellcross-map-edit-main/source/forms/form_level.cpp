@@ -3332,7 +3332,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 enabled ? text : dim, kOriginalButtonW, true);
         };
         const bool canAttack = m_selectedTerritory > 0 && !m_selectedUnitsForMission.empty();
-        drawActionButton(kOriginalAttackDrawX, 0, spellcross_ui_locale::Tr("native.attack", "Attack"), canAttack);
+        drawActionButton(kOriginalAttackDrawX, 0, RetailOriginalText(m_spellData, "BUTTONS", 37, spellcross_ui_locale::Tr("native.attack", "Attack")), canAttack);
         drawActionButton(kOriginalCancelDrawX, 1, RetailOriginalText(m_spellData, "BUTTONS", 38, spellcross_ui_locale::Tr("native.cancel_button", "Cancel")),
             !m_selectedUnitsForMission.empty() || !m_selectedCommandersForMission.empty());
 
@@ -4132,7 +4132,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                         };
                         addEffect(spellcross_ui_locale::Tr("native.move", "Move"), it->second.move);
                         addEffect(spellcross_ui_locale::Tr("native.defense", "Defense"), it->second.defence);
-                        addEffect(spellcross_ui_locale::Tr("native.attack", "Attack"), it->second.attack);
+                        addEffect(RetailOriginalText(m_spellData, "BUTTONS", 37, spellcross_ui_locale::Tr("native.attack", "Attack")), it->second.attack);
                         addEffect(spellcross_ui_locale::Tr("native.attacks", "Attacks"), it->second.attackCount);
                         addEffect(spellcross_ui_locale::Tr("native.range", "Range"), it->second.range);
                         if (!effects.empty())
@@ -4190,10 +4190,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawActionButton(image, font, loader, nativeUiPal, 495, 438, L"OK", actionEnabled);
 
         // Time / cost text belongs inside the original VMU_LST1 inset.
-        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.time_caption", "Time:"), 424, 439, text, 28);
+        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "BIG_MAP", 7, spellcross_ui_locale::Tr("strategic.time_caption", "Time:")), 424, 439, text, 28);
         const wxString actionTimeText = actionTime >= 0 ? wxString::Format(L"%d", actionTime) : wxString(L"-");
         OriginalDrawSpellText(image, font, actionTimeText, 455, 439, text, 28, true);
-        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.cost", "Cost:"), 424, 452, text, 28);
+        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "BIG_MAP", 8, spellcross_ui_locale::Tr("native.cost", "Cost:")), 424, 452, text, 28);
         const wxString actionCostText = actionCost >= 0 ? wxString::Format(L"%d", actionCost) : wxString(L"-");
         OriginalDrawSpellText(image, font, actionCostText, 455, 452, text, 28, true);
 
@@ -4347,7 +4347,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             if (auto* rec = m_spellData->units->GetUnit(tid))
             {
                 OriginalDrawSpellText(image, font, GetUnitDisplayName(tid), 346, 296, text, 217);
-                OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.attack_caption", "Attack:"), 369, 312, text, 126);
+                OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "INFOTEXT", 17, spellcross_ui_locale::Tr("native.attack_caption", "Attack:")), 369, 312, text, 126);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.light_attack", "Light: %d"), rec->attack_light), 385, 327, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.heavy_attack", "Heavy: %d"), rec->attack_armored), 385, 342, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.air_attack", "Air: %d"), rec->attack_air), 385, 357, text, 112);
@@ -4414,11 +4414,11 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         OriginalDrawActionButton(image, font, loader, nativeUiPal,
             495, 438, RetailOriginalText(m_spellData, "BUTTONS", 46, spellcross_ui_locale::Tr("buy.action.buy", "Buy")), actionEnabled);
 
-        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.time", "Time:"), 423, 438, text, 38);
+        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "BIG_MAP", 7, spellcross_ui_locale::Tr("native.time", "Time:")), 423, 438, text, 38);
         OriginalDrawSpellText(image, font,
             actionTime >= 0 ? wxString::Format(L"%d", actionTime) : wxString(L"-"),
             469, 438, text, 25);
-        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.cost", "Cost:"), 423, 454, text, 38);
+        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "BIG_MAP", 8, spellcross_ui_locale::Tr("native.cost", "Cost:")), 423, 454, text, 38);
         OriginalDrawSpellText(image, font,
             actionCost >= 0 ? wxString::Format(L"%d", actionCost) : wxString(L"-"),
             469, 454, text, 25);
@@ -5004,16 +5004,16 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         constexpr int playerX = 132, playerY = 344, playerW = 256;
         OriginalDrawSpellText(image, font, wxString(spellcross_ui_locale::Tr("stats.player_prefix", "Player - ")) + wxString::FromUTF8(m_player.name),
             playerX + 10, playerY + 15, text, playerW - 20);
-        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.rank_caption", "Rank:"), playerX + 25, playerY + 36, green, 77);
+        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "OTHER", 54, spellcross_ui_locale::Tr("stats.rank_caption", "Rank:")), playerX + 25, playerY + 36, green, 77);
         OriginalDrawSpellText(image, font, localizedRank(m_player.rank), playerX + 88, playerY + 36, dim, 158);
-        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.experience_caption", "Experience:"), playerX + 25, playerY + 54, green, 87);
+        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "INFOTEXT", 10, spellcross_ui_locale::Tr("stats.experience_caption", "Experience:")), playerX + 25, playerY + 54, green, 87);
         OriginalDrawSpellText(image, font,
             nextExp > m_player.experience ? wxString::Format(L"%d (%d)", m_player.experience, nextExp)
                                           : wxString::Format(L"%d (-)", m_player.experience),
             playerX + 94, playerY + 54, dim, 152);
-        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.max_units", "Max. permanent units:"), playerX + 25, playerY + 72, green, 205);
+        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "OTHER", 55, spellcross_ui_locale::Tr("stats.max_units", "Max. permanent units:")), playerX + 25, playerY + 72, green, 205);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", maxUnits), playerX + 222, playerY + 72, dim, 30);
-        OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("stats.max_commanders", "Max. commanders:"), playerX + 25, playerY + 90, green, 170);
+        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "OTHER", 56, spellcross_ui_locale::Tr("stats.max_commanders", "Max. commanders:")), playerX + 25, playerY + 90, green, 170);
         OriginalDrawSpellText(image, font, wxString::Format(L"%d", maxCommanders), playerX + 194, playerY + 90, dim, 35);
 
         OriginalDrawStrategicStatus(image, font, m_money, m_research, m_turn, strategic_english(m_spellData));
@@ -8558,7 +8558,7 @@ void StrategicLevelFrame::BuildUI()
     m_cmdRoster = new wxListCtrl(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
     m_cmdRoster->SetFont(m_fontText);
     m_cmdRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.commander", "Commander"));
-    m_cmdRoster->InsertColumn(1, spellcross_ui_locale::Tr("strategic.rank", "Rank"));
+    m_cmdRoster->InsertColumn(1, RetailOriginalText(m_spellData, "OTHER", 54, spellcross_ui_locale::Tr("strategic.rank", "Rank")));
     m_cmdRoster->Bind(wxEVT_LIST_BEGIN_DRAG, &StrategicLevelFrame::OnCommanderBeginDrag, this);
     m_cmdRoster->Bind(wxEVT_LIST_ITEM_SELECTED, &StrategicLevelFrame::OnCommanderSelectForMission, this);
     m_cmdRoster->SetDropTarget(new HierarchyPoolDropTarget(this, "commander"));
@@ -8748,7 +8748,7 @@ void StrategicLevelFrame::BuildUI()
     m_btnInfo = makeBtn(ID_BTN_INFO, "Info", "info");
     m_btnResources = makeBtn(ID_BTN_RESOURCES, spellcross_ui_locale::Tr("strategic.resources", "Resources"), "resources");
     m_btnStats = makeBtn(ID_BTN_STATS, spellcross_ui_locale::Tr("strategic.statistics", "Statistics"), "statistics");
-    m_btnLaunch = makeBtn(ID_BTN_LAUNCH, spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission"));  // No icon in original game
+    m_btnLaunch = makeBtn(ID_BTN_LAUNCH, RetailOriginalText(m_spellData, "BUTTONS", 36, spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission")));  // No icon in original game
 
     // Turn number is already visible in the status rows; keep the action itself plain.
     m_btnEndTurn = CreateStrategicButton(right, ID_BTN_ENDTURN,
@@ -8873,7 +8873,7 @@ void StrategicLevelFrame::BuildBuyPage()
 
         // Exactly the needed columns (no empty columns).
         cmdRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.commander", "Commander"));
-        cmdRoster->InsertColumn(1, spellcross_ui_locale::Tr("strategic.rank", "Rank"));
+        cmdRoster->InsertColumn(1, RetailOriginalText(m_spellData, "OTHER", 54, spellcross_ui_locale::Tr("strategic.rank", "Rank")));
 
         BindListGridOverlay(cmdRoster);
         leftSizer->Add(cmdRoster, 1, wxALL | wxEXPAND, 4);
@@ -9038,7 +9038,7 @@ void StrategicLevelFrame::BuildBuyPage()
     auto* btnStats = makeBtn(spellcross_ui_locale::Tr("strategic.statistics", "Statistics"), "statistics");
     btnStats->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowStats(ev); });
 
-    auto* btnLaunch = makeBtn(spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission"));
+    auto* btnLaunch = makeBtn(RetailOriginalText(m_spellData, "BUTTONS", 36, spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission")));
     btnLaunch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnLaunch(ev); });
     // Launch mission must only be enabled on the Strategic map page.
     btnLaunch->Enable(false);
@@ -9784,7 +9784,7 @@ void StrategicLevelFrame::BuildUnitsPage()
     auto* btnStats = makeBtn(spellcross_ui_locale::Tr("strategic.statistics", "Statistics"), "statistics");
     btnStats->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowStats(ev); });
 
-    auto* btnLaunch = makeBtn(spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission"));
+    auto* btnLaunch = makeBtn(RetailOriginalText(m_spellData, "BUTTONS", 36, spellcross_ui_locale::Tr("strategic.launch_mission", "Launch mission")));
     btnLaunch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnLaunch(ev); });
     btnLaunch->Enable(false);
 
@@ -13347,7 +13347,7 @@ void StrategicLevelFrame::RefreshUI()
         while (m_cmdRoster->GetColumnCount() > 0)
             m_cmdRoster->DeleteColumn(0);
         m_cmdRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.commander", "Commander"));
-        m_cmdRoster->InsertColumn(1, spellcross_ui_locale::Tr("strategic.rank", "Rank"));
+        m_cmdRoster->InsertColumn(1, RetailOriginalText(m_spellData, "OTHER", 54, spellcross_ui_locale::Tr("strategic.rank", "Rank")));
 
         m_cmdRoster->DeleteAllItems();
 
