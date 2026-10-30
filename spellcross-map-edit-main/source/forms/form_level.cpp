@@ -3331,7 +3331,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             OriginalDrawSpellText(image, font, caption, x, kOriginalAttackDrawY + 7,
                 enabled ? text : dim, kOriginalButtonW, true);
         };
-        const bool canAttack = m_selectedTerritory > 0 && !m_selectedUnitsForMission.empty();
+        const bool canAttack = CanLaunchTerritoryBattle(m_selectedTerritory) &&
+            !m_selectedUnitsForMission.empty();
         drawActionButton(kOriginalAttackDrawX, 0, RetailOriginalText(m_spellData, "BUTTONS", 37, spellcross_ui_locale::Tr("native.attack", "Attack")), canAttack);
         drawActionButton(kOriginalCancelDrawX, 1, RetailOriginalText(m_spellData, "BUTTONS", 38, spellcross_ui_locale::Tr("native.cancel_button", "Cancel")),
             !m_selectedUnitsForMission.empty() || !m_selectedCommandersForMission.empty());
@@ -13195,7 +13196,9 @@ void StrategicLevelFrame::UpdateRosterSelectionVisuals()
     // Update launch button enable state
     const bool onStrategicMap = (m_leftBook && m_leftBook->GetSelection() == 0 && !m_buyModeActive);
     if (m_btnLaunch)
-        m_btnLaunch->Enable(onStrategicMap && m_selectedTerritory >= 0 && !m_selectedUnitsForMission.empty());
+        m_btnLaunch->Enable(onStrategicMap &&
+            CanLaunchTerritoryBattle(m_selectedTerritory) &&
+            !m_selectedUnitsForMission.empty());
 }
 
 void StrategicLevelFrame::UpdateCommanderRosterSelectionVisuals()
@@ -13450,7 +13453,8 @@ void StrategicLevelFrame::RefreshUI()
             // Also requires at least one unit selected.
             const bool onStrategicMap = (m_leftBook && m_leftBook->GetSelection() == 0 && !m_buyModeActive);
             const bool hasSelection = !m_selectedUnitsForMission.empty();
-            m_btnLaunch->Enable(onStrategicMap && m_selectedTerritory >= 0 && hasSelection);
+            m_btnLaunch->Enable(onStrategicMap &&
+                CanLaunchTerritoryBattle(m_selectedTerritory) && hasSelection);
             if (m_btnBuyShop)
                 m_btnBuyShop->Enable(true);
 
@@ -15726,7 +15730,8 @@ std::wstring StrategicLevelFrame::ResolveMapDtaPathForMissionToken(const std::st
 
 void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 {
-    if (m_selectedTerritory < 0 || !m_main)
+    if (m_selectedTerritory < 0 || !m_main ||
+        !CanLaunchTerritoryBattle(m_selectedTerritory))
         return;
 
     // Get selected units for this mission
@@ -20548,6 +20553,36 @@ void StrategicLevelFrame::CheckTimeouts()
     }
 
     MarkOverlayDirty();
+}
+
+bool StrategicLevelFrame::CanLaunchTerritoryBattle(int territoryId) const
+{
+    if (territoryId <= 0)
+        return false;
+    if (!m_gameModeEnabled)
+        return true; // keep custom/editor mission launching unchanged
+
+    if (territoryId >= static_cast<int>(m_visibleTerritory.size()) ||
+        m_visibleTerritory[territoryId] == 0)
+        return false;
+
+    const bool exists = std::any_of(m_level.territories.begin(), m_level.territories.end(),
+        [territoryId](const LevelTerritory& territory) { return territory.id == territoryId; });
+    if (!exists)
+        return false;
+    const bool owned = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+        territoryId) != m_ownedTerritories.end();
+    if (!owned)
+        return true; // visible enemy territory
+
+    // Time(N) on a normal scripted objective is NOT an attack on player land.
+    // Only a genuinely triggered, unresolved Army/defence event permits it.
+    return std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+        [territoryId](const CounterAttackState& attack)
+        {
+            return attack.territory_id == territoryId &&
+                attack.triggered && !attack.completed;
+        });
 }
 
 void StrategicLevelFrame::SurrenderCounterAttack(CounterAttackState& attack)
