@@ -4,6 +4,7 @@ on:
     paths:
       - 'spellcross-map-edit-main/source/level.cpp'
       - 'spellcross-map-edit-main/source/level.h'
+      - 'spellcross-map-edit-main/source/strategic_countdown_rules.h'
       - 'spellcross-map-edit-main/source/forms/form_level.cpp'
       - 'spellcross-map-edit-main/source/forms/form_level.h'
       - 'spellcross-map-edit-main/tests/**'
@@ -24,3 +25,9 @@ jobs:
             spellcross-map-edit-main/source/level.cpp \
             -o /tmp/spellcross-level-event-regression
           /tmp/spellcross-level-event-regression
+      - name: Compile and test retail territory countdown freeze
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_original_strategy_deadlines.cpp \
+            -o /tmp/spellcross-strategy-deadline-regression
+          /tmp/spellcross-strategy-deadline-regression

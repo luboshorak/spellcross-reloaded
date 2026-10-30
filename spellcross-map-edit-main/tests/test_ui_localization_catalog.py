@@ -72,7 +72,7 @@ class LocalizationCatalogTests(unittest.TestCase):
             "buy.stats.sight",
         ):
             self.assertIn(f'spellcross_ui_locale::Tr("{key}"', source)
-        self.assertIn("LocalizedOriginalRankAbbrev(commander.rank)", source)
+        self.assertIn("LocalizedOriginalRankAbbrev(m_spellData, commander.rank)", source)
         self.assertNotIn('L"Koupit"', source)
         self.assertNotIn(r'L"P\u011Bchota"', source)
 
