@@ -18018,26 +18018,51 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
     if (tactical && tactical->IsLoaded())
     {
         std::unordered_map<int, int> needed;
+        std::unordered_map<uint32_t, int> tacticalUidTypes;
         for (auto* u : tactical->units)
         {
             if (!u || !u->unit || u->is_enemy)
                 continue;
-            needed[u->unit->type_id] += 1;
-            // Stage 6.11+ tactical units carry the exact strategic roster UID.
-            // Old battle saves may not have the original sent-UID list, but
-            // preserving the surviving UIDs is still useful for recovery and
-            // avoids falling back to type-only identity where possible.
             if (u->strategic_uid != 0)
-                recovered.sent_unit_uids.push_back(u->strategic_uid);
+                tacticalUidTypes.emplace(u->strategic_uid, u->unit->type_id);
+            else
+                ++needed[u->unit->type_id];
         }
 
+        // Rebuild the expanded strategic roster in exactly the order used at
+        // launch. An exact tactical UID must be paired with its own strategic
+        // company; collecting UIDs separately from indices used to misalign
+        // them whenever different unit types or casualties were interleaved.
+        size_t row = 0;
         for (size_t i = 0; i < m_playerUnits.size(); ++i)
         {
-            auto& n = needed[m_playerUnits[i].unit_id];
-            const int take = std::min(std::max(0, m_playerUnits[i].count), n);
-            for (int k = 0; k < take; ++k)
+            const auto& playerUnit = m_playerUnits[i];
+            for (int k = 0; k < std::max(0, playerUnit.count); ++k, ++row)
+            {
+                const uint32_t uid = row < m_rosterRowUids.size()
+                    ? m_rosterRowUids[row] : 0;
+                auto match = tacticalUidTypes.find(uid);
+                if (uid == 0 || match == tacticalUidTypes.end() ||
+                    match->second != playerUnit.unit_id)
+                    continue;
                 recovered.sent_unit_indices.push_back(i);
-            n -= take;
+                recovered.sent_unit_uids.push_back(uid);
+                tacticalUidTypes.erase(match);
+            }
+        }
+
+        // UID-less legacy survivors can only be matched by type. Their UID
+        // slot is explicitly zero so indices/UIDs remain one-to-one.
+        for (size_t i = 0; i < m_playerUnits.size(); ++i)
+        {
+            int& count = needed[m_playerUnits[i].unit_id];
+            const int take = std::min(std::max(0, m_playerUnits[i].count), count);
+            for (int k = 0; k < take; ++k)
+            {
+                recovered.sent_unit_indices.push_back(i);
+                recovered.sent_unit_uids.push_back(0);
+            }
+            count -= take;
         }
     }
 
