@@ -167,8 +167,6 @@ class LocalizationCatalogTests(unittest.TestCase):
 
     def test_original_unit_names_are_loaded_from_retail_common_fs_tables(self):
         engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
-        units = (ROOT / "source" / "spell_units.cpp").read_text(encoding="utf-8")
-        header = (ROOT / "source" / "spell_units.h").read_text(encoding="utf-8")
         loader = (ROOT / "source" / "forms" / "form_loader.cpp").read_text(encoding="utf-8")
 
         # Czech JEDNOTKY.DEF contains English names even in the original files.
@@ -176,13 +174,12 @@ class LocalizationCatalogTests(unittest.TestCase):
         # are positional CP895 text records in UNITS.CZ / UNITS.ENG.
         self.assertIn('units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', engine)
         self.assertIn("common_fs->GetFile(unitNamesResource, &data, &size)", engine)
-        self.assertIn("units->LoadOriginalNames(data, size)", engine)
-        self.assertIn("bool LoadOriginalNames(const uint8_t* data, int length)", header)
-        self.assertIn("bool SpellUnits::LoadOriginalNames(", units)
-        self.assertIn("value == 0x1A", units)
-        self.assertIn("names.size() != units.size()", units)
-        self.assertIn("names[i].size() >= sizeof(units[i]->name)", units)
-        self.assertIn("std::memcpy(units[i]->name, names[i].data(), names[i].size())", units)
+        self.assertIn("LoadOriginalUnitNames(units, data, size)", engine)
+        self.assertIn("static bool LoadOriginalUnitNames(SpellUnits* units", engine)
+        self.assertIn("value == 0x1A", engine)
+        self.assertIn("names.size() != records.size()", engine)
+        self.assertIn("names[i].size() >= sizeof(records[i]->name)", engine)
+        self.assertIn("std::memcpy(records[i]->name, names[i].data(), names[i].size())", engine)
         self.assertIn('spell_data->units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', loader)
         self.assertNotIn("englishNameMatches", loader)
 
