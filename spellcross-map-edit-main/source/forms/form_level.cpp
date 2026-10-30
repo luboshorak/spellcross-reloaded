@@ -2143,6 +2143,11 @@ static bool strategic_english(const SpellData* data)
     return data && data->units && data->units->IsEnglish();
 }
 
+static wxString strategic_label(const SpellData* data, const char* en, const char* cz)
+{
+    return wxString::FromUTF8(strategic_english(data) ? en : cz);
+}
+
 static void append_text_snippet(wxString& info, const std::string& label, const std::string& raw)
 {
     if (raw.empty())
@@ -8505,11 +8510,11 @@ void StrategicLevelFrame::BuildUI()
         m_infoPanel->SetSizer(is);
     }
 
-    m_leftBook->AddPage(m_mapPanel, "Strategic map", true);
-    m_leftBook->AddPage(hierarchyPanel, "Hierarchy", false);
-    m_leftBook->AddPage(m_resourcesPanel, "Resources", false);
-    m_leftBook->AddPage(m_statsPanel, "Statistics", false);
-    m_leftBook->AddPage(m_researchPanel, "Research", false);
+    m_leftBook->AddPage(m_mapPanel, strategic_label(m_spellData, "Strategic map", "Strategická mapa"), true);
+    m_leftBook->AddPage(hierarchyPanel, strategic_label(m_spellData, "Hierarchy", "Hierarchie"), false);
+    m_leftBook->AddPage(m_resourcesPanel, strategic_label(m_spellData, "Resources", "Suroviny"), false);
+    m_leftBook->AddPage(m_statsPanel, strategic_label(m_spellData, "Statistics", "Statistiky"), false);
+    m_leftBook->AddPage(m_researchPanel, strategic_label(m_spellData, "Research", "Výzkum"), false);
     m_leftBook->AddPage(m_infoPanel, "Info", false);
 
     mainSizer->Add(m_leftBook, 5, wxEXPAND);
@@ -8534,8 +8539,8 @@ void StrategicLevelFrame::BuildUI()
 
     m_cmdRoster = new wxListCtrl(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
     m_cmdRoster->SetFont(m_fontText);
-    m_cmdRoster->InsertColumn(0, "Commander");
-    m_cmdRoster->InsertColumn(1, "Rank");
+    m_cmdRoster->InsertColumn(0, strategic_label(m_spellData, "Commander", "Velitel"));
+    m_cmdRoster->InsertColumn(1, strategic_label(m_spellData, "Rank", "Hodnost"));
     m_cmdRoster->Bind(wxEVT_LIST_BEGIN_DRAG, &StrategicLevelFrame::OnCommanderBeginDrag, this);
     m_cmdRoster->Bind(wxEVT_LIST_ITEM_SELECTED, &StrategicLevelFrame::OnCommanderSelectForMission, this);
     m_cmdRoster->SetDropTarget(new HierarchyPoolDropTarget(this, "commander"));
@@ -8557,9 +8562,9 @@ void StrategicLevelFrame::BuildUI()
     // v BuildUI(): úprava definice sloupců m_roster - selection managed manually via toggle
     m_roster = new wxListCtrl(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
     m_roster->SetFont(m_fontText);
-    // PŮVODNĚ: InsertColumn(0, "Unit"); InsertColumn(1, "Count"); InsertColumn(2, "HP");
+    // PŮVODNĚ: InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka")); InsertColumn(1, strategic_label(m_spellData, "Count", "Počet")); InsertColumn(2, "HP");
     // NOVĚ: jen dva sloupce: Unit a HP
-    m_roster->InsertColumn(0, "Unit");
+    m_roster->InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka"));
     m_roster->InsertColumn(1, "HP");
     // Use SELECTED event for toggle behavior (click = toggle selection state)
     m_roster->Bind(wxEVT_LIST_ITEM_SELECTED, &StrategicLevelFrame::OnUnitSelectForMission, this);
@@ -8611,7 +8616,7 @@ void StrategicLevelFrame::BuildUI()
 
         m_midResearchPanel->SetSizer(rs);
     }
-    m_midBook->AddPage(m_midResearchPanel, "Research", false);
+    m_midBook->AddPage(m_midResearchPanel, strategic_label(m_spellData, "Research", "Výzkum"), false);
 
     // --- Middle Info/Encyclopedia page – categorized list (read-only browsing) ---
     m_midInfoPanel = new wxPanel(m_midBook);
@@ -8660,13 +8665,13 @@ void StrategicLevelFrame::BuildUI()
     m_midResourcesPanel->SetMinSize(wxSize(1, 1));
     BindStrategicScreenSlice(m_midResourcesPanel, m_spellData, "VMF_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
-    m_midBook->AddPage(m_midResourcesPanel, "Resources", false);
+    m_midBook->AddPage(m_midResourcesPanel, strategic_label(m_spellData, "Resources", "Suroviny"), false);
 
     m_midStatsPanel = new wxPanel(m_midBook);
     m_midStatsPanel->SetMinSize(wxSize(1, 1));
     BindStrategicScreenSlice(m_midStatsPanel, m_spellData, "VMS_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
-    m_midBook->AddPage(m_midStatsPanel, "Statistics", false);
+    m_midBook->AddPage(m_midStatsPanel, strategic_label(m_spellData, "Statistics", "Statistiky"), false);
 
     // Build the native Statistics screen after both its left and middle panels exist.
     BuildStatsPage();
@@ -8696,9 +8701,9 @@ void StrategicLevelFrame::BuildUI()
             statusSizer->Add(outCaption, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
             statusSizer->Add(outValue, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_LEFT);
         };
-    makeStatusRow("Money:", m_lblMoneyCaption, m_lblMoneyValue);
-    makeStatusRow("Research:", m_lblResearchCaption, m_lblResearchValue);
-    makeStatusRow("Turn:", m_lblTurnCaption, m_lblTurnValue);
+    makeStatusRow(strategic_label(m_spellData, "Money:", "Peníze:"), m_lblMoneyCaption, m_lblMoneyValue);
+    makeStatusRow(strategic_label(m_spellData, "Research:", "Výzkum:"), m_lblResearchCaption, m_lblResearchValue);
+    makeStatusRow(strategic_label(m_spellData, "Turn:", "Tah:"), m_lblTurnCaption, m_lblTurnValue);
     status->SetSizer(statusSizer);
     rightSizer->Add(status, 0, wxALL | wxEXPAND, kCleanUiMargin);
 
@@ -8717,15 +8722,15 @@ void StrategicLevelFrame::BuildUI()
 
     // Buttons (consistent order across all pages)
 
-    m_btnStrategicMap = makeBtn(ID_BTN_STRATEGIC_MAP, "Strategic map", "strategic_map");
-    m_btnHierarchy = makeBtn(ID_BTN_HIERARCHY, "Hierarchy", "hierarchy");
-    m_btnUnitsShop = makeBtn(ID_BTN_UNITS, "Units", "units");
-    m_btnBuyShop = makeBtn(ID_BTN_BUY_SHOP, "Buy / Sell", "buy_sell");
-    m_btnResearch = makeBtn(ID_BTN_RESEARCH, "Research", "research");
+    m_btnStrategicMap = makeBtn(ID_BTN_STRATEGIC_MAP, strategic_label(m_spellData, "Strategic map", "Strategická mapa"), "strategic_map");
+    m_btnHierarchy = makeBtn(ID_BTN_HIERARCHY, strategic_label(m_spellData, "Hierarchy", "Hierarchie"), "hierarchy");
+    m_btnUnitsShop = makeBtn(ID_BTN_UNITS, strategic_label(m_spellData, "Units", "Jednotky"), "units");
+    m_btnBuyShop = makeBtn(ID_BTN_BUY_SHOP, strategic_label(m_spellData, "Buy / Sell", "Nákup / prodej"), "buy_sell");
+    m_btnResearch = makeBtn(ID_BTN_RESEARCH, strategic_label(m_spellData, "Research", "Výzkum"), "research");
     m_btnInfo = makeBtn(ID_BTN_INFO, "Info", "info");
-    m_btnResources = makeBtn(ID_BTN_RESOURCES, "Resources", "resources");
-    m_btnStats = makeBtn(ID_BTN_STATS, "Statistics", "statistics");
-    m_btnLaunch = makeBtn(ID_BTN_LAUNCH, "Launch mission");  // No icon in original game
+    m_btnResources = makeBtn(ID_BTN_RESOURCES, strategic_label(m_spellData, "Resources", "Suroviny"), "resources");
+    m_btnStats = makeBtn(ID_BTN_STATS, strategic_label(m_spellData, "Statistics", "Statistiky"), "statistics");
+    m_btnLaunch = makeBtn(ID_BTN_LAUNCH, strategic_label(m_spellData, "Launch mission", "Spustit misi"));  // No icon in original game
 
     // Turn number is already visible in the status rows; keep the action itself plain.
     m_btnEndTurn = CreateStrategicButton(right, ID_BTN_ENDTURN,
@@ -8830,7 +8835,7 @@ void StrategicLevelFrame::BuildBuyPage()
         unitRoster->SetFont(m_fontText);
 
         // Exactly the needed columns (no empty columns).
-        unitRoster->InsertColumn(0, "Unit");
+        unitRoster->InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka"));
         unitRoster->InsertColumn(1, "HP");
 
         BindListGridOverlay(unitRoster);
@@ -8849,8 +8854,8 @@ void StrategicLevelFrame::BuildBuyPage()
         cmdRoster->SetFont(m_fontText);
 
         // Exactly the needed columns (no empty columns).
-        cmdRoster->InsertColumn(0, "Commander");
-        cmdRoster->InsertColumn(1, "Rank");
+        cmdRoster->InsertColumn(0, strategic_label(m_spellData, "Commander", "Velitel"));
+        cmdRoster->InsertColumn(1, strategic_label(m_spellData, "Rank", "Hodnost"));
 
         BindListGridOverlay(cmdRoster);
         leftSizer->Add(cmdRoster, 1, wxALL | wxEXPAND, 4);
@@ -8969,9 +8974,9 @@ void StrategicLevelFrame::BuildBuyPage()
                 statusSizer->Add(outCaption, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
                 statusSizer->Add(outValue, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_LEFT);
             };
-        makeStatusRow("Money:", m_buyLblMoneyCaption, m_buyLblMoneyValue);
-        makeStatusRow("Research:", m_buyLblResearchCaption, m_buyLblResearchValue);
-        makeStatusRow("Turn:", m_buyLblTurnCaption, m_buyLblTurnValue);
+        makeStatusRow(strategic_label(m_spellData, "Money:", "Peníze:"), m_buyLblMoneyCaption, m_buyLblMoneyValue);
+        makeStatusRow(strategic_label(m_spellData, "Research:", "Výzkum:"), m_buyLblResearchCaption, m_buyLblResearchValue);
+        makeStatusRow(strategic_label(m_spellData, "Turn:", "Tah:"), m_buyLblTurnCaption, m_buyLblTurnValue);
         status->SetSizer(statusSizer);
         sideSizer->Add(status, 0, wxALL | wxEXPAND, kCleanUiMargin);
     }
@@ -8991,31 +8996,31 @@ void StrategicLevelFrame::BuildBuyPage()
 
     auto* btnSizer = new wxBoxSizer(wxVERTICAL);
 
-    auto* btnStrategicMap = makeBtn("Strategic map", "strategic_map");
+    auto* btnStrategicMap = makeBtn(strategic_label(m_spellData, "Strategic map", "Strategická mapa"), "strategic_map");
     btnStrategicMap->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowStrategicMap(ev); });
 
-    auto* btnHierarchy = makeBtn("Hierarchy", "hierarchy");
+    auto* btnHierarchy = makeBtn(strategic_label(m_spellData, "Hierarchy", "Hierarchie"), "hierarchy");
     btnHierarchy->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowHierarchy(ev); });
 
-    auto* btnUnits = makeBtn("Units", "units");
+    auto* btnUnits = makeBtn(strategic_label(m_spellData, "Units", "Jednotky"), "units");
     btnUnits->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); EnterUnitsMode(); });
 
-    auto* btnBuySell = makeBtn("Buy / Sell", "buy_sell");
+    auto* btnBuySell = makeBtn(strategic_label(m_spellData, "Buy / Sell", "Nákup / prodej"), "buy_sell");
     btnBuySell->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { LeaveBuyMode(); });
 
-    auto* btnResearch = makeBtn("Research", "research");
+    auto* btnResearch = makeBtn(strategic_label(m_spellData, "Research", "Výzkum"), "research");
     btnResearch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnResearch(ev); });
 
     auto* btnInfo = makeBtn("Info", "info");
     btnInfo->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowInfo(ev); });
 
-    auto* btnResources = makeBtn("Resources", "resources");
+    auto* btnResources = makeBtn(strategic_label(m_spellData, "Resources", "Suroviny"), "resources");
     btnResources->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowResources(ev); });
 
-    auto* btnStats = makeBtn("Statistics", "statistics");
+    auto* btnStats = makeBtn(strategic_label(m_spellData, "Statistics", "Statistiky"), "statistics");
     btnStats->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnShowStats(ev); });
 
-    auto* btnLaunch = makeBtn("Launch mission");
+    auto* btnLaunch = makeBtn(strategic_label(m_spellData, "Launch mission", "Spustit misi"));
     btnLaunch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveBuyMode(); OnLaunch(ev); });
     // Launch mission must only be enabled on the Strategic map page.
     btnLaunch->Enable(false);
@@ -9453,9 +9458,9 @@ void StrategicLevelFrame::BuildUnitsPage()
     m_unitsRoster->SetFont(m_fontText);
 
     // Spellcross-like roster: Unit + Level + Status (NO HP column here; details are in the info panel).
-    m_unitsRoster->InsertColumn(0, "Unit");
+    m_unitsRoster->InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka"));
     m_unitsRoster->InsertColumn(1, "Lvl");
-    m_unitsRoster->InsertColumn(2, "Status");
+    m_unitsRoster->InsertColumn(2, strategic_label(m_spellData, "Status", "Stav"));
 
     m_unitsRoster->Bind(wxEVT_LIST_ITEM_SELECTED, [this](wxListEvent& ev) {
         // ItemData stores the original m_playerUnits index (not the expanded row index)
@@ -9481,9 +9486,9 @@ void StrategicLevelFrame::BuildUnitsPage()
         wxLC_REPORT | wxLC_SINGLE_SEL);
     m_unitsTempRoster->SetFont(m_fontText);
 
-    m_unitsTempRoster->InsertColumn(0, "Temporary");
+    m_unitsTempRoster->InsertColumn(0, strategic_label(m_spellData, "Temporary", "Dočasné"));
     m_unitsTempRoster->InsertColumn(1, "Lvl");
-    m_unitsTempRoster->InsertColumn(2, "Status");
+    m_unitsTempRoster->InsertColumn(2, strategic_label(m_spellData, "Status", "Stav"));
 
     m_unitsTempRoster->Bind(wxEVT_LIST_ITEM_SELECTED, [this](wxListEvent& ev) {
         m_unitsSelectedUnit = static_cast<int>(m_unitsTempRoster->GetItemData(ev.GetIndex()));
@@ -9715,9 +9720,9 @@ void StrategicLevelFrame::BuildUnitsPage()
                 statusSizer->Add(outCaption, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
                 statusSizer->Add(outValue, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_LEFT);
             };
-        makeStatusRow("Money:", m_unitsLblMoneyCaption, m_unitsLblMoneyValue);
-        makeStatusRow("Research:", m_unitsLblResearchCaption, m_unitsLblResearchValue);
-        makeStatusRow("Turn:", m_unitsLblTurnCaption, m_unitsLblTurnValue);
+        makeStatusRow(strategic_label(m_spellData, "Money:", "Peníze:"), m_unitsLblMoneyCaption, m_unitsLblMoneyValue);
+        makeStatusRow(strategic_label(m_spellData, "Research:", "Výzkum:"), m_unitsLblResearchCaption, m_unitsLblResearchValue);
+        makeStatusRow(strategic_label(m_spellData, "Turn:", "Tah:"), m_unitsLblTurnCaption, m_unitsLblTurnValue);
         status->SetSizer(statusSizer);
         sideSizer->Add(status, 0, wxALL | wxEXPAND, kCleanUiMargin);
     }
@@ -9737,31 +9742,31 @@ void StrategicLevelFrame::BuildUnitsPage()
 
     auto* btnSizer = new wxBoxSizer(wxVERTICAL);
 
-    auto* btnStrategicMap = makeBtn("Strategic map", "strategic_map");
+    auto* btnStrategicMap = makeBtn(strategic_label(m_spellData, "Strategic map", "Strategická mapa"), "strategic_map");
     btnStrategicMap->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowStrategicMap(ev); });
 
-    auto* btnHierarchy = makeBtn("Hierarchy", "hierarchy");
+    auto* btnHierarchy = makeBtn(strategic_label(m_spellData, "Hierarchy", "Hierarchie"), "hierarchy");
     btnHierarchy->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowHierarchy(ev); });
 
-    auto* btnUnits = makeBtn("Units", "units");
+    auto* btnUnits = makeBtn(strategic_label(m_spellData, "Units", "Jednotky"), "units");
     btnUnits->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { LeaveUnitsMode(); });
 
-    auto* btnBuySell = makeBtn("Buy / Sell", "buy_sell");
+    auto* btnBuySell = makeBtn(strategic_label(m_spellData, "Buy / Sell", "Nákup / prodej"), "buy_sell");
     btnBuySell->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { LeaveUnitsMode(); EnterBuyMode(); });
 
-    auto* btnResearch = makeBtn("Research", "research");
+    auto* btnResearch = makeBtn(strategic_label(m_spellData, "Research", "Výzkum"), "research");
     btnResearch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnResearch(ev); });
 
     auto* btnInfo = makeBtn("Info", "info");
     btnInfo->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowInfo(ev); });
 
-    auto* btnResources = makeBtn("Resources", "resources");
+    auto* btnResources = makeBtn(strategic_label(m_spellData, "Resources", "Suroviny"), "resources");
     btnResources->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowResources(ev); });
 
-    auto* btnStats = makeBtn("Statistics", "statistics");
+    auto* btnStats = makeBtn(strategic_label(m_spellData, "Statistics", "Statistiky"), "statistics");
     btnStats->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnShowStats(ev); });
 
-    auto* btnLaunch = makeBtn("Launch mission");
+    auto* btnLaunch = makeBtn(strategic_label(m_spellData, "Launch mission", "Spustit misi"));
     btnLaunch->Bind(wxEVT_BUTTON, [this](wxCommandEvent& ev) { LeaveUnitsMode(); OnLaunch(ev); });
     btnLaunch->Enable(false);
 
@@ -13323,8 +13328,8 @@ void StrategicLevelFrame::RefreshUI()
     {
         while (m_cmdRoster->GetColumnCount() > 0)
             m_cmdRoster->DeleteColumn(0);
-        m_cmdRoster->InsertColumn(0, "Commander");
-        m_cmdRoster->InsertColumn(1, "Rank");
+        m_cmdRoster->InsertColumn(0, strategic_label(m_spellData, "Commander", "Velitel"));
+        m_cmdRoster->InsertColumn(1, strategic_label(m_spellData, "Rank", "Hodnost"));
 
         m_cmdRoster->DeleteAllItems();
 
@@ -13362,7 +13367,7 @@ void StrategicLevelFrame::RefreshUI()
     while (m_roster->GetColumnCount() > 0)
         m_roster->DeleteColumn(0);
 
-    m_roster->InsertColumn(0, "Unit");
+    m_roster->InsertColumn(0, strategic_label(m_spellData, "Unit", "Jednotka"));
     m_roster->InsertColumn(1, "HP");
 
     // v RefreshUI(): rozbalení jednotek podle count a odstranění sloupce Count
