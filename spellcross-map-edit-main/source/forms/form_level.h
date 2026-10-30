@@ -526,6 +526,9 @@ public:
     // Game mode (campaign progression)
     bool m_gameModeEnabled = false;
     std::vector<int> m_ownedTerritories;
+    // Empty after a loaded/started campaign means defeat, not a request
+    // to re-grant the original Start(n) command territory.
+    bool m_campaignOwnershipInitialized = false;
 
     struct TerritoryResourceState
     {
