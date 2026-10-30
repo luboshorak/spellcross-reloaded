@@ -19954,6 +19954,16 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
             }
         }
 
+        // Original mission results can activate a Level Event independently
+        // from ownership, rewards or a successor mission. Execute immediate
+        // events (e.g. LEVEL_03 Event(5)) only after conquest and mission
+        // successor state have been updated.
+        if (mission && mission->end_ok_event >= 0)
+        {
+            ActivateMissionEvent(mission->end_ok_event);
+            ProcessLevelEvents();
+        }
+
         // Campaign progression is driven by LevelInit::End(n).  Earlier builds
         // also treated "all territories conquered" (and a mission-level flag)
         // as an unconditional completion trigger.  That is NOT the original
@@ -20026,6 +20036,11 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
             m_territoryCurrentMission[territory_id] = to_lower(mission->end_bad_mission);
             // The replacement mission owns its own Time(...) rule.
             m_territoryTimeoutTurn.erase(territory_id);
+        }
+        if (mission && mission->end_bad_event >= 0)
+        {
+            ActivateMissionEvent(mission->end_bad_event);
+            ProcessLevelEvents();
         }
     }
 
