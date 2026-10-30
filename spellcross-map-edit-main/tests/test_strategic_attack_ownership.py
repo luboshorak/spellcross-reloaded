@@ -4,7 +4,7 @@ Runs without wxWidgets; on hosts with a C++ compiler, extracts and compiles
 the actual C++ eligibility method against synthetic campaign scenarios.
 """
 from pathlib import Path
-import re
+import os
 import shutil
 import subprocess
 import tempfile
@@ -90,7 +90,7 @@ int main() {
 """
         with tempfile.TemporaryDirectory() as d:
             source_path = Path(d) / "test.cpp"
-            executable = Path(d) / "test"
+            executable = Path(d) / ("test.exe" if os.name == "nt" else "test")
             source_path.write_text(harness, encoding="utf-8")
             subprocess.run(
                 [compiler, "-std=c++17", str(source_path), "-o", str(executable)],
