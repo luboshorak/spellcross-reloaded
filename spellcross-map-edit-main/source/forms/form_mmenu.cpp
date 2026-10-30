@@ -1,6 +1,7 @@
 #include "form_mmenu.h"
 #include "app_identity.h"
 #include "../spell_ui_locale.h"
+#include "../spell_units.h"
 
 #include <wx/wx.h>
 #include <wx/dcbuffer.h>
@@ -228,6 +229,8 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
 {
     m_spell_map = spell_map;
     m_spelldata = spell_data;
+    spellcross_ui_locale::SetLanguageFromEdition(
+        m_spelldata && m_spelldata->units && m_spelldata->units->IsEnglish());
     m_action_cb = std::move(action_cb);
     m_event_parent = parent;
     m_hover_index = -1;
