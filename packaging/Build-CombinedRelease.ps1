@@ -181,6 +181,14 @@ foreach ($f in @('C_NAMES.DEF','DEVAST.fs','PUST.fs','T11.FS',
     }
 }
 Copy-Item -LiteralPath (Join-Path $gameAssets 'menu') -Destination $gameData -Recurse -Force
+# UI translations are project-authored files, independent of licensed retail assets.
+# Keep them editable beside Spellcross.exe so additional translations require no rebuild.
+$localeSource = Join-Path $game 'locales'
+$localeTarget = Join-Path $stage 'locales'
+foreach ($language in @('en', 'cs')) {
+    Assert-File (Join-Path $localeSource ($language + '.lang'))
+}
+Copy-Item -LiteralPath $localeSource -Destination $localeTarget -Recurse -Force
 $movieDir = Join-Path $gameData 'movie_fallback'
 New-Item -ItemType Directory -Path $movieDir -Force | Out-Null
 # Local Markdown notes are intentionally not included in clean source clones.
