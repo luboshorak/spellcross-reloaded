@@ -32,6 +32,8 @@ class StrategicContestedTerritoryRegression(unittest.TestCase):
                       self.source)
         self.assertIn("if (visible && (!owned || HasActiveCounterAttack(tid)))",
                       self.source)
+        self.assertIn("auto isContestedTid = [&](int t) -> bool", self.source)
+        self.assertIn("else if (!isOwned || isContestedTid(tid))", self.source)
 
     def test_attack_command_checks_actual_battle_availability(self):
         self.assertIn("bool StrategicLevelFrame::CanLaunchTerritoryBattle(int territoryId) const",
