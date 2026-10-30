@@ -54,6 +54,15 @@ class OriginalStrategyScriptsTest(unittest.TestCase):
         self.assertIn("firstAttackable < 0 && flags == 0x0D", self.strat)
         self.assertNotIn("flags == 0x1D || flags == 0x0C", self.strat)
 
+    def test_safe_owned_territory_cannot_launch_an_attack(self):
+        self.assertIn("bool StrategicLevelFrame::CanLaunchTerritoryBattle(", self.strat)
+        self.assertIn("if (!owned)\n        return true;", self.strat)
+        self.assertIn("attack.triggered && !attack.completed;", self.strat)
+        self.assertGreaterEqual(
+            self.strat.count("CanLaunchTerritoryBattle(m_selectedTerritory)"), 4
+        )
+        self.assertIn("bool CanLaunchTerritoryBattle(int territoryId) const;", self.strat_h)
+
     def test_all_counterattack_declines_use_one_transition(self):
         self.assertIn("void StrategicLevelFrame::SurrenderCounterAttack(", self.strat)
         self.assertIn("SurrenderCounterAttack(ca)", self.strat)
