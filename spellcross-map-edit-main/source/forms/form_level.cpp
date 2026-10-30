@@ -2136,6 +2136,13 @@ static bool read_text_file(const std::filesystem::path& p, std::string& out)
     return true;
 }
 
+// The imported edition, not the Windows locale, selects strategic UI language.
+// JEDNOTKY.DEF is already decoded before TEXTS.FS is opened.
+static bool strategic_english(const SpellData* data)
+{
+    return data && data->units && data->units->IsEnglish();
+}
+
 static void append_text_snippet(wxString& info, const std::string& label, const std::string& raw)
 {
     if (raw.empty())
@@ -15007,6 +15014,7 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
         cur = itc->second;
 
     wxString info;
+    const bool english = strategic_english(m_spellData);
 
     // --- Game mode: show only the relevant briefing based on territory state ---
     if (m_gameModeEnabled)
@@ -15038,12 +15046,12 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
         {
             // Counter-attack active: show .S text. TEXTS.FS is authoritative;
             // loose DATA/TEXTS is only a modding fallback.
-            info << "*** COUNTER-ATTACK ***\n\n";
+            info << (english ? "*** COUNTER-ATTACK ***\n\n" : "*** PROTIÚTOK ***\n\n");
             bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                texts_dir, cur, ".S", "Counter-Attack Briefing");
+                texts_dir, cur, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně");
             if (!found && to_lower(cur) != to_lower(t.mission))
                 try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                    texts_dir, t.mission, ".S", "Counter-Attack Briefing");
+                    texts_dir, t.mission, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně");
         }
         else if (!isOwned)
         {
@@ -15052,21 +15060,21 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
             // has no text resource, fall back to the mission declared by
             // LEVEL_XX.DEF instead of leaving the panel blank.
             if (timeoutRemaining > 0)
-                info << wxString::Format("Time remaining: %d turns\n\n", timeoutRemaining);
+                info << wxString::Format(english ? "Time remaining: %d turns\n\n" : "Zbývající čas: %d tahů\n\n", timeoutRemaining);
 
             bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                texts_dir, cur, "", "Briefing");
+                texts_dir, cur, "", english ? "Briefing" : "Instrukce");
             if (!found && to_lower(cur) != to_lower(t.mission))
                 try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                    texts_dir, t.mission, "", "Briefing");
+                    texts_dir, t.mission, "", english ? "Briefing" : "Instrukce");
         }
         else
         {
             // Owned territory
-            info << "Territory secured.\n";
+            info << (english ? "Territory secured.\n" : "Území zajištěno.\n");
 
             if (counterTurnsLeft > 0)
-                info << wxString::Format("\nCounter-attack expected in %d turns.\n", counterTurnsLeft);
+                info << wxString::Format(english ? "\nCounter-attack expected in %d turns.\n" : "\nProtiútok očekáván za %d tahů.\n", counterTurnsLeft);
         }
     }
     else
@@ -20896,22 +20904,23 @@ void StrategicLevelFrame::ShowBriefing(int territory_id)
     }
 
     wxString info;
+    const bool english = strategic_english(m_spellData);
     if (isCounterAttack)
     {
-        info << "*** COUNTER-ATTACK ***\n\n";
+        info << (english ? "*** COUNTER-ATTACK ***\n\n" : "*** PROTIÚTOK ***\n\n");
         bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-            texts_dir, token, ".S", "Counter-Attack Briefing");
+            texts_dir, token, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně");
         if (!found && !fallbackToken.empty() && to_lower(token) != to_lower(fallbackToken))
             try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                texts_dir, fallbackToken, ".S", "Counter-Attack Briefing");
+                texts_dir, fallbackToken, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně");
     }
     else
     {
         bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-            texts_dir, token, "", "Briefing");
+            texts_dir, token, "", english ? "Briefing" : "Instrukce");
         if (!found && !fallbackToken.empty() && to_lower(token) != to_lower(fallbackToken))
             try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
-                texts_dir, fallbackToken, "", "Briefing");
+                texts_dir, fallbackToken, "", english ? "Briefing" : "Instrukce");
     }
 
     if (info.IsEmpty())
