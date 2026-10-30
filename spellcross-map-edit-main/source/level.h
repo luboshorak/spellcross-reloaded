@@ -53,7 +53,8 @@ struct LevelMission {
     int freq_random_a = -1;     // FrequencyOfRandomAttacks(a,b)
     int freq_random_b = -1;
 
-    int end_ok_event = -1;      // EndOKEvent(n), activates a scripted Level Event on success\n    int end_bad_event = -1;     // EndBadEvent(n) (viz M02_05A)
+    int end_ok_event = -1;      // EndOKEvent(n), activates a scripted Level Event on success
+    int end_bad_event = -1;     // EndBadEvent(n) (viz M02_05A)
 
     // Èasový limit mise v tazích (0 = bez limitu), z Time(X) v DEF
     int time_limit = 0;
