@@ -15916,19 +15916,20 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
             m_level.attack_flags.size() >= 4 ? m_level.attack_flags[3] : 1)
         : m_main->LoadMapFromDefPath(defPath, unitsForMission);
 
-    if (!generatedDtaBattle && !ok && !unitsForMission.empty())
-    {
-        const std::vector<LevelData::PlayerUnitAdd> empty_units;
-        ok = m_main->LoadMapFromDefPath(defPath, empty_units);
-    }
+    // Never hide a deployment/load failure by silently restarting the map
+    // without the player's selected companies. Such a fallback breaks the
+    // pending roster UID mapping and can corrupt subsequent battle results.
 
     if (!ok)
     {
         const wxString source = generatedDtaBattle ? wxString(dtaPath) : wxString(defPath);
         wxMessageBox((generatedDtaBattle
                 ? "Generated DTA strategic battle failed\nDTA:\n"
-                : "LoadMapFromDefPath FAILED (even without units)\nDEF:\n") + source,
+                : "LoadMapFromDefPath FAILED\nDEF:\n") + source,
             "Launch", wxOK | wxICON_ERROR, this);
+        // No tactical mission was launched; do not leave a valid pending
+        // result that could be applied to a later, unrelated map.
+        m_pendingMission = PendingMissionResult{};
         return;
     }
 
@@ -20047,7 +20048,12 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
             size_t& pos = consumedByType[tid];
             if (it != survivorsByType.end())
             {
-                while (pos < it->second.size() && matchedSurvivors.count(it->second[pos]) != 0)
+                // Legacy type matching may only consume a company that has
+                // no strategic UID. A UID-bearing survivor belongs to its
+                // exact company and must not be stolen by another casualty.
+                while (pos < it->second.size() &&
+                    (matchedSurvivors.count(it->second[pos]) != 0 ||
+                     it->second[pos]->strategic_uid != 0))
                     ++pos;
                 if (pos < it->second.size())
                     survivor = it->second[pos++];
