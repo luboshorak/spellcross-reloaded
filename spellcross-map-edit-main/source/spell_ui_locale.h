@@ -61,7 +61,7 @@ namespace spellcross_ui_locale
             if (begin == std::string::npos || line[begin] == '#' || line[begin] == ';')
                 continue;
             const auto delimiter = line.find('=', begin);
-            if (delimiter == std::string::npos) continue;
+            if (delimiter == std::string::npos || delimiter <= begin) continue;
             const auto keyEnd = line.find_last_not_of(" \t", delimiter - 1);
             if (keyEnd == std::string::npos || keyEnd < begin) continue;
             const std::string key = line.substr(begin, keyEnd - begin + 1);
