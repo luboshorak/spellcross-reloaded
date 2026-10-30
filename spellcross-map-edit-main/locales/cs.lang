@@ -175,3 +175,10 @@ buy.rank.5=plk.
 buy.rank.6=genmjr.
 buy.rank.7=genpor.
 buy.rank.8=armgen.
+
+# Separate main-menu window toolbar
+menu.home.audio=&Zvuk...	Ctrl+A
+menu.home.screen=&Obrazovka...	Ctrl+S
+menu.home.open_editor=Otevřít editor map...
+menu.home.editor_help=Spustit samostatný editor map Spellcross
+menu.home.editor=&Editor map
