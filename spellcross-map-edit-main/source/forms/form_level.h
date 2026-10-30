@@ -66,6 +66,9 @@ public:
     void OnBuyAction(wxCommandEvent&);
     void OnEndTurn(wxCommandEvent& ev);
     void OnLaunch(wxCommandEvent& ev);
+    // Campaign ownership and a live defence determine whether a territory
+    // can be targeted. UI controls and the launch handler share this rule.
+    bool CanLaunchTerritoryMission(int territory_id) const;
     void OnShowStrategicMap(wxCommandEvent& ev);
     void OnShowHierarchy(wxCommandEvent& ev);
     void OnShowStats(wxCommandEvent& ev);
