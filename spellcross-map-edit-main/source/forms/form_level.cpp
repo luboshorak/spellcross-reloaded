@@ -7754,9 +7754,13 @@ void StrategicLevelFrame::ApplyTerritoryVisibility()
     // In game mode: visible = owned + neighbors(owned)
     std::fill(m_visibleTerritory.begin(), m_visibleTerritory.end(), 0);
 
-    // Ensure we always have a start territory; otherwise everything becomes "fog".
-    if (m_ownedTerritories.empty())
-        m_ownedTerritories.push_back(PickStartTerritoryIdForGameMode(m_level, m_spellData));
+    // Only bootstrap an uninitialized new campaign. An empty owned set in
+    // an already loaded or played campaign is a real defeat, not an error.
+    if (m_ownedTerritories.empty() && !m_campaignOwnershipInitialized)
+    {
+        m_ownedTerritories = ChooseStartTerritories_NoBriefing(m_level, m_spellData);
+        m_campaignOwnershipInitialized = true;
+    }
 
 
     auto mark = [&](int tid)
@@ -7787,15 +7791,17 @@ void StrategicLevelFrame::OnToggleGameMode(wxCommandEvent& ev)
 
     if (m_gameModeEnabled)
     {
-        // Ensure at least one owned territory (start territory).
-        if (m_ownedTerritories.empty())
+        // Bootstrap only for an actual new campaign. Switching editor/game
+        // modes must not resurrect lost territories from an existing game.
+        if (m_ownedTerritories.empty() && !m_campaignOwnershipInitialized)
         {
-            // Some levels start with MULTIPLE owned territories = those WITHOUT briefing
+            // Some levels begin with several Start(n) sectors.
             m_ownedTerritories = ChooseStartTerritories_NoBriefing(m_level, m_spellData);
 
             // Fallback: at least one
             if (m_ownedTerritories.empty() && !m_level.territories.empty())
                 m_ownedTerritories.push_back(m_level.territories.front().id);
+            m_campaignOwnershipInitialized = true;
         }
 
         m_hoverTerritory = 0;
@@ -17228,6 +17234,7 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
     // Territory state. Original territory record N corresponds to territory
     // id N+1; LEVEL_xx.DEF ids are built on the same numbering.
     m_ownedTerritories.clear();
+    m_campaignOwnershipInitialized = true; // original save owns exactly its 0x0F flags
     m_territoryCurrentMission.clear();
     m_territoryLaunchCount.clear();
     m_territoryResources.clear();
@@ -17710,6 +17717,7 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
 
         m_gameModeEnabled = gm;
         m_ownedTerritories = std::move(owned);
+        m_campaignOwnershipInitialized = true; // even if save has zero owners
 
         // Repair saves produced by the old missing-TEXTS bug. It classified
         // every territory as a starting territory; such a fresh state has all
@@ -17760,10 +17768,8 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
             ? std::max(0, metaIt->second.researchCarry) : 0;
         SetGlobalResearchAllocation(m_resourcesGlobalResearch);
 
-        // Ensure start territory when loading older saves / empty campaign state.
-        if (m_gameModeEnabled && m_ownedTerritories.empty())
-            m_ownedTerritories.push_back(PickStartTerritoryIdForGameMode(m_level, m_spellData));
-
+        // A valid strategic save with zero owned sectors represents a defeat.
+        // Never silently restore Start(n) after the Other Side captured it.
         if (GetMenuBar())
         {
             auto* item = GetMenuBar()->FindItem(ID_MENU_GAME_MODE_TOGGLE);
@@ -17881,7 +17887,8 @@ void StrategicLevelFrame::LoadPlayerStateFromPreviousLevel()
         if (item) item->Check(m_gameModeEnabled);
     }
 
-    // Ensure at least one owned territory (start territory for the new level)
+    // The new chapter gets its own original Start(n) territory set.
+    m_campaignOwnershipInitialized = true;
     if (m_ownedTerritories.empty())
         m_ownedTerritories = ChooseStartTerritories_NoBriefing(m_level, m_spellData);
     if (m_ownedTerritories.empty() && !m_level.territories.empty())
@@ -20387,6 +20394,7 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
         return;
     }
     m_ownedTerritories.push_back(territory_id);
+    m_campaignOwnershipInitialized = true;
     m_stats.territories_conquered++;
     
     {
@@ -21459,6 +21467,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     // ownership from the old map and do not collapse multiple Start(n)
     // directives to one territory during a level transition.
     newWin->m_ownedTerritories = ChooseStartTerritories_NoBriefing(lvl, newWin->m_spellData);
+    newWin->m_campaignOwnershipInitialized = true;
     if (newWin->m_ownedTerritories.empty() && !lvl.territories.empty())
         newWin->m_ownedTerritories.push_back(lvl.territories.front().id);
 
