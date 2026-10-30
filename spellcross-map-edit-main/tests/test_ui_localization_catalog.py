@@ -142,6 +142,23 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertNotIn("autoDiscoverFrom(localDataDir);", source)
         self.assertNotIn("autoDiscoverFrom(dataPath);", source)
 
+    def test_imports_are_isolated_and_failed_attempts_are_cleaned(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn('runtime_root / "game_data" / "imports"', source)
+        self.assertIn("fs::create_directory(candidate, dirError)", source)
+        self.assertIn("const auto cleanupFailedImport", source)
+        self.assertIn("fs::remove_all(localDataDir, cleanupError)", source)
+        self.assertRegex(source, r"if \\(!extractedOk\\)\\s*\\{\\s*cleanupFailedImport\\(\\);")
+        self.assertIn("const fs::path temporaryRoot = runtime_root / \"game_data\";", source)
+        self.assertIn("fs::create_directories(temporaryRoot, stagingError)", source)
+        self.assertIn("for (const auto& fresh : extracted)", source)
+
+    def test_skipped_optional_audio_cannot_be_rediscovered_from_old_install(self):
+        source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn('ini.GetBoolValue("FILES", req.skip_key, false)', source)
+        self.assertIn('ini.SetValue("FILES", req.key, "");', source)
+        self.assertIn('ini.SetBoolValue("FILES", req.skip_key, true, nullptr, true)', source)
+
     def test_force_edition_selection_with_existing_valid_archives(self):
         source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
         self.assertIn('wxString(argv[i]) == "--select-game-data"', source)
