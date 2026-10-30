@@ -1495,7 +1495,9 @@ int MapUnit::AddExperience(int points)
 	int old_level = experience_level;
 	experience = (std::min)(experience + points, unit->GetExperiencePts(12));
 	experience_level = 1;
-	while(experience >= unit->GetNextExperiencePts(experience_level))
+	// The threshold lookup clamps to the last entry at level 12.  Stop here
+	// so reaching the maximum XP cannot keep advancing against that entry.
+	while(experience_level < 12 && experience >= unit->GetNextExperiencePts(experience_level))
 		experience_level++;
 	return(old_level != experience_level);
 }
