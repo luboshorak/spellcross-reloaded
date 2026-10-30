@@ -58,7 +58,7 @@ public:
     bool LoadMapFromDefPath(const std::wstring& def_path, const std::vector<LevelData::PlayerUnitAdd>& player_units);
     bool LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_path,
         const std::vector<LevelData::PlayerUnitAdd>& player_units,
-        const std::vector<int>& enemy_unit_ids);
+        const std::vector<int>& enemy_unit_ids, int enemy_level_min = 1, int enemy_level_max = 1);
     // Switch between editor/game mode (also updates UI + resets game state when entering).
     void StartTacticalGame();
     bool StartTutorialStage(int stage);

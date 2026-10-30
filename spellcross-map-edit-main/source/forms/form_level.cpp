@@ -2791,6 +2791,7 @@ struct MissionFlowPersistSaveView
     const std::set<int>* triggeredEvents = nullptr;
     const std::unordered_map<int, int>* activatedEvents = nullptr;
     const std::vector<StrategicLevelFrame::CounterAttackState>* counterAttacks = nullptr;
+    const int* nextAttackId = nullptr;
 };
 
 struct MissionFlowPersistLoadView
@@ -2799,6 +2800,7 @@ struct MissionFlowPersistLoadView
     std::set<int>* triggeredEvents = nullptr;
     std::unordered_map<int, int>* activatedEvents = nullptr;
     std::vector<StrategicLevelFrame::CounterAttackState>* counterAttacks = nullptr;
+    int* nextAttackId = nullptr;
 };
 
 static thread_local const MissionFlowPersistSaveView* g_missionFlowPersistSave = nullptr;
@@ -7255,6 +7257,7 @@ void StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& p
     mfsv.triggeredEvents = &m_triggeredLevelEvents;
     mfsv.activatedEvents = &m_activatedEvents;
     mfsv.counterAttacks = &m_counterAttacks;
+    mfsv.nextAttackId = &m_nextCounterAttackId;
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
@@ -7344,6 +7347,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     mflv.triggeredEvents = &m_triggeredLevelEvents;
     mflv.activatedEvents = &m_activatedEvents;
     mflv.counterAttacks = &m_counterAttacks;
+    mflv.nextAttackId = &m_nextCounterAttackId;
     MissionFlowPersistLoadView* prevMFL = g_missionFlowPersistLoad;
     g_missionFlowPersistLoad = &mflv;
 
@@ -15730,6 +15734,17 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
         return;
 
     std::wstring defPath = ResolveMapDefPathForMissionToken(token);
+    // DOS creates a separate RxxYY battle for Army attacks even where the
+    // territory's ordinary conquest mission has a DEF.
+    for (auto it = m_counterAttacks.rbegin(); it != m_counterAttacks.rend(); ++it)
+    {
+        if (it->territory_id == terr_id && !it->enemy_units.empty() &&
+            ((it->triggered && !it->completed) || it->territory_lost))
+        {
+            defPath.clear();
+            break;
+        }
+    }
     std::wstring dtaPath;
     bool generatedDtaBattle = false;
     std::vector<int> generatedEnemyUnits;
@@ -15832,7 +15847,8 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
             if (m_level.attack_flags.size() >= 4)
             {
                 normalCount = std::max(1, (m_level.attack_flags[0] + m_level.attack_flags[1]) / 2);
-                specialCount = std::max(0, (m_level.attack_flags[2] + m_level.attack_flags[3]) / 2);
+                // Arguments 3/4 are XP bounds, not special-company counts.
+                specialCount = m_level.attack_special_units.empty() ? 0 : 1;
             }
             else
             {
@@ -15862,6 +15878,15 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
     m_pendingMission.valid = true;
     m_pendingMission.territory_id = terr_id;
     m_pendingMission.mission_token = token;
+    m_pendingMission.counter_attack_id = 0;
+    for (auto it = m_counterAttacks.rbegin(); it != m_counterAttacks.rend(); ++it)
+    {
+        if (it->territory_id == terr_id && it->triggered && !it->completed)
+        {
+            m_pendingMission.counter_attack_id = it->attack_id;
+            break;
+        }
+    }
     // Record both legacy player-unit indices and the concrete roster UIDs.
     // UIDs are required to identify the exact company (and therefore the
     // exact commander host) that died in the tactical battle.
@@ -15899,22 +15924,25 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
     }
 
     bool ok = generatedDtaBattle
-        ? m_main->LoadGeneratedStrategicBattleFromDtaPath(dtaPath, unitsForMission, generatedEnemyUnits)
+        ? m_main->LoadGeneratedStrategicBattleFromDtaPath(dtaPath, unitsForMission, generatedEnemyUnits,
+            m_level.attack_flags.size() >= 4 ? m_level.attack_flags[2] : 1,
+            m_level.attack_flags.size() >= 4 ? m_level.attack_flags[3] : 1)
         : m_main->LoadMapFromDefPath(defPath, unitsForMission);
 
-    if (!generatedDtaBattle && !ok && !unitsForMission.empty())
-    {
-        const std::vector<LevelData::PlayerUnitAdd> empty_units;
-        ok = m_main->LoadMapFromDefPath(defPath, empty_units);
-    }
+    // Never hide a deployment/load failure by silently restarting the map
+    // without the player's selected companies. Such a fallback breaks the
+    // pending roster UID mapping and can corrupt subsequent battle results.
 
     if (!ok)
     {
         const wxString source = generatedDtaBattle ? wxString(dtaPath) : wxString(defPath);
         wxMessageBox((generatedDtaBattle
                 ? "Generated DTA strategic battle failed\nDTA:\n"
-                : "LoadMapFromDefPath FAILED (even without units)\nDEF:\n") + source,
+                : "LoadMapFromDefPath FAILED\nDEF:\n") + source,
             "Launch", wxOK | wxICON_ERROR, this);
+        // No tactical mission was launched; do not leave a valid pending
+        // result that could be applied to a later, unrelated map.
+        m_pendingMission = PendingMissionResult{};
         return;
     }
 
@@ -16385,6 +16413,7 @@ static bool LoadStrategicStateFile(
         if (g_missionFlowPersistLoad->triggeredEvents) g_missionFlowPersistLoad->triggeredEvents->clear();
         if (g_missionFlowPersistLoad->activatedEvents) g_missionFlowPersistLoad->activatedEvents->clear();
         if (g_missionFlowPersistLoad->counterAttacks) g_missionFlowPersistLoad->counterAttacks->clear();
+        if (g_missionFlowPersistLoad->nextAttackId) *g_missionFlowPersistLoad->nextAttackId = 1;
 
         const std::string mf = ExtractJsonBlock(data, "mission_flow");
         if (!mf.empty() && mf != "null")
@@ -16412,12 +16441,17 @@ static bool LoadStrategicStateFile(
             }
             if (g_missionFlowPersistLoad->counterAttacks)
             {
+                // Replace the campaign's attack records rather than appending
+                // them to whatever state the frame had before loading.  A
+                // repeated load must be idempotent, including legacy saves.
+                g_missionFlowPersistLoad->counterAttacks->clear();
                 const std::string arr = ExtractJsonBlock(mf, "counter_attacks");
                 std::regex obj_re("\\{[^\\}]*\\}");
                 for (auto it = std::sregex_iterator(arr.begin(), arr.end(), obj_re); it != std::sregex_iterator(); ++it)
                 {
                     const std::string obj = (*it)[0].str();
                     StrategicLevelFrame::CounterAttackState ca;
+                    (void)ParseJsonIntField(obj, "attack_id", ca.attack_id);
                     (void)ParseJsonIntField(obj, "territory_id", ca.territory_id);
                     (void)ParseJsonIntField(obj, "conquest_turn", ca.conquest_turn);
                     (void)ParseJsonIntField(obj, "trigger_turn", ca.trigger_turn);
@@ -16430,6 +16464,40 @@ static bool LoadStrategicStateFile(
                     for (auto uit = std::sregex_iterator(enemyUnits.begin(), enemyUnits.end(), enemy_num_re); uit != std::sregex_iterator(); ++uit)
                         ca.enemy_units.push_back(std::stoi((*uit)[1].str()));
                     if (ca.territory_id > 0) g_missionFlowPersistLoad->counterAttacks->push_back(std::move(ca));
+                }
+                // Pre-ID saves lack attack_id. Repair absent/duplicate IDs
+                // deterministically in file order without changing the attack
+                // history or assigning a different force to a territory.
+                auto& attacks = *g_missionFlowPersistLoad->counterAttacks;
+                std::set<int> usedIds;
+                int nextId = 1;
+                for (auto& attack : attacks)
+                {
+                    if (attack.attack_id > 0 && usedIds.insert(attack.attack_id).second)
+                        nextId = std::max(nextId, attack.attack_id + (attack.attack_id < std::numeric_limits<int>::max() ? 1 : 0));
+                    else
+                        attack.attack_id = 0;
+                }
+                for (auto& attack : attacks)
+                {
+                    if (attack.attack_id != 0) continue;
+                    while (usedIds.count(nextId) && nextId < std::numeric_limits<int>::max())
+                        ++nextId;
+                    if (usedIds.count(nextId)) break;
+                    attack.attack_id = nextId;
+                    usedIds.insert(nextId);
+                }
+                if (g_missionFlowPersistLoad->nextAttackId)
+                {
+                    int storedNextId = 1;
+                    (void)ParseJsonIntField(mf, "next_counter_attack_id", storedNextId);
+                    // Persisted allocator survives pruning completed records.
+                    *g_missionFlowPersistLoad->nextAttackId =
+                        std::max(storedNextId, nextId);
+                    for (const auto& attack : attacks)
+                        if (attack.attack_id < std::numeric_limits<int>::max())
+                            *g_missionFlowPersistLoad->nextAttackId =
+                                std::max(*g_missionFlowPersistLoad->nextAttackId, attack.attack_id + 1);
                 }
             }
         }
@@ -16787,6 +16855,9 @@ static void SaveStrategicStateFile(
         g_missionFlowPersistSave->counterAttacks)
     {
         f << "  \"mission_flow\": {\n";
+        f << "    \"next_counter_attack_id\": "
+          << (g_missionFlowPersistSave->nextAttackId ? *g_missionFlowPersistSave->nextAttackId : 1)
+          << ",\n";
         f << "    \"timeouts\": {";
         bool firstT = true;
         for (const auto& kv : *g_missionFlowPersistSave->timeoutTurn)
@@ -16815,7 +16886,8 @@ static void SaveStrategicStateFile(
         for (const auto& ca : *g_missionFlowPersistSave->counterAttacks)
         {
             if (!firstC) f << ", "; firstC = false;
-            f << "{\"territory_id\":" << ca.territory_id
+            f << "{\"attack_id\":" << ca.attack_id
+              << ",\"territory_id\":" << ca.territory_id
               << ",\"conquest_turn\":" << ca.conquest_turn
               << ",\"trigger_turn\":" << ca.trigger_turn
               << ",\"counter_mission\":\"" << EscapeJson(ca.counter_mission) << "\""
@@ -17403,6 +17475,7 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
     m_stats = MissionStats{};
     m_pendingMission = PendingMissionResult{};
     m_counterAttacks.clear();
+    m_nextCounterAttackId = 1;
     m_selectedUnitsForMission.clear();
     m_selectedCommandersForMission.clear();
     m_cmdGenWindowStartTurn = ((m_turn - 1) / 25) * 25 + 1;
@@ -17516,6 +17589,7 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
     mflv.triggeredEvents = &m_triggeredLevelEvents;
     mflv.activatedEvents = &m_activatedEvents;
     mflv.counterAttacks = &m_counterAttacks;
+    mflv.nextAttackId = &m_nextCounterAttackId;
     MissionFlowPersistLoadView* prevMF = g_missionFlowPersistLoad;
     g_missionFlowPersistLoad = &mflv;
 
@@ -17823,6 +17897,7 @@ void StrategicLevelFrame::SaveStrategicState() const
     mfsv.triggeredEvents = &m_triggeredLevelEvents;
     mfsv.activatedEvents = &m_activatedEvents;
     mfsv.counterAttacks = &m_counterAttacks;
+    mfsv.nextAttackId = &m_nextCounterAttackId;
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
@@ -17928,6 +18003,9 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
             break;
         }
     }
+    // Legacy battle saves lack explicit mission identity. A mission family
+    // can occur on several territories, so never guess a different sector
+    // based on the first partial token match.
     if (territory_id < 0)
         return false;
 
@@ -17935,6 +18013,17 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
     recovered.valid = true;
     recovered.territory_id = territory_id;
     recovered.mission_token = mission_token;
+    // If this is an active strategic defence, bind it to the specific attack
+    // found in the restored campaign snapshot. This is best-effort for legacy
+    // saves, but prevents applying the recovered result as conquest rewards.
+    for (auto it = m_counterAttacks.rbegin(); it != m_counterAttacks.rend(); ++it)
+    {
+        if (it->territory_id == territory_id && it->triggered && !it->completed)
+        {
+            recovered.counter_attack_id = it->attack_id;
+            break;
+        }
+    }
 
     // Old .scsave files did not store the sent-roster mapping.  Reconstruct it
     // from tactical Alliance unit types and the strategic roster.  This is a
@@ -17943,26 +18032,53 @@ bool StrategicLevelFrame::RecoverPendingMissionFromLoadedBattle(const std::strin
     if (tactical && tactical->IsLoaded())
     {
         std::unordered_map<int, int> needed;
+        std::unordered_map<uint32_t, int> tacticalUidTypes;
         for (auto* u : tactical->units)
         {
             if (!u || !u->unit || u->is_enemy)
                 continue;
-            needed[u->unit->type_id] += 1;
-            // Stage 6.11+ tactical units carry the exact strategic roster UID.
-            // Old battle saves may not have the original sent-UID list, but
-            // preserving the surviving UIDs is still useful for recovery and
-            // avoids falling back to type-only identity where possible.
             if (u->strategic_uid != 0)
-                recovered.sent_unit_uids.push_back(u->strategic_uid);
+                tacticalUidTypes.emplace(u->strategic_uid, u->unit->type_id);
+            else
+                ++needed[u->unit->type_id];
         }
 
+        // Rebuild the expanded strategic roster in exactly the order used at
+        // launch. An exact tactical UID must be paired with its own strategic
+        // company; collecting UIDs separately from indices used to misalign
+        // them whenever different unit types or casualties were interleaved.
+        std::vector<int> exactMatches(m_playerUnits.size(), 0);
+        size_t row = 0;
         for (size_t i = 0; i < m_playerUnits.size(); ++i)
         {
-            auto& n = needed[m_playerUnits[i].unit_id];
-            const int take = std::min(std::max(0, m_playerUnits[i].count), n);
-            for (int k = 0; k < take; ++k)
+            const auto& playerUnit = m_playerUnits[i];
+            for (int k = 0; k < std::max(0, playerUnit.count); ++k, ++row)
+            {
+                const uint32_t uid = row < m_rosterRowUids.size()
+                    ? m_rosterRowUids[row] : 0;
+                auto match = tacticalUidTypes.find(uid);
+                if (uid == 0 || match == tacticalUidTypes.end() ||
+                    match->second != playerUnit.unit_id)
+                    continue;
                 recovered.sent_unit_indices.push_back(i);
-            n -= take;
+                recovered.sent_unit_uids.push_back(uid);
+                ++exactMatches[i];
+                tacticalUidTypes.erase(match);
+            }
+        }
+
+        // UID-less legacy survivors can only be matched by type. Their UID
+        // slot is explicitly zero so indices/UIDs remain one-to-one.
+        for (size_t i = 0; i < m_playerUnits.size(); ++i)
+        {
+            int& count = needed[m_playerUnits[i].unit_id];
+            const int take = std::min(std::max(0, m_playerUnits[i].count - exactMatches[i]), count);
+            for (int k = 0; k < take; ++k)
+            {
+                recovered.sent_unit_indices.push_back(i);
+                recovered.sent_unit_uids.push_back(0);
+            }
+            count -= take;
         }
     }
 
@@ -19693,6 +19809,27 @@ void StrategicLevelFrame::RecordStandaloneMissionStatistics(const LossBlock& all
 
 void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, const std::string& mission_token)
 {
+    // A resumed tactical save must resolve the exact strategic attack that
+    // launched it. Never apply an orphaned defence result as an ordinary
+    // conquest: that would grant unrelated EndOK rewards and change ownership.
+    // Legacy tactical saves (no attack ID) keep the old matching behavior.
+    if (m_pendingMission.counter_attack_id != 0)
+    {
+        const bool matchingAttack = std::any_of(m_counterAttacks.begin(),
+            m_counterAttacks.end(), [this, territory_id](const CounterAttackState& ca)
+            {
+                return ca.attack_id == m_pendingMission.counter_attack_id &&
+                    ca.territory_id == territory_id && ca.triggered && !ca.completed;
+            });
+        if (!matchingAttack)
+        {
+            wxLogError("[STRATEGY] Orphaned defence result: territory %d, attack ID %d. Campaign left unchanged.",
+                territory_id, m_pendingMission.counter_attack_id);
+            m_pendingMission.valid = false;
+            return;
+        }
+    }
+
     // Collect battle results from the tactical map (losses, damage, unit experience).
     // John Alexander's *strategic* XP is not derived from kill counts; the
     // original campaign scripts provide the mission rewards explicitly via
@@ -19711,9 +19848,15 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
 
     // Check if this was a counter-attack mission
     bool wasCounterAttack = false;
-    for (auto& ca : m_counterAttacks)
+    for (auto attack = m_counterAttacks.rbegin(); attack != m_counterAttacks.rend(); ++attack)
     {
-        if (ca.territory_id == territory_id && ca.triggered && !ca.completed)
+        auto& ca = *attack;
+        if (ca.territory_id == territory_id && ca.triggered && !ca.completed &&
+            // A battle's result may only complete the attack that launched
+            // it. Older v1-v3 tactical saves have no ID and retain the
+            // previous latest-first fallback.
+            (m_pendingMission.counter_attack_id == 0 ||
+             ca.attack_id == m_pendingMission.counter_attack_id))
         {
             wasCounterAttack = true;
             if (success)
@@ -19737,6 +19880,11 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
             break;
         }
     }
+
+    // Generated defence has its own outcome; conquest DEF rewards, successor
+    // missions and chapter completion do not belong to this battle.
+    if (wasCounterAttack)
+        mission = nullptr;
 
     if (success)
     {
@@ -19804,7 +19952,7 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
         // mission on that territory.  If that mission has EndOKMission(next), the
         // territory remains hostile and the next stage must be completed first.
         bool isLevelComplete = false;
-        if (!hasSuccessor)
+        if (!hasSuccessor && !wasCounterAttack)
         {
             if (m_level.end_territory > 0)
             {
@@ -19826,7 +19974,7 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
                         (!baseUp.empty() && baseUp != "NONE" && tokenUp.rfind(baseUp, 0) == 0) ||
                         (!introUp.empty() && introUp != "NONE" && tokenUp.rfind(introUp, 0) == 0);
                 }
-                isLevelComplete = (territory_id == m_level.end_territory) && tokenMatchesFinal;
+                isLevelComplete = !wasCounterAttack && (territory_id == m_level.end_territory) && tokenMatchesFinal;
             }
             else if (mission && mission->is_level_final)
             {
@@ -20023,7 +20171,12 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
             size_t& pos = consumedByType[tid];
             if (it != survivorsByType.end())
             {
-                while (pos < it->second.size() && matchedSurvivors.count(it->second[pos]) != 0)
+                // Legacy type matching may only consume a company that has
+                // no strategic UID. A UID-bearing survivor belongs to its
+                // exact company and must not be stolen by another casualty.
+                while (pos < it->second.size() &&
+                    (matchedSurvivors.count(it->second[pos]) != 0 ||
+                     it->second[pos]->strategic_uid != 0))
                     ++pos;
                 if (pos < it->second.size())
                     survivor = it->second[pos++];
@@ -20196,10 +20349,35 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
         PlayVideo(terr->conquest_video);
     }
     
-    // Schedule counter-attack if defined
-    if (terr && terr->counter_attack_turn > 0 && !terr->counter_attack_mission.empty())
+    // A recaptured territory starts a fresh ownership epoch.  A scheduled
+    // defence from an earlier conquest must not fire after the recapture,
+    // and a completed attack must not shadow the new defence when restoring
+    // strategic saves.  Preserve active attacks: they represent an unresolved
+    // battle and must be resolved by the mission-result flow instead.
+    m_counterAttacks.erase(
+        std::remove_if(m_counterAttacks.begin(), m_counterAttacks.end(),
+            [territory_id](const CounterAttackState& ca)
+            {
+                return ca.territory_id == territory_id && (ca.completed || !ca.triggered);
+            }),
+        m_counterAttacks.end());
+
+    // Schedule at most one new defence for this ownership epoch.  In
+    // particular, do not add a second record if a scripted Army attack is
+    // already active for the territory.
+    const bool unresolvedAttack = std::any_of(
+        m_counterAttacks.begin(), m_counterAttacks.end(),
+        [territory_id](const CounterAttackState& ca)
+        {
+            return ca.territory_id == territory_id && ca.triggered && !ca.completed;
+        });
+    if (!unresolvedAttack && terr && terr->counter_attack_turn > 0 &&
+        !terr->counter_attack_mission.empty())
     {
         CounterAttackState ca;
+        ca.attack_id = m_nextCounterAttackId;
+        if (m_nextCounterAttackId < std::numeric_limits<int>::max())
+            ++m_nextCounterAttackId;
         ca.territory_id = territory_id;
         ca.conquest_turn = m_turn;
         ca.trigger_turn = m_turn + terr->counter_attack_turn;
@@ -20300,8 +20478,34 @@ void StrategicLevelFrame::CheckCounterAttacks()
         if (ca.triggered || ca.completed)
             continue;
 
+        // A scheduled defence belongs to the ownership epoch in which it was
+        // created.  If the sector has since been lost, it must never overwrite
+        // the hostile mission token or ask the player to defend enemy land.
+        if (std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+                ca.territory_id) == m_ownedTerritories.end())
+        {
+            ca.completed = true;
+            continue;
+        }
+
         if (m_turn >= ca.trigger_turn)
         {
+            // Legacy saves can contain several unresolved attacks for the
+            // same territory. Do not display a second defence prompt or
+            // replace the live mission if another attack is already active.
+            const bool alreadyUnderAttack = std::any_of(
+                m_counterAttacks.begin(), m_counterAttacks.end(),
+                [&ca](const CounterAttackState& other)
+                {
+                    return &other != &ca && other.territory_id == ca.territory_id &&
+                        other.triggered && !other.completed;
+                });
+            if (alreadyUnderAttack)
+            {
+                // Keep the scheduled entry pending until the active attack
+                // finishes; it can be discarded on recapture if obsolete.
+                continue;
+            }
             ca.triggered = true;
 
             // Set the counter-attack mission on the territory
@@ -20446,6 +20650,62 @@ void StrategicLevelFrame::ProcessLevelEvents()
         if (!evt)
             continue;
 
+        // Determine the Army target before committing ANY event side effects.
+        // If no sector is available, retry the whole event next turn.
+        int armyTargetId = -1;
+        if (!evt->armies.empty())
+        {
+            std::unordered_set<int> owned(m_ownedTerritories.begin(), m_ownedTerritories.end());
+            std::unordered_set<int> frontLine;
+            if (m_clkW > 0 && m_clkH > 0 &&
+                m_clkValues.size() == static_cast<size_t>(m_clkW) * m_clkH)
+            {
+                auto territoryAt = [this](int x, int y) -> int {
+                    const uint8_t raw = m_clkValues[static_cast<size_t>(y) * m_clkW + x];
+                    return raw >= 129 ? raw - 128 : raw;
+                };
+                for (int y = 0; y < m_clkH; ++y)
+                {
+                    for (int x = 0; x < m_clkW; ++x)
+                    {
+                        const int a = territoryAt(x, y);
+                        if (a <= 0) continue;
+                        auto markBorder = [&](int b) {
+                            if (b <= 0 || a == b) return;
+                            if (owned.count(a) && !owned.count(b))
+                                frontLine.insert(a);
+                            if (owned.count(b) && !owned.count(a))
+                                frontLine.insert(b);
+                        };
+                        if (x + 1 < m_clkW) markBorder(territoryAt(x + 1, y));
+                        if (y + 1 < m_clkH) markBorder(territoryAt(x, y + 1));
+                    }
+                }
+            }
+            std::vector<int> eligible;
+            for (const int id : m_ownedTerritories)
+                if (id != m_level.start_territory &&
+                    std::none_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+                        [id](const CounterAttackState& attack) {
+                            // A scheduled scripted defence is also unresolved.
+                            // Do not stack an Army event on the same sector;
+                            // its later timer would otherwise overwrite the
+                            // active attack's mission while the battle waits.
+                            return attack.territory_id == id && !attack.completed;
+                        }) &&
+                    (frontLine.empty() || frontLine.count(id) != 0) &&
+                    std::find_if(m_level.territories.begin(), m_level.territories.end(),
+                        [id](const LevelTerritory& t) { return t.id == id; })
+                        != m_level.territories.end())
+                    eligible.push_back(id);
+            if (eligible.empty())
+            {
+                wxLogDebug("[STRATEGY] Army event %d deferred: no eligible sector.", eid);
+                continue;
+            }
+            armyTargetId = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
+        }
+
         m_triggeredLevelEvents.insert(eid);
         processed_this_turn.insert(eid);
 
@@ -20534,7 +20794,7 @@ void StrategicLevelFrame::ProcessLevelEvents()
         }
 
         // Army: counter-attack on a player-owned territory
-        if (!evt->armies.empty() && !m_ownedTerritories.empty())
+        if (!evt->armies.empty())
         {
             // Army(...) defines the scripted attacking force; it does NOT
             // designate the last owned territory as the target. In particular,
@@ -20544,49 +20804,12 @@ void StrategicLevelFrame::ProcessLevelEvents()
             // Prefer actual front-line territory borders from LEVEL_XX.CLK.
             // If the CLK is unavailable (e.g. custom map), any other owned
             // territory is eligible; never silently attack the command sector.
-            std::unordered_set<int> owned(m_ownedTerritories.begin(), m_ownedTerritories.end());
-            std::unordered_set<int> frontLine;
-            if (m_clkW > 0 && m_clkH > 0 &&
-                m_clkValues.size() == static_cast<size_t>(m_clkW) * m_clkH)
-            {
-                auto territoryAt = [this](int x, int y) -> int {
-                    const uint8_t raw = m_clkValues[static_cast<size_t>(y) * m_clkW + x];
-                    return raw >= 129 ? raw - 128 : raw;
-                };
-                for (int y = 0; y < m_clkH; ++y)
-                {
-                    for (int x = 0; x < m_clkW; ++x)
-                    {
-                        const int a = territoryAt(x, y);
-                        if (a <= 0) continue;
-                        auto markBorder = [&](int b) {
-                            if (b <= 0 || a == b) return;
-                            if (owned.count(a) && !owned.count(b))
-                                frontLine.insert(a);
-                            if (owned.count(b) && !owned.count(a))
-                                frontLine.insert(b);
-                        };
-                        if (x + 1 < m_clkW) markBorder(territoryAt(x + 1, y));
-                        if (y + 1 < m_clkH) markBorder(territoryAt(x, y + 1));
-                    }
-                }
-            }
-            std::vector<int> eligible;
-            for (const int id : m_ownedTerritories)
-                if (id != m_level.start_territory &&
-                    (frontLine.empty() || frontLine.count(id) != 0) &&
-                    std::find_if(m_level.territories.begin(), m_level.territories.end(),
-                        [id](const LevelTerritory& t) { return t.id == id; })
-                        != m_level.territories.end())
-                    eligible.push_back(id);
-            if (eligible.empty())
-            {
-                wxLogDebug("[STRATEGY] Army event %d has no eligible defending territory.", evt->id);
-                continue;
-            }
-            const int target_tid = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
+            const int target_tid = armyTargetId;
 
             CounterAttackState eventAttack;
+            eventAttack.attack_id = m_nextCounterAttackId;
+            if (m_nextCounterAttackId < std::numeric_limits<int>::max())
+                ++m_nextCounterAttackId;
             eventAttack.territory_id = target_tid;
             eventAttack.conquest_turn = m_turn;
             eventAttack.trigger_turn = m_turn;

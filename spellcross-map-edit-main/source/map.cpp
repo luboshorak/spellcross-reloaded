@@ -9541,6 +9541,11 @@ bool SpellMap::ProcessReactionFire()
             continue;
         if (!_ptr_in_units_list(units, entry.target) || entry.target->isDead())
             continue;
+        // Contact-time eligibility can change between volley animations.
+        // Never overwrite another action or fire from a deactivated unit.
+        if (!entry.shooter->unit || !entry.target->unit ||
+            !entry.shooter->isActive() || IsUnitBusy(entry.shooter))
+            continue;
         if (entry.shooter->GetFireCount() <= 0)
             continue;
         if (!entry.shooter->unit->canAttack(entry.target->unit))
@@ -9564,6 +9569,7 @@ bool SpellMap::ProcessReactionFire()
         unit_selection = entry.shooter;
         unit_selection_mod = true;
         g_attack_map_dirty_for = entry.shooter;
+        g_move_range_dirty_for = entry.shooter;
 
         if (StartAttack_NoHUD(entry.shooter, entry.target))
             return true;
@@ -12678,6 +12684,10 @@ int SpellMap::Tick()
 				unit_selection = restore;
 				unit_selection_mod = true;
 				g_attack_map_dirty_for = restore;
+				// Damage, AP and occupancy may have changed during the volley.
+				// Flush the shared movement range before the next player click,
+				// just as SelectUnit does for an ordinary selection change.
+				g_move_range_dirty_for = restore;
 				unit = restore;
 				InvalidateHUDbuttons();
 			}

@@ -84,6 +84,7 @@ namespace
         std::string strategic_state_json;
         bool pending_valid = false;
         int territory_id = -1;
+        int counter_attack_id = 0;
         std::string mission_token;
         std::vector<std::uint64_t> sent_unit_indices;
         std::vector<std::uint32_t> sent_unit_uids;
@@ -142,7 +143,7 @@ namespace
 
     static constexpr char kTacticalContextMarker[] = "\n--SPELLCROSS-STRATEGIC-CONTEXT-V1--\n";
     static constexpr std::uint32_t kTacticalContextMagic = 0x31584353u; // SCX1
-    static constexpr std::uint32_t kTacticalContextVersion = 3u;
+    static constexpr std::uint32_t kTacticalContextVersion = 4u;
 
     template <typename T>
     static bool WriteCtxPod(std::ostream& os, const T& v)
@@ -208,6 +209,8 @@ namespace
             const std::int32_t x = static_cast<std::int32_t>(v);
             if (!WriteCtxPod(os, x)) return false;
         }
+        const std::int32_t attackId = static_cast<std::int32_t>(ctx.counter_attack_id);
+        if (!WriteCtxPod(os, attackId)) return false;
         return static_cast<bool>(os);
     }
 
@@ -259,6 +262,12 @@ namespace
             ctx.mission_losses.enemy_heavy = losses[5];
             ctx.mission_losses.enemy_air = losses[6];
             ctx.mission_losses.enemy_commanders = losses[7];
+        }
+        if (ver >= 4u)
+        {
+            std::int32_t attackId = 0;
+            if (!ReadCtxPod(is, attackId) || attackId < 0) return false;
+            ctx.counter_attack_id = attackId;
         }
         ctx.present = true;
         return true;
@@ -1840,7 +1849,7 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
 
 bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_path,
     const std::vector<LevelData::PlayerUnitAdd>& player_units,
-    const std::vector<int>& enemy_unit_ids)
+    const std::vector<int>& enemy_unit_ids, int enemy_level_min, int enemy_level_max)
 {
     if (!spell_map || !spell_data || dta_path.empty())
         return false;
@@ -1972,6 +1981,12 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
     // band. PlaceUnit() is deliberately used instead of trusting a raw tile: it
     // resolves local terrain restrictions for walkers, hover units and air units.
     size_t enemySeedIndex = 0;
+    // DOS FUN_00085550: AttackFlags arguments 3/4 bound the shared base
+    // rank and each company's additional random 0..2 levels.
+    enemy_level_min = std::clamp(enemy_level_min, 1, 12);
+    enemy_level_max = std::clamp(enemy_level_max, enemy_level_min, 12);
+    const int baseEnemyLevel = std::max(enemy_level_min,
+        enemy_level_min + std::rand() % (enemy_level_max - enemy_level_min + 1) - 1);
     for (int unitId : enemy_unit_ids)
     {
         SpellUnitRec* unitRec = spell_data->units ? spell_data->units->GetUnit(unitId) : nullptr;
@@ -1985,7 +2000,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
         unit->behave = MapUnitType::NormalUnit;
         unit->is_enemy = 1;
         unit->is_active = 1;
-        unit->InitExperience(0);
+        unit->InitExperience(std::min(enemy_level_max, baseEnemyLevel + std::rand() % 3));
         unit->man = std::max(1, unitRec->cnt);
         unit->wounded = 0;
         unit->morale = 100.0;
@@ -3548,6 +3563,7 @@ bool MainFrame::SaveTacticalGameWithCampaignContext(const std::wstring& path)
         ctx.pending_valid = pending.valid;
         ctx.territory_id = pending.territory_id;
         ctx.mission_token = pending.mission_token;
+        ctx.counter_attack_id = pending.counter_attack_id;
         ctx.sent_unit_indices.reserve(pending.sent_unit_indices.size());
         for (size_t idx : pending.sent_unit_indices)
             ctx.sent_unit_indices.push_back(static_cast<std::uint64_t>(idx));
@@ -3620,6 +3636,7 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
             pending.valid = ctx.pending_valid;
             pending.territory_id = ctx.territory_id;
             pending.mission_token = ctx.mission_token;
+            pending.counter_attack_id = ctx.counter_attack_id;
             pending.sent_unit_indices.reserve(ctx.sent_unit_indices.size());
             for (std::uint64_t idx : ctx.sent_unit_indices)
                 pending.sent_unit_indices.push_back(static_cast<size_t>(idx));

@@ -489,13 +489,17 @@ int SpellUnitRec::isSingleMan()
 // calculate base experience points for given exp. level 1-12 (use for precalculation only)
 int SpellUnitRec::CalcExperiencePts(int level)
 {
-	// very crude approximation of strange Spellcross experience boundaries
-	// note: it's not accurate, but decently close...
-	double a = (double)exp_min;
-	double b = log(200.0*exp_max/exp_min)/log(12);
 	level = (std::min)((std::max)(level,0),11);
-	int points = (int)(a*pow((double)level,b));
-	return(points);
+	// Zero-based table index; DOS threshold routine takes index + 1.
+	// EN 0x88146: preserve its single-precision intermediate stores.
+	if(level == 0)
+		return 0;
+	if(level == 1)
+		return exp_min;
+	float scaled = (level - 1)*0.125f;
+	float squared = scaled*scaled;
+	float growth = (exp_max - exp_min)*squared;
+	return (int)(2.0L*exp_min + (long double)growth);
 }
 // get base experience points for given exp. level 1-12
 int SpellUnitRec::GetExperiencePts(int level)
@@ -1481,11 +1485,11 @@ int MapUnit::InitExperience(int level)
 	experience_init = (std::min)((std::max)(level,0),12);
 	experience_level = (std::min)((std::max)(level,1),12);
 	
-	// generate random experience points based on level
-	// note: crude approximation of Spellcross, it seems actual experience is always somewhere around 20% of current level
-	int lev_a = unit->GetExperiencePts(level);
-	int lev_b = unit->GetNextExperiencePts(level);
-	experience = lev_a + (10 + rand()%11)*(lev_b - lev_a)/100;
+	// DOS adds a random offset below half the interval to the next rank.
+	int lev_a = unit->GetExperiencePts(experience_level);
+	int lev_b = unit->GetNextExperiencePts(experience_level);
+	int half_interval = (lev_b - lev_a)/2;
+	experience = lev_a + (half_interval > 0 ? rand()%half_interval : 0);
 
 	return(experience);
 }
@@ -1495,14 +1499,73 @@ int MapUnit::AddExperience(int points)
 	int old_level = experience_level;
 	experience = (std::min)(experience + points, unit->GetExperiencePts(12));
 	experience_level = 1;
-	while(experience >= unit->GetNextExperiencePts(experience_level))
+	// The threshold lookup clamps to the last entry at level 12.  Stop here
+	// so reaching the maximum XP cannot keep advancing against that entry.
+	// DOS rank lookup (EN 0x881fd / CZ 0x7fa70) leaves types with a
+	// zero first threshold at rank zero, regardless of accumulated points.
+	while(unit->GetNextExperiencePts(1) != 0 && experience_level < 12 &&
+		experience >= unit->GetNextExperiencePts(experience_level))
 		experience_level++;
 	return(old_level != experience_level);
 }
-// add points of experience based on target unit killed men
+// calculate experience for casualties caused to a target unit.
+// Original DOS routines EN 0x7CC81 / CZ 0x74BE3 distinguish killed and
+// wounded casualties.  This must be called before the target's man/wounded
+// counters are updated, because destroying the last active member also turns
+// all previously wounded members into dead casualties for the XP award.
+static int CalculateCasualtyExperiencePoints(MapUnit* target,int affected,int killed)
+{
+	if(!target || !target->unit || target->unit->cnt <= 0 || affected <= 0)
+		return 0;
+
+	affected = (std::max)(affected, 0);
+	killed = (std::clamp)(killed, 0, affected);
+	int killed_for_xp = killed;
+	int wounded_for_xp = affected - killed;
+
+	// When the hit destroys the unit, the original game awards death XP for
+	// every active and already-wounded member that disappears with the unit.
+	if(target->man <= affected)
+	{
+		killed_for_xp = (std::max)(target->man, 0) + (std::max)(target->wounded, 0);
+		wounded_for_xp = 0;
+	}
+
+	// The DOS code only substitutes half of the first threshold when the
+	// target's actual XP is exactly zero.  Do not clamp small positive XP up.
+	int base_xp = target->experience;
+	if(base_xp == 0)
+		base_xp = target->unit->GetNextExperiencePts(1)/2;
+	if(base_xp <= 0)
+		return 0;
+
+	// EN/CZ both store XP-per-member and weighted partial results as single
+	// precision.  The constants are identical in both executables:
+	// killed = 0.16, wounded = 0.06.  Positive totals are rounded by adding
+	// 0.5 before Watcom's integer conversion helper.
+	const float xp_per_member = static_cast<float>(
+		static_cast<long double>(base_xp) / static_cast<long double>(target->unit->cnt));
+	constexpr double kKilledWeight = 0.16;
+	constexpr double kWoundedWeight = 0.06;
+	const float killed_xp = static_cast<float>(
+		static_cast<long double>(killed_for_xp) * static_cast<long double>(xp_per_member) *
+		static_cast<long double>(kKilledWeight));
+	const float wounded_xp = static_cast<float>(
+		static_cast<long double>(wounded_for_xp) * static_cast<long double>(xp_per_member) *
+		static_cast<long double>(kWoundedWeight));
+	const float total_xp = static_cast<float>(
+		static_cast<long double>(killed_xp) + static_cast<long double>(wounded_xp));
+
+	return static_cast<int>(static_cast<float>(
+		static_cast<long double>(total_xp) + 0.5L));
+}
+
+// Legacy two-argument helper retained for source compatibility.  Tactical
+// combat uses the recovered total-affected/killed path below.
 int MapUnit::AddExperience(MapUnit* target,int killed)
-{	
-	return(AddExperience((killed*(std::max)(target->experience,target->unit->GetNextExperiencePts(1)/2))/target->unit->cnt));
+{
+	const int points = CalculateCasualtyExperiencePoints(target, killed, killed);
+	return points > 0 ? AddExperience(points) : 0;
 }
 // update morale level with limits protection
 int MapUnit::UpdateModale(double points)
@@ -2270,6 +2333,12 @@ MapUnit::AttackResult MapUnit::DamageTarget(MapUnit* target)
 	int killed = (int)(kill_fraction * affected);
 	killed = (std::clamp)(killed, 0, affected);
 
+	// Award XP while target->man and target->wounded still describe the
+	// pre-hit state.  The original routine needs both values when this hit
+	// destroys the unit.
+	const int casualty_xp = CalculateCasualtyExperiencePoints(target, affected, killed);
+	int level_up = casualty_xp > 0 ? AddExperience(casualty_xp) : 0;
+
 	if(target->unit->isSingleMan())
 	{
 		// One accumulated whole unit of effect destroys the vehicle/monster.
@@ -2288,9 +2357,6 @@ MapUnit::AttackResult MapUnit::DamageTarget(MapUnit* target)
 			target->wounded = 0;
 	}
 
-	int level_up = false;
-	if(killed > 0)
-		level_up = AddExperience(target, killed);
 	if(level_up)
 		PlayLevelUp();
 
