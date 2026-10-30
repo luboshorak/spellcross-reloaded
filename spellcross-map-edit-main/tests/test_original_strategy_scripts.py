@@ -54,6 +54,13 @@ class OriginalStrategyScriptsTest(unittest.TestCase):
         self.assertIn("firstAttackable < 0 && flags == 0x0D", self.strat)
         self.assertNotIn("flags == 0x1D || flags == 0x0C", self.strat)
 
+    def test_total_territory_loss_is_not_undone_by_autoload_or_visibility(self):
+        self.assertIn("bool m_campaignOwnershipInitialized = false;", self.strat_h)
+        self.assertIn("m_ownedTerritories.empty() && !m_campaignOwnershipInitialized", self.strat)
+        self.assertIn("m_campaignOwnershipInitialized = true; // even if save has zero owners", self.strat)
+        self.assertNotIn("if (m_gameModeEnabled && m_ownedTerritories.empty())", self.strat)
+        self.assertIn("newWin->m_campaignOwnershipInitialized = true;", self.strat)
+
     def test_safe_owned_territory_cannot_launch_an_attack(self):
         self.assertIn("bool StrategicLevelFrame::CanLaunchTerritoryBattle(", self.strat)
         self.assertIn("if (!owned)\n        return true;", self.strat)
