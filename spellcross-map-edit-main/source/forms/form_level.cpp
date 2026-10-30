@@ -20797,9 +20797,24 @@ void StrategicLevelFrame::ProcessLevelEvents()
                 // run on a later turn when a valid frontier sector exists.
                 // Otherwise marking it consumed above silently loses the
                 // scripted Army attack forever (including after save/load).
-                m_triggeredLevelEvents.erase(eid);
-                processed_this_turn.erase(eid);
-                wxLogDebug("[STRATEGY] Army event %d deferred: no eligible defending territory.", evt->id);
+                // Other event actions (AddUnit, RunEvents, ChangeMission,
+                // etc.) have already executed above. Only retry an Army-only
+                // event; otherwise retrying it would duplicate its side
+                // effects on every turn.
+                const bool armyOnly =
+                    evt->text_id.empty() &&
+                    evt->change_mission_territory < 0 &&
+                    evt->add_units.empty() &&
+                    evt->research_flags.empty() &&
+                    evt->set_player_territory < 0 &&
+                    evt->run_events.empty();
+                if (armyOnly)
+                {
+                    m_triggeredLevelEvents.erase(eid);
+                    processed_this_turn.erase(eid);
+                }
+                wxLogDebug("[STRATEGY] Army event %d has no eligible target (retry=%d).",
+                    evt->id, armyOnly ? 1 : 0);
                 continue;
             }
             const int target_tid = eligible[static_cast<size_t>(std::rand()) % eligible.size()];
