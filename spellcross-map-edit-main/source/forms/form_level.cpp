@@ -20668,7 +20668,9 @@ void StrategicLevelFrame::ProcessLevelEvents()
         if (evt.abs_time)
         {
             // AbsTime: fires at absolute turn number
-            if (evt.time_value >= 0 && m_turn >= evt.time_value)
+            // AbsTime(-1) is the original chapter-intro event, not a
+            // disabled timer (Event(0) gives initial companies/texts).
+            if (evt.time_value == -1 || (evt.time_value >= 0 && m_turn >= evt.time_value))
                 should_fire = true;
         }
         else if (evt.time_value >= 0)
