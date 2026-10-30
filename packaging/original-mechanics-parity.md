@@ -75,6 +75,18 @@ not full recovery of original source.
 
 ## Next evidence required
 
+### Reaction queue lifecycle review
+
+`CheckReactionFire` admits only active, idle shooters, but `ProcessReactionFire`
+previously did not repeat those checks after popping a delayed shot. It now
+checks both unit definitions and the shooter's activity/busy state before
+range calculation or `StartAttack_NoHUD`, which overwrites attack animation
+state. Invalid entries are skipped using the existing queue-drain path.
+Existing live-pointer, death, AP, status, direct-sight and range checks remain.
+This is a defensive lifecycle correction, not a recovered DOS rule.
+Release x64 compilation passed; an animated multi-shooter gameplay regression
+has not yet been performed. No claim of complete reaction-fire parity is made.
+
 This investigation is partial. One demonstrated bug does not establish parity
 of the rest of Reloaded with either original release.
 

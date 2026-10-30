@@ -9541,6 +9541,11 @@ bool SpellMap::ProcessReactionFire()
             continue;
         if (!_ptr_in_units_list(units, entry.target) || entry.target->isDead())
             continue;
+        // Contact-time eligibility can change between volley animations.
+        // Never overwrite another action or fire from a deactivated unit.
+        if (!entry.shooter->unit || !entry.target->unit ||
+            !entry.shooter->isActive() || IsUnitBusy(entry.shooter))
+            continue;
         if (entry.shooter->GetFireCount() <= 0)
             continue;
         if (!entry.shooter->unit->canAttack(entry.target->unit))
