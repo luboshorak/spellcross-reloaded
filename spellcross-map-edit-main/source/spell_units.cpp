@@ -19,7 +19,6 @@
 #include <stdexcept>
 #include <random>
 #include <algorithm>
-#include <cstring>
 
 using namespace std;
 
@@ -617,58 +616,6 @@ int SpellUnitRec::GetMaxDig()
 
 
 
-
-// Original retail display names are stored separately from unit attributes:
-// UNITS.CZ and UNITS.ENG in COMMON.FS are ordered by the same type IDs as
-// JEDNOTKY.DEF. Keep the original 8-bit CP895 bytes for SpellFont and all
-// existing UI paths; only replace the in-memory display-name fields.
-bool SpellUnits::LoadOriginalNames(const uint8_t* data, int length)
-{
-	if (!data || length <= 0 || length > 65536)
-		return false;
-
-	std::vector<std::string> names;
-	names.reserve(units.size());
-	std::string line;
-	for (int i = 0; i < length; ++i)
-	{
-		const uint8_t value = data[i];
-		if (value == 0x1A) // optional DOS EOF marker (present in UNITS.CZ)
-			break;
-		if (value == '\r' || value == '\n')
-		{
-			names.push_back(line);
-			line.clear();
-			if (value == '\r' && i + 1 < length && data[i + 1] == '\n')
-				++i;
-		}
-		else
-		{
-			line.push_back(static_cast<char>(value));
-		}
-	}
-	if (!line.empty())
-		names.push_back(line);
-
-	// Table entries are indexed by type_id; never apply a partial/misaligned
-	// table, as that could put unrelated names on otherwise correct units.
-	if (names.size() != units.size())
-		return false;
-	for (size_t i = 0; i < names.size(); ++i)
-	{
-		if (!units[i] || names[i].empty() ||
-			names[i].size() >= sizeof(units[i]->name) ||
-			names[i].find('\0') != std::string::npos)
-			return false;
-	}
-
-	for (size_t i = 0; i < names.size(); ++i)
-	{
-		std::memset(units[i]->name, 0, sizeof(units[i]->name));
-		std::memcpy(units[i]->name, names[i].data(), names[i].size());
-	}
-	return true;
-}
 
 // cleanup
 SpellUnits::~SpellUnits()
