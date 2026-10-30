@@ -175,3 +175,10 @@ buy.rank.5=Col.
 buy.rank.6=Maj. Gen.
 buy.rank.7=Lt. Gen.
 buy.rank.8=Gen.
+
+# Separate main-menu window toolbar
+menu.home.audio=&Audio...	Ctrl+A
+menu.home.screen=&Screen...	Ctrl+S
+menu.home.open_editor=Open Map Editor...
+menu.home.editor_help=Launch the standalone Spellcross map editor
+menu.home.editor=&Map Editor
