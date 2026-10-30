@@ -128,7 +128,7 @@ setup/                        included when WinRAR SFX is enabled
   spellcross_sfx_logo_hd.png high-DPI branding asset
 ```
 
-The game creates its `config.ini` and imported `game_data/DATA/` on first use. The editor keeps a separate `Editor/config.ini`. Its own `Editor/data/COMMON.fs` supplies editor resources and is different from the original retail `COMMON.FS`.
+The game creates its `config.ini` and keeps new original-data imports under `game_data/imports/DATA-*/` on first use. Existing `game_data/DATA/` folders from older releases are preserved and remain usable. The editor keeps a separate `Editor/config.ini`. Its own `Editor/data/COMMON.fs` supplies editor resources and is different from the original retail `COMMON.FS`.
 
 The packager intentionally leaves out your saves, settings, imported commercial archives and other local/private files. Keep those separately.
 
