@@ -2145,6 +2145,20 @@ static bool strategic_english(const SpellData* data)
 }
 
 // Reloaded UI labels are resolved through external UTF-8 language catalogs.
+// Retail-edition-aware rank abbreviations used by both Buy commander lists.
+// Numeric keys are kept stable for adding a third language pack later.
+static wxString LocalizedOriginalRankAbbrev(int rank)
+{
+    static constexpr const char* english[] = {
+        "Lt.", "1st Lt.", "Capt.", "Maj.", "Lt. Col.",
+        "Col.", "Maj. Gen.", "Lt. Gen.", "Gen."
+    };
+    if (rank < 0 || rank >= static_cast<int>(sizeof(english) / sizeof(english[0])))
+        return wxString::Format(L"R%d", rank);
+    const std::string key = "buy.rank." + std::to_string(rank);
+    return spellcross_ui_locale::Tr(key.c_str(), english[rank]);
+}
+
 static void append_text_snippet(wxString& info, const std::string& label, const std::string& raw)
 {
     if (raw.empty())
@@ -4230,17 +4244,6 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         // -------------------------------------------------------------
         // LEFT BOTTOM: owned commanders, seven slots per column.
         // -------------------------------------------------------------
-        auto originalRankAbbrev = [](int rank) -> wxString
-        {
-            static const wchar_t* names[] = {
-                L"por.", L"npor.", L"kpt.", L"mjr.", L"pplk.",
-                L"plk.", L"genmjr.", L"genpor.", L"armgen."
-            };
-            if (rank < 0 || rank >= static_cast<int>(sizeof(names) / sizeof(names[0])))
-                return wxString::Format(L"R%d", rank);
-            return wxString(names[rank]);
-        };
-
         for (int slot = 0; slot < static_cast<int>(m_playerCommanders.size()) && slot < 14; ++slot)
         {
             const auto& commander = m_playerCommanders[static_cast<size_t>(slot)];
@@ -4248,7 +4251,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             const int row = slot % 7;
             const int y = 331 + row * 19;
             const int ty = OriginalCenteredTextY(font, y, 16) + 1;
-            const wxString label = originalRankAbbrev(commander.rank) + L" " + wxString::FromUTF8(commander.name);
+            const wxString label = LocalizedOriginalRankAbbrev(commander.rank) + L" " + wxString::FromUTF8(commander.name);
             OriginalDrawSpellText(image, font, label, 31 + col * 153, ty, text, 122);
         }
 
@@ -4321,10 +4324,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.light_attack", "Light: %d"), rec->attack_light), 385, 327, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.heavy_attack", "Heavy: %d"), rec->attack_armored), 385, 342, text, 112);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.air_attack", "Air: %d"), rec->attack_air), 385, 357, text, 112);
-                OriginalDrawSpellText(image, font, wxString::Format(L"Objekty: %d", rec->attack_objects), 385, 372, text, 112);
-                OriginalDrawSpellText(image, font, wxString::Format(L"Obrana: %d", rec->defence), 369, 387, text, 128);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("buy.stats.objects", "Objects: %d"), rec->attack_objects), 385, 372, text, 112);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("buy.stats.defense", "Defense: %d"), rec->defence), 369, 387, text, 128);
                 OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("native.range_value", "Range: %d"), rec->fire_range), 369, 402, text, 128);
-                OriginalDrawSpellText(image, font, wxString::Format(L"Dohled: %d", rec->sdir), 369, 417, text, 128);
+                OriginalDrawSpellText(image, font, wxString::Format(spellcross_ui_locale::Tr("buy.stats.sight", "Sight: %d"), rec->sdir), 369, 417, text, 128);
 
                 if (rec->icon_glyph)
                 {
@@ -4373,7 +4376,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                  m_originalBuySelectedCommander < static_cast<int>(m_availableCommanders.size()))
         {
             const auto& commander = m_availableCommanders[static_cast<size_t>(m_originalBuySelectedCommander)];
-            const wxString label = originalRankAbbrev(commander.rank) + L" " + wxString::FromUTF8(commander.name);
+            const wxString label = LocalizedOriginalRankAbbrev(commander.rank) + L" " + wxString::FromUTF8(commander.name);
             OriginalDrawSpellText(image, font, label, 346, 296, text, 217);
             OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.alliance_commander", "Alliance commander"), 369, 322, text, 128);
             actionCost = 0;
@@ -4382,7 +4385,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         }
 
         OriginalDrawActionButton(image, font, loader, nativeUiPal,
-            495, 438, L"Koupit", actionEnabled);
+            495, 438, spellcross_ui_locale::Tr("buy.action.buy", "Buy"), actionEnabled);
 
         OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.time", "Time:"), 423, 438, text, 38);
         OriginalDrawSpellText(image, font,
@@ -8021,17 +8024,17 @@ std::vector<StrategicLevelFrame::OriginalBuyRow> StrategicLevelFrame::BuildOrigi
 
     struct Group
     {
-        const wchar_t* title;
+        wxString title;
         std::vector<OriginalBuyRow> rows;
     };
     std::array<Group, 7> groups = {{
-        { L"P\u011Bchota", {} },
-        { L"Tanky", {} },
-        { L"D\u011Blost\u0159electvo", {} },
-        { L"Transport\u00E9ry", {} },
-        { L"Radary", {} },
-        { L"Protivzdu\u0161n\u00E1", {} },
-        { L"Ostatn\u00ED", {} }
+        { spellcross_ui_locale::Tr("buy.category.infantry", "Infantry"), {} },
+        { spellcross_ui_locale::Tr("buy.category.tanks", "Tanks"), {} },
+        { spellcross_ui_locale::Tr("buy.category.artillery", "Artillery"), {} },
+        { spellcross_ui_locale::Tr("buy.category.transporters", "Transporters"), {} },
+        { spellcross_ui_locale::Tr("buy.category.radars", "Radars"), {} },
+        { spellcross_ui_locale::Tr("buy.category.air_defense", "Air defense"), {} },
+        { spellcross_ui_locale::Tr("buy.category.other", "Other"), {} }
     }};
 
     if (m_spellData && m_spellData->units)
@@ -8086,30 +8089,20 @@ std::vector<StrategicLevelFrame::OriginalBuyRow> StrategicLevelFrame::BuildOrigi
     {
         if (group.rows.empty())
             continue;
-        result.push_back({ OriginalBuyRowKind::Heading, wxString(group.title), -1, true });
+        result.push_back({ OriginalBuyRowKind::Heading, group.title, -1, true });
         result.insert(result.end(), group.rows.begin(), group.rows.end());
         result.push_back({ OriginalBuyRowKind::Spacer, wxString(), -1, false });
     }
 
     if (!m_availableCommanders.empty())
     {
-        result.push_back({ OriginalBuyRowKind::Heading, L"Velitel\u00E9", -1, true });
-        auto rankAbbrev = [](int rank) -> wxString
-        {
-            static const wchar_t* names[] = {
-                L"por.", L"npor.", L"kpt.", L"mjr.", L"pplk.",
-                L"plk.", L"genmjr.", L"genpor.", L"armgen."
-            };
-            if (rank < 0 || rank >= static_cast<int>(sizeof(names) / sizeof(names[0])))
-                return wxString::Format(L"R%d", rank);
-            return wxString(names[rank]);
-        };
+        result.push_back({ OriginalBuyRowKind::Heading, spellcross_ui_locale::Tr("strategic.commanders", "Commanders"), -1, true });
         for (int i = 0; i < static_cast<int>(m_availableCommanders.size()); ++i)
         {
             const auto& commander = m_availableCommanders[static_cast<size_t>(i)];
             OriginalBuyRow row;
             row.kind = OriginalBuyRowKind::Commander;
-            row.label = rankAbbrev(commander.rank) + L" " + wxString::FromUTF8(commander.name);
+            row.label = LocalizedOriginalRankAbbrev(commander.rank) + L" " + wxString::FromUTF8(commander.name);
             row.id = i;
             row.enabled = commanderSlotAvailable;
             result.push_back(std::move(row));

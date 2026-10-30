@@ -153,3 +153,25 @@ research.group.upgrades=Vylepšení
 research.group.races=Rasy a jednotky
 native.down=Dolů
 native.up=Nahoru
+
+# Original-style Buy screen dynamic labels
+buy.category.infantry=Pěchota
+buy.category.tanks=Tanky
+buy.category.artillery=Dělostřelectvo
+buy.category.transporters=Transportéry
+buy.category.radars=Radary
+buy.category.air_defense=Protivzdušná
+buy.category.other=Ostatní
+buy.action.buy=Koupit
+buy.stats.objects=Objekty: %d
+buy.stats.defense=Obrana: %d
+buy.stats.sight=Dohled: %d
+buy.rank.0=por.
+buy.rank.1=npor.
+buy.rank.2=kpt.
+buy.rank.3=mjr.
+buy.rank.4=pplk.
+buy.rank.5=plk.
+buy.rank.6=genmjr.
+buy.rank.7=genpor.
+buy.rank.8=armgen.

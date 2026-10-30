@@ -2633,14 +2633,14 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     form_mmenu = NULL;
         
     wxMenu* menuFile = new wxMenu;
-    menuFile->Append(ID_LoadCustomMap, spellcross_ui_locale::Tr("menu.load_custom_map", "Load &custom map...\\tCtrl+Alt+O"));
-    menuFile->Append(ID_MainMenu, spellcross_ui_locale::Tr("menu.main", "Main &menu\\tCtrl+M"));
+    menuFile->Append(ID_LoadCustomMap, spellcross_ui_locale::Tr("menu.load_custom_map", "Load &custom map...\tCtrl+Alt+O"));
+    menuFile->Append(ID_MainMenu, spellcross_ui_locale::Tr("menu.main", "Main &menu\tCtrl+M"));
     menuFile->AppendSeparator();
-    wxMenuItem* miLoadStrategic = menuFile->Append(wxID_ANY, spellcross_ui_locale::Tr("menu.load_strategic", "Load &strategic game...\\tCtrl+Alt+L"));
+    wxMenuItem* miLoadStrategic = menuFile->Append(wxID_ANY, spellcross_ui_locale::Tr("menu.load_strategic", "Load &strategic game...\tCtrl+Alt+L"));
     menuFile->Append(wxID_EXIT, spellcross_ui_locale::Tr("menu.exit", "E&xit"));
     wxMenu* menuGame = new wxMenu;
-    menuGame->Append(ID_mmSaveGameState, spellcross_ui_locale::Tr("menu.save_game", "Save game state...\\tCtrl+Shift+S"));
-    menuGame->Append(ID_mmLoadGameState, spellcross_ui_locale::Tr("menu.load_game", "Load game state...\\tCtrl+Shift+L"));
+    menuGame->Append(ID_mmSaveGameState, spellcross_ui_locale::Tr("menu.save_game", "Save game state...\tCtrl+Shift+S"));
+    menuGame->Append(ID_mmLoadGameState, spellcross_ui_locale::Tr("menu.load_game", "Load game state...\tCtrl+Shift+L"));
     menuGame->Append(ID_mmOpenMapEditor, spellcross_ui_locale::Tr("menu.open_editor", "Open mission in Map Editor..."));
     menuGame->AppendSeparator();
     menuGame->Append(ID_mmResetViewMap, spellcross_ui_locale::Tr("menu.reset_view", "Reset view map"));

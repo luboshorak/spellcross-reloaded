@@ -153,3 +153,25 @@ research.group.upgrades=Upgrades
 research.group.races=Races and units
 native.down=Down
 native.up=Up
+
+# Original-style Buy screen dynamic labels
+buy.category.infantry=Infantry
+buy.category.tanks=Tanks
+buy.category.artillery=Artillery
+buy.category.transporters=Transporters
+buy.category.radars=Radars
+buy.category.air_defense=Air defense
+buy.category.other=Other
+buy.action.buy=Buy
+buy.stats.objects=Objects: %d
+buy.stats.defense=Defense: %d
+buy.stats.sight=Sight: %d
+buy.rank.0=Lt.
+buy.rank.1=1st Lt.
+buy.rank.2=Capt.
+buy.rank.3=Maj.
+buy.rank.4=Lt. Col.
+buy.rank.5=Col.
+buy.rank.6=Maj. Gen.
+buy.rank.7=Lt. Gen.
+buy.rank.8=Gen.
