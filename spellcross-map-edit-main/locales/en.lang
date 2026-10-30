@@ -58,3 +58,27 @@ menu.difficulty=Game &Difficulty
 menu.easy=&Easy
 menu.normal=&Normal
 menu.hard=&Hard
+
+menu.exit=E&xit
+menu.about=&About
+options.load=Load
+options.save=Save
+options.empty=-= EMPTY =-
+options.slot=SLOT
+options.gamma=Gamma Correction
+options.music=Music Volume
+options.sound=Sound Volume
+options.difficulty=Game Difficulty
+options.easy=Easy
+options.normal=Normal
+options.hard=Hard
+stats.rank.0=Lieutenant
+stats.rank.1=First lieutenant
+stats.rank.2=Captain
+stats.rank.3=Major
+stats.rank.4=Lieutenant colonel
+stats.rank.5=Colonel
+stats.rank.6=Major general
+stats.rank.7=Lieutenant general
+stats.rank.8=Army general
+stats.rank_unknown=Rank
