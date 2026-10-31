@@ -1,6 +1,7 @@
 #include "form_about.h"
 #include "app_identity.h"
 #include "app_version.h"
+#include "../release_version_compare.h"
 
 #include <wx/bitmap.h>
 #include <wx/panel.h>
@@ -31,61 +32,7 @@ namespace
     constexpr int ID_OPEN_PROJECT = wxID_HIGHEST + 402;
     constexpr int ID_OPEN_RELEASE = wxID_HIGHEST + 403;
 
-    struct VersionParts
-    {
-        std::vector<int> values;
-        bool valid = false;
-    };
-
-    VersionParts ParseVersion(const std::string& text)
-    {
-        VersionParts result;
-        size_t pos = 0;
-        while (pos < text.size() && !std::isdigit(static_cast<unsigned char>(text[pos])))
-            ++pos;
-        if (pos == text.size())
-            return result;
-
-        while (pos < text.size())
-        {
-            if (!std::isdigit(static_cast<unsigned char>(text[pos])))
-                break;
-
-            int value = 0;
-            while (pos < text.size() && std::isdigit(static_cast<unsigned char>(text[pos])))
-            {
-                value = value * 10 + (text[pos] - '0');
-                ++pos;
-            }
-            result.values.push_back(value);
-
-            if (pos >= text.size() || text[pos] != '.')
-                break;
-            ++pos;
-        }
-
-        result.valid = !result.values.empty();
-        return result;
-    }
-
-    int CompareVersions(const std::string& left, const std::string& right, bool& comparable)
-    {
-        const VersionParts a = ParseVersion(left);
-        const VersionParts b = ParseVersion(right);
-        comparable = a.valid && b.valid;
-        if (!comparable)
-            return 0;
-
-        const size_t count = std::max(a.values.size(), b.values.size());
-        for (size_t i = 0; i < count; ++i)
-        {
-            const int av = i < a.values.size() ? a.values[i] : 0;
-            const int bv = i < b.values.size() ? b.values[i] : 0;
-            if (av < bv) return -1;
-            if (av > bv) return 1;
-        }
-        return 0;
-    }
+    using spellcross_release::CompareVersions;
 
 #ifdef __WXMSW__
     class InternetHandle
@@ -218,7 +165,7 @@ namespace
                 firstTag = candidate;
 
             bool candidateComparable = false;
-            CompareVersions(candidate, SPELLCROSS_VERSION_STRING, candidateComparable);
+            CompareVersions(candidate, SPELLCROSS_RELEASE_LABEL, candidateComparable);
             if (!candidateComparable)
                 continue;
 
@@ -418,7 +365,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
     m_latestReleaseUrl = wxString::FromUTF8(releaseUrl.c_str());
 
     bool comparable = false;
-    const int cmp = CompareVersions(SPELLCROSS_VERSION_STRING, latestTag, comparable);
+    const int cmp = CompareVersions(SPELLCROSS_RELEASE_LABEL, latestTag, comparable);
     const wxString latest = wxString::FromUTF8(latestTag.c_str());
 
     if (!comparable)
