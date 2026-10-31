@@ -9447,9 +9447,22 @@ void StrategicLevelFrame::OnBuyAction(wxCommandEvent&)
                     "Buy", wxOK | wxICON_WARNING, this);
                 return;
             }
+            // Keep a concrete state for every purchased company, including
+            // purchases made through the older (non-native) BUY screen.
+            while (m_unitStates.size() < m_playerUnits.size())
+            {
+                UnitInstanceState existing;
+                existing.uid = m_nextRosterUid++;
+                m_unitStates.push_back(existing);
+            }
             LevelData::PlayerUnitAdd add;
             add.unit_id = tid; add.count = 1; add.health = 100; add.extra = "-";
             m_playerUnits.push_back(add);
+            UnitInstanceState state;
+            state.uid = m_nextRosterUid++;
+            state.cooldown_turns = 2;
+            m_unitStates.push_back(state);
+            RebuildRosterRowUidsFromUnitStates();
             m_money -= cost;
         }
     }
@@ -9461,8 +9474,27 @@ void StrategicLevelFrame::OnBuyAction(wxCommandEvent&)
         const auto& u = m_playerUnits[idx];
         const int cost = GetUnitBuyCost(u.unit_id);
         if (cost <= 0) { wxMessageBox("No price defined.", "Sell", wxOK | wxICON_WARNING, this); return; }
+        if (static_cast<size_t>(idx) < m_unitStates.size() &&
+            m_unitStates[idx].cooldown_turns > 0)
+            return;
+
+        uint32_t uid = static_cast<size_t>(idx) < m_unitStates.size()
+            ? m_unitStates[idx].uid : 0;
+        if (uid != 0)
+        {
+            std::vector<std::string> slotsToClear;
+            for (const auto& hs : m_hierarchySlots)
+                if (hs.type == "unit" && hs.unit_uid == uid)
+                    slotsToClear.push_back(hs.id);
+            for (const auto& slot : slotsToClear)
+                ClearHierarchySlot(slot);
+            m_selectedUnitsForMission.erase(uid);
+        }
         m_money += cost / 2;
         m_playerUnits.erase(m_playerUnits.begin() + idx);
+        if (static_cast<size_t>(idx) < m_unitStates.size())
+            m_unitStates.erase(m_unitStates.begin() + idx);
+        RebuildRosterRowUidsFromUnitStates();
     }
 
     SaveStrategicState();
@@ -15492,12 +15524,23 @@ void StrategicLevelFrame::OnBuyUnits(wxCommandEvent&)
     addProto.health = 100;
     addProto.extra = "-";
 
+    while (m_unitStates.size() < m_playerUnits.size())
+    {
+        UnitInstanceState existing;
+        existing.uid = m_nextRosterUid++;
+        m_unitStates.push_back(existing);
+    }
     for (int i = 0; i < count; ++i)
     {
         LevelData::PlayerUnitAdd add = addProto;
         add.count = 1; // per-instance
         m_playerUnits.push_back(add);
+        UnitInstanceState state;
+        state.uid = m_nextRosterUid++;
+        state.cooldown_turns = 2;
+        m_unitStates.push_back(state);
     }
+    RebuildRosterRowUidsFromUnitStates();
 
     m_money -= totalCost;
     SaveStrategicState();
@@ -15615,15 +15658,35 @@ void StrategicLevelFrame::OnSellUnits(wxCommandEvent&)
     if (sellCount > entry.count)
         sellCount = entry.count;
 
-    int refund = (entry.cost * sellCount) / 2;
+    if (entry.index < 0 || entry.index >= (int)m_playerUnits.size())
+        return;
+    if (static_cast<size_t>(entry.index) < m_unitStates.size() &&
+        m_unitStates[entry.index].cooldown_turns > 0)
+        return;
+
+    const int refund = (entry.cost * sellCount) / 2;
     m_money += refund;
 
-    if (entry.index >= 0 && entry.index < (int)m_playerUnits.size())
+    auto& unit = m_playerUnits[entry.index];
+    unit.count -= sellCount;
+    if (unit.count <= 0)
     {
-        auto& unit = m_playerUnits[entry.index];
-        unit.count -= sellCount;
-        if (unit.count <= 0)
-            m_playerUnits.erase(m_playerUnits.begin() + entry.index);
+        const uint32_t uid = static_cast<size_t>(entry.index) < m_unitStates.size()
+            ? m_unitStates[entry.index].uid : 0;
+        if (uid != 0)
+        {
+            std::vector<std::string> slotsToClear;
+            for (const auto& hs : m_hierarchySlots)
+                if (hs.type == "unit" && hs.unit_uid == uid)
+                    slotsToClear.push_back(hs.id);
+            for (const auto& slot : slotsToClear)
+                ClearHierarchySlot(slot);
+            m_selectedUnitsForMission.erase(uid);
+        }
+        m_playerUnits.erase(m_playerUnits.begin() + entry.index);
+        if (static_cast<size_t>(entry.index) < m_unitStates.size())
+            m_unitStates.erase(m_unitStates.begin() + entry.index);
+        RebuildRosterRowUidsFromUnitStates();
     }
 
     SaveStrategicState();
