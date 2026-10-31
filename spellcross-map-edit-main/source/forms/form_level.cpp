@@ -1486,20 +1486,6 @@ namespace
         std::string m_type;
     };
 
-    // Research flags are campaign-script unlocks, not RESEARCH.DEF research items.
-    // Both the current chapter and the complete campaign inventory use one parser.
-    std::set<int> ParseResearchFlagsFromText(const std::string& content)
-    {
-        std::set<int> flags;
-        const std::regex re(R"(SetResearchFlag\s*\(\s*(\d+)\s*\))");
-        for (auto it = std::sregex_iterator(content.begin(), content.end(), re);
-            it != std::sregex_iterator(); ++it)
-        {
-            flags.insert(std::stoi((*it)[1].str()));
-        }
-        return flags;
-    }
-
     // Parse SetResearchFlag(N) entries from a LEVEL_XX.DEF file
     std::set<int> ParseResearchFlagsFromDef(const std::filesystem::path& defPath)
     {
@@ -1512,7 +1498,7 @@ namespace
             return {};
 
         const std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-        return ParseResearchFlagsFromText(content);
+        return spellcross_strategy::ParseCampaignUnlockFlags(content);
     }
 
     // Get cumulative research flags from LEVEL_01.DEF up to current level
@@ -14124,7 +14110,7 @@ void StrategicLevelFrame::EnsureResearchLoaded()
                 const std::string fileName = wxString::Format("LEVEL_%02d.DEF", lvl).ToStdString();
                 const std::string source = loadFileBin(dir / fileName);
                 if (source.empty()) return false;
-                const auto flags = ParseResearchFlagsFromText(source);
+                const auto flags = spellcross_strategy::ParseCampaignUnlockFlags(source);
                 allFlags.insert(flags.begin(), flags.end());
             }
             m_campaignScriptedUnitFlags = std::move(allFlags);
@@ -14168,7 +14154,7 @@ void StrategicLevelFrame::EnsureResearchLoaded()
                         break;
                     }
                     const std::string script(reinterpret_cast<const char*>(data), static_cast<size_t>(size));
-                    const auto flags = ParseResearchFlagsFromText(script);
+                    const auto flags = spellcross_strategy::ParseCampaignUnlockFlags(script);
                     allFlags.insert(flags.begin(), flags.end());
                 }
                 if (!complete) continue;
