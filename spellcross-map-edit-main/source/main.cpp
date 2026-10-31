@@ -4732,6 +4732,12 @@ void MainFrame::PlayCutsceneFromStrategic(const std::string& video_entry_name)
     }
 }
 
+bool MainFrame::HasPendingStrategicCutscenes() const
+{
+    return m_strategicCutscenePlaying || m_strategicCutsceneScheduled ||
+        !m_strategicCutsceneQueue.empty();
+}
+
 void MainFrame::PlayNextStrategicCutscene()
 {
     if (m_strategicCutscenePlaying)
@@ -4774,6 +4780,10 @@ void MainFrame::PlayNextStrategicCutscene()
     {
         m_strategicLevel->Show();
         m_strategicLevel->Raise();
+        // Chapter-intro events (including reinforcements and attacks) belong
+        // to the new map. Never display them during the previous chapter's
+        // finale or over the outgoing/incoming cutscenes.
+        m_strategicLevel->RunDeferredChapterIntroEvents();
     }
 }
 
