@@ -55,3 +55,10 @@ spellcross-map-edit-main.7z
 /config.ini
 /spellcross-map-edit-main/config.ini
 /spellcross-map-edit-main/source/config.ini
+
+# Isolated original-demo runtime cache and saves
+/demo_profile/
+/spellcross-map-edit-main/demo_profile/
+
+# Reassembled by build from the versioned demo parts
+/spellcross-map-edit-main/data/demo.dat

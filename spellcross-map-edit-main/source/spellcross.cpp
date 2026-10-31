@@ -442,14 +442,16 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	this->data_path = data_path;
 	this->cd_data_path = cd_data_path;
 
+    original_demo = files.original_demo;
+    spellcross_demo::ActiveProfile() = original_demo;
 	// ensure persistent temp folder for extracted FS contents
-	const std::filesystem::path temp_root = std::filesystem::current_path() / "temp";
+	const std::filesystem::path temp_root = spellcross_demo::RuntimeRoot() / "temp";
 
 	uint8_t* data;
 	int size;
 	
 	// store path
-	spell_data_root = data_path;
+	spell_data_root = original_demo ? temp_root.wstring() : data_path;
 
 	// load COMMON.FS
 	if(status_list)
@@ -603,6 +605,8 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	};
 	for(auto & terrain_src : terrain_list)
 	{
+        if (original_demo && terrain_src.first != "T11.FS")
+            continue;
 		auto & name = terrain_src.first;
 		// load terrain
 		if(status_list)
@@ -1361,6 +1365,3 @@ Terrain* SpellData::GetTerrain(int index)
 		return(NULL);
 	return(terrain[index]);
 }
-
-
-

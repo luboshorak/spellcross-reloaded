@@ -154,6 +154,8 @@
     <None Include="tests\test_view_events.py" />
     <!-- Runtime sidecar data shipped next to Spellcross.exe.  These files are
          referenced by the strategic/game-mode code or by its documented fallback paths. -->
+    <None Include="..\data\demo.dat.001" />
+    <None Include="..\data\demo.dat.002" />
     <None Include="..\data\C_NAMES.DEF"><Link>data\C_NAMES.DEF</Link></None>
     <None Include="..\locales\en.lang"><Link>locales\en.lang</Link></None>
     <None Include="..\locales\cs.lang"><Link>locales\cs.lang</Link></None>
@@ -415,6 +417,7 @@
       <BundledMovieFallbackData Include="$(ProjectDir)..\data\movie_fallback\*.mp4;$(ProjectDir)..\data\movie_fallback\MANIFEST.tsv" />
     </ItemGroup>
     <MakeDir Directories="$(OutDir)data;$(OutDir)data\menu;$(OutDir)data\movie_fallback" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\tools\Join-DemoPackage.ps1&quot; -Destination &quot;$(OutDir)data\demo.dat&quot;" />
     <Copy SourceFiles="@(BundledRuntimeData)" DestinationFolder="$(OutDir)data" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(BundledRuntimeMenuData)" DestinationFolder="$(OutDir)data\menu" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(BundledMovieFallbackData)" DestinationFolder="$(OutDir)data\movie_fallback" SkipUnchangedFiles="true" />

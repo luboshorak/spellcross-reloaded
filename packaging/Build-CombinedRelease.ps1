@@ -193,8 +193,9 @@ Build UTC: $((Get-Date).ToUniversalTime().ToString('o'))
 "@ | Set-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Encoding UTF8
 Write-Host "Package provenance: $gitBranch / $gitCommit / exe SHA256 $gameHash" -ForegroundColor Cyan
 
-# Whitelist project-authored support files. NEVER package retail DATA archives.
+# Whitelist support files and the original demo; never package retail DATA archives.
 $gameAssets = Join-Path $game 'data'
+& (Join-Path $game 'tools\Join-DemoPackage.ps1') -Destination (Join-Path $gameData 'demo.dat')
 foreach ($f in @('C_NAMES.DEF','DEVAST.fs','PUST.fs','T11.FS',
   'font_spellcross_7pix.fnt','font_spellcross_14pix.fnt',
   'font.ttf','logo.png','units.fsa','units.json')) {

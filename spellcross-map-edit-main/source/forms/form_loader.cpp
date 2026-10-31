@@ -208,12 +208,13 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
 	};
 
 	SpellDataFiles files;
+    files.original_demo = ini.GetBoolValue("FILES", "original_demo", false);
 	files.data_root = spelldata_path;
 	files.cd_root = spellcd_path;
 	files.common_fs = resolveSource("common_fs", spelldata_path, L"COMMON.FS");
 	files.terrain_t11_fs = resolveSource("t11_fs", spelldata_path, L"T11.FS");
-	files.terrain_pust_fs = resolveSource("pust_fs", spelldata_path, L"PUST.FS");
-	files.terrain_devast_fs = resolveSource("devast_fs", spelldata_path, L"DEVAST.FS");
+	files.terrain_pust_fs = files.original_demo ? L"" : resolveSource("pust_fs", spelldata_path, L"PUST.FS");
+	files.terrain_devast_fs = files.original_demo ? L"" : resolveSource("devast_fs", spelldata_path, L"DEVAST.FS");
 	files.units_fsu = resolveSource("units_fsu", spelldata_path, L"UNITS.FSU");
 	files.texts_fs = resolveSource("texts_fs", spelldata_path, L"TEXTS.FS");
 	files.info_fs = resolveSource("info_fs", spellcd_path, L"INFO.FS");
@@ -225,6 +226,7 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
 	if(files.cd_root.empty() && !files.info_fs.empty())
 		files.cd_root = std::filesystem::path(files.info_fs).parent_path().wstring();
 
+    UpdateList(files.original_demo ? "Source profile: original demo" : "Source profile: retail");
 	UpdateList("Resolved runtime sources:");
 	UpdateList(string_format(" - config: %ls", config_file.wstring().c_str()));
 	UpdateList(string_format(" - COMMON.FS: %ls", files.common_fs.c_str()));
@@ -376,5 +378,3 @@ void FormLoader::OnRefreshList(wxCommandEvent& event)
 	txtList->ShowPosition(txtList->GetLastPosition());
 	delete str;
 }
-
-

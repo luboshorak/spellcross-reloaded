@@ -30,6 +30,7 @@
 #pragma comment(lib, "wininet.lib")
 #endif
 #include "iso9660_import.h"
+#include "demo_import.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
@@ -418,7 +419,7 @@ namespace
         const std::string& filename)
     {
         namespace fs = std::filesystem;
-        fs::path temp_common = fs::current_path() / "temp" / "COMMON";
+        fs::path temp_common = spellcross_demo::RuntimeRoot() / "temp" / "COMMON";
 
         const std::vector<std::filesystem::path> candidates = {
             root,
@@ -1057,6 +1058,12 @@ namespace
     {
         namespace fs = std::filesystem;
 
+        bool demoProfile = ini.GetBoolValue("FILES", "original_demo", false);
+        const auto setProfile = [&](bool demo) {
+            if (demo != demoProfile) ini.SetValue("STATE", "last_map", "");
+            demoProfile = demo;
+            ini.SetBoolValue("FILES", "original_demo", demo);
+        };
         const StartupSourceRequirement reqs[] = {
             {"common_fs", "COMMON.FS", "core graphics and definitions", false, nullptr},
             {"t11_fs", "T11.FS", "T11 terrain graphics", false, nullptr},
@@ -1142,6 +1149,8 @@ namespace
             {
                 if (IsValidSourceFile(configuredPath(req), req.filename))
                     continue;
+                if (demoProfile && !spellcross_demo::RequiredArchive(req.optional, req.filename, true) && !req.optional)
+                    continue;
                 // Do not resurrect audio from an older edition when the new
                 // source explicitly omitted an optional original archive.
                 if (req.optional && req.skip_key &&
@@ -1175,7 +1184,7 @@ namespace
         bool missingRequired = false;
         for (const auto& req : reqs)
         {
-            if (!req.optional && !IsValidSourceFile(configuredPath(req), req.filename))
+            if (spellcross_demo::RequiredArchive(req.optional, req.filename, demoProfile) && !IsValidSourceFile(configuredPath(req), req.filename))
             {
                 missingRequired = true;
                 break;
@@ -1338,6 +1347,7 @@ namespace
                     currentSources.push_back(imported);
                 }
 
+                setProfile(false);
                 for (size_t i = 0; i < currentSources.size(); ++i)
                 {
                     const auto& req = reqs[i];
@@ -1377,6 +1387,7 @@ namespace
                 options.Add("Select individual game archives manually");
                 options.Add("Download CZ ISO (Spellcross_CS.iso) and import");
                 options.Add("Download EN ISO (Spellcross_EN.iso) and import");
+                options.Add("Play the bundled original Spellcross demo");
 
                 wxSingleChoiceDialog choice(nullptr,
                     "Spellcross needs files from your original game.\n\n"
@@ -1388,6 +1399,39 @@ namespace
                     return false;
 
                 const int option = choice.GetSelection();
+                if (option == 6)
+                {
+                    fs::path package;
+                    for (const auto& candidate : { runtime_root / "data" / "demo.dat", executable_dir / "data" / "demo.dat" })
+                        if (fs::is_regular_file(candidate)) { package = candidate; break; }
+                    if (package.empty())
+                    {
+                        wxMessageBox("Bundled data/demo.dat was not found. Reinstall the complete release.", "Original demo", wxOK | wxICON_WARNING);
+                        continue;
+                    }
+                    fs::path demoData;
+                    std::string demoError;
+                    bool imported = false;
+                    { wxBusyCursor busy; imported = spellcross_demo::ImportPackage(package, runtime_root, demoData, demoError); }
+                    if (!imported)
+                    {
+                        wxMessageBox(wxString::FromUTF8(demoError.c_str()), "Original demo", wxOK | wxICON_ERROR);
+                        continue;
+                    }
+                    for (const auto& req : reqs)
+                    {
+                        const fs::path candidate = FindFileCaseInsensitive(demoData, req.filename);
+                        if (IsValidSourceFile(candidate, req.filename)) storeSource(req, candidate);
+                        else
+                        {
+                            ini.SetValue("FILES", req.key, "");
+                            if (req.skip_key) ini.SetBoolValue("FILES", req.skip_key, true);
+                        }
+                    }
+                    setProfile(true);
+                    if (!saveNow()) return false;
+                    break;
+                }
                 if (option == 3)
                 {
                     if (!forceSourceSelection)
@@ -1522,6 +1566,7 @@ namespace
                 }
                 if (!complete)
                     continue;
+                setProfile(false);
                 for (size_t i = 0; i < selectedSources.size(); ++i)
                 {
                     const auto& req = reqs[i];
@@ -1546,6 +1591,7 @@ namespace
 
         for (const auto& req : reqs)
         {
+            if (demoProfile && !spellcross_demo::RequiredArchive(req.optional, req.filename, true) && !req.optional) continue;
             fs::path path = configuredPath(req);
             if (IsValidSourceFile(path, req.filename))
                 continue;
@@ -2494,7 +2540,7 @@ void MainFrame::OnLoadCustomMap(wxCommandEvent&)
     if (!spell_map || !spell_data)
         return;
 
-    fs::path start = fs::current_path() / "temp";
+    fs::path start = spellcross_demo::RuntimeRoot() / "temp";
     std::error_code ec;
     if (spell_map->IsLoaded())
     {
@@ -2884,10 +2930,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
 Bind(wxEVT_MENU, [this](wxCommandEvent&)
 {
     namespace fs = std::filesystem;
-    fs::path startDir = fs::current_path() / "save" / "strategic";
+    fs::path startDir = spellcross_demo::RuntimeRoot() / "save" / "strategic";
     std::error_code ec;
     if (!fs::exists(startDir, ec))
-        startDir = fs::current_path() / "temp";
+        startDir = spellcross_demo::RuntimeRoot() / "temp";
 
     wxFileDialog dlg(
         this,
@@ -3392,7 +3438,7 @@ void MainFrame::OnLoadGameState(wxCommandEvent& event)
 
 bool MainFrame::LoadGameStateFromDialog()
 {
-    wstring temp_dir = (std::filesystem::current_path() / L"temp").wstring();
+    wstring temp_dir = (spellcross_demo::RuntimeRoot() / L"temp").wstring();
     wxFileDialog openFileDialog(
         this,
         "Load game state",
@@ -3434,7 +3480,7 @@ bool MainFrame::ShowUnifiedSaveGameDialog(wxWindow* owner)
     if (!spell_map || !spell_map->IsLoaded())
         return false;
 
-    const std::filesystem::path startDir = std::filesystem::current_path() / "temp";
+    const std::filesystem::path startDir = spellcross_demo::RuntimeRoot() / "temp";
     wxWindow* dialogOwner = owner ? owner : static_cast<wxWindow*>(this);
     wxFileDialog dlg(
         dialogOwner,
@@ -3470,10 +3516,10 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
 {
     namespace fs = std::filesystem;
 
-    fs::path loadStart = fs::current_path() / "save" / "strategic";
+    fs::path loadStart = spellcross_demo::RuntimeRoot() / "save" / "strategic";
     std::error_code ec;
     if (!fs::exists(loadStart, ec))
-        loadStart = fs::current_path() / "temp";
+        loadStart = spellcross_demo::RuntimeRoot() / "temp";
 
     wxWindow* dialogOwner = owner ? owner : static_cast<wxWindow*>(this);
     wxFileDialog dlg(
@@ -4232,6 +4278,26 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 m_mission_end_req = SpellMap::MissionEndRequest();
 
                 std::filesystem::path root = std::filesystem::path(spell_data->spell_data_root);
+                if (spell_data->IsOriginalDemo())
+                {
+                    const auto levelPath = FindSpellDataFile(root, "LEVEL_02.DEF");
+                    LevelData level;
+                    std::string error;
+                    LevelLoader loader;
+                    if (levelPath.empty() || !loader.LoadLevelDef(levelPath.string(), level, &error))
+                    {
+                        wxMessageBox("Cannot load the original demo scenario.\n" + error, "Original demo", wxOK | wxICON_ERROR, this);
+                        ShowMainMenuWindow();
+                        break;
+                    }
+                    auto* win = new StrategicLevelFrame(this, level, true);
+                    m_strategicLevel = win;
+                    win->StartFreshGameMode({});
+                    HideTacticalWindow();
+                    win->Show();
+                    win->Raise();
+                    break;
+                }
                 auto def_path = FindSpellDataFile(root, "M01_01A.DEF");
                 if(def_path.empty())
                 {

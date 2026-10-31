@@ -2760,7 +2760,7 @@ void StrategicLevelFrame::StartFreshGameMode(const std::vector<LevelData::Player
 }
 
 static std::filesystem::path GetStableBaseDir() {
-    return std::filesystem::current_path();
+    return spellcross_demo::RuntimeRoot();
 }
 
 // Forward declarations (definitions are later in this file)
@@ -3100,8 +3100,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
     };
 
     addAssetDir(std::filesystem::path(m_level.source_path).parent_path());
-    addAssetDir(std::filesystem::current_path() / "temp" / "COMMON");
-    addAssetDir(std::filesystem::current_path() / "temp" / "common");
+    addAssetDir(spellcross_demo::RuntimeRoot() / "temp" / "COMMON");
+    addAssetDir(spellcross_demo::RuntimeRoot() / "temp" / "common");
     addAssetDir(std::filesystem::path(m_spellData->data_path));
     addAssetDir(std::filesystem::path(m_spellData->data_path) / "COMMON");
     addAssetDir(std::filesystem::path(m_spellData->data_path) / "common");
@@ -8167,7 +8167,7 @@ bool StrategicLevelFrame::EnsureUpgradeDefsLoaded() const
         base / "builds" / "x64" / "Release" / "temp" / "COMMON" / "UPGRADES.DEF",
         base / "builds" / "x64" / "Debug" / "temp" / "COMMON" / "UPGRADES.DEF",
         base / "data" / "UPGRADES.DEF",
-        fs::current_path(ec) / "temp" / "COMMON" / "UPGRADES.DEF",
+        spellcross_demo::RuntimeRoot() / "temp" / "COMMON" / "UPGRADES.DEF",
     };
 
     fs::path defPath;
@@ -13949,13 +13949,13 @@ void StrategicLevelFrame::EnsureResearchLoaded()
     const fs::path base = GetStableBaseDir();
     const std::vector<fs::path> commonDirs = {
         base / "temp" / "COMMON",
-        fs::current_path(ec) / "temp" / "COMMON",
+        spellcross_demo::RuntimeRoot() / "temp" / "COMMON",
         base / "builds" / "x64" / "Release" / "temp" / "COMMON",
         base / "builds" / "x64" / "Debug" / "temp" / "COMMON",
     };
     const std::vector<fs::path> researchDirs = {
         base / "temp" / "RESEARCH",
-        fs::current_path(ec) / "temp" / "RESEARCH",
+        spellcross_demo::RuntimeRoot() / "temp" / "RESEARCH",
         base / "builds" / "x64" / "Release" / "temp" / "RESEARCH",
         base / "builds" / "x64" / "Debug" / "temp" / "RESEARCH",
     };

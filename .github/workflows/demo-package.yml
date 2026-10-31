@@ -1,0 +1,32 @@
+name: Original demo package
+on:
+  pull_request:
+    paths:
+      - 'spellcross-map-edit-main/source/**'
+      - 'spellcross-map-edit-main/data/demo.dat.*'
+      - 'spellcross-map-edit-main/tests/test_demo_package.cpp'
+      - 'spellcross-map-edit-main/tools/Join-DemoPackage.ps1'
+      - '.github/workflows/demo-package.yml'
+  workflow_dispatch:
+jobs:
+  assemble-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble and verify the runtime demo.dat
+        shell: pwsh
+        run: ./spellcross-map-edit-main/tools/Join-DemoPackage.ps1 -Destination "$env:RUNNER_TEMP/demo.dat"
+  load-demo-scenario:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install wxWidgets for the real ZIP importer
+        run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev
+      - name: Compile and exercise the original demo importer and LevelLoader
+        run: |
+          cat spellcross-map-edit-main/data/demo.dat.001 spellcross-map-edit-main/data/demo.dat.002 > /tmp/demo.dat
+          c++ -std=c++17 $(wx-config --cxxflags) \
+            spellcross-map-edit-main/tests/test_demo_package.cpp \
+            spellcross-map-edit-main/source/level.cpp \
+            $(wx-config --libs base) -o /tmp/test-demo-package
+          /tmp/test-demo-package /tmp/demo.dat /tmp/spellcross-demo-test

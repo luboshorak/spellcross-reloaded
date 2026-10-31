@@ -23,6 +23,7 @@
 #include "spell_midi.h"
 #include "spell_texts.h"
 #include "spell_video.h"
+#include "spell_demo_profile.h"
 
 //using namespace std;
 
@@ -112,6 +113,7 @@ public:
 
 struct SpellDataFiles
 {
+    bool original_demo = false;
 	std::wstring data_root;
 	std::wstring cd_root;
 	std::wstring common_fs;
@@ -131,6 +133,7 @@ private:
 	int GenerateSpecialTiles();
 	int LoadAuxGraphics(FSarchive* fs,std::function<void(std::string)> status_item=NULL);
 
+    bool original_demo = false;
 	SpellLang text_language = SpellLang::CZE;
 	FSarchive* common_fs;
 	FSarchive* terrain_fs;
@@ -140,6 +143,7 @@ private:
 public:
 	FSarchive* GetCommonFS() { return common_fs; }
 	SpellLang GetTextLanguage() const { return text_language; }
+    bool IsOriginalDemo() const { return original_demo; }
 	std::string GetOriginalText(const char* resource_stem, size_t index) const;
 	// data paths
 	std::wstring data_path;
@@ -192,9 +196,3 @@ public:
 	int BuildSpriteContextOfMaps(wstring folder,string terrain_name,std::function<void(std::string)> status_cb);	
 	int BuildHouseObjectsOfMaps(wstring folder,string terrain_name,std::function<void(std::string)> status_cb);
 };
-
-
-
-
-
-

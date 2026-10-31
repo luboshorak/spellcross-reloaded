@@ -2855,6 +2855,17 @@ if (!mission_data || !mission_data->Size())
 					return(1);
 				}
 
+                // The original demo retains definitions for units whose sprites
+                // were omitted from UNITS.FSU (notably ELF1 in TUT04).
+                if (spelldata->IsOriginalDemo() && !unit->unit->gr_base)
+                {
+                    last_error = string_format("Original demo does not include graphics for unit %d (%s). This mission cannot be loaded.", unit_type_id, unit->unit->gra);
+                    delete unit;
+                    delete def;
+                    Close();
+                    return 1;
+                }
+
 				// position
 				int xy = stoi(cmd->parameters->at(2));
 				unit->coor.y = (xy / x_size);
