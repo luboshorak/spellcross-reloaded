@@ -6,6 +6,7 @@ on:
       - 'spellcross-map-edit-main/source/level.h'
       - 'spellcross-map-edit-main/source/strategic_countdown_rules.h'
       - 'spellcross-map-edit-main/source/strategic_unit_timer_rules.h'
+      - 'spellcross-map-edit-main/source/strategic_campaign_unlock_rules.h'
       - 'spellcross-map-edit-main/source/strategic_mission_flow.h'
       - 'spellcross-map-edit-main/source/forms/form_level.cpp'
       - 'spellcross-map-edit-main/source/forms/form_level.h'
@@ -39,6 +40,12 @@ jobs:
             spellcross-map-edit-main/tests/test_original_strategy_mission_flow.cpp \
             -o /tmp/spellcross-original-mission-flow-test
           /tmp/spellcross-original-mission-flow-test
+      - name: Compile and test campaign unit purchase unlock rules
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_campaign_unit_unlock.cpp \
+            -o /tmp/spellcross-campaign-unit-unlock-test
+          /tmp/spellcross-campaign-unit-unlock-test
       - name: Compile and test shared unit availability timer
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
