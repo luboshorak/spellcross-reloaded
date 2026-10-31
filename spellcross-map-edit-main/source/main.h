@@ -105,6 +105,7 @@ public:
     void PlayCutsceneFromStrategic(const std::string& video_entry_name);
     void PlayNextStrategicCutscene();
     void OnStrategicCutsceneClosed(wxCloseEvent& ev);
+    bool HasPendingStrategicCutscenes() const;
 
     // Window-flow helpers: only one game layer is interactable at a time.
     void ShowMainMenuWindow();
