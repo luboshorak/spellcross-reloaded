@@ -33,6 +33,19 @@ You may also need the [Microsoft Visual C++ Redistributable (x64)](https://aka.m
 
 **Please note:** Original commercial Spellcross game data is not included in this repository or release package.
 
+## v0.9.3 RC1 — release candidate
+
+This candidate brings the original strategic campaign closer to its retail behavior. The biggest changes since v0.9.2.3 are:
+
+- **Unit readiness:** purchased units and those returning from battle obey the original turn lockout. Engine, armour and weapon upgrades can be ordered together, completing on one shared countdown.
+- **Unit unlocks:** original `RESEARCH.DEF` and chapter script prerequisites determine availability; starting units such as **Hummer** are correctly purchasable.
+- **Strategic-map countdowns:** values above nine use the original individual digit graphics to display **10, 12, 15**, and so on.
+- **Chapter endings:** completing the final mission no longer fires leftover enemy-attack or reinforcement events from the old map. The next chapter's introductory events wait for transition movies.
+
+The tactical engine and AI continue the v0.9.2.3 line; late-campaign battles have been played successfully, but this is a candidate for additional testing.
+
+[Read the v0.9.3 RC1 release notes](./packaging/releases/v0.9.3-RC1.md). **The downloadable RC1 is published only after the Windows build and packaging checks.**
+
 ## What's new in 0.9.2.2?
 
 This maintenance release focuses on more reliable strategic counter-attacks and tactical battles, without changing the original game's look or assets.
