@@ -27,6 +27,28 @@ std::string wstring2string(const std::wstring& str)
     return myconv.to_bytes(str);
 }
 
+// Original Polish language tables use Windows-1250, not UTF-8.
+// Undefined code-page bytes are replaced so a damaged label cannot abort loading.
+std::wstring char2wstringCP1250(const char* str)
+{
+    static constexpr wchar_t codes[] =
+        L"\u20AC\uFFFD\u201A\uFFFD\u201E\u2026\u2020\u2021\uFFFD\u2030\u0160\u2039\u015A\u0164\u017D\u0179"
+        L"\uFFFD\u2018\u2019\u201C\u201D\u2022\u2013\u2014\uFFFD\u2122\u0161\u203A\u015B\u0165\u017E\u017A"
+        L"\u00A0\u02C7\u02D8\u0141\u00A4\u0104\u00A6\u00A7\u00A8\u00A9\u015E\u00AB\u00AC\u00AD\u00AE\u017B"
+        L"\u00B0\u00B1\u02DB\u0142\u00B4\u00B5\u00B6\u00B7\u00B8\u0105\u015F\u00BB\u013D\u02DD\u013E\u017C"
+        L"\u0154\u00C1\u00C2\u0102\u00C4\u0139\u0106\u00C7\u010C\u00C9\u0118\u00CB\u011A\u00CD\u00CE\u010E"
+        L"\u0110\u0143\u0147\u00D3\u00D4\u0150\u00D6\u00D7\u0158\u016E\u00DA\u0170\u00DC\u00DD\u0162\u00DF"
+        L"\u0155\u00E1\u00E2\u0103\u00E4\u013A\u0107\u00E7\u010D\u00E9\u0119\u00EB\u011B\u00ED\u00EE\u010F"
+        L"\u0111\u0144\u0148\u00F3\u00F4\u0151\u00F6\u00F7\u0159\u016F\u00FA\u0171\u00FC\u00FD\u0163\u02D9";
+    std::wstring result;
+    while (*str)
+    {
+        const auto code = static_cast<unsigned char>(*str++);
+        result.push_back(code < 128 ? static_cast<wchar_t>(code) : codes[code - 128]);
+    }
+    return result;
+}
+
 // convert char str to wstring using CZ CP852 encoding
 std::wstring char2wstringCP852(const char* str)
 {
@@ -383,5 +405,6 @@ double randgman(double shape,double scale,double max, double min)
 
     return(num);
 }
+
 
 

@@ -286,7 +286,7 @@ SpellStringTable::SpellStringTable(FSarchive* fs,string name)
 		else if(lang.compare("ENG") == 0)
 			text = char2wstring(raw.c_str());
 		else if(lang.compare("PL") == 0)
-			text = char2wstring(raw.c_str()); // ###todo: shoud be CP1250
+			text = char2wstringCP1250(raw.c_str());
 
 		// store to list
 		list.emplace_back(rec.head[0],raw,text);		
@@ -1339,3 +1339,4 @@ Terrain* SpellData::GetTerrain(int index)
 		return(NULL);
 	return(terrain[index]);
 }
+
