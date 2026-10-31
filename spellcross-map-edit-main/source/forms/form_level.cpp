@@ -10448,10 +10448,11 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
     {
     case UNITS_TAB_RECRUIT:
     {
-        const auto& st = m_unitStates[m_unitsSelectedUnit];
+        const auto& eligibilityState = m_unitStates[m_unitsSelectedUnit];
         if (u.health >= 100 ||
             !spellcross_strategy::CanStartExclusiveUnitOperation(
-                st.cooldown_turns, st.pending_kind, st.pending_upgrade_id))
+                eligibilityState.cooldown_turns, eligibilityState.pending_kind,
+                eligibilityState.pending_upgrade_id))
             return;
 
         int q = (m_unitsSelectedUpgrade >= 0 && m_unitsSelectedUpgrade < RECRUIT_QUALITY_COUNT) ? m_unitsSelectedUpgrade : 1;
