@@ -9,6 +9,14 @@ int main()
     // the current chapter or from a hardcoded list of base-unit IDs.
     const std::set<int> scripted = {0, 1, 2, 3, 5, 10, 11, 12, 18, 19, 20, 21};
 
+    // The same script parser is used for the current chapter and all ten
+    // chapters. Commented-out unlocks cannot suppress base unit availability.
+    const auto extracted = ParseCampaignUnlockFlags(
+        ";SetResearchFlag(29)\n"
+        "SetResearchFlag(0) ; SetResearchFlag(25)\n"
+        " SetResearchFlag ( 18 )\n");
+    assert(extracted == std::set<int>({0, 18}));
+
     // Both truly unscripted base units are available without research.
     for (const int id : {25, 29})
         assert(IsUnscriptedBaseUnit(false, 0, false, true, scripted.count(id) != 0));
