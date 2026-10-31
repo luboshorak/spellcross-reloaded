@@ -72,6 +72,10 @@ SpellTextRec::SpellTextRec(std::string str, SpellLang lang, const char* name,Spe
     {
         text = char2wstringCP1250(buf.c_str());
     }
+    else if(lang == SpellLang::ITA)
+    {
+        text = char2wstringCP1252(buf.c_str());
+    }
     else
     {
         throw runtime_error("Unknown language requested in text decoder!");
@@ -198,4 +202,5 @@ vector<SpellTextRec*>& SpellTexts::GetTexts()
 {
     return(list);
 }
+
 

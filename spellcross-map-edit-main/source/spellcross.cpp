@@ -258,7 +258,7 @@ SpellStringTableRec::SpellStringTableRec(string label,string raw,wstring text)
 
 SpellStringTable::SpellStringTable(FSarchive* fs,string name)
 {
-	vector<string> lang_list = {"CZ","ENG","PL"};
+	vector<string> lang_list = {"CZ","ENG","PL","IT"};
 	for(auto& lang_tag : lang_list)
 	{
 		lang = lang_tag;
@@ -270,7 +270,17 @@ SpellStringTable::SpellStringTable(FSarchive* fs,string name)
 		throw std::runtime_error("Cannot find stringtable file!");
 
 	// try parse
-	SpellClassFile strtable(raw_text, ";\\s*([^\\r^\\n]+)\\r?\\n?([^;]+)");
+    // Some retail tables (notably Italian SPECOBJ.IT) start directly with
+    // the first record. SpellClassFile otherwise skips it as an introductory
+    // comment and drops its following value. A leading empty line bypasses
+    // preamble skipping only when the file already begins with a record header.
+    const std::regex firstRecord(name == "SPECOBJ"
+        ? ";\\s*SOAx_[0-9]+[ \\t]*\\r?\\n"
+        : ";\\s*typ[ \\t]*[0-9]+[ \\t]*\\r?\\n");
+    const bool startsWithRecord = std::regex_search(raw_text, firstRecord,
+        std::regex_constants::match_continuous);
+    SpellClassFile strtable(startsWithRecord ? "\n" + raw_text : raw_text,
+        ";\\s*([^\\r^\\n]+)\\r?\\n?([^;]+)");
 	
 	list.reserve(strtable.list.size());
 	for(auto & rec : strtable.list)
@@ -287,6 +297,8 @@ SpellStringTable::SpellStringTable(FSarchive* fs,string name)
 			text = char2wstring(raw.c_str());
 		else if(lang.compare("PL") == 0)
 			text = char2wstringCP1250(raw.c_str());
+        else if(lang.compare("IT") == 0)
+            text = char2wstringCP1252(raw.c_str());
 
 		// store to list
 		list.emplace_back(rec.head[0],raw,text);		
@@ -699,7 +711,8 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
     text_language = SelectSpellLanguage(units->IsEnglish(),
         !common_fs->GetFile("UNITS.CZ").empty(),
         !common_fs->GetFile("UNITS.ENG").empty(),
-        !common_fs->GetFile("UNITS.PL").empty());
+        !common_fs->GetFile("UNITS.PL").empty(),
+        !common_fs->GetFile("UNITS.IT").empty());
     const char* extension = SpellLanguageExtension(text_language);
     if (status_list)
         status_list(string_format(" - original language resources: %s", extension));
@@ -1348,5 +1361,6 @@ Terrain* SpellData::GetTerrain(int index)
 		return(NULL);
 	return(terrain[index]);
 }
+
 
 
