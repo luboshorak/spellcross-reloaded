@@ -10522,9 +10522,9 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
             if (newDef == m_upgradeDefs.end() || newDef->second.kind == UpgradeDefRec::Unknown)
                 return;
 
-            // STRUPG.QH explicitly allows one or more upgrades at one time.
-            // Keep one independent pending timer for Engine / Weapon / Armour.
-            // The unit lockout is the maximum remaining timer, never their sum.
+            // STRUPG.QH allows engine, weapon and armour to be queued together.
+            // The category slots track orders/cancellation metadata; they do not
+            // control completion. All upgrades share the longest unit cooldown.
             auto& st = m_unitStates[m_unitsSelectedUnit];
             const int slot = static_cast<int>(newDef->second.kind) - 1;
             if (slot < 0 || slot >= 3)
