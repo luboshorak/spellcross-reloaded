@@ -43,8 +43,8 @@ If the build can't find wxWidgets, specify the path to your vcpkg x64 installati
 The output is:
 
 ```text
-dist/Spellcross_Reloaded_v0.9.2.2.zip
-dist/Spellcross_Reloaded_v0.9.2.2.exe    (WinRAR SFX, when WinRAR is installed)
+dist/Spellcross_Reloaded_v0.9.3-RC1.zip
+dist/Spellcross_Reloaded_v0.9.3-RC1.exe    (WinRAR SFX, when WinRAR is installed)
 ```
 
 To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
@@ -53,7 +53,7 @@ To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
 .\packaging\Build-CombinedRelease.ps1 -SkipBuild -NoZip
 ```
 
-The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (currently `0.9.2.2`), so the filename changes with the game version. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
+The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (numeric Windows version `0.9.3.0`, release label `0.9.3-RC1`), so the filename changes with the game version or release channel. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
 
 Packaging checks the compiled `Spellcross.exe` FileVersion and ProductVersion against that header and **stops** if they do not match. In particular, `-SkipBuild` cannot silently repackage an outdated executable under a new release number.
 
@@ -146,17 +146,38 @@ A successful compile is a good start, but a portable release needs a quick hands
 
 Publish the ZIP and SFX as separate optional GitHub Release assets after a Windows smoke test.
 
-### Publishing v0.9.2.2
+### Preparing and publishing v0.9.3 RC1
 
-After the release-preparation PR is merged to `main`:
+First merge the release-preparation PR into `main`, then update the Windows checkout and its editor submodule:
 
-1. Run `.\packaging\Build-CombinedRelease.ps1 -Rebuild` on Windows, supplying `-WxRoot` and `-MovieSource` if required. The script must produce `Spellcross_Reloaded_v0.9.2.2.zip` and, with WinRAR available, `Spellcross_Reloaded_v0.9.2.2.exe`.
-2. Open `Spellcross.exe` properties and verify **File version** and **Product version** are both **0.9.2.2**. Verify `BUILD-INFO.txt` contains the new source revision and executable SHA-256.
-3. Smoke-test a counter-attack with all assigned units, load a mission via lowercase `.def`, verify the menu is free of battlefield ambience, and check that melee attacks stay adjacent. Test the enemy's response after an attack.
-4. Group-move allied units toward all four map edges, select them again to verify the camera can locate them, and check enemy movement and combat near those edges.
-5. After verifying both ZIP and SFX on a clean installation, create the Git tag **`v0.9.2.2`** on the exact tested `main` commit and publish a GitHub Release with both packages. Use [release notes](./releases/v0.9.2.2.md) as its description.
+```powershell
+git switch main
+git pull --ff-only origin main
+git submodule sync --recursive
+git submodule update --init --recursive
+.\packaging\Build-CombinedRelease.ps1 -Rebuild
+```
 
-Do **not** tag or upload the release before the Windows build and gameplay checks pass. The sources do not contain the 37 MP4 fallback videos, so a complete distributable still requires access to the verified local movie files.
+Use `-WxRoot` and `-MovieSource` if required. The script checks the compiled `Spellcross.exe` FileVersion and ProductVersion are both `0.9.3.0` while outputting the **RC1-labeled** ZIP/SFX. It fails when the 37 required fallback MP4s are missing or differ from their manifest. The `BUILD-INFO.txt` in the staged folder records the **source commit, RC label, Windows version and EXE SHA-256**.
+
+Perform a Windows smoke test, ideally on a clean x64 machine, including chapter completion, Hummer purchases, unit cooldowns, two-digit timers, cutscenes and the map editor. Backup older saves before testing.
+
+After **both** ZIP and SFX are verified, create the tag on the exact tested source commit and publish a **GitHub prerelease** with both assets. The `gh` commands below require the authenticated [GitHub CLI](https://cli.github.com/):
+
+```powershell
+git status --short
+git tag -a v0.9.3-RC1 -m "Spellcross Reloaded v0.9.3 RC1"
+git push origin v0.9.3-RC1
+gh release create v0.9.3-RC1 `
+    dist/Spellcross_Reloaded_v0.9.3-RC1.zip `
+    dist/Spellcross_Reloaded_v0.9.3-RC1.exe `
+    --prerelease `
+    --verify-tag `
+    --title "Spellcross Reloaded v0.9.3 RC1" `
+    --notes-file packaging/releases/v0.9.3-RC1.md
+```
+
+If WinRAR is not installed, upload only the ZIP and clearly document that no SFX installer was produced. **Never reuse the v0.9.2.3 EXE or an earlier ZIP with RC1 filenames.** No retail ISO/CD archives belong in the release package.
 
 ## Notes
 

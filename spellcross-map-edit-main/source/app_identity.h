@@ -10,12 +10,12 @@ namespace spellcross_app
 {
     inline wxString Version()
     {
-        return wxString::FromUTF8(SPELLCROSS_VERSION_STRING);
+        return wxString::FromUTF8(SPELLCROSS_RELEASE_LABEL);
     }
 
     inline wxString VersionLabel()
     {
-        return wxString::FromUTF8("v" SPELLCROSS_VERSION_STRING);
+        return wxString::FromUTF8("v" SPELLCROSS_RELEASE_LABEL);
     }
 
     inline void ApplyWindowIcon(wxTopLevelWindow* window)

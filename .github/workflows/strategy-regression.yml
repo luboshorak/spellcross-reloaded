@@ -8,6 +8,14 @@ on:
       - 'spellcross-map-edit-main/source/strategic_unit_timer_rules.h'
       - 'spellcross-map-edit-main/source/strategic_campaign_unlock_rules.h'
       - 'spellcross-map-edit-main/source/strategic_mission_flow.h'
+      - 'spellcross-map-edit-main/source/app_version.h'
+      - 'spellcross-map-edit-main/source/app_identity.h'
+      - 'spellcross-map-edit-main/source/resources.rc'
+      - 'spellcross-map-edit-main/source/release_version_compare.h'
+      - 'spellcross-map-edit-main/source/forms/form_about.cpp'
+      - 'spellcross-map-edit-main/source/main.cpp'
+      - 'packaging/Build-CombinedRelease.ps1'
+      - 'packaging/releases/**'
       - 'spellcross-map-edit-main/source/forms/form_level.cpp'
       - 'spellcross-map-edit-main/source/forms/form_level.h'
       - 'spellcross-map-edit-main/tests/**'
@@ -46,6 +54,12 @@ jobs:
             spellcross-map-edit-main/tests/test_campaign_unit_unlock.cpp \
             -o /tmp/spellcross-campaign-unit-unlock-test
           /tmp/spellcross-campaign-unit-unlock-test
+      - name: Compile and test release version and RC ordering
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_release_version_compare.cpp \
+            -o /tmp/spellcross-release-version-test
+          /tmp/spellcross-release-version-test
       - name: Compile and test shared unit availability timer
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \

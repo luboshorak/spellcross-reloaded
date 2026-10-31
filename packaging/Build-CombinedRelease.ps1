@@ -20,10 +20,30 @@ $game = Join-Path $root 'spellcross-map-edit-main'
 # Keep packaging synchronized with the app and Windows version metadata.
 $versionHeader = Join-Path $game 'source\app_version.h'
 if (-not (Test-Path -LiteralPath $versionHeader -PathType Leaf)) { throw "Version header not found: $versionHeader" }
-$versionMatch = [regex]::Match((Get-Content -LiteralPath $versionHeader -Raw),
+$versionText = Get-Content -LiteralPath $versionHeader -Raw
+$versionMatch = [regex]::Match($versionText,
     '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+(?:\.\d+)?)"\s*$')
 if (-not $versionMatch.Success) { throw "Cannot read SPELLCROSS_VERSION_STRING from $versionHeader" }
 $releaseVersion = $versionMatch.Groups[1].Value
+
+# Windows FileVersion remains numeric, while release asset names can be RC1.
+# Verify that the source version, release label and tag all describe one build.
+$releaseLabelMatch = [regex]::Match($versionText,
+    '(?m)^\s*#define\s+SPELLCROSS_RELEASE_LABEL\s+"([A-Za-z0-9][A-Za-z0-9.-]*)"\s*$')
+$releaseTagMatch = [regex]::Match($versionText,
+    '(?m)^\s*#define\s+SPELLCROSS_RELEASE_TAG\s+"(v[A-Za-z0-9][A-Za-z0-9.-]*)"\s*$')
+$packageVersion = if ($releaseLabelMatch.Success) { $releaseLabelMatch.Groups[1].Value } else { $releaseVersion }
+$releaseTag = if ($releaseTagMatch.Success) { $releaseTagMatch.Groups[1].Value } else { 'v' + $packageVersion }
+$baseVersion = ($releaseVersion -split '\.')[0..2] -join '.'
+if ($packageVersion -ne $releaseVersion -and
+    $packageVersion -ne $baseVersion -and
+    -not $packageVersion.StartsWith($baseVersion + '-')) {
+    throw "Release label '$packageVersion' is not based on numeric version '$releaseVersion'."
+}
+if ($releaseTag -ne ('v' + $packageVersion)) {
+    throw "Release tag '$releaseTag' does not match release label '$packageVersion'."
+}
+Write-Host "Preparing $releaseTag (Windows FileVersion $releaseVersion)" -ForegroundColor Cyan
 $editor = Join-Path $root 'external\map-editor'
 $gameProject = Join-Path $game 'source\spellcross_map_editor.vcxproj'
 $editorProject = Join-Path $editor 'source\spellcross_map_editor.vcxproj'
@@ -165,6 +185,8 @@ $gameHash = (Get-FileHash -LiteralPath (Join-Path $stage 'Spellcross.exe') -Algo
 Git branch: $gitBranch
 Git commit: $gitCommit
 Game version: $releaseVersion
+Release label: $packageVersion
+Release tag: $releaseTag
 Built executable: $gameExe
 Spellcross.exe SHA256: $gameHash
 Build UTC: $((Get-Date).ToUniversalTime().ToString('o'))
@@ -356,7 +378,7 @@ Before publishing, verify the package on a clean Windows machine.
 if (-not $NoZip) {
     # Stable asset name for GitHub Releases. Build folders retain timestamps
     # for troubleshooting, but the ZIP itself contains files at its root.
-    $zip = Join-Path $OutputDirectory ("Spellcross_Reloaded_v$releaseVersion.zip")
+    $zip = Join-Path $OutputDirectory ("Spellcross_Reloaded_v$packageVersion.zip")
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
     Write-Host "Package created: $zip" -ForegroundColor Green
 }
@@ -364,13 +386,13 @@ if (-not $NoZip) {
 # staged contents as the ZIP. Keep the file layout flat (Spellcross.exe at root)
 # to avoid broken shortcuts or creating a nested version directory.
 if ($winrarExe) {
-    $sfx = Join-Path $OutputDirectory ("Spellcross_Reloaded_v$releaseVersion.exe")
+    $sfx = Join-Path $OutputDirectory ("Spellcross_Reloaded_v$packageVersion.exe")
     $id = [Guid]::NewGuid().ToString('N')
     # Build under a normal versioned filename in an isolated work directory.
     # Publish to dist only after WinRAR has finished and the EXE was checked.
     $sfxWorkDir = Join-Path $OutputDirectory ("Spellcross-SFX-Work-$id")
     New-Item -ItemType Directory -Path $sfxWorkDir -Force | Out-Null
-    $temporarySfx = Join-Path $sfxWorkDir ("Spellcross_Reloaded_v$releaseVersion.exe")
+    $temporarySfx = Join-Path $sfxWorkDir ("Spellcross_Reloaded_v$packageVersion.exe")
     $sfxScript = Join-Path ([System.IO.Path]::GetTempPath()) ("spellcross-sfx-$id.txt")
 
     # No Silent or TempMode: the user sees the folder selection dialog and
@@ -380,10 +402,10 @@ if ($winrarExe) {
 ;The comment below contains SFX script commands
 Path=%USERPROFILE%\Games\Spellcross Reloaded
 SavePath
-Title=Spellcross Reloaded v$releaseVersion
+Title=Spellcross Reloaded v$packageVersion
 Text
 {
-Spellcross Reloaded v$releaseVersion
+Spellcross Reloaded v$packageVersion
 
 Select the installation folder and click Install.
 The game and the standalone map editor will be extracted together.
