@@ -30,6 +30,9 @@ public:
 
     void BuildUI();
     void RefreshUI();
+    // Deliver chapter-intro Level Events only after the complete strategic
+    // movie queue (outro + next intro) has finished.
+    void RunDeferredChapterIntroEvents();
 
     void BuildResourcesPage();
     void RefreshResourcesPage();
@@ -309,6 +312,7 @@ public:
     std::set<int> m_triggeredLevelEvents;
     // Events activated by RunEvents (id -> activation turn for Time-based events)
     std::unordered_map<int, int> m_activatedEvents;
+    bool m_deferredChapterIntroEvents = false;
     
     // Show briefing for territory before mission launch
     void ShowBriefing(int territory_id);
