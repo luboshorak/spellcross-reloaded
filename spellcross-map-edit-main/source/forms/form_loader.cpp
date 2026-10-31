@@ -7,6 +7,10 @@
 
 #include "form_loader.h"
 #include "app_identity.h"
+#include "startup_log.h"
+#include "app_version.h"
+#include <exception>
+#include <typeinfo>
 #include <wx/stdpaths.h>
 
 #include <filesystem>
@@ -110,7 +114,30 @@ FormLoader::FormLoader(wxWindow* parent,SpellData *&spell_data, wstring config_p
 	btnOK->Enable(false);
 
 	// initiate loader in its own thread
-	loader = new std::thread(&FormLoader::Loader,this,config_path,std::ref(spell_data));
+    const auto logPath = spellcross_startup_log::Begin(config_path);
+    if (!logPath.empty())
+        UpdateList("Startup log: " + wstring2string(logPath.wstring()));
+    else
+        UpdateList("WARNING: Cannot create the startup log (config folder and temporary folder).");
+    UpdateList(std::string("Build: ") + SPELLCROSS_VERSION_STRING);
+    loader = new std::thread([this, config_path, &spell_data]()
+    {
+        try
+        {
+            Loader(config_path, spell_data);
+        }
+        catch (const std::exception& error)
+        {
+            UpdateList(std::string("ERROR: Unhandled loader exception [") +
+                typeid(error).name() + "]: " + error.what());
+            LoaderExit(true);
+        }
+        catch (...)
+        {
+            UpdateList("ERROR: Unknown exception in the data loader.");
+            LoaderExit(true);
+        }
+    });
 	
 }
 
@@ -299,7 +326,9 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
 
 // end loader
 void FormLoader::LoaderExit(bool hold)
-{	
+{
+    spellcross_startup_log::Write(hold ? "FAILED" : "COMPLETE",
+        hold ? "Data loading stopped; waiting for Exit." : "Data loading finished.");
 	// show manual exit button
 	btnOK->Enable(true);	
 	SetWindowStyle(GetWindowStyle() | wxCLOSE_BOX);
@@ -315,6 +344,7 @@ void FormLoader::LoaderExit(bool hold)
 // update actual item info
 void FormLoader::UpdateItem(std::string text)
 {
+    spellcross_startup_log::Write("ITEM", text);
 	wxCommandEvent* evt = new wxCommandEvent(wxEVT_TEXT);
 	evt->SetId(wxID_TXT_ITEM);
 	evt->SetClientData(new std::string(text));
@@ -324,6 +354,7 @@ void FormLoader::UpdateItem(std::string text)
 // update progress list
 void FormLoader::UpdateList(std::string text)
 {
+    spellcross_startup_log::Write("STEP", text);
 	wxCommandEvent* evt = new wxCommandEvent(wxEVT_TEXT);
 	evt->SetId(wxID_TXT_LIST);
 	evt->SetClientData(new std::string(text));
@@ -345,4 +376,5 @@ void FormLoader::OnRefreshList(wxCommandEvent& event)
 	txtList->ShowPosition(txtList->GetLastPosition());
 	delete str;
 }
+
 
