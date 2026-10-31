@@ -68,6 +68,10 @@ SpellTextRec::SpellTextRec(std::string str, SpellLang lang, const char* name,Spe
         // CZE: convert from weird CP895 to unicode
         text = char2wstringCP895(buf.c_str());
     }
+    else if(lang == SpellLang::POL)
+    {
+        text = char2wstringCP1250(buf.c_str());
+    }
     else
     {
         throw runtime_error("Unknown language requested in text decoder!");
@@ -194,3 +198,4 @@ vector<SpellTextRec*>& SpellTexts::GetTexts()
 {
     return(list);
 }
+

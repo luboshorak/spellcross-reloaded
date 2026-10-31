@@ -696,7 +696,13 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		{"RESEARCH", 140}, {"SELTAB", 5}, {"SPECOBJ", 11},
 		{"UNITS", 87}, {"UPGRADES", 22}
 	};
-	const char* extension = units->IsEnglish() ? ".ENG" : ".CZ";
+    text_language = SelectSpellLanguage(units->IsEnglish(),
+        !common_fs->GetFile("UNITS.CZ").empty(),
+        !common_fs->GetFile("UNITS.ENG").empty(),
+        !common_fs->GetFile("UNITS.PL").empty());
+    const char* extension = SpellLanguageExtension(text_language);
+    if (status_list)
+        status_list(string_format(" - original language resources: %s", extension));
 	for (const auto& resource : kOriginalLanguageResources)
 	{
 		const char* stem = resource.stem;
@@ -760,13 +766,16 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	// load font file
 	if(status_list)
 		status_list("Loading font files...");
-	if(common_fs->GetFile("FONT_001.FNT",&data,&size))
+	const char* fontResource = SpellMainFontResource(text_language);
+    if (status_list)
+        status_list(string_format(" - main font resource: %s", fontResource));
+	if(common_fs->GetFile(fontResource,&data,&size))
 	{
 		// failed
 		this->~SpellData();
 		if(status_list)
 			status_list(" - loading main spellcross font file failed!");
-		throw std::exception("Font file FONT_001.FNT not found in FS archive!");
+		throw runtime_error(string_format("Font file %s not found in COMMON.FS!", fontResource));
 	}
 	try{
 		font = new SpellFont(data, size);
@@ -788,7 +797,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	wstring texts_path = files.texts_fs;
 	FSarchive* texts_fs = new FSarchive(texts_path);
 	try{
-		texts = new SpellTexts(texts_fs, units && units->IsEnglish() ? SpellLang::ENG : SpellLang::CZE, sounds);
+		texts = new SpellTexts(texts_fs, text_language, sounds);
 	}catch(const runtime_error& error) {
 		delete texts_fs;
 		this->~SpellData();
@@ -1339,4 +1348,5 @@ Terrain* SpellData::GetTerrain(int index)
 		return(NULL);
 	return(terrain[index]);
 }
+
 

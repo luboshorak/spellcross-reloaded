@@ -266,7 +266,7 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
         UpdateList(string_format(" - JEDNOTKY.DEF layout: %s",
             spell_data->units->IsEnglish() ? "EN (207-byte records)" : "CZ (206-byte records)"));
         UpdateList(string_format(" - original unit name table: %s",
-            spell_data->units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"));
+            (std::string("UNITS") + SpellLanguageExtension(spell_data->GetTextLanguage())).c_str()));
         for (int typeId = 0; typeId < 5; ++typeId)
         {
             if (auto* unit = spell_data->units->GetUnit(typeId))
