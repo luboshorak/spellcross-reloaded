@@ -20240,16 +20240,6 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
             }
         }
 
-        // Original mission results can activate a Level Event independently
-        // from ownership, rewards or a successor mission. Execute immediate
-        // events (e.g. LEVEL_03 Event(5)) only after conquest and mission
-        // successor state have been updated.
-        if (mission && mission->end_ok_event >= 0)
-        {
-            ActivateMissionEvent(mission->end_ok_event);
-            ProcessLevelEvents();
-        }
-
         // Campaign progression is driven by LevelInit::End(n).  Earlier builds
         // also treated "all territories conquered" (and a mission-level flag)
         // as an unconditional completion trigger.  That is NOT the original
@@ -20300,10 +20290,24 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
 
         if (isLevelComplete)
         {
+            // Once the terminal End(n) mission is won the old map is over.
+            // Do not dispatch its outstanding AbsTime/WaitForTerritories/
+            // EndOKEvent actions: these can produce obsolete Army warnings
+            // or reinforcements immediately before chapter transition.
+            // The next chapter reads its own scripted unlocks/intro events.
             SaveMissionStats();
             SaveStrategicState();
             AdvanceToNextLevel();
             return;
+        }
+
+        // Only a mission that stays in this chapter can activate its
+        // immediate EndOKEvent. Other due events belong to the old chapter
+        // and must not run after its terminal End(n) battle.
+        if (mission && mission->end_ok_event >= 0)
+        {
+            ActivateMissionEvent(mission->end_ok_event);
+            ProcessLevelEvents();
         }
     }
     else
