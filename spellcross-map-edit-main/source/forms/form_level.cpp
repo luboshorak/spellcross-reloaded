@@ -10300,17 +10300,22 @@ void StrategicLevelFrame::RefreshUnitsActionButton()
 
     const auto& u = m_playerUnits[m_unitsSelectedUnit];
 
-    // cooldown
-    const bool hasCooldown = (m_unitsSelectedUnit < (int)m_unitStates.size() &&
-        m_unitStates[m_unitsSelectedUnit].cooldown_turns > 0);
+    // All operations except an additional tech-upgrade category require a
+    // completely ready unit. One shared rule guards the modern UI and handlers.
+    const bool hasUnitState = m_unitsSelectedUnit < (int)m_unitStates.size();
+    const bool canStartExclusive = hasUnitState &&
+        spellcross_strategy::CanStartExclusiveUnitOperation(
+            m_unitStates[m_unitsSelectedUnit].cooldown_turns,
+            m_unitStates[m_unitsSelectedUnit].pending_kind,
+            m_unitStates[m_unitsSelectedUnit].pending_upgrade_id);
 
     if (m_btnUnitsDisband)
-        m_btnUnitsDisband->Enable(!hasCooldown);
+        m_btnUnitsDisband->Enable(canStartExclusive);
 
     switch (m_unitsCurrentTab)
     {
     case UNITS_TAB_RECRUIT:
-        if (u.health >= 100 || hasCooldown)
+        if (u.health >= 100 || !canStartExclusive)
         {
             m_btnUnitsAction->Enable(false);
             if (m_unitsTimeLabel) m_unitsTimeLabel->SetLabel("Time: -");
@@ -10366,7 +10371,7 @@ void StrategicLevelFrame::RefreshUnitsActionButton()
                 st.pending_upgrade_id[1] >= 0 || st.pending_upgrade_id[2] >= 0;
             cost = GetUpgradeCost(u.unit_id, m_unitsSelectedRearmUnitId);
             time = GetUpgradeTime(m_unitsSelectedRearmUnitId);
-            can = (!hasCooldown && !techBusy && cost >= 0 && m_money >= cost);
+            can = (canStartExclusive && !techBusy && cost >= 0 && m_money >= cost);
         }
 
         m_btnUnitsAction->Enable(can);
@@ -10443,7 +10448,10 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
     {
     case UNITS_TAB_RECRUIT:
     {
-        if (u.health >= 100)
+        const auto& st = m_unitStates[m_unitsSelectedUnit];
+        if (u.health >= 100 ||
+            !spellcross_strategy::CanStartExclusiveUnitOperation(
+                st.cooldown_turns, st.pending_kind, st.pending_upgrade_id))
             return;
 
         int q = (m_unitsSelectedUpgrade >= 0 && m_unitsSelectedUpgrade < RECRUIT_QUALITY_COUNT) ? m_unitsSelectedUpgrade : 1;
@@ -10543,8 +10551,8 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
         int toUnitId = m_unitsSelectedRearmUnitId;
 
         auto& rearmState = m_unitStates[m_unitsSelectedUnit];
-        if (rearmState.pending_upgrade_id[0] >= 0 || rearmState.pending_upgrade_id[1] >= 0 ||
-            rearmState.pending_upgrade_id[2] >= 0)
+        if (!spellcross_strategy::CanStartExclusiveUnitOperation(
+                rearmState.cooldown_turns, rearmState.pending_kind, rearmState.pending_upgrade_id))
             return;
 
         const auto legalRearms = GetAvailableUnitTypesForUpgrade(u.unit_id);
@@ -10610,9 +10618,13 @@ void StrategicLevelFrame::OnUnitsDisband(wxCommandEvent&)
     if (m_unitsSelectedUnit < 0 || m_unitsSelectedUnit >= (int)m_playerUnits.size())
         return;
 
-    // Ensure state exists (for cooldown check)
-    if ((size_t)m_unitsSelectedUnit < m_unitStates.size() && m_unitStates[m_unitsSelectedUnit].cooldown_turns > 0)
-        return;
+    if ((size_t)m_unitsSelectedUnit < m_unitStates.size())
+    {
+        const auto& st = m_unitStates[m_unitsSelectedUnit];
+        if (!spellcross_strategy::CanStartExclusiveUnitOperation(
+                st.cooldown_turns, st.pending_kind, st.pending_upgrade_id))
+            return;
+    }
 
     const auto& u = m_playerUnits[m_unitsSelectedUnit];
 
