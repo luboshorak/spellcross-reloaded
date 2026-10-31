@@ -21312,11 +21312,24 @@ void StrategicLevelFrame::DrawTerritoryMarker(wxDC& dc, int territory_id, int x,
     }
     else if (timeoutRemaining > 0 && !isOwned)
     {
-        // Timeout countdown: show VM_N icon (digit 0-9)
-        int digit = std::clamp(timeoutRemaining, 0, 9);
-        if (m_icoVM[digit].IsOk())
+        // VM_0..VM_9 are individual, variable-width retail glyphs.  Compose
+        // all decimal places (e.g. Time(10) -> VM_1 + VM_0), centered over the
+        // territory.  Never clamp a real countdown to the graphic for 9.
+        std::array<int, 10> digitWidths{};
+        for (int digit = 0; digit < 10; ++digit)
         {
-            DrawIconCentered(dc, m_icoVM[digit], x, y, markerScale);
+            if (m_icoVM[digit].IsOk())
+                digitWidths[digit] = std::max(1,
+                    static_cast<int>(std::lround(m_icoVM[digit].GetWidth() * markerScale)));
+        }
+        const int digitGap = std::max(1, static_cast<int>(std::lround(markerScale)));
+        const auto glyphs = spellcross_strategy::LayoutCountdownDigits(
+            timeoutRemaining, digitWidths, digitGap);
+        if (!glyphs.empty())
+        {
+            for (const auto& glyph : glyphs)
+                DrawIconCentered(dc, m_icoVM[glyph.digit],
+                    x + glyph.x_offset + glyph.scaled_width / 2, y, markerScale);
         }
         else
         {
