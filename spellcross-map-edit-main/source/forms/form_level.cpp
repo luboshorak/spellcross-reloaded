@@ -1503,14 +1503,13 @@ namespace
     // Parse SetResearchFlag(N) entries from a LEVEL_XX.DEF file
     std::set<int> ParseResearchFlagsFromDef(const std::filesystem::path& defPath)
     {
-        std::set<int> flags;
         std::error_code ec;
         if (!std::filesystem::exists(defPath, ec))
-            return flags;
+            return {};
 
         std::ifstream f(defPath);
         if (!f)
-            return flags;
+            return {};
 
         const std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
         return ParseResearchFlagsFromText(content);
