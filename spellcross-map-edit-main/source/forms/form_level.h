@@ -911,6 +911,10 @@ public:
     bool          m_buyTabSell = false;    // true = sell mode
 
     std::set<int> m_levelResearchFlags;  // from LEVEL_XX.DEF SetResearchFlag(N)
+    // Complete retail chapter script inventory: UnitType/Time(0) entries with
+    // no scripted unlock are available by default (not just Hummer).
+    std::set<int> m_campaignScriptedUnitFlags;
+    bool m_campaignUnlockScriptsComplete = false;
     std::unordered_map<int, std::string> m_unitCategories;
 
     wxBitmap m_bgBitmapScaled;
