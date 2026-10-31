@@ -21582,6 +21582,20 @@ int StrategicLevelFrame::GetTerritoryTimeoutRemaining(int territory_id) const
     return remaining > 0 ? remaining : 0;
 }
 
+void StrategicLevelFrame::RunDeferredChapterIntroEvents()
+{
+    if (!m_deferredChapterIntroEvents)
+        return;
+
+    // Clear before opening any event dialogs: modal wxMessageBox dispatch can
+    // re-enter the GUI event loop and must not replay chapter introduction.
+    m_deferredChapterIntroEvents = false;
+    ProcessLevelEvents();
+    MarkOverlayDirty();
+    RefreshUI();
+    SaveStrategicState();
+}
+
 void StrategicLevelFrame::AdvanceToNextLevel()
 {
     std::string nextDef;
@@ -21753,11 +21767,14 @@ void StrategicLevelFrame::AdvanceToNextLevel()
         maxCommanderUid = std::max(maxCommanderUid, commander.uid);
     newWin->m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
 
-    // Always rebuild background, visibility and UI after transferring state
+    // Transfer the chapter first, but do not fire its introduction events
+    // while the completed level's outro and the new intro are queued.
+    // Event(0)/AbsTime(1) reinforcements and scripted attacks are delivered
+    // only when MainFrame finishes the ENTIRE strategic cutscene queue.
+    newWin->m_deferredChapterIntroEvents = newWin->m_gameModeEnabled;
     newWin->TryLoadBackground();
     newWin->ApplyTerritoryVisibility();
     newWin->CheckTimeouts();
-    newWin->ProcessLevelEvents();
     newWin->MarkOverlayDirty();
     newWin->RefreshUI();
 
@@ -21784,6 +21801,11 @@ void StrategicLevelFrame::AdvanceToNextLevel()
 
     newWin->Show();
     newWin->Raise();
+
+    // Levels without transition movies have no completion callback: execute
+    // their own intro events now, but never against the old chapter frame.
+    if (!m_main || !m_main->HasPendingStrategicCutscenes())
+        newWin->RunDeferredChapterIntroEvents();
 
     Destroy();
 }
