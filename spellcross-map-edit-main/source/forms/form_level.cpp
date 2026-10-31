@@ -38,6 +38,7 @@
 #include "../strategic_countdown_rules.h"
 #include "../strategic_mission_flow.h"
 #include "../strategic_unit_timer_rules.h"
+#include "../strategic_campaign_unlock_rules.h"
 
 namespace
 {
@@ -1485,6 +1486,20 @@ namespace
         std::string m_type;
     };
 
+    // Research flags are campaign-script unlocks, not RESEARCH.DEF research items.
+    // Both the current chapter and the complete campaign inventory use one parser.
+    std::set<int> ParseResearchFlagsFromText(const std::string& content)
+    {
+        std::set<int> flags;
+        const std::regex re(R"(SetResearchFlag\s*\(\s*(\d+)\s*\))");
+        for (auto it = std::sregex_iterator(content.begin(), content.end(), re);
+            it != std::sregex_iterator(); ++it)
+        {
+            flags.insert(std::stoi((*it)[1].str()));
+        }
+        return flags;
+    }
+
     // Parse SetResearchFlag(N) entries from a LEVEL_XX.DEF file
     std::set<int> ParseResearchFlagsFromDef(const std::filesystem::path& defPath)
     {
@@ -1497,21 +1512,8 @@ namespace
         if (!f)
             return flags;
 
-        std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-
-        // Match SetResearchFlag(N) - the number N is the unit type_id
-        std::regex re(R"(SetResearchFlag\s*\(\s*(\d+)\s*\))");
-        for (auto it = std::sregex_iterator(content.begin(), content.end(), re);
-            it != std::sregex_iterator(); ++it)
-        {
-            const auto& m = *it;
-            if (m.size() >= 2)
-            {
-                int flag = std::stoi(m[1].str());
-                flags.insert(flag);
-            }
-        }
-        return flags;
+        const std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        return ParseResearchFlagsFromText(content);
     }
 
     // Get cumulative research flags from LEVEL_01.DEF up to current level
@@ -14106,6 +14108,79 @@ void StrategicLevelFrame::EnsureResearchLoaded()
         }
     }
 
+    // Which Time(0)/Level(0) UnitType records are initially purchasable
+    // cannot be decided from the CURRENT level's flags alone: some of these
+    // same records are explicitly introduced by SetResearchFlag in later
+    // chapters. Read all ten original campaign scripts, not a unit-ID list.
+    // Require the complete inventory before inferring a default unlock; an
+    // incomplete extracted installation must never unlock future tanks.
+    m_campaignScriptedUnitFlags.clear();
+    m_campaignUnlockScriptsComplete = false;
+    constexpr int kRetailCampaignChapterCount = 10;
+    auto collectFromDirectory = [&](const fs::path& dir) -> bool
+        {
+            std::set<int> allFlags;
+            for (int lvl = 1; lvl <= kRetailCampaignChapterCount; ++lvl)
+            {
+                const std::string fileName = wxString::Format("LEVEL_%02d.DEF", lvl).ToStdString();
+                const std::string source = loadFileBin(dir / fileName);
+                if (source.empty()) return false;
+                const auto flags = ParseResearchFlagsFromText(source);
+                allFlags.insert(flags.begin(), flags.end());
+            }
+            m_campaignScriptedUnitFlags = std::move(allFlags);
+            return true;
+        };
+
+    // Match the active campaign's extracted scripts if they are complete.
+    // Prefer the actual source path to another installation's temp directory.
+    std::vector<fs::path> campaignDirs = {fs::path(m_level.source_path).parent_path()};
+    campaignDirs.insert(campaignDirs.end(), commonDirs.begin(), commonDirs.end());
+    for (const auto& dir : campaignDirs)
+    {
+        if (dir.empty() || !fs::is_directory(dir, ec)) continue;
+        if (collectFromDirectory(dir))
+        {
+            m_campaignUnlockScriptsComplete = true;
+            break;
+        }
+    }
+
+    // Clean installations usually keep scripts only inside COMMON.FS.
+    // Open that archive once and collect all chapter unlocks in one pass.
+    if (!m_campaignUnlockScriptsComplete)
+    {
+        for (const auto& pth : archiveCandidates(L"COMMON.FS"))
+        {
+            if (pth.empty() || !fs::exists(pth, ec) || fs::is_directory(pth, ec)) continue;
+            try
+            {
+                FSarchive arc(pth.wstring(), FSarchive::Options::NONE);
+                std::set<int> allFlags;
+                bool complete = true;
+                for (int lvl = 1; lvl <= kRetailCampaignChapterCount; ++lvl)
+                {
+                    const std::string fileName = wxString::Format("LEVEL_%02d.DEF", lvl).ToStdString();
+                    uint8_t* data = nullptr;
+                    int size = 0;
+                    if (arc.GetFile(fileName.c_str(), &data, &size) != 0 || !data || size <= 0)
+                    {
+                        complete = false;
+                        break;
+                    }
+                    const std::string script(reinterpret_cast<const char*>(data), static_cast<size_t>(size));
+                    const auto flags = ParseResearchFlagsFromText(script);
+                    allFlags.insert(flags.begin(), flags.end());
+                }
+                if (!complete) continue;
+                m_campaignScriptedUnitFlags = std::move(allFlags);
+                m_campaignUnlockScriptsComplete = true;
+                break;
+            }
+            catch (...) {}
+        }
+    }
+
     // ----------------------------------------------------------------
     // 2. Research/encyclopedia titles from the current retail COMMON.FS.
     // These are positional RESEARCH.CZ/ENG entries indexed by Item(N).
@@ -14266,18 +14341,10 @@ bool StrategicLevelFrame::IsInfoItemVisible(const ResearchItem& item) const
     if (item.researchable)
         return m_researchCompleted.count(item.id) > 0;
 
-    // Time(0) UnitType/NewUnit records are known through the campaign's
-    // SetResearchFlag(unitType) state, rather than through research completion.
+    // Encyclopedia visibility for a base unit follows the same unlock policy
+    // as the buy screen; the first SetResearchFlag need not mention every unit.
     if ((item.flags == "UnitType" || item.flags == "NewUnit") && item.data >= 0)
-    {
-        if (item.flags == "NewUnit")
-            return IsCampaignUnitUnlocked(item.data);
-        if (!m_levelResearchFlags.empty())
-            return m_levelResearchFlags.count(item.data) > 0;
-        if (!item.prerequisites.empty())
-            return IsResearchUnlocked(item);
-        return true;
-    }
+        return IsCampaignUnitUnlocked(item.data);
 
     return true;
 }
@@ -14289,13 +14356,24 @@ bool StrategicLevelFrame::IsCampaignUnitUnlocked(int unitType) const
     if (m_levelResearchFlags.count(unitType) > 0) return true;
     for (const auto& item : m_researchDb)
     {
-        if (item.flags != "NewUnit" || item.data != unitType) continue;
-        if (item.researchable)
+        if (item.data != unitType) continue;
+        if (item.flags == "UnitType")
         {
-            if (item.id >= 0 && m_researchCompleted.count(item.id) > 0) return true;
+            if (spellcross_strategy::IsUnscriptedBaseUnit(
+                    item.researchable, item.level, !item.prerequisites.empty(),
+                    m_campaignUnlockScriptsComplete,
+                    m_campaignScriptedUnitFlags.count(unitType) > 0))
+                return true;
         }
-        else if (IsResearchUnlocked(item))
-            return true;
+        else if (item.flags == "NewUnit")
+        {
+            if (item.researchable)
+            {
+                if (item.id >= 0 && m_researchCompleted.count(item.id) > 0) return true;
+            }
+            else if (!item.prerequisites.empty() && IsResearchUnlocked(item))
+                return true;
+        }
     }
     return false;
 }
