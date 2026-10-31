@@ -37,6 +37,7 @@
 #include "../spell_ui_locale.h"
 #include "../strategic_countdown_rules.h"
 #include "../strategic_mission_flow.h"
+#include "../strategic_unit_timer_rules.h"
 
 namespace
 {
@@ -3952,7 +3953,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                     }
                     const int cost = GetTechUpgradeCost(r.upgradeId);
                     const int time = GetTechUpgradeTime(r.upgradeId);
-                    usable = state->pending_kind == 0 && !installed && !pending && !categoryBusy &&
+                    usable = (state->cooldown_turns <= 0 ||
+                        spellcross_strategy::HasPendingTechUpgrade(state->pending_upgrade_id)) &&
+                        state->pending_kind == 0 && !installed && !pending && !categoryBusy &&
                         cost >= 0 && time > 0 && m_money >= cost;
                 }
                 else
@@ -4103,7 +4106,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                     wxString name = wxString::Format(L"#%d", id);
                     const auto itp = m_upgradeDefs.find(id);
                     if (itp != m_upgradeDefs.end() && !itp->second.title.empty()) name = itp->second.title;
-                    label += wxString::Format(L" -> %s (%d)", name, state.pending_upgrade_turns[slot]);
+                    label += wxString::Format(L" -> %s (%d)", name, state.cooldown_turns);
                 };
                 appendPending(0, installedEngine);
                 appendPending(1, installedWeapon);
@@ -4146,18 +4149,21 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                     bool alreadyInstalled = false;
                     bool categoryBusy = false;
                     bool exclusiveBusy = false;
+                    bool allowedToQueue = false;
                     if (m_unitsSelectedUnit < static_cast<int>(m_unitStates.size()))
                     {
                         const auto& state = m_unitStates[m_unitsSelectedUnit];
                         alreadyInstalled = std::find(state.upgrades.begin(), state.upgrades.end(), m_unitsSelectedUpgrade) != state.upgrades.end();
                         exclusiveBusy = state.pending_kind != 0;
+                        allowedToQueue = state.cooldown_turns <= 0 ||
+                            spellcross_strategy::HasPendingTechUpgrade(state.pending_upgrade_id);
                         if (it != m_upgradeDefs.end() && it->second.kind != UpgradeDefRec::Unknown)
                         {
                             const int slot = static_cast<int>(it->second.kind) - 1;
                             if (slot >= 0 && slot < 3) categoryBusy = state.pending_upgrade_id[slot] >= 0;
                         }
                     }
-                    actionEnabled = !exclusiveBusy && !alreadyInstalled && !categoryBusy &&
+                    actionEnabled = allowedToQueue && !exclusiveBusy && !alreadyInstalled && !categoryBusy &&
                         actionCost >= 0 && actionTime > 0 && m_money >= actionCost;
                 }
                 else if (hasRearmChoice)
@@ -10139,7 +10145,7 @@ void StrategicLevelFrame::RefreshUnitsInfo(int unitIndex)
         {
             if (st.pending_upgrade_id[slot] < 0) continue;
             info += wxString::Format("Pending %s: #%d (%d turns)",
-                pendingNames[slot], st.pending_upgrade_id[slot], st.pending_upgrade_turns[slot]);
+                pendingNames[slot], st.pending_upgrade_id[slot], st.cooldown_turns);
             if (st.pending_upgrade_cancelable[slot]) info += " (cancelable this turn)";
             info += "\n";
         }
@@ -10316,7 +10322,10 @@ void StrategicLevelFrame::RefreshUnitsActionButton()
             }
             // Only recruit/re-arm blocks tech-upgrade ordering. Existing tech
             // work in another category may run in parallel.
-            can = (st.pending_kind == 0 && cost >= 0 && time > 0 && !installed &&
+            can = (st.pending_kind == 0 &&
+                (st.cooldown_turns <= 0 ||
+                    spellcross_strategy::HasPendingTechUpgrade(st.pending_upgrade_id)) &&
+                cost >= 0 && time > 0 && !installed &&
                 !categoryBusy && m_money >= cost);
         }
         else if (m_unitsSelectedRearmUnitId > 0)
@@ -10387,13 +10396,14 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
         m_unitStates.push_back(state);
     }
 
-    // Recruitment and re-arm are exclusive operations.  Tech upgrades are
-    // different in the original: engine, weapon and armour may be ordered in
-    // parallel, so an upgrade-only cooldown must not block another category.
-    if (m_unitStates[m_unitsSelectedUnit].cooldown_turns > 0 && m_unitsCurrentTab != UNITS_TAB_INFO)
+    // Only engine/weapon/armour upgrades can be added to an already-running
+    // tech-upgrade order. A cooldown from battle or purchasing must still lock
+    // the unit even though it has no pending_kind.
+    const auto& activeState = m_unitStates[m_unitsSelectedUnit];
+    if (activeState.cooldown_turns > 0 && m_unitsCurrentTab != UNITS_TAB_INFO)
     {
-        const auto& st = m_unitStates[m_unitsSelectedUnit];
-        if (m_unitsCurrentTab != UNITS_TAB_UPGRADE || st.pending_kind != 0)
+        if (m_unitsCurrentTab != UNITS_TAB_UPGRADE || activeState.pending_kind != 0 ||
+            !spellcross_strategy::HasPendingTechUpgrade(activeState.pending_upgrade_id))
             return;
     }
 
@@ -10478,9 +10488,10 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
             const int slot = static_cast<int>(newDef->second.kind) - 1;
             if (slot < 0 || slot >= 3)
                 return;
-            if (st.pending_upgrade_id[slot] >= 0)
+            if (!spellcross_strategy::CanQueueTechUpgrade(
+                    st.cooldown_turns, st.pending_kind, st.pending_upgrade_id, slot))
             {
-                wxMessageBox("An upgrade in this category is already being installed.",
+                wxMessageBox("Unit unavailable or upgrade category already in progress.",
                     "Upgrade", wxOK | wxICON_INFORMATION, this);
                 return;
             }
@@ -10488,7 +10499,7 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
             st.pending_upgrade_turns[slot] = time;
             st.pending_upgrade_cost[slot] = cost;
             st.pending_upgrade_cancelable[slot] = true;
-            st.cooldown_turns = std::max(st.cooldown_turns, time);
+            st.cooldown_turns = spellcross_strategy::ExtendUnitCooldown(st.cooldown_turns, time);
             m_money -= cost;
             break;
         }
@@ -10744,30 +10755,56 @@ void StrategicLevelFrame::ApplyUnitsCooldownTick()
     {
         auto& st = m_unitStates[i];
 
-        // Recruitment / re-arm (and legacy single-upgrade saves) remain one
-        // exclusive operation using cooldown_turns. New tech upgrades use the
-        // three independent category timers below.
+        // One strategic turn advances the ONE availability timer exactly once,
+        // including battle return and newly bought units with no pending work.
+        st.cooldown_turns = spellcross_strategy::AdvanceUnitCooldown(st.cooldown_turns);
+
+        // Recruitment / re-arm (plus legacy single-upgrade saves) are
+        // exclusive and complete only at the shared deadline.
         if (st.pending_kind != 0)
         {
             st.pending_cancelable = false;
-            if (st.cooldown_turns > 0)
-                --st.cooldown_turns;
             if (st.cooldown_turns == 0)
+            {
                 CompletePendingUnitOperation(i);
+                // Older saves may contain an invalid overlap of exclusive
+                // work and tech upgrades. Preserve the paid tech upgrades for
+                // a subsequent lockout rather than silently discarding them.
+                if (spellcross_strategy::HasPendingTechUpgrade(st.pending_upgrade_id))
+                    for (int slot = 0; slot < 3; ++slot)
+                        if (st.pending_upgrade_id[slot] >= 0)
+                            st.cooldown_turns = spellcross_strategy::ExtendUnitCooldown(
+                                st.cooldown_turns, st.pending_upgrade_turns[slot]);
+            }
             continue;
         }
+
+        // A standalone cooldown (new purchase or return from battle) must
+        // retain its remaining turns; it must NOT be reset to zero here.
+        if (!spellcross_strategy::HasPendingTechUpgrade(st.pending_upgrade_id))
+            continue;
+
+        // The per-category counts are retained only as cancellation metadata
+        // for existing saves / orders. They do NOT independently finish work.
+        for (int slot = 0; slot < 3; ++slot)
+        {
+            if (st.pending_upgrade_id[slot] < 0)
+                continue;
+            st.pending_upgrade_cancelable[slot] = false;
+            st.pending_upgrade_turns[slot] =
+                spellcross_strategy::AdvanceUnitCooldown(st.pending_upgrade_turns[slot]);
+        }
+
+        // Every ordered engine / weapon / armour upgrade finishes together,
+        // after the longest required time has elapsed.
+        if (st.cooldown_turns > 0)
+            continue;
 
         EnsureUpgradeDefsLoaded();
         for (int slot = 0; slot < 3; ++slot)
         {
             if (st.pending_upgrade_id[slot] < 0)
                 continue;
-            st.pending_upgrade_cancelable[slot] = false;
-            if (st.pending_upgrade_turns[slot] > 0)
-                --st.pending_upgrade_turns[slot];
-            if (st.pending_upgrade_turns[slot] > 0)
-                continue;
-
             const int upgId = st.pending_upgrade_id[slot];
             const auto newDef = m_upgradeDefs.find(upgId);
             if (newDef != m_upgradeDefs.end())
@@ -10776,7 +10813,7 @@ void StrategicLevelFrame::ApplyUnitsCooldownTick()
                     const auto itInstalled = m_upgradeDefs.find(installedId);
                     return itInstalled != m_upgradeDefs.end() &&
                         itInstalled->second.kind == newDef->second.kind;
-                    }), st.upgrades.end());
+                }), st.upgrades.end());
                 if (std::find(st.upgrades.begin(), st.upgrades.end(), upgId) == st.upgrades.end())
                     st.upgrades.push_back(upgId);
             }
@@ -10785,11 +10822,6 @@ void StrategicLevelFrame::ApplyUnitsCooldownTick()
             st.pending_upgrade_cost[slot] = 0;
             st.pending_upgrade_cancelable[slot] = false;
         }
-
-        int remaining = 0;
-        for (int slot = 0; slot < 3; ++slot)
-            remaining = std::max(remaining, st.pending_upgrade_turns[slot]);
-        st.cooldown_turns = remaining;
     }
 }
 
@@ -16696,6 +16728,14 @@ static bool LoadStrategicStateFile(
                         if (std::regex_search(obj, mu, cre) && mu.size() > 1)
                             st.pending_upgrade_cancelable[slot] = (to_lower(mu[1].str()) == "true");
                     }
+                    // Saves from older builds store three independent upgrade
+                    // countdowns. Keep all paid upgrades, but use their longest
+                    // remaining time as one shared completion deadline.
+                    if (st.pending_kind == 0)
+                        for (int slot = 0; slot < 3; ++slot)
+                            if (st.pending_upgrade_id[slot] >= 0)
+                                st.cooldown_turns = spellcross_strategy::ExtendUnitCooldown(
+                                    st.cooldown_turns, st.pending_upgrade_turns[slot]);
                     (void)ParseJsonStringField(obj, "custom_name", st.custom_name);
                     {
                         std::smatch mt;
