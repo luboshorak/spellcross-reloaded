@@ -10912,12 +10912,7 @@ int StrategicLevelFrame::GetUnitExperienceLevel(int unitId, int experience) cons
     if (m_spellData && m_spellData->units)
     {
         if (auto* rec = m_spellData->units->GetUnit(unitId))
-        {
-            int level = 1;
-            while (level < 12 && xp >= rec->GetNextExperiencePts(level))
-                ++level;
-            return level;
-        }
+            return rec->GetExperienceLevel(xp);
     }
     return std::clamp(xp / 100 + 1, 1, 12);
 }

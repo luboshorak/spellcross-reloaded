@@ -212,6 +212,7 @@ namespace
         }
         const std::int32_t attackId = static_cast<std::int32_t>(ctx.counter_attack_id);
         if (!WriteCtxPod(os, attackId)) return false;
+        os.close();
         return static_cast<bool>(os);
     }
 
@@ -3160,6 +3161,12 @@ void MainFrame::OnOptionsScreen(wxCommandEvent& event)
 }
 
 
+static std::filesystem::path PausedBattlePath(SpellLang language)
+{
+    return std::filesystem::path("save") /
+        ("continue-" + std::to_string(static_cast<int>(language)) + ".scsave");
+}
+
 // on form close
 void MainFrame::RequestApplicationExit()
 {
@@ -3167,6 +3174,47 @@ void MainFrame::RequestApplicationExit()
         return;
 
     m_applicationExitInProgress = true;
+    const bool activeBattle = spell_data && spell_map && spell_map->IsLoaded() &&
+        spell_map->isGameMode() && !m_mission_end_flow && m_tutorial_stage == 0 &&
+        (m_mainMenuReturnToTactical || IsShown());
+    if (activeBattle)
+    {
+        namespace fs = std::filesystem;
+        bool saved = false;
+        if (!m_deployment_active && !CheckMessageState() && spell_map->CanSavePausedBattle())
+        {
+            const fs::path destination = PausedBattlePath(spell_data->GetTextLanguage());
+            fs::path partial = destination;
+            partial += ".part";
+            std::error_code ec;
+            fs::create_directories(destination.parent_path(), ec);
+            if (!ec && SaveTacticalGameWithCampaignContext(partial.wstring()))
+            {
+#ifdef _WIN32
+                saved = MoveFileExW(partial.c_str(), destination.c_str(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+                fs::rename(partial, destination, ec);
+                saved = !ec;
+#endif
+            }
+            if (!saved)
+                fs::remove(partial, ec);
+        }
+        if (!saved && wxMessageBox(
+            "The battle could not be saved for Continue. Exit anyway?",
+            "Continue", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING,
+            IsShown() ? this : nullptr) != wxYES)
+        {
+            m_applicationExitInProgress = false;
+            if (!form_mmenu)
+            {
+                m_mainMenuReturnToTactical = false;
+                ShowTacticalWindow();
+            }
+            return;
+        }
+    }
     wxLogDebug("[SHUTDOWN] beginning application shutdown");
 
     // The restored main menu and strategic screen intentionally live as
@@ -4290,11 +4338,27 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                     break;
                 }
 
-                // Outside an ESC/pause flow there is no live tactical session to
-                // resume. Keep the menu visible rather than silently reloading a
-                // map definition and pretending that it is a continuation.
-                wxMessageBox("No paused tactical game to continue.", "Main menu",
-                    wxOK | wxICON_INFORMATION, this);
+                namespace fs = std::filesystem;
+                std::error_code ec;
+                const fs::path paused = PausedBattlePath(spell_data->GetTextLanguage());
+                if (fs::is_regular_file(paused, ec))
+                {
+                    TacticalCampaignContext context;
+                    if (ReadTacticalCampaignContext(paused.wstring(), context) &&
+                        LoadTacticalGameWithCampaignContext(paused.wstring()))
+                    {
+                        fs::remove(paused, ec);
+                        ShowTacticalWindow();
+                        break;
+                    }
+                    wxMessageBox("The paused battle could not be loaded.", "Main menu",
+                        wxOK | wxICON_ERROR, this);
+                }
+                else
+                {
+                    wxMessageBox("No paused tactical game to continue.", "Main menu",
+                        wxOK | wxICON_INFORMATION, this);
+                }
                 ShowMainMenuWindow();
                 break;
             }
@@ -5535,6 +5599,16 @@ void MainFrame::OnHUDbuttonsClick(wxMouseEvent& event)
         {
             // show map options
             form_map_options = new FormMapOptions(canvas,ID_MAP_OPT_WIN,spell_map);
+        }
+        if (btn->action_id == SpellMap::HUD_ACTION_MISSION_INFO && !CheckMessageState())
+        {
+            SpellTextRec* briefing = spell_data->texts->GetText(spell_map->params.mission_text);
+            if (!briefing)
+                briefing = spell_data->texts->GetText(spell_map->params.start_text);
+            if (briefing)
+                ShowMessage(briefing, false, nullptr);
+            else if (!form_map_options)
+                form_map_options = new FormMapOptions(canvas, ID_MAP_OPT_WIN, spell_map);
         }
         if(btn->action_id == SpellMap::HUD_ACTION_RETREAT)
         {

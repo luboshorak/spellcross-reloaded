@@ -225,6 +225,7 @@ class SpellUnitRec
 		int isSingleMan();		
 		int CalcExperiencePts(int level=1);
 		int GetExperiencePts(int level=1);
+		int GetExperienceLevel(int points);
 		int GetNextExperiencePts(int level=1);
 
 		int canAttack(SpellUnitRec* target);

@@ -327,10 +327,10 @@ SpellUnits::SpellUnits(uint8_t* data, int dlen, FSUarchive *fsu, SpellGraphics *
 		// unit selection/report sound class
 		unit->ssel = rdu8(rec + 0xC5);
 
-		// unit min rank points
-		unit->exp_min = rdu32(rec + 0xC6);
-		// unit max rank points x200
-		unit->exp_max = rdu32(rec + 0xCA);
+		// Both editions store the two XP thresholds at the end of the record.
+		const int experience_offset = is_eng ? 0xC7 : 0xC6;
+		unit->exp_min = rdu32(rec + experience_offset);
+		unit->exp_max = rdu32(rec + experience_offset + 4);
 		// precalculate experience points limits
 		for(int e = 0; e < 12; e++)
 			unit->exp_limits[e] = unit->CalcExperiencePts(e);
@@ -510,6 +510,16 @@ int SpellUnitRec::GetExperiencePts(int level)
 int SpellUnitRec::GetNextExperiencePts(int level)
 {
 	return(exp_limits[(std::min)((std::max)(level,0),11)]);
+}
+
+// Convert total XP to the one-based level used by both game screens.
+int SpellUnitRec::GetExperienceLevel(int points)
+{
+	int level = 1;
+	if (GetNextExperiencePts(1) != 0)
+		while (level < 12 && points >= GetNextExperiencePts(level))
+			++level;
+	return level;
 }
 
 // uses projectile when shooting to target unit (or NULL to object)?
@@ -1498,14 +1508,7 @@ int MapUnit::AddExperience(int points)
 {
 	int old_level = experience_level;
 	experience = (std::min)(experience + points, unit->GetExperiencePts(12));
-	experience_level = 1;
-	// The threshold lookup clamps to the last entry at level 12.  Stop here
-	// so reaching the maximum XP cannot keep advancing against that entry.
-	// DOS rank lookup (EN 0x881fd / CZ 0x7fa70) leaves types with a
-	// zero first threshold at rank zero, regardless of accumulated points.
-	while(unit->GetNextExperiencePts(1) != 0 && experience_level < 12 &&
-		experience >= unit->GetNextExperiencePts(experience_level))
-		experience_level++;
+	experience_level = unit->GetExperienceLevel(experience);
 	return(old_level != experience_level);
 }
 // calculate experience for casualties caused to a target unit.
@@ -2410,9 +2413,9 @@ SpellMapEventRec *MapUnit::Kill()
 		evt->trig_unit = NULL;
 		trig_event = NULL;
 
-		// For objective events (TransportUnit, SaveUnit, etc.) killing the trigger unit
-		// means the objective FAILED, not succeeded — do NOT mark as done.
-		if (!evt->is_objective)
+		// DestroyUnit succeeds when its target dies. SaveUnit and TransportUnit
+		// leave the objective incomplete so the mission can register failure.
+		if (!evt->is_objective || evt->evt_type == SpellMapEventRec::EVT_DESTROY_UNIT)
 			evt->is_done = true;
 	}
 	// clear so destructor won't re-process

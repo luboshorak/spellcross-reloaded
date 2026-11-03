@@ -758,8 +758,9 @@ int SpellMapEvents::AddSpecialEvent(SpellData *data, SpellDEF* def, SpellDefCmd*
 				return(1);
 			}
 			
-			// experience level
-			unit->InitExperience(stoi(evcmd->parameters->at(3)));
+			// ArmyUnit rewards use the original zero-based rank in the mission DEF.
+			const int rank = stoi(evcmd->parameters->at(3));
+			unit->InitExperience(rank + (unit->spec_type == MapUnitType::ArmyUnit ? 1 : 0));
 
 			// man count (health)
 			unit->man = (std::min)(stoi(evcmd->parameters->at(4)),unit->unit->cnt);
@@ -945,7 +946,10 @@ std::tuple<std::string, std::string> SpellMapEventRec::FormatDEFrecord(int *init
 				else if(unit.unit->spec_type == MapUnitType::Values::SpecUnit && unit.unit->id == 49)
 					spec_type_str = "SpecUnit2";
 				data += string_format("EventData(%d) {\n",(*initial_id)++);
-				data += string_format("    AddSpecialUnit(%s,%d,%d,%02d,%d,%s)\n}\n\n",spec_type_str.c_str(),unit.unit->unit->type_id,map->ConvXY(unit.unit->coor),unit.unit->experience_init,unit.unit->man,wstring2stringCP895(string2wstring(name)).c_str());
+				int rank = unit.unit->experience_init;
+				if (unit.unit->spec_type == MapUnitType::ArmyUnit && rank > 0)
+					--rank;
+				data += string_format("    AddSpecialUnit(%s,%d,%d,%02d,%d,%s)\n}\n\n",spec_type_str.c_str(),unit.unit->unit->type_id,map->ConvXY(unit.unit->coor),rank,unit.unit->man,wstring2stringCP895(string2wstring(name)).c_str());
 			}
 		}
 	}
