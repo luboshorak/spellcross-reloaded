@@ -372,7 +372,7 @@ void SpellMapEvents::CleanupEvents()
 	std::vector<SpellMapEventRec*> list;
 	for(auto &evt: events)
 	{
-		if(evt->hasTargetUnit() && !evt->trig_unit)
+		if(evt->hasTargetUnit() && !evt->trig_unit && !(map->isGameMode() && evt->is_objective))
 			list.push_back(evt); // trigger unit no longer exist?
 		else if(evt->evt_type == SpellMapEventRec::EvtTypes::EVT_VOID)
 			list.push_back(evt); // void event type
@@ -759,7 +759,7 @@ int SpellMapEvents::AddSpecialEvent(SpellData *data, SpellDEF* def, SpellDefCmd*
 			}
 			
 			// experience level
-			unit->InitExperience(stoi(evcmd->parameters->at(3)));
+			unit->InitExperience(stoi(evcmd->parameters->at(3)) + 1);
 
 			// man count (health)
 			unit->man = (std::min)(stoi(evcmd->parameters->at(4)),unit->unit->cnt);
@@ -945,7 +945,7 @@ std::tuple<std::string, std::string> SpellMapEventRec::FormatDEFrecord(int *init
 				else if(unit.unit->spec_type == MapUnitType::Values::SpecUnit && unit.unit->id == 49)
 					spec_type_str = "SpecUnit2";
 				data += string_format("EventData(%d) {\n",(*initial_id)++);
-				data += string_format("    AddSpecialUnit(%s,%d,%d,%02d,%d,%s)\n}\n\n",spec_type_str.c_str(),unit.unit->unit->type_id,map->ConvXY(unit.unit->coor),unit.unit->experience_init,unit.unit->man,wstring2stringCP895(string2wstring(name)).c_str());
+				data += string_format("    AddSpecialUnit(%s,%d,%d,%02d,%d,%s)\n}\n\n",spec_type_str.c_str(),unit.unit->unit->type_id,map->ConvXY(unit.unit->coor),(std::max)(0, unit.unit->experience_init - 1),unit.unit->man,wstring2stringCP895(string2wstring(name)).c_str());
 			}
 		}
 	}

@@ -2400,29 +2400,22 @@ int MapUnit::isDead() const
 }
 
 // kill unit (exec linked events, then delete the object, so no touchy afterwards and call Extract() from units list before calling this!)
-SpellMapEventRec *MapUnit::Kill()
+void MapUnit::Kill(std::vector<SpellMapEventRec*>& pending)
 {
-	SpellMapEventRec *evt = NULL;
-	for(auto &trig_event: trig_events)
-	{		
-		// unlink from event
-		evt = trig_event;
-		evt->trig_unit = NULL;
-		trig_event = NULL;
-
-		// For objective events (TransportUnit, SaveUnit, etc.) killing the trigger unit
-		// means the objective FAILED, not succeeded — do NOT mark as done.
-		if (!evt->is_objective)
-			evt->is_done = true;
+	for (auto* event : trig_events)
+	{
+		event->trig_unit = nullptr;
+		// DestroyUnit succeeds on death. SaveUnit and TransportUnit still
+		// require the target to reach its destination alive.
+		if (!event->is_done &&
+			(!event->is_objective || event->evt_type == SpellMapEventRec::EVT_DESTROY_UNIT))
+		{
+			event->is_done = true;
+			pending.push_back(event);
+		}
 	}
-	// clear so destructor won't re-process
 	trig_events.clear();
-
-	// destroy this unit
 	delete this;
-
-	// eventually return triggered event
-	return(evt);
 }
 
 // try remove trigger event from list

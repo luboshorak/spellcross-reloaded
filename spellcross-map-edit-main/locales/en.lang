@@ -190,3 +190,7 @@ menu.home.screen=&Screen...	Ctrl+S
 menu.home.open_editor=Open Map Editor...
 menu.home.editor_help=Launch the standalone Spellcross map editor
 menu.home.editor=&Map Editor
+
+resume.save_failed=Could not save the current game. The game is still running.
+resume.load_failed=No saved game could be resumed.
+battle.unit_details=Level: %d |Ready: %d |Wounded: %d |Morale: %d%% |Action points: %d |Attack (light / heavy / air): %d / %d / %d |Defence: %d

@@ -124,6 +124,8 @@ public:
     // frames are independent top-level windows, so closing only MainFrame can
     // otherwise leave the process alive with no visible window.
     void RequestApplicationExit();
+    bool SaveContinueGame();
+    bool LoadContinueGame();
     bool IsApplicationExitInProgress() const { return m_applicationExitInProgress; }
 
     // Message display (used by SpellMap and StrategicLevelFrame)
@@ -260,6 +262,7 @@ private:
     FormMainMenu *form_mmenu = NULL;
     bool m_reopen_mmenu_after_video = false;
     bool m_mainMenuReturnToTactical = false;
+    bool m_inspectUnit = false;
     
     // spellcross HUD interface stuff
     void OnPaintHUDbutton(wxPaintEvent& event);
