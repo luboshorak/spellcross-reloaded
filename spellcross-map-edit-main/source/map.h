@@ -370,7 +370,7 @@ public:
 		void ApplyMoraleSpecialAction(MapUnit* unit);
 		void ApplyCommanderDeathMorale(MapUnit* commander_host);
 		bool MovePanickedEnemy(MapUnit* unit);
-		bool IsUnitBusy(MapUnit* unit);
+		static bool IsUnitBusy(const MapUnit* unit);
 		// Original Spellcross defensive/opportunity fire. Either side may react
 		// when a moving opponent enters previously unseen direct sight while the
 		// defender still has enough AP for at least one shot.
@@ -904,6 +904,7 @@ public:
 		int SetGameMode(int new_mode);
 		int isGameMode();
 		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
+		bool CanSavePausedBattle() const;
 		void SetGameDifficulty(GameDifficulty difficulty);
 		GameDifficulty GetGameDifficulty() const { return game_difficulty; };
 		int GetTacticalSaveLimit() const;

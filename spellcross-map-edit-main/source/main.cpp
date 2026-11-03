@@ -3227,6 +3227,21 @@ void MainFrame::RequestApplicationExit()
     if (m_applicationExitInProgress)
         return;
 
+    const bool activeBattle = (IsShown() || m_mainMenuReturnToTactical) &&
+        spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && !m_mission_end_flow;
+    if (activeBattle && (m_deployment_active || CheckMessageState() || !spell_map->CanSavePausedBattle()))
+    {
+        if (m_mainMenuReturnToTactical && !form_mmenu)
+        {
+            m_mainMenuReturnToTactical = false;
+            ShowTacticalWindow();
+        }
+        wxMessageBox(spellcross_ui_locale::Tr("resume.battle_busy",
+            "Finish deployment, close the battle message or wait for the current action to finish before exiting."),
+            "Spellcross", wxOK | wxICON_INFORMATION, IsShown() ? this : nullptr);
+        return;
+    }
+
     if (!SaveContinueGame())
     {
         wxMessageBox(spellcross_ui_locale::Tr("resume.save_failed",

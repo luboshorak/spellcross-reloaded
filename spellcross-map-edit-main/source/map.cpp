@@ -960,6 +960,17 @@ SpellMap::SpellMap()
 	SetRenderFilter(NULL);
 }
 
+bool SpellMap::CanSavePausedBattle() const
+{
+	// The save format stores map state, while these phases also need live
+	// movement, combat and AI queues to resume correctly.
+	if (enemy_turn_running || panic_turn_running || group_move_active ||
+		reaction_fire_active || !reaction_fire_queue.empty())
+		return false;
+
+	return std::none_of(units.begin(), units.end(), IsUnitBusy);
+}
+
 int SpellMap::SaveGameStateToFile(const std::wstring& path)
 {
 	if (!IsLoaded() || !saves)
@@ -7658,7 +7669,7 @@ int SpellMap::ResetUnitsAP()
 }
 
 
-bool SpellMap::IsUnitBusy(MapUnit* unit)
+bool SpellMap::IsUnitBusy(const MapUnit* unit)
 {
     if (!unit)
         return(false);
@@ -10112,7 +10123,12 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		{
 			int skill_frac_base = unit->unit->GetExperiencePts(unit->experience_level);
 			int skill_frac_next = unit->unit->GetNextExperiencePts(unit->experience_level);
-			skill_fraction_pix = 51 * (unit->experience - skill_frac_base) / (skill_frac_next - skill_frac_base);
+			if (skill_frac_next > skill_frac_base)
+			{
+				const auto xp = std::clamp(unit->experience, skill_frac_base, skill_frac_next);
+				skill_fraction_pix = static_cast<int>(
+					51LL * (xp - skill_frac_base) / (skill_frac_next - skill_frac_base));
+			}
 		}
 		for (int y = 0; y < 2; y++)
 			memset(&buf[hud_left + ix_ref + 5 + (hud_top + y + 77) * buf_x_size], 235, (std::min)((std::max)(skill_fraction_pix, 1), 51));
@@ -10172,11 +10188,18 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		// pos b: 579,23  size: 60x50
 		unit->unit->icon_glyph->Render(buf, buf_end, buf_x_size, hud_left + ((pid == 0) ? (1) : (579)), hud_top + 23);
 
-		// Render active formation mark in the unit information panel.
-		// WM_FORM0/1/2 are the original battalion/regiment/brigade glyphs.
+		// The information panel identifies the commander carried by this unit.
+		// Formation membership is shown separately on the battlefield plate.
 		// pos a: 48,25
 		// pos b: 626,25
-		const int command_level = (std::max)(0, (std::min)(unit->formation_level, 3));
+		const auto host_mask = unit->formation_commander_mask;
+		int command_level = unit->is_commander ? 1 : 0;
+		if (host_mask & 0x04)
+			command_level = 3;
+		else if (host_mask & 0x02)
+			command_level = 2;
+		else if (host_mask & 0x01)
+			command_level = 1;
 		if (command_level && gres.wm_form[command_level - 1])
 			gres.wm_form[command_level - 1]->Render(buf, buf_end, buf_x_size, hud_left + ix_ref + 48, hud_top + 25);
 
@@ -13035,7 +13058,7 @@ int SpellMap::Tick()
 					else
 					{
 						new_contact = 0;
-						UpdateEnemyVisibilityFromPlayerView(this, unit_view, unit, &new_contact);
+						UpdateEnemyVisibilityFromPlayerView(this, unit_view, unit, nullptr);
 					}
 					if (new_contact)
 					{
