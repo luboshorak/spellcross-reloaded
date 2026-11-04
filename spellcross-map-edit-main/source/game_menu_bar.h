@@ -4,6 +4,7 @@
 #include <wx/dcbuffer.h>
 #include <wx/popupwin.h>
 #include <wx/toolbar.h>
+#include <wx/weakref.h>
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -53,6 +54,7 @@ namespace spellcross_menu
     class Popup final : public wxPopupTransientWindow
     {
         wxFrame* m_frame;
+        wxWeakRef<wxWindow> m_previousFocus;
         std::vector<wxMenu*> m_stack;
         std::vector<wxMenuItem*> m_rows;
         int m_selected = -1;
@@ -84,9 +86,16 @@ namespace spellcross_menu
                 (!m_rows[row] || (!m_rows[row]->IsSeparator() && m_rows[row]->IsEnabled()));
         }
 
+        void ReturnFocus()
+        {
+            if (m_previousFocus && m_previousFocus->IsShownOnScreen() && m_previousFocus->IsEnabled())
+                m_previousFocus->SetFocus();
+        }
+
         void ClosePopup()
         {
             Dismiss();
+            ReturnFocus();
             Destroy();
         }
 
@@ -175,7 +184,12 @@ namespace spellcross_menu
         void Key(wxKeyEvent& event)
         {
             const int key = event.GetKeyCode();
-            if (key == WXK_ESCAPE)
+            if (event.AltDown() && (key == WXK_RETURN || key == WXK_NUMPAD_ENTER))
+            {
+                wxQueueEvent(m_frame, new wxCommandEvent(wxEVT_MENU, spellcross_window::FullscreenId()));
+                ClosePopup();
+            }
+            else if (key == WXK_ESCAPE)
                 ClosePopup();
             else if (key == WXK_UP || key == WXK_DOWN)
             {
@@ -202,18 +216,18 @@ namespace spellcross_menu
         }
 
     protected:
-        void OnDismiss() override { Destroy(); }
+        void OnDismiss() override { ReturnFocus(); Destroy(); }
 
     public:
         Popup(wxFrame* frame, wxMenu* menu, wxWindow* anchor)
             : wxPopupTransientWindow(frame, wxBORDER_NONE), m_frame(frame),
-              m_stack{menu}, m_rowHeight(FromDIP(30)), m_padding(FromDIP(5))
+              m_previousFocus(wxWindow::FindFocus()), m_stack{menu}, m_rowHeight(FromDIP(30)), m_padding(FromDIP(5))
         {
             SetBackgroundStyle(wxBG_STYLE_PAINT);
             SetFont(anchor->GetFont());
             Rebuild();
             Bind(wxEVT_PAINT, &Popup::Paint, this);
-            Bind(wxEVT_KEY_DOWN, &Popup::Key, this);
+            Bind(wxEVT_CHAR_HOOK, &Popup::Key, this);
             Bind(wxEVT_MOTION, [this](wxMouseEvent& event) {
                 m_selected = (event.GetY() - m_padding) / m_rowHeight;
                 if (event.GetY() < m_padding)
@@ -222,7 +236,7 @@ namespace spellcross_menu
             });
             Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) { Activate(); });
             Position(anchor->ClientToScreen(wxPoint(0, 0)), anchor->GetSize());
-            wxPopupTransientWindow::Popup(anchor);
+            wxPopupTransientWindow::Popup();
             SetFocus();
         }
     };

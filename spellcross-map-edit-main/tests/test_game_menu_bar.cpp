@@ -24,7 +24,9 @@ class MenuTestApp : public wxApp
         options->AppendSubMenu(submenu, "Difficulty");
         model->Append(options, "&Options");
         spellcross_menu::Install(frame, model);
+        auto* canvas = new wxPanel(frame, 10004);
         frame->Show();
+        canvas->SetFocus();
         return frame;
     }
 
@@ -48,12 +50,21 @@ public:
             auto* popup = new spellcross_menu::Popup(frames[0],
                 spellcross_menu::Model(frames[0])->GetMenu(0), frames[0]->GetToolBar());
             wxYield();
-            wxKeyEvent escape(wxEVT_KEY_DOWN);
+            Check(popup->IsShown(), "Popup dismissed while opening");
+            wxKeyEvent escape(wxEVT_CHAR_HOOK);
             escape.m_keyCode = WXK_ESCAPE;
             popup->GetEventHandler()->ProcessEvent(escape);
             wxYield();
+            Check(wxWindow::FindFocus() == frames[0]->FindWindow(10004),
+                "Closing menu lost gameplay focus");
             const auto windowSize = frames[0]->GetSize();
-            Toggle(frames[0]);
+            auto* fullscreenPopup = new spellcross_menu::Popup(frames[0],
+                spellcross_menu::Model(frames[0])->GetMenu(0), frames[0]->GetToolBar());
+            wxYield();
+            wxKeyEvent altEnter(wxEVT_CHAR_HOOK);
+            altEnter.m_keyCode = WXK_RETURN;
+            altEnter.SetAltDown(true);
+            fullscreenPopup->GetEventHandler()->ProcessEvent(altEnter);
             wxYield();
             Check(frames[0]->IsFullScreen(), "Fullscreen command failed");
             Check(frames[0]->GetToolBar()->IsShown(), "Menu hidden in fullscreen");
