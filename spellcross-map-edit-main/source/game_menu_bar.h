@@ -1,0 +1,353 @@
+#pragma once
+
+#include <wx/wx.h>
+#include <wx/dcbuffer.h>
+#include <wx/popupwin.h>
+#include <wx/toolbar.h>
+#include <algorithm>
+#include <memory>
+#include <vector>
+#include "spell_ui_locale.h"
+
+// All three game windows share a session display preference.
+namespace spellcross_window
+{
+    inline bool& Fullscreen()
+    {
+        static bool enabled = false;
+        return enabled;
+    }
+
+    inline int FullscreenId()
+    {
+        static const int id = wxWindow::NewControlId();
+        return id;
+    }
+
+    inline void Apply(wxFrame* frame)
+    {
+        if (frame->IsFullScreen() == Fullscreen())
+            return;
+        // Retain the toolbar containing the game menu in fullscreen.
+        frame->ShowFullScreen(Fullscreen(),
+            wxFULLSCREEN_NOCAPTION | wxFULLSCREEN_NOBORDER | wxFULLSCREEN_NOSTATUSBAR);
+        frame->Layout();
+        frame->Refresh();
+    }
+
+    inline void AddFullscreen(wxMenu* options)
+    {
+        options->AppendSeparator();
+        options->AppendCheckItem(FullscreenId(),
+            spellcross_ui_locale::Tr("menu.fullscreen", "&Fullscreen\tAlt+Enter"));
+    }
+}
+
+namespace spellcross_menu
+{
+    inline wxColour Background() { return wxColour(8, 24, 7); }
+    inline wxColour Highlight() { return wxColour(24, 51, 15); }
+    inline wxColour Accent() { return wxColour(61, 207, 32); }
+    inline wxColour Text() { return wxColour(62, 224, 25); }
+
+    class Popup final : public wxPopupTransientWindow
+    {
+        wxFrame* m_frame;
+        std::vector<wxMenu*> m_stack;
+        std::vector<wxMenuItem*> m_rows;
+        int m_selected = -1;
+        int m_rowHeight;
+        int m_padding;
+
+        void Rebuild()
+        {
+            m_rows.clear();
+            if (m_stack.size() > 1)
+                m_rows.push_back(nullptr); // Back to the parent menu.
+            wxClientDC dc(this);
+            dc.SetFont(GetFont());
+            int width = FromDIP(260);
+            for (auto* item : m_stack.back()->GetMenuItems())
+            {
+                m_rows.push_back(item);
+                const auto label = item->GetItemLabel();
+                width = std::max(width, dc.GetTextExtent(label).x + FromDIP(96));
+            }
+            SetClientSize(width, static_cast<int>(m_rows.size()) * m_rowHeight + 2 * m_padding);
+            m_selected = -1;
+            Refresh();
+        }
+
+        bool Selectable(int row) const
+        {
+            return row >= 0 && row < static_cast<int>(m_rows.size()) &&
+                (!m_rows[row] || (!m_rows[row]->IsSeparator() && m_rows[row]->IsEnabled()));
+        }
+
+        void ClosePopup()
+        {
+            Dismiss();
+            Destroy();
+        }
+
+        void Activate()
+        {
+            if (!Selectable(m_selected))
+                return;
+            auto* item = m_rows[m_selected];
+            if (!item)
+            {
+                m_stack.pop_back();
+                Rebuild();
+            }
+            else if (item->GetSubMenu())
+            {
+                m_stack.push_back(item->GetSubMenu());
+                Rebuild();
+            }
+            else
+            {
+                if (item->IsCheckable())
+                    item->Check(item->IsRadio() || !item->IsChecked());
+                auto* command = new wxCommandEvent(wxEVT_MENU, item->GetId());
+                command->SetInt(item->IsCheckable() && item->IsChecked());
+                wxQueueEvent(m_frame, command);
+                ClosePopup();
+            }
+        }
+
+        void Paint(wxPaintEvent&)
+        {
+            wxAutoBufferedPaintDC dc(this);
+            dc.SetBackground(wxBrush(Background()));
+            dc.Clear();
+            dc.SetFont(GetFont());
+            dc.SetPen(wxPen(wxColour(19, 43, 14)));
+            for (int x = FromDIP(8); x < GetClientSize().x; x += FromDIP(12))
+                dc.DrawLine(x, 1, x, GetClientSize().y - 1);
+            for (int y = FromDIP(8); y < GetClientSize().y; y += FromDIP(12))
+                dc.DrawLine(1, y, GetClientSize().x - 1, y);
+            dc.SetPen(wxPen(wxColour(121, 128, 115)));
+            dc.SetBrush(*wxTRANSPARENT_BRUSH);
+            dc.DrawRectangle(GetClientRect());
+            for (int row = 0; row < static_cast<int>(m_rows.size()); ++row)
+            {
+                const int y = m_padding + row * m_rowHeight;
+                auto* item = m_rows[row];
+                if (item && item->IsSeparator())
+                {
+                    dc.SetPen(wxPen(wxColour(65, 73, 77)));
+                    dc.DrawLine(FromDIP(12), y + m_rowHeight / 2,
+                        GetClientSize().x - FromDIP(12), y + m_rowHeight / 2);
+                    continue;
+                }
+                if (row == m_selected && Selectable(row))
+                {
+                    dc.SetPen(*wxTRANSPARENT_PEN);
+                    dc.SetBrush(wxBrush(Highlight()));
+                    dc.DrawRectangle(FromDIP(3), y, GetClientSize().x - FromDIP(6), m_rowHeight);
+                }
+                dc.SetTextForeground(!item || item->IsEnabled() ? Text() : wxColour(115, 120, 124));
+                const wxString title = item ? item->GetItemLabelText()
+                    : spellcross_ui_locale::Tr("menu.back", "Back");
+                const int textY = y + (m_rowHeight - dc.GetTextExtent(title).y) / 2;
+                dc.DrawText(title, FromDIP(30), textY);
+                if (!item)
+                    dc.DrawText("<", FromDIP(12), textY);
+                if (item && item->IsCheckable() && item->IsChecked())
+                {
+                    dc.SetPen(wxPen(Accent()));
+                    dc.SetBrush(wxBrush(Accent()));
+                    dc.DrawCircle(FromDIP(15), y + m_rowHeight / 2, FromDIP(3));
+                }
+                if (item && item->GetSubMenu())
+                    dc.DrawText(">", GetClientSize().x - FromDIP(20), textY);
+                else if (item && item->GetItemLabel().Contains("\t"))
+                {
+                    const auto shortcut = item->GetItemLabel().AfterFirst('\t');
+                    dc.SetTextForeground(Accent());
+                    dc.DrawText(shortcut,
+                        GetClientSize().x - FromDIP(16) - dc.GetTextExtent(shortcut).x, textY);
+                }
+            }
+        }
+
+        void Key(wxKeyEvent& event)
+        {
+            const int key = event.GetKeyCode();
+            if (key == WXK_ESCAPE)
+                ClosePopup();
+            else if (key == WXK_UP || key == WXK_DOWN)
+            {
+                const int count = static_cast<int>(m_rows.size());
+                const int direction = key == WXK_DOWN ? 1 : -1;
+                for (int step = 0; step < count; ++step)
+                {
+                    m_selected = (m_selected + direction + count) % count;
+                    if (Selectable(m_selected))
+                        break;
+                }
+                Refresh();
+            }
+            else if (key == WXK_LEFT && m_stack.size() > 1)
+            {
+                m_stack.pop_back();
+                Rebuild();
+            }
+            else if (key == WXK_RETURN || key == WXK_NUMPAD_ENTER || key == WXK_SPACE ||
+                key == WXK_RIGHT)
+                Activate();
+            else
+                event.Skip();
+        }
+
+    protected:
+        void OnDismiss() override { Destroy(); }
+
+    public:
+        Popup(wxFrame* frame, wxMenu* menu, wxWindow* anchor)
+            : wxPopupTransientWindow(frame, wxBORDER_NONE), m_frame(frame),
+              m_stack{menu}, m_rowHeight(FromDIP(30)), m_padding(FromDIP(5))
+        {
+            SetBackgroundStyle(wxBG_STYLE_PAINT);
+            SetFont(anchor->GetFont());
+            Rebuild();
+            Bind(wxEVT_PAINT, &Popup::Paint, this);
+            Bind(wxEVT_KEY_DOWN, &Popup::Key, this);
+            Bind(wxEVT_MOTION, [this](wxMouseEvent& event) {
+                m_selected = (event.GetY() - m_padding) / m_rowHeight;
+                if (event.GetY() < m_padding)
+                    m_selected = -1;
+                Refresh();
+            });
+            Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) { Activate(); });
+            Position(anchor->ClientToScreen(wxPoint(0, 0)), anchor->GetSize());
+            wxPopupTransientWindow::Popup(anchor);
+            SetFocus();
+        }
+    };
+
+    // The toolbar reserves client space on every frame, including the menu
+    // screen that paints directly into its frame rather than a child canvas.
+    // The wxMenuBar is an owned command model, never an OS-rendered menubar.
+    class Bar final : public wxToolBar
+    {
+        std::unique_ptr<wxMenuBar> m_model;
+
+        void Open(size_t index, wxWindow* anchor)
+        {
+            if (!m_model->IsEnabledTop(index))
+                return;
+            if (auto* item = m_model->FindItem(spellcross_window::FullscreenId()))
+                item->Check(static_cast<wxFrame*>(GetParent())->IsFullScreen());
+            new Popup(static_cast<wxFrame*>(GetParent()), m_model->GetMenu(index), anchor);
+        }
+
+        void AddAccelerators(wxMenu* menu, std::vector<wxAcceleratorEntry>& entries)
+        {
+            for (auto* item : menu->GetMenuItems())
+            {
+                if (item->GetSubMenu())
+                    AddAccelerators(item->GetSubMenu(), entries);
+                else
+                {
+                    std::unique_ptr<wxAcceleratorEntry> entry(item->GetAccel());
+                    if (entry)
+                    {
+                        entry->Set(entry->GetFlags(), entry->GetKeyCode(), item->GetId());
+                        entries.push_back(*entry);
+                    }
+                }
+            }
+        }
+
+    public:
+        Bar(wxFrame* frame, wxMenuBar* model)
+            : wxToolBar(frame, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                wxTB_HORIZONTAL | wxTB_FLAT | wxTB_NODIVIDER | wxBORDER_NONE),
+              m_model(model)
+        {
+            SetFont(wxFontInfo(10).Family(wxFONTFAMILY_TELETYPE).Bold());
+            SetBackgroundColour(Background());
+            SetMargins(FromDIP(4), FromDIP(2));
+            std::vector<wxAcceleratorEntry> entries;
+            for (size_t index = 0; index < model->GetMenuCount(); ++index)
+            {
+                const auto label = model->GetMenuLabelText(index);
+                wxClientDC dc(this);
+                dc.SetFont(GetFont());
+                auto* button = new wxControl(this, wxID_ANY, wxDefaultPosition,
+                    wxSize(dc.GetTextExtent(label).x + FromDIP(32), FromDIP(32)),
+                    wxBORDER_NONE | wxWANTS_CHARS);
+                button->SetFont(GetFont());
+                button->SetBackgroundStyle(wxBG_STYLE_PAINT);
+                button->SetName(label);
+                button->SetToolTip(label);
+                button->Bind(wxEVT_PAINT, [this, button, label, index](wxPaintEvent&) {
+                    wxAutoBufferedPaintDC paint(button);
+                    const bool hover = button->GetClientRect().Contains(
+                        button->ScreenToClient(wxGetMousePosition()));
+                    paint.SetBackground(wxBrush(hover ? Highlight() : Background()));
+                    paint.Clear();
+                    paint.SetFont(GetFont());
+                    paint.SetTextForeground(m_model->IsEnabledTop(index)
+                        ? (hover ? wxColour(227, 233, 24) : Accent()) : wxColour(76, 104, 68));
+                    const auto extent = paint.GetTextExtent(label);
+                    const auto size = button->GetClientSize();
+                    paint.DrawText(label, (size.x - extent.x) / 2, (size.y - extent.y) / 2);
+                    paint.SetPen(wxPen(Accent()));
+                    paint.DrawLine(0, size.y - 1, size.x, size.y - 1);
+                });
+                button->Bind(wxEVT_ENTER_WINDOW, [button](wxMouseEvent&) { button->Refresh(); });
+                button->Bind(wxEVT_LEAVE_WINDOW, [button](wxMouseEvent&) { button->Refresh(); });
+                button->Bind(wxEVT_LEFT_DOWN, [this, index, button](wxMouseEvent&) { Open(index, button); });
+                button->Bind(wxEVT_KEY_DOWN, [this, index, button](wxKeyEvent& event) {
+                    if (event.GetKeyCode() == WXK_SPACE || event.GetKeyCode() == WXK_RETURN ||
+                        event.GetKeyCode() == WXK_DOWN)
+                        Open(index, button);
+                    else
+                        event.Skip();
+                });
+                AddControl(button);
+                AddAccelerators(model->GetMenu(index), entries);
+                const auto rawLabel = model->GetMenuLabel(index);
+                const int mnemonic = rawLabel.Find('&');
+                if (mnemonic != wxNOT_FOUND && mnemonic + 1 < static_cast<int>(rawLabel.length()))
+                {
+                    const int id = wxWindow::NewControlId();
+                    entries.emplace_back(wxACCEL_ALT,
+                        wxToupper(rawLabel[mnemonic + 1]), id);
+                    frame->Bind(wxEVT_MENU, [this, index, button](wxCommandEvent&) {
+                        Open(index, button);
+                    }, id);
+                }
+            }
+            Realize();
+            frame->SetToolBar(this);
+            frame->SetAcceleratorTable(wxAcceleratorTable(
+                static_cast<int>(entries.size()), entries.data()));
+            frame->Bind(wxEVT_MENU, [frame](wxCommandEvent&) {
+                spellcross_window::Fullscreen() = !frame->IsFullScreen();
+                spellcross_window::Apply(frame);
+            }, spellcross_window::FullscreenId());
+            frame->Bind(wxEVT_SHOW, [frame](wxShowEvent& event) {
+                if (event.IsShown())
+                    spellcross_window::Apply(frame);
+                event.Skip();
+            });
+        }
+
+        wxMenuBar* Model() const { return m_model.get(); }
+    };
+
+    inline wxMenuBar* Model(wxFrame* frame)
+    {
+        auto* bar = dynamic_cast<Bar*>(frame->GetToolBar());
+        return bar ? bar->Model() : nullptr;
+    }
+
+    inline void Install(wxFrame* frame, wxMenuBar* model)
+    {
+        new Bar(frame, model);
+    }
+}

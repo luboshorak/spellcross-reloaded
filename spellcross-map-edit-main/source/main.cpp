@@ -30,6 +30,7 @@
 #pragma comment(lib, "wininet.lib")
 #endif
 #include "iso9660_import.h"
+#include "game_menu_bar.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
@@ -2833,13 +2834,15 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuDifficulty->AppendRadioItem(ID_OptionsDifficultyHard, spellcross_ui_locale::Tr("menu.hard", "&Hard"));
     menuOptions->AppendSubMenu(menuDifficulty, spellcross_ui_locale::Tr("menu.difficulty", "Game &Difficulty"));
 
+    spellcross_window::AddFullscreen(menuOptions);
+
     // Main menu
     wxMenuBar* menuBar = new wxMenuBar;    
     menuBar->Append(menuFile, spellcross_ui_locale::Tr("menu.file", "&File"));
     menuBar->Append(menuGame, spellcross_ui_locale::Tr("menu.game", "&Game"));
     menuBar->Append(menuOptions, spellcross_ui_locale::Tr("menu.options", "&Options"));
     menuBar->Append(menuHelp, spellcross_ui_locale::Tr("menu.help", "&Help"));
-    SetMenuBar(menuBar);
+    spellcross_menu::Install(this, menuBar);
     
     CreateStatusBar(8);
     const int ss_w[] = {45,45,45,60,100,100,100,-1};
@@ -3048,15 +3051,15 @@ void MainFrame::OnSaveGameState(wxCommandEvent& event)
 
 void MainFrame::SyncDifficultyMenu()
 {
-    if(!spell_map || !GetMenuBar())
+    if(!spell_map || !spellcross_menu::Model(this))
         return;
     const int d = (int)spell_map->GetGameDifficulty();
-    if(GetMenuBar()->FindItem(ID_OptionsDifficultyEasy))
-        GetMenuBar()->Check(ID_OptionsDifficultyEasy, d == (int)SpellMap::GameDifficulty::EASY);
-    if(GetMenuBar()->FindItem(ID_OptionsDifficultyNormal))
-        GetMenuBar()->Check(ID_OptionsDifficultyNormal, d == (int)SpellMap::GameDifficulty::NORMAL);
-    if(GetMenuBar()->FindItem(ID_OptionsDifficultyHard))
-        GetMenuBar()->Check(ID_OptionsDifficultyHard, d == (int)SpellMap::GameDifficulty::HARD);
+    if(spellcross_menu::Model(this)->FindItem(ID_OptionsDifficultyEasy))
+        spellcross_menu::Model(this)->Check(ID_OptionsDifficultyEasy, d == (int)SpellMap::GameDifficulty::EASY);
+    if(spellcross_menu::Model(this)->FindItem(ID_OptionsDifficultyNormal))
+        spellcross_menu::Model(this)->Check(ID_OptionsDifficultyNormal, d == (int)SpellMap::GameDifficulty::NORMAL);
+    if(spellcross_menu::Model(this)->FindItem(ID_OptionsDifficultyHard))
+        spellcross_menu::Model(this)->Check(ID_OptionsDifficultyHard, d == (int)SpellMap::GameDifficulty::HARD);
 }
 
 void MainFrame::SetGameDifficulty(SpellMap::GameDifficulty difficulty)
@@ -3068,7 +3071,7 @@ void MainFrame::SetGameDifficulty(SpellMap::GameDifficulty difficulty)
         difficulty = SpellMap::GameDifficulty::NORMAL;
     spell_map->SetGameDifficulty(difficulty);
     SyncDifficultyMenu();
-    if(m_strategicLevel && m_strategicLevel->GetMenuBar())
+    if(m_strategicLevel && spellcross_menu::Model(m_strategicLevel))
         m_strategicLevel->SyncDifficultyMenu();
 }
 

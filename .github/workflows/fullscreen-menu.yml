@@ -1,0 +1,30 @@
+name: Fullscreen menu regression
+on:
+  push:
+    branches: [feature/fullscreen-menu]
+  pull_request:
+    paths:
+      - 'spellcross-map-edit-main/source/game_menu_bar.h'
+      - 'spellcross-map-edit-main/source/main.cpp'
+      - 'spellcross-map-edit-main/source/forms/form_level.cpp'
+      - 'spellcross-map-edit-main/source/forms/form_mmenu.cpp'
+      - 'spellcross-map-edit-main/locales/**'
+      - 'spellcross-map-edit-main/tests/test_game_menu_bar.cpp'
+      - '.github/workflows/fullscreen-menu.yml'
+  workflow_dispatch:
+jobs:
+  menu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GUI test dependencies
+        run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev xvfb
+      - name: Check source and localization regressions
+        run: python3 -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py'
+      - name: Build and exercise menu across three windows
+        run: |
+          c++ -std=c++17 -Wall -Wextra -pedantic $(wx-config --cxxflags) \
+            spellcross-map-edit-main/tests/test_game_menu_bar.cpp \
+            $(wx-config --libs) -o /tmp/spellcross-menu-test
+          timeout 30s xvfb-run -a /tmp/spellcross-menu-test
