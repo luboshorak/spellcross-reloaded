@@ -2129,6 +2129,7 @@ void SpellMap::Close()
 	SetRenderFilter(NULL);
 
 	units_view_debug_mode = false;
+	show_map_cheat = false;
 
 	// unlock map
 	ResumeUnitRanging(true);
@@ -5655,7 +5656,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			 !deployment_allowed[static_cast<size_t>(index)]);
 	};
 
-	int use_view_mask = !deployment_mode && (game_mode || units_view_debug_mode);
+	int use_view_mask = !deployment_mode && !show_map_cheat && (game_mode || units_view_debug_mode);
 
 	// FIX: v game mode se renderuje jen to, co je ve view masce.
 	// U nkterch map je view mask po startu przdn (vude 0) => ern obrazovka + HUD.
@@ -12186,6 +12187,15 @@ int SpellMap::ViewRange::RestoreUnitsViewCore()
 	return(0);
 }
 
+
+// Toggle rendering only; real visibility continues to track normal gameplay.
+void SpellMap::SetShowMapCheat(bool enabled)
+{
+	LockMap();
+	show_map_cheat = enabled;
+	surf_modified = true;
+	ReleaseMap();
+}
 
 // set debug mode for units view (runtime selected unit view)
 void SpellMap::SetUnitsViewDebugMode(bool debug)

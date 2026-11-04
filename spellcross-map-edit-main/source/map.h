@@ -438,6 +438,7 @@ public:
 
 		
 		int units_view_debug_mode;
+		bool show_map_cheat = false;
 
 		// currently selected unit
 		MapUnit *unit_selection;
@@ -1038,6 +1039,9 @@ public:
 		//int AddUnitsView(int unit_type=UNIT_TYPE_ALIANCE,int clear=true,MapUnit *except_unit=NULL);
 		void SetUnitsViewDebugMode(bool debug);
 		bool isUnitsViewDebugMode();
+		// Display override only: keep real terrain/unit visibility untouched.
+		void SetShowMapCheat(bool enabled);
+		bool IsShowMapCheatEnabled() const { return show_map_cheat; }
 		//int StoreUnitsView();
 		//int RestoreUnitsView();
 		void InvalidateUnitsView();

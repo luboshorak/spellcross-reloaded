@@ -2962,6 +2962,17 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     // ESC handler via CHAR_HOOK — fires BEFORE menu accelerators,
     // so ESC is not consumed by the disabled Edit > Clear buffer accelerator.
     Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent& event) {
+        // Fullscreen/menu controls can own focus instead of the canvas. Handle
+        // the console before dispatching focus-dependent child key events.
+        const int consoleKey = event.GetKeyCode();
+        if (!inSubForm() && (consoleKey == '`' || consoleKey == '~' ||
+            event.GetRawKeyCode() == 0xC0))
+        {
+            if (!event.IsAutoRepeat())
+                OnMapConsoleCommand();
+            return;
+        }
+
         // EN group slots must be handled at frame level.  wxPanel key events
         // are focus-dependent and keyboard layouts (notably Czech) may not
         // report the top number row as ASCII '1'..'8'.  Accept the logical
@@ -6214,13 +6225,6 @@ void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
         return;
     }
 
-    // ~ key (backtick/tilde) opens in-game console
-    if (key == '`' || key == '~' || event.GetRawKeyCode() == 0xC0)
-    {
-        OnMapConsoleCommand();
-        return;
-    }
-
     // ESC opens the main menu only when no tactical overlay is active.
     // In EN group mode it belongs to group control instead.
     if(key == WXK_ESCAPE)
@@ -6401,6 +6405,18 @@ void MainFrame::OnMapConsoleCommand()
         spell_map->ResumeUnitRanging(true);
         spell_map->InvalidateUnitsView();
         if (canvas) canvas->Refresh();
+    }
+    else if (cmd == "SHOWMAP")
+    {
+        if (spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+            !m_deployment_active && !m_mission_end_flow)
+        {
+            spell_map->SetShowMapCheat(!spell_map->IsShowMapCheatEnabled());
+            if (canvas) canvas->Refresh();
+        }
+        else
+            wxMessageBox("SHOWMAP can only be used during tactical combat.",
+                         "Console", wxOK | wxICON_INFORMATION, this);
     }
     else if (cmd == "CASHIUP")
     {

@@ -50,12 +50,20 @@ namespace spellcross_window
             ~TransitionGuard() { ChangingMode() = false; }
         } guard;
         const bool requested = Fullscreen();
+        const wxWeakRef<wxWindow> previousFocus(wxWindow::FindFocus());
         const bool changed = frame->ShowFullScreen(requested,
             wxFULLSCREEN_NOCAPTION | wxFULLSCREEN_NOBORDER | wxFULLSCREEN_NOSTATUSBAR);
         if (!changed)
             Fullscreen() = frame->IsFullScreen();
         frame->Layout();
         frame->Refresh();
+        // Native fullscreen style changes can leave focus on a hidden control.
+        // Restore a visible child, or let frame-level CHAR_HOOK handle shortcuts.
+        if (previousFocus && wxGetTopLevelParent(previousFocus.get()) == frame &&
+            previousFocus->IsShownOnScreen() && previousFocus->IsEnabled())
+            previousFocus->SetFocus();
+        else
+            frame->SetFocus();
     }
 
     inline void RequestApply(wxFrame* frame)
