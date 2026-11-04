@@ -182,6 +182,15 @@ public:
                 Check(pixel == spellcross_menu::Background() || pixel == spellcross_menu::Highlight(),
                     "Windows replaced the strategic button artwork");
                 buttonDC.SelectObject(wxNullBitmap);
+                const HWND header = ListView_GetHeader(reinterpret_cast<HWND>(list->GetHandle()));
+                HDC headerDC = GetDC(header);
+                const COLORREF headerPixel = ::GetPixel(headerDC, 4, 4);
+                ReleaseDC(header, headerDC);
+                const auto headerColour = spellcross_menu::Highlight();
+                Check(headerPixel == RGB(headerColour.Red(), headerColour.Green(), headerColour.Blue()),
+                    "Windows left the strategic table header white");
+                list->SetColumnWidth(0, 180);
+                Check(list->GetColumnWidth(0) == 180, "Themed roster column cannot be resized");
                 wxInitAllImageHandlers();
                 const auto previewSize = strategy.GetClientSize();
                 wxBitmap preview(previewSize);
