@@ -7,6 +7,7 @@
 
 #include "main.h"
 #include "other.h"
+#include "../campaign_company_identity.h"
 
 #include <wx/dcbuffer.h>
 #include <wx/dcmemory.h>
@@ -10939,13 +10940,17 @@ void StrategicLevelFrame::NormalizeStrategicUnitInstances()
             if (base.experience <= 0 && base.level > 1)
                 base.experience = std::max(0, (base.level - 1) * 100);
             if (!src.extra.empty() && src.extra != "-")
-                base.custom_name = src.extra;
+                base.custom_name = spellcross_company::OriginalNameToUtf8(src.extra);
+            base.temporary = src.temporary;
         }
+
+        base.custom_name = spellcross_company::NormalizeStoredName(base.custom_name);
 
         for (int n = 0; n < count; ++n)
         {
             LevelData::PlayerUnitAdd one = src;
             one.count = 1;
+            one.temporary = base.temporary;
             units.push_back(std::move(one));
 
             UnitInstanceState st = base;
@@ -13302,6 +13307,30 @@ void StrategicLevelFrame::UpdateCommanderRosterSelectionVisuals()
     m_cmdRoster->Refresh();
 }
 
+void StrategicLevelFrame::RestoreTacticalCompanyIdentities(SpellMap& map) const
+{
+    // Old tactical saves lost the support flag/name at deployment. Recover
+    // only UID-linked campaign companies from their matching strategic state.
+    map.LockMap();
+    for (auto* unit : map.units)
+    {
+        if (!unit || unit->is_enemy || unit->strategic_uid == 0 ||
+            (unit->spec_type != MapUnitType::NormalUnit && unit->spec_type != MapUnitType::VoluntUnit))
+            continue;
+        const int index = FindUnitIndexByUid(unit->strategic_uid);
+        if (index < 0 || static_cast<size_t>(index) >= m_playerUnits.size())
+            continue;
+        auto company = m_playerUnits[static_cast<size_t>(index)];
+        company.temporary = IsTemporaryUnitIndex(static_cast<size_t>(index));
+        if (!unit->name.empty())
+            company.extra = unit->name;
+        else if (!m_unitStates[static_cast<size_t>(index)].custom_name.empty())
+            company.extra = spellcross_company::TacticalName(m_unitStates[static_cast<size_t>(index)].custom_name);
+        spellcross_company::ApplyTacticalIdentity(*unit, company);
+    }
+    map.ReleaseMap();
+}
+
 std::vector<LevelData::PlayerUnitAdd> StrategicLevelFrame::GetSelectedUnitsForLaunch() const
 {
     std::vector<LevelData::PlayerUnitAdd> result;
@@ -13344,8 +13373,11 @@ std::vector<LevelData::PlayerUnitAdd> StrategicLevelFrame::GetSelectedUnitsForLa
                     add.health = u.health;
                     add.extra = u.extra;
                     add.strategic_uid = uid;
+                    add.temporary = IsTemporaryUnitIndex(pIdx);
                     if (pIdx < m_unitStates.size())
                     {
+                        if (!m_unitStates[pIdx].custom_name.empty())
+                            add.extra = spellcross_company::TacticalName(m_unitStates[pIdx].custom_name);
                         add.experience = std::max(0, m_unitStates[pIdx].experience);
                         add.experience_level = GetUnitExperienceLevel(u.unit_id, add.experience);
                     }
@@ -20590,7 +20622,7 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
         state.experience = pu.experience;
         state.level = GetUnitExperienceLevel(pu.unit_id, state.experience);
         if (!s->name.empty() && s->name != "-")
-            state.custom_name = s->name;
+            state.custom_name = spellcross_company::OriginalNameToUtf8(s->name);
         state.cooldown_turns = 1;
         state.temporary = chapterVolunteer;
         m_unitStates.push_back(std::move(state));
@@ -21160,7 +21192,7 @@ void StrategicLevelFrame::ProcessLevelEvents()
             if (st.experience <= 0 && st.level > 1)
                 st.experience = std::max(0, (st.level - 1) * 100);
             if (!ua.name.empty() && ua.name != "-")
-                st.custom_name = ua.name;
+                st.custom_name = spellcross_company::OriginalNameToUtf8(ua.name);
             m_unitStates.push_back(std::move(st));
         }
         RebuildRosterRowUidsFromUnitStates();
