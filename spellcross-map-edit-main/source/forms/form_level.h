@@ -212,6 +212,7 @@ public:
 
     // mission selection / progression
     std::string ResolveMissionTokenForTerritory(int territory_id) const;
+    wxString GetGeneratedBattleBriefing(int territory_id) const;
     std::wstring ResolveMapDefPathForMissionToken(const std::string& mission_token) const;
     std::wstring ResolveMapDtaPathForMissionToken(const std::string& mission_token) const;
     const LevelMission* FindMissionByNameUpper(const std::string& name_upper) const;

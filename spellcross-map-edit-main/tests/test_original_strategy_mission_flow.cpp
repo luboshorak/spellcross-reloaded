@@ -70,6 +70,15 @@ void Tick(Territory& t, int turn)
 
 int main()
 {
+    assert(spellcross_strategy::GeneratedMissionToken("m04_10") == "r0410");
+    assert(spellcross_strategy::GeneratedMissionToken("M04_10A") == "r0410");
+    assert(spellcross_strategy::GeneratedMissionToken("R0410") == "r0410");
+    assert(spellcross_strategy::GeneratedMissionToken("m10_03b") == "r1003");
+    assert(spellcross_strategy::GeneratedMissionToken("custom-map").empty());
+    assert(spellcross_strategy::GeneratedMissionToken("m0x_10").empty());
+    assert(spellcross_strategy::IsGeneratedMissionToken("R0410"));
+    assert(!spellcross_strategy::IsGeneratedMissionToken("m04_10a"));
+
     // Mission 4 starts with A despite initial base M03_04.
     Territory sector4{"m03_04","m03_04a","m03_04"};
     assert(Token(sector4) == "m03_04a");
