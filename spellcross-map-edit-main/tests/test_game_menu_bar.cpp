@@ -75,7 +75,26 @@ public:
         {
             frames[0] = Screen();
             wxYield();
-            Check(spellcross_menu::EnsureMenuFontLoaded(), "Bundled menu font not loaded");
+            if (!spellcross_menu::EnsureMenuFontLoaded())
+            {
+#ifdef __WXMSW__
+                const HMODULE module = GetModuleHandleW(nullptr);
+                const HRSRC resource = FindResourceW(module, L"SPELLCROSS_MENU_FONT", RT_RCDATA);
+                const DWORD resourceError = GetLastError();
+                const DWORD size = resource ? SizeofResource(module, resource) : 0;
+                const HGLOBAL bytes = resource ? LoadResource(module, resource) : nullptr;
+                void* data = bytes ? LockResource(bytes) : nullptr;
+                DWORD count = 0;
+                const HANDLE font = data ? AddFontMemResourceEx(data, size, nullptr, &count) : nullptr;
+                throw std::runtime_error("Bundled font failed: resource=" +
+                    std::to_string(resource != nullptr) + " resource_error=" +
+                    std::to_string(resourceError) + " bytes=" + std::to_string(size) +
+                    " registered=" + std::to_string(font != nullptr) + " faces=" +
+                    std::to_string(count) + " error=" + std::to_string(GetLastError()));
+#else
+                throw std::runtime_error("Bundled menu font not loaded");
+#endif
+            }
             Check(frames[0]->GetToolBar()->GetFont().GetFaceName() == "Fixedsys Excelsior 3.01",
                 "Menu did not select the bundled font");
             auto* anchor = wxWindow::FindWindowByName("Options", frames[0]);
