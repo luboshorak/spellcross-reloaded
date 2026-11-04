@@ -144,6 +144,7 @@ namespace spellcross_strategic_ui
                         dc.DrawLine(width - 1, 0, width - 1, height);
                         dc.DrawLine(0, height - 1, width, height - 1);
                         wxListItem column;
+                        column.SetMask(wxLIST_MASK_TEXT | wxLIST_MASK_FORMAT);
                         GetColumn(static_cast<int>(draw->dwItemSpec), column);
                         dc.SetFont(GetFont());
                         dc.SetTextForeground(spellcross_menu::Accent());

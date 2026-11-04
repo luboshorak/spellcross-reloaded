@@ -185,7 +185,16 @@ public:
                 const HWND header = ListView_GetHeader(reinterpret_cast<HWND>(list->GetHandle()));
                 HDC headerDC = GetDC(header);
                 const COLORREF headerPixel = ::GetPixel(headerDC, 4, 4);
+                RECT headerBounds;
+                ::GetClientRect(header, &headerBounds);
+                const auto headerText = spellcross_menu::Accent();
+                const COLORREF textColour = RGB(headerText.Red(), headerText.Green(), headerText.Blue());
+                bool headerTextVisible = false;
+                for (int y = 2; y < headerBounds.bottom - 2 && !headerTextVisible; ++y)
+                    for (int x = 7; x < 70; ++x)
+                        if (::GetPixel(headerDC, x, y) == textColour) { headerTextVisible = true; break; }
                 ReleaseDC(header, headerDC);
+                Check(headerTextVisible, "Strategic table header lost its text");
                 const auto headerColour = spellcross_menu::Highlight();
                 Check(headerPixel == RGB(headerColour.Red(), headerColour.Green(), headerColour.Blue()),
                     "Windows left the strategic table header white");
