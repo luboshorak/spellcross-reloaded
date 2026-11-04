@@ -38,6 +38,7 @@ class MenuTestApp : public wxApp
     static wxFrame* Screen()
     {
         auto* frame = new ReentrantFrame;
+        frame->CreateStatusBar(2);
         auto* model = new wxMenuBar;
         auto* options = new wxMenu;
         options->Append(10001, "Audio\tCtrl+O");
@@ -130,6 +131,7 @@ public:
                     wxYield();
                     Check(!frame->IsFullScreen(), "Repeated fullscreen exit failed");
                     Check(frame->GetToolBar()->IsShown(), "Repeated transition hid menu");
+                    Check(frame->GetStatusBar()->IsShown(), "Windowed status bar not restored");
                 }
                 frame->Hide();
             }
