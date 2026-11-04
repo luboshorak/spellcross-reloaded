@@ -405,6 +405,7 @@ public:
 		uint8_t* pic;
 		uint8_t* pic_end; /* buffer end */
 		int hud_surface_height = 0;
+		int screen_surface_width = 0;
 		std::vector<uint8_t> screen_pixels;
 		vector<int> pic_y_buffer; /* used to find top most rendered pixel of HUD to cut off mouse area */
 		// scroll and surface range in tiles

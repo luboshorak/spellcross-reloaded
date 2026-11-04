@@ -2052,6 +2052,7 @@ void SpellMap::Close()
 	pic_y_buffer.clear();
 	screen_pixels.clear();
 	hud_surface_height = 0;
+	screen_surface_width = 0;
 
 	// delete events 
 	if (events)
@@ -5476,32 +5477,26 @@ MapSound* SpellMap::SoundAdd(SpellSample* new_sound, MapSound::SoundType type, M
 // get rect portion of last rendered buffer (indexed map color)
 int SpellMap::GetRender(uint8_t* buf, int x_size, int y_size, int x_pos, int y_pos)
 {
-	// clear buffer
-	memset(buf, 0x00, x_size * y_size);
+	if (!buf || x_size <= 0 || y_size <= 0)
+		return 1;
+	std::memset(buf, 0, static_cast<size_t>(x_size) * y_size);
+	if (screen_pixels.empty() || screen_surface_width <= 0)
+		return 1;
 
-	// copy visible part of surface only
-	for (int y = 0; y < y_size; y++)
+	const int first_x = (std::max)(0, x_pos);
+	const int last_x = (std::min)(screen_surface_width, x_pos + x_size);
+	if (first_x >= last_x)
+		return 0;
+	for (int y = 0; y < y_size; ++y)
 	{
-		int ys = y + y_pos;
-		if (ys < 0 || ys >= surf_y)
+		const int source_y = y + y_pos;
+		if (source_y < 0 || source_y >= hud_surface_height)
 			continue;
-
-		int x = 0;
-		if (x_pos < 0)
-			x = -x_pos;
-		int xn = x_size - x;
-
-		int xs = 0;
-		if (x_pos > 0)
-			xs = x_pos;
-		xn = (std::min)(surf_x - xs, xn);
-
-		uint8_t* src = &pic[surf_x_origin + xs + (surf_y_origin + ys) * pic_x_size];
-		uint8_t* dst = &buf[x + y * x_size];
-		memcpy(dst, src, xn);
+		std::memcpy(&buf[static_cast<size_t>(y) * x_size + first_x - x_pos],
+			&screen_pixels[static_cast<size_t>(source_y) * screen_surface_width + first_x],
+			last_x - first_x);
 	}
-
-	return(0);
+	return 0;
 }
 
 // configure map elements visibility
@@ -6489,6 +6484,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				target[x] = source[columns[x]];
 	}
 	hud_surface_height = screen_height;
+	screen_surface_width = screen_width;
 	RenderHUD(screen_pixels.data(), screen_pixels.data() + screen_pixels.size(),
 		screen_width, &cursor, cursor_unit, screen_width, screen_height, hud_buttons_cb);
 
