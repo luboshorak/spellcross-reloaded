@@ -143,7 +143,7 @@ public:
                 auto* layout = new wxBoxSizer(wxVERTICAL);
                 auto* button = new spellcross_strategic_ui::Button(panel, wxID_ANY, "End turn");
                 button->SetMinSize(wxSize(200, 38));
-                auto* list = new wxListCtrl(panel, wxID_ANY, wxDefaultPosition,
+                auto* list = new spellcross_strategic_ui::List(panel, wxID_ANY, wxDefaultPosition,
                     wxSize(300, 100), wxLC_REPORT | wxLC_SINGLE_SEL);
                 list->InsertColumn(0, "Unit");
                 list->InsertItem(0, "Infantry");

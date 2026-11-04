@@ -3,6 +3,9 @@
 #include "game_menu_bar.h"
 #include <wx/listctrl.h>
 #include <wx/textctrl.h>
+#ifdef __WXMSW__
+#include <commctrl.h>
+#endif
 
 // Presentation shared by the wx strategic pages. Native button identity,
 // notifications, keyboard activation and enabled state remain intact.
@@ -102,6 +105,79 @@ namespace spellcross_strategic_ui
             BitBlt(draw->hDC, 0, 0, size.x, size.y,
                 reinterpret_cast<HDC>(dc.GetHDC()), 0, 0, SRCCOPY);
             return true;
+        }
+#endif
+    };
+
+    // The native Windows header accepts text attributes but still paints a
+    // white themed background. Draw its cells without changing list behaviour.
+    class List final : public wxListCtrl
+    {
+    public:
+        using wxListCtrl::wxListCtrl;
+
+#ifdef __WXMSW__
+    protected:
+        bool MSWOnNotify(int id, WXLPARAM param, WXLPARAM* result) override
+        {
+            const auto* notification = reinterpret_cast<NMHDR*>(param);
+            const auto header = ListView_GetHeader(reinterpret_cast<HWND>(GetHandle()));
+            if (notification->hwndFrom == header && notification->code == NM_CUSTOMDRAW)
+            {
+                const auto* draw = reinterpret_cast<NMCUSTOMDRAW*>(param);
+                if (draw->dwDrawStage == CDDS_PREPAINT)
+                {
+                    *result = CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
+                    return true;
+                }
+                if (draw->dwDrawStage == CDDS_ITEMPREPAINT)
+                {
+                    const int width = draw->rc.right - draw->rc.left;
+                    const int height = draw->rc.bottom - draw->rc.top;
+                    if (width > 0 && height > 0)
+                    {
+                        wxBitmap image(width, height);
+                        wxMemoryDC dc(image);
+                        dc.SetBackground(wxBrush(spellcross_menu::Highlight()));
+                        dc.Clear();
+                        dc.SetPen(wxPen(Border()));
+                        dc.DrawLine(width - 1, 0, width - 1, height);
+                        dc.DrawLine(0, height - 1, width, height - 1);
+                        wxListItem column;
+                        GetColumn(static_cast<int>(draw->dwItemSpec), column);
+                        dc.SetFont(GetFont());
+                        dc.SetTextForeground(spellcross_menu::Accent());
+                        const wxRect text(FromDIP(7), 0, std::max(1, width - FromDIP(14)), height);
+                        dc.SetClippingRegion(text);
+                        const int align = column.GetAlign() == wxLIST_FORMAT_RIGHT ? wxALIGN_RIGHT
+                            : column.GetAlign() == wxLIST_FORMAT_CENTER ? wxALIGN_CENTER_HORIZONTAL : wxALIGN_LEFT;
+                        dc.DrawLabel(column.GetText(), text, align | wxALIGN_CENTER_VERTICAL);
+                        BitBlt(draw->hdc, draw->rc.left, draw->rc.top, width, height,
+                            reinterpret_cast<HDC>(dc.GetHDC()), 0, 0, SRCCOPY);
+                    }
+                    *result = CDRF_SKIPDEFAULT;
+                    return true;
+                }
+                if (draw->dwDrawStage == CDDS_POSTPAINT)
+                {
+                    RECT empty;
+                    ::GetClientRect(header, &empty);
+                    int last = 0;
+                    for (int column = 0; column < GetColumnCount(); ++column)
+                    {
+                        RECT cell;
+                        if (Header_GetItemRect(header, column, &cell)) last = std::max(last, static_cast<int>(cell.right));
+                    }
+                    empty.left = last;
+                    const auto colour = spellcross_menu::Background();
+                    HBRUSH brush = CreateSolidBrush(RGB(colour.Red(), colour.Green(), colour.Blue()));
+                    FillRect(draw->hdc, &empty, brush);
+                    DeleteObject(brush);
+                    *result = CDRF_DODEFAULT;
+                    return true;
+                }
+            }
+            return wxListCtrl::MSWOnNotify(id, param, result);
         }
 #endif
     };

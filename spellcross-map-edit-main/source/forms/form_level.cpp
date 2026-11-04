@@ -8527,7 +8527,7 @@ void StrategicLevelFrame::BuildUI()
     cmdTitle->SetFont(m_fontHeading);
     midSizer->Add(cmdTitle, 0, wxALL, kCleanUiMargin);
 
-    m_cmdRoster = new wxListCtrl(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
+    m_cmdRoster = new spellcross_strategic_ui::List(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
     m_cmdRoster->SetFont(m_fontText);
     m_cmdRoster->InsertColumn(0, spellcross_ui_locale::Tr("strategic.commander", "Commander"));
     m_cmdRoster->InsertColumn(1, RetailOriginalText(m_spellData, "OTHER", 54, spellcross_ui_locale::Tr("strategic.rank", "Rank")));
@@ -8550,7 +8550,7 @@ void StrategicLevelFrame::BuildUI()
     midSizer->Add(midTitle, 0, wxLEFT | wxRIGHT | wxBOTTOM, kCleanUiMargin);
 
     // v BuildUI(): úprava definice sloupců m_roster - selection managed manually via toggle
-    m_roster = new wxListCtrl(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
+    m_roster = new spellcross_strategic_ui::List(mid, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
     m_roster->SetFont(m_fontText);
     // PŮVODNĚ: InsertColumn(0, spellcross_ui_locale::Tr("strategic.unit", "Unit")); InsertColumn(1, spellcross_ui_locale::Tr("strategic.count", "Count")); InsertColumn(2, "HP");
     // NOVĚ: jen dva sloupce: Unit a HP
@@ -8579,7 +8579,7 @@ void StrategicLevelFrame::BuildUI()
         rs->Add(rtitle, 0, wxALL, kCleanUiMargin);
 
         // wxListCtrl (single column, no header) – supports SetItemTextColour per row
-        m_researchList = new wxListCtrl(
+        m_researchList = new spellcross_strategic_ui::List(
             m_midResearchPanel, wxID_ANY,
             wxDefaultPosition, wxDefaultSize,
             wxLC_REPORT | wxLC_NO_HEADER | wxLC_SINGLE_SEL);
@@ -8620,7 +8620,7 @@ void StrategicLevelFrame::BuildUI()
         is->Add(ititle, 0, wxALL, kCleanUiMargin);
 
         // wxListCtrl (single column, no header) – supports SetItemTextColour per row
-        m_infoList = new wxListCtrl(
+        m_infoList = new spellcross_strategic_ui::List(
             m_midInfoPanel, wxID_ANY,
             wxDefaultPosition, wxDefaultSize,
             wxLC_REPORT | wxLC_NO_HEADER | wxLC_SINGLE_SEL);
@@ -8823,7 +8823,7 @@ void StrategicLevelFrame::BuildBuyPage()
         unitLabel->SetFont(m_fontText);
         leftSizer->Add(unitLabel, 0, wxALL, 4);
 
-        auto* unitRoster = new wxListCtrl(leftPanel, wxID_ANY,
+        auto* unitRoster = new spellcross_strategic_ui::List(leftPanel, wxID_ANY,
             wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
         unitRoster->SetFont(m_fontText);
 
@@ -8842,7 +8842,7 @@ void StrategicLevelFrame::BuildBuyPage()
         cmdLabel->SetFont(m_fontText);
         leftSizer->Add(cmdLabel, 0, wxALL, 4);
 
-        auto* cmdRoster = new wxListCtrl(leftPanel, wxID_ANY,
+        auto* cmdRoster = new spellcross_strategic_ui::List(leftPanel, wxID_ANY,
             wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
         cmdRoster->SetFont(m_fontText);
 
@@ -8893,7 +8893,7 @@ void StrategicLevelFrame::BuildBuyPage()
     }
 
     // Shop list (single column; width auto-resized)
-    m_buyShopList = new wxListCtrl(midPanel, wxID_ANY,
+    m_buyShopList = new spellcross_strategic_ui::List(midPanel, wxID_ANY,
         wxDefaultPosition, wxDefaultSize,
         wxLC_REPORT | wxLC_NO_HEADER | wxLC_SINGLE_SEL | wxLC_NO_SORT_HEADER);
     m_buyShopList->SetFont(m_fontText);
@@ -9478,7 +9478,7 @@ void StrategicLevelFrame::BuildUnitsPage()
         wxRect(0, 0, 332, kStrategicScreenH));
     auto* leftSizer = new wxBoxSizer(wxVERTICAL);
 
-    m_unitsRoster = new wxListCtrl(leftPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+    m_unitsRoster = new spellcross_strategic_ui::List(leftPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
         wxLC_REPORT | wxLC_SINGLE_SEL);
     m_unitsRoster->SetFont(m_fontText);
 
@@ -9507,7 +9507,7 @@ void StrategicLevelFrame::BuildUnitsPage()
     leftSizer->Add(m_unitsRoster, 1, wxALL | wxEXPAND, 8);
 
     // Temporary units list (same width, slightly lower) - will be filled once temporary units exist in data.
-    m_unitsTempRoster = new wxListCtrl(leftPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+    m_unitsTempRoster = new spellcross_strategic_ui::List(leftPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
         wxLC_REPORT | wxLC_SINGLE_SEL);
     m_unitsTempRoster->SetFont(m_fontText);
 
@@ -9589,7 +9589,7 @@ void StrategicLevelFrame::BuildUnitsPage()
     upgTop->Add(m_unitsUpgradeTitle, 0, wxLEFT | wxRIGHT | wxTOP, 8);
     upgTop->Add(m_unitsUpgradeValue, 0, wxLEFT | wxRIGHT | wxBOTTOM, 8);
 
-    m_unitsShopList = new wxListCtrl(upgradePanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+    m_unitsShopList = new spellcross_strategic_ui::List(upgradePanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
         wxLC_REPORT | wxLC_NO_HEADER | wxLC_SINGLE_SEL);
     m_unitsShopList->SetFont(m_fontText);
     m_unitsShopList->InsertColumn(0, "", wxLIST_FORMAT_LEFT, -1);
@@ -13632,7 +13632,7 @@ void StrategicLevelFrame::BuildResourcesPage()
     us->Add(allocRow, 0, wxALL | wxEXPAND, 8);
 
     // ── Per-territory resource table ──
-    m_resourcesTable = new wxListCtrl(under, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+    m_resourcesTable = new spellcross_strategic_ui::List(under, wxID_ANY, wxDefaultPosition, wxDefaultSize,
         wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_HRULES | wxLC_NO_SORT_HEADER);
     m_resourcesTable->SetFont(m_fontText);
     m_resourcesTable->SetMinSize(wxSize(1, 1));
