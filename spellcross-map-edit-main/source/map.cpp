@@ -6468,7 +6468,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 	// at native screen size, so its controls and text keep their hit boxes.
 	if (hud_surface_height != screen_height || pic_y_buffer.size() != static_cast<size_t>(screen_width))
 		surf_modified = true;
-	screen_pixels.resize(static_cast<size_t>(screen_width) * screen_height);
+	const int hud_buffer_height = (std::max)(screen_height, 480);
+	screen_pixels.resize(static_cast<size_t>(screen_width) * hud_buffer_height);
 	std::vector<int> columns(screen_width);
 	for (int x = 0; x < screen_width; ++x)
 		columns[x] = spellcross_tactical::MapPixel(x, zoom_percent);

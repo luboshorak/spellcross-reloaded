@@ -6003,6 +6003,7 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
         return;
     }
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions() || !event.LeftDown()) return;
+    if (event.GetY() >= spell_map->GetHUDtop(event.GetX())) return;
     const auto point = TacticalMousePoint(event.GetPosition());
     spell_map->scroller.Move(point.x, point.y);
     if (m_deployment_active)
