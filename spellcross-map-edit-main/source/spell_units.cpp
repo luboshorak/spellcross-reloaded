@@ -1680,7 +1680,7 @@ int MapUnit::Render(Terrain* data,uint8_t* buffer,uint8_t* buf_end,int buf_x_pos
 
 	// render special unit type mark
 	int type_color = 0;
-	if(spec_type == MapUnitType::MissionUnit)
+	if(spec_type == MapUnitType::MissionUnit || spec_type == MapUnitType::VoluntUnit)
 		type_color = 230;
 	else if(spec_type == MapUnitType::SpecUnit)
 		type_color = 253;

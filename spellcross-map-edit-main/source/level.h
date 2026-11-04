@@ -126,13 +126,14 @@ struct LevelData {
         int unit_id = 0;   // AddUnitToPlayer(0,1,100,-)
         int count = 1;     // runtime/tactical multiplicity; strategic AddUnitToPlayer always creates one company
         int health = 0;
-        std::string extra; // campaign-specific extra field
+        std::string extra; // CP895 company name from DEF/tactical data; "-" means default
 
         // Transient strategic -> tactical metadata. These fields are zero for
-        // units created directly by a map DEF, but when a permanent campaign
-        // unit is sent from the strategic screen they preserve its concrete
+        // units created directly by a map DEF, but when a campaign company
+        // is sent from the strategic screen they preserve its concrete
         // roster identity and active hierarchy/formation state.
         uint32_t strategic_uid = 0;
+        bool temporary = false;          // chapter support company, not a mission-only helper
         int experience = 0;               // total strategic experience carried into the tactical battle
         int experience_level = 1;         // derived Spellcross experience level (1..12)
         int formation_id = 0;             // persistent battalion membership (1..8); HUD number only while active

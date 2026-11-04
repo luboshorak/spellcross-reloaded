@@ -22,6 +22,7 @@
 
 class MainFrame;
 class SpellData;
+class SpellMap;
 
 class StrategicLevelFrame : public wxFrame
 {
@@ -272,6 +273,7 @@ public:
         PendingMissionResult& pending) const;
     bool ImportBattleSaveContext(const std::string& strategic_state_json,
         const PendingMissionResult& pending);
+    void RestoreTacticalCompanyIdentities(SpellMap& map) const;
     bool HasStrategicAutosave() const;
     bool RecoverPendingMissionFromLoadedBattle(const std::string& mission_token);
 

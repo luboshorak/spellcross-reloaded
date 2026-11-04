@@ -53,6 +53,7 @@
 #include "resource.h"
 #include "app_identity.h"
 #include "main.h"
+#include "campaign_company_identity.h"
 #include "other.h"
 #include "simpleini.h"
 #include "spellcross.h"
@@ -1937,7 +1938,7 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
             MapUnit* unit = new MapUnit(spell_map);
             unit->unit = unit_rec;
             unit->coor = spell_map->start[start_idx % spell_map->start.size()];
-            unit->spec_type = MapUnitType::NormalUnit;
+            spellcross_company::ApplyTacticalIdentity(*unit, entry);
             unit->behave = MapUnitType::NormalUnit;
             unit->is_enemy = 0;
             unit->experience = std::max(0, entry.experience);
@@ -2198,7 +2199,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
             MapUnit* unit = new MapUnit(spell_map);
             unit->unit = unit_rec;
             unit->coor = spell_map->start[start_idx % spell_map->start.size()];
-            unit->spec_type = MapUnitType::NormalUnit;
+            spellcross_company::ApplyTacticalIdentity(*unit, entry);
             unit->behave = MapUnitType::NormalUnit;
             unit->is_enemy = 0;
             unit->experience = std::max(0, entry.experience);
@@ -3984,6 +3985,9 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
     // level instead of following the loaded mission's own campaign data.
     if (!restoredStrategicContext && m_strategicLevel)
         destroyOldStrategic();
+
+    if (restoredStrategicContext && m_strategicLevel)
+        m_strategicLevel->RestoreTacticalCompanyIdentities(*spell_map);
 
     SyncUiAfterTacticalLoad();
     if (hasEmbeddedContext && ctx.has_camera)
