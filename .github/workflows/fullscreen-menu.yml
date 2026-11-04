@@ -4,6 +4,10 @@ on:
     branches: [feature/fullscreen-menu]
   pull_request:
     paths:
+      - 'spellcross-map-edit-main/source/tactical_zoom.h'
+      - 'spellcross-map-edit-main/source/map.cpp'
+      - 'spellcross-map-edit-main/source/map.h'
+      - 'spellcross-map-edit-main/tests/test_tactical_zoom.cpp'
       - 'spellcross-map-edit-main/source/game_menu_bar.h'
       - 'spellcross-map-edit-main/source/game_menu_font.rc'
       - 'spellcross-map-edit-main/data/font.ttf'
@@ -24,6 +28,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev xvfb
       - name: Check source and localization regressions
         run: python3 -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py'
+      - name: Verify tactical zoom geometry and wheel input
+        run: |
+          c++ -std=c++17 -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_tactical_zoom.cpp -o /tmp/spellcross-zoom-test
+          /tmp/spellcross-zoom-test
       - name: Build and exercise menu across three windows
         run: |
           c++ -std=c++17 -Wall -Wextra -pedantic $(wx-config --cxxflags) \
@@ -63,6 +72,17 @@ jobs:
           $include = $header.Directory.Parent.FullName
           $setupInclude = $setup.Directory.Parent.FullName
           $binary = Join-Path $env:RUNNER_TEMP 'spellcross-menu-test.exe'
+          $zoomTest = Join-Path $env:RUNNER_TEMP 'spellcross-zoom-test.exe'
+          & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_zoom.cpp "/Fe:$zoomTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Zoom test compilation failed' }
+          & $zoomTest
+          if ($LASTEXITCODE -ne 0) { throw 'Zoom test failed' }
+          $source = Join-Path $PWD 'spellcross-map-edit-main/source'
+          foreach ($file in @('main.cpp', 'map.cpp')) {
+            $object = Join-Path $env:RUNNER_TEMP ($file + '.obj')
+            & cl.exe /nologo /c /std:c++17 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" (Join-Path $source $file) "/Fo:$object"
+            if ($LASTEXITCODE -ne 0) { throw "Tactical source compilation failed: $file" }
+          }
           $fontResource = Join-Path $env:RUNNER_TEMP 'game-menu-font.res'
           Push-Location spellcross-map-edit-main/source
           try {

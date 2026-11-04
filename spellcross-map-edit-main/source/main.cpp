@@ -3620,7 +3620,7 @@ void MainFrame::CenterDeploymentOnStartSquares()
     if (!m_deployment_camera_pending || !m_deployment_active ||
         !spell_map || !spell_map->IsLoaded() || !canvas)
         return;
-    const wxSize view = canvas->GetClientSize();
+    const wxSize view = TacticalMapSize(canvas->GetClientSize());
     if (view.x <= 0 || view.y <= 0)
         return;
     m_deployment_camera_pending = false;
@@ -5412,8 +5412,11 @@ void MainFrame::OpenStrategicAndLoadNext()
 // on main panel resizing
 void MainFrame::OnResize(wxSizeEvent& event)
 {
-    if(spell_map)
-        spell_map->scroller.SetSurface(canvas->GetClientSize().GetWidth(),canvas->GetClientSize().GetHeight());
+    if (spell_map && canvas)
+    {
+        const auto size = TacticalMapSize(canvas->GetClientSize());
+        spell_map->scroller.SetSurface(size.x, size.y);
+    }
     Refresh();
 }
 
@@ -5422,6 +5425,25 @@ void MainFrame::OnThreadCanvas(wxThreadEvent& event)
 {
     canvas->Refresh();
 }
+int MainFrame::TacticalZoomPercent() const
+{
+    return spell_map && spell_map->isGameMode() ? m_tacticalZoom.Percent() : 100;
+}
+
+wxPoint MainFrame::TacticalMousePoint(const wxPoint& point) const
+{
+    const int percent = TacticalZoomPercent();
+    return wxPoint(spellcross_tactical::MapPixel(point.x, percent),
+        spellcross_tactical::MapPixel(point.y, percent));
+}
+
+wxSize MainFrame::TacticalMapSize(const wxSize& size) const
+{
+    const int percent = TacticalZoomPercent();
+    return wxSize(spellcross_tactical::MapExtent(size.x, percent),
+        spellcross_tactical::MapExtent(size.y, percent));
+}
+
 void MainFrame::OnPaintCanvas(wxPaintEvent& event)
 {
     wxPaintDC pdc(canvas);
@@ -5448,7 +5470,8 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
         /*int frames = 100;
         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();        
         for(int k = 0; k < frames; k++)*/
-            spell_map->Render(m_buffer,NULL,nullptr,bind(&MainFrame::CreateHUDbuttons,this));
+            spell_map->Render(m_buffer, nullptr, nullptr,
+                bind(&MainFrame::CreateHUDbuttons, this), TacticalZoomPercent());
         /*std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         float time = 1e-6*std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
         SetStatusText(wxString::Format(wxT("%.0f fps"),frames/time),7);*/
@@ -5923,7 +5946,8 @@ void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
     if (m_tutorial_stage == 1 && m_tutorial_command == 4 && event.RightUp())
         m_tutorial_pressed_rmb = true;
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
-    if (event.RightDown()) spell_map->scroller.SetRef(event.GetX(), event.GetY());
+    const auto point = TacticalMousePoint(event.GetPosition());
+    if (event.RightDown()) spell_map->scroller.SetRef(point.x, point.y);
     else if (event.RightUp())
     {
         const int moved = spell_map->scroller.Idle();
@@ -5976,6 +6000,8 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
         return;
     }
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions() || !event.LeftDown()) return;
+    const auto point = TacticalMousePoint(event.GetPosition());
+    spell_map->scroller.Move(point.x, point.y);
     if (m_deployment_active)
     {
         PlaceDeploymentUnit(spell_map->GetSelection(nullptr), event.ShiftDown());
@@ -6083,7 +6109,8 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
     }
     else
     {
-        spell_map->scroller.Move(event.GetX(), event.GetY());
+        const auto point = TacticalMousePoint(event.GetPosition());
+        spell_map->scroller.Move(point.x, point.y);
         last_in_hud = false;
         // Show the original placement cursor instead of tactical attack
         // cursors, which would misleadingly suggest combat is already live.
@@ -6114,9 +6141,39 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 // on canvas wheel
 void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
 {
-    if (!spell_map || !spell_map->IsLoaded() || !event.GetWheelDelta()) return;
-    spell_map->scroller.ResizeSelection(event.GetWheelRotation()/event.GetWheelDelta());
-    if (canvas) canvas->Refresh();
+    if (!spell_map || !spell_map->IsLoaded() || !event.GetWheelDelta())
+        return;
+    if (!spell_map->isGameMode())
+    {
+        spell_map->scroller.ResizeSelection(event.GetWheelRotation() / event.GetWheelDelta());
+        canvas->Refresh();
+        return;
+    }
+    if (inUnitOptions() || m_mission_end_flow ||
+        event.GetWheelAxis() != wxMOUSE_WHEEL_VERTICAL ||
+        event.GetY() >= spell_map->GetHUDtop(event.GetX()))
+    {
+        event.Skip();
+        return;
+    }
+
+    const int previous = m_tacticalZoom.Percent();
+    if (!m_tacticalZoom.Wheel(event.GetWheelRotation(), event.GetWheelDelta()))
+        return;
+    const int current = m_tacticalZoom.Percent();
+    const auto [x, y] = spell_map->scroller.GetScroll();
+    const auto size = TacticalMapSize(canvas->GetClientSize());
+    spell_map->scroller.SetSurface(size.x, size.y);
+    spell_map->scroller.SetPos(
+        spellcross_tactical::AnchoredScroll(x, event.GetX(), previous, current),
+        spellcross_tactical::AnchoredScroll(y, event.GetY(), previous, current));
+    spell_map->RenderPrepare();
+    const auto point = TacticalMousePoint(event.GetPosition());
+    spell_map->scroller.Move(point.x, point.y);
+    if (event.RightIsDown())
+        spell_map->scroller.SetRef(point.x, point.y);
+    spell_map->InvalidateHUDbuttons();
+    canvas->Refresh();
 }
 // on canvas key down
 void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)

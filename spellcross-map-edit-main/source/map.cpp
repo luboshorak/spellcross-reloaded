@@ -8,6 +8,7 @@
 //=============================================================================
 
 #include "map.h"
+#include "tactical_zoom.h"
 #include "spellcross.h"
 #include "fs_archive.h"
 #include "fsu_archive.h"
@@ -2049,6 +2050,8 @@ void SpellMap::Close()
 		delete[] pic;
 	pic = NULL;
 	pic_y_buffer.clear();
+	screen_pixels.clear();
+	hud_surface_height = 0;
 
 	// delete events 
 	if (events)
@@ -5529,7 +5532,7 @@ double SpellMap::GetGamma()
 }
 
 // render frame
-int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::function<void(void)> hud_buttons_cb)
+int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::function<void(void)> hud_buttons_cb, int zoom_percent)
 {
 	if (!bmp.IsOk() || bmp.GetWidth() <= 0 || bmp.GetHeight() <= 0)
 		return 1;
@@ -5541,7 +5544,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		scroll = &scroller;
 
 	// rescale scroller surface if needed
-	scroll->SetSurface(bmp.GetWidth(), bmp.GetHeight());
+	zoom_percent = std::clamp(zoom_percent, 50, 300);
+	const int screen_width = bmp.GetWidth();
+	const int screen_height = bmp.GetHeight();
+	scroll->SetSurface(spellcross_tactical::MapExtent(screen_width, zoom_percent),
+		spellcross_tactical::MapExtent(screen_height, zoom_percent));
 
 	// skip if invalid pointer
 	if (!IsLoaded())
@@ -6462,8 +6469,28 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 
 
-	// render HUD
-	RenderHUD(pic, pic_end, pic_x_size, &cursor, cursor_unit, hud_buttons_cb);
+	// Sample the battlefield into screen pixels first. The HUD is then drawn
+	// at native screen size, so its controls and text keep their hit boxes.
+	if (hud_surface_height != screen_height || pic_y_buffer.size() != static_cast<size_t>(screen_width))
+		surf_modified = true;
+	screen_pixels.resize(static_cast<size_t>(screen_width) * screen_height);
+	std::vector<int> columns(screen_width);
+	for (int x = 0; x < screen_width; ++x)
+		columns[x] = spellcross_tactical::MapPixel(x, zoom_percent);
+	for (int y = 0; y < screen_height; ++y)
+	{
+		const auto* source = &pic[(surf_y_origin +
+			spellcross_tactical::MapPixel(y, zoom_percent)) * pic_x_size + surf_x_origin];
+		auto* target = &screen_pixels[static_cast<size_t>(y) * screen_width];
+		if (zoom_percent == 100)
+			std::memcpy(target, source, screen_width);
+		else
+			for (int x = 0; x < screen_width; ++x)
+				target[x] = source[columns[x]];
+	}
+	hud_surface_height = screen_height;
+	RenderHUD(screen_pixels.data(), screen_pixels.data() + screen_pixels.size(),
+		screen_width, &cursor, cursor_unit, screen_width, screen_height, hud_buttons_cb);
 
 
 	// unlock stuff while rendering
@@ -6496,14 +6523,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 	if (!data)
 		return 1;
 	wxNativePixelData::Iterator p(data);
-	for (int y = 0; y < surf_y; ++y)
+	for (int y = 0; y < screen_height; ++y)
 	{
 		uint8_t* scan = p.m_ptr;
-		uint8_t* src = &pic[surf_x_origin + (surf_y_origin + y) * pic_x_size];
-		int rend_x = surf_x;
-		if (&src[surf_x] > pic_end)
-			rend_x = pic_end - src;
-		for (int x = 0; x < rend_x; x++)
+		const uint8_t* src = &screen_pixels[static_cast<size_t>(y) * screen_width];
+		for (int x = 0; x < screen_width; x++)
 		{
 			*scan++ = pal[*src][2];
 			*scan++ = pal[*src][1];
@@ -9871,21 +9895,22 @@ int SpellMap::GetHUDstate()
 
 
 // return top most HUD pixel y-coordinate in surface coordinates system
-int SpellMap::GetHUDtop(int surf_x_pos)
+int SpellMap::GetHUDtop(int screen_x)
 {
-	surf_x_pos += surf_x_origin;
-	if (!hud_enabled || surf_x_pos >= pic_y_buffer.size())
-		return(surf_y);
-	int y_top = pic_y_buffer[surf_x_pos];
-	if (y_top < 0)
-		return(surf_y);
-	y_top -= surf_y_origin;
-	return(y_top);
+	if (!hud_enabled || screen_x < 0 || static_cast<size_t>(screen_x) >= pic_y_buffer.size())
+		return hud_surface_height;
+	const int top = pic_y_buffer[screen_x];
+	return top < 0 ? hud_surface_height : top;
 }
 
 // render game mode HUD
-int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* cursor, MapUnit* cursor_unit, std::function<void(void)> hud_buttons_cb)
+int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* cursor, MapUnit* cursor_unit,
+	int screen_width, int screen_height, std::function<void(void)> hud_buttons_cb)
 {
+	const int surf_x = screen_width;
+	const int surf_y = screen_height;
+	const int surf_x_origin = 0;
+	const int surf_y_origin = 0;
 	static int last_hud_state = -1;
 	static MapUnit* last_cursor_unit = NULL;
 	static MapUnit* last_selected_unit = NULL;
@@ -9919,14 +9944,14 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 	const int x_rpan_icon = 579;
 
 	// clear y-buffer (for finding top most pixel of HUD (for mouse area cutoff))
-	pic_y_buffer.assign(pic_x_size, -1);
+	pic_y_buffer.assign(screen_width, -1);
 
 	// Render the original enemy-turn HUD (LISTA_1) while AI owns the turn.
 	// The DOS game deliberately hid all unit/AP/action details during this phase.
 	const bool enemy_turn_hud = isGameMode() && enemy_turn_running;
 	img = (enemy_turn_hud && gres.wm_hud_enemy) ? gres.wm_hud_enemy : gres.wm_hud;
-	x_ofs = surf_x_origin + (surf_x - img->x_size) / 2;
-	y_ofs = surf_y_origin + surf_y - img->y_size;
+	x_ofs = surf_x_origin + (std::max)(0, (surf_x - img->x_size) / 2);
+	y_ofs = surf_y_origin + (std::max)(0, surf_y - img->y_size);
 	img->Render(buf, buf_end, buf_x_size, x_ofs, y_ofs, false, pic_y_buffer.data());
 	int hud_left = x_ofs;
 	int hud_right = x_ofs + img->x_size;
@@ -9934,7 +9959,7 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 
 	// render side fillings
 	img = gres.wm_hud_sides;
-	y_ofs = surf_y_origin + surf_y - img->y_size;
+	y_ofs = surf_y_origin + (std::max)(0, surf_y - img->y_size);
 	x_ofs = hud_right;
 	for (; x_ofs < surf_x_origin + surf_x; x_ofs += img->x_size)
 		img->Render(buf, buf_end, buf_x_size, x_ofs, y_ofs, false, pic_y_buffer.data());
@@ -10688,8 +10713,15 @@ SpellBtnHUD* SpellMap::CreateHUDbutton(SpellGraphicItem* glyph, t_xypos& hud_pos
 
 		// make button background from current surface (wxWidgets cannot render semitransparents)
 		surf[sid] = new uint8_t[x_size * y_size];
-		for (int y = 0; y < y_size; y++)
-			memcpy(&surf[sid][y * x_size], &buf[x_pos + (y_pos + y) * buf_x_size], x_size);
+		std::memset(surf[sid], 0, x_size * y_size);
+		const int height = static_cast<int>((buf_end - buf) / buf_x_size);
+		const int first_x = (std::max)(0, x_pos);
+		const int last_x = (std::min)(buf_x_size, x_pos + x_size);
+		if (first_x < last_x)
+			for (int y = 0; y < y_size; ++y)
+				if (y_pos + y >= 0 && y_pos + y < height)
+					std::memcpy(&surf[sid][y * x_size + first_x - x_pos],
+						&buf[(y_pos + y) * buf_x_size + first_x], last_x - first_x);
 
 		// render button base
 		grb->Render(surf[sid], &surf[sid][x_size * y_size], x_size, 0, 0);
@@ -10702,16 +10734,16 @@ SpellBtnHUD* SpellMap::CreateHUDbutton(SpellGraphicItem* glyph, t_xypos& hud_pos
 	// try to find old button with matching position so we can override it
 	SpellBtnHUD* btn = NULL;
 	for (auto& cbtn : hud_buttons)
-		if (cbtn->PositionMatch(x_pos - surf_x_origin, y_pos - surf_y_origin, x_size, y_size))
+		if (cbtn->PositionMatch(x_pos, y_pos, x_size, y_size))
 		{
 			btn = cbtn;
-			btn->Make(x_pos - surf_x_origin, y_pos - surf_y_origin, x_size, y_size, (uint8_t*)terrain->pal, surf[0], surf[1], surf[2], action_id, cb_press, cb_hover);
+			btn->Make(x_pos, y_pos, x_size, y_size, (uint8_t*)terrain->pal, surf[0], surf[1], surf[2], action_id, cb_press, cb_hover);
 			break;
 		}
 	if (!btn)
 	{
 		// create new button if not existed before
-		btn = new SpellBtnHUD(x_pos - surf_x_origin, y_pos - surf_y_origin, x_size, y_size, (uint8_t*)terrain->pal, surf[0], surf[1], surf[2], action_id, cb_press, cb_hover);
+		btn = new SpellBtnHUD(x_pos, y_pos, x_size, y_size, (uint8_t*)terrain->pal, surf[0], surf[1], surf[2], action_id, cb_press, cb_hover);
 		hud_buttons.push_back(btn);
 	}
 
