@@ -28,3 +28,45 @@ jobs:
             spellcross-map-edit-main/tests/test_game_menu_bar.cpp \
             $(wx-config --libs) -o /tmp/spellcross-menu-test
           timeout 30s xvfb-run -a /tmp/spellcross-menu-test
+  menu-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official wxWidgets MSVC x64 libraries
+        shell: pwsh
+        run: |
+          $wxRoot = Join-Path $env:RUNNER_TEMP 'wxwidgets'
+          New-Item -ItemType Directory -Path $wxRoot -Force | Out-Null
+          foreach ($asset in @('wxWidgets-3.2.8-headers.7z', 'wxMSW-3.2.8_vc14x_x64_Dev.7z', 'wxMSW-3.2.8_vc14x_x64_ReleaseDLL.7z')) {
+            $archive = Join-Path $env:RUNNER_TEMP $asset
+            Invoke-WebRequest "https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.8/$asset" -OutFile $archive
+            & 7z x $archive "-o$wxRoot" -y | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "wxWidgets extraction failed: $asset" }
+          }
+      - name: Compile and exercise native Windows fullscreen transitions
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $devcmd = Join-Path $vs 'Common7/Tools/VsDevCmd.bat'
+          cmd /c "`"$devcmd`" -arch=x64 >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') }
+          }
+          $wxRoot = Join-Path $env:RUNNER_TEMP 'wxwidgets'
+          $core = Get-ChildItem $wxRoot -Recurse -Filter wxmsw32u_core.lib | Select-Object -First 1
+          $setup = Get-ChildItem $wxRoot -Recurse -Filter setup.h | Where-Object { $_.FullName -match '[\\/]mswu[\\/]wx[\\/]' } | Select-Object -First 1
+          $header = Get-ChildItem $wxRoot -Recurse -Filter wx.h | Where-Object { $_.Directory.Name -eq 'wx' } | Select-Object -First 1
+          if (!$core -or !$setup -or !$header) { throw 'wxWidgets release headers or libraries missing' }
+          $include = $header.Directory.Parent.FullName
+          $setupInclude = $setup.Directory.Parent.FullName
+          $binary = Join-Path $env:RUNNER_TEMP 'spellcross-menu-test.exe'
+          & cl.exe /nologo /std:c++17 /EHsc /MD /D_UNICODE /DUNICODE /DWXUSINGDLL "/I$include" "/I$setupInclude" spellcross-map-edit-main/tests/test_game_menu_bar.cpp "/Fe:$binary" /link "/LIBPATH:$($core.DirectoryName)" /SUBSYSTEM:WINDOWS
+          if ($LASTEXITCODE -ne 0) { throw 'Fullscreen test compilation failed' }
+          Get-ChildItem $wxRoot -Recurse -Filter '*.dll' | Copy-Item -Destination $env:RUNNER_TEMP -Force
+          $process = Start-Process $binary -PassThru
+          if (!$process.WaitForExit(60000)) {
+            $process.Kill()
+            throw 'Fullscreen test timed out'
+          }
+          if ($process.ExitCode -ne 0) { throw "Fullscreen test failed: $($process.ExitCode)" }

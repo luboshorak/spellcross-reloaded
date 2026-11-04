@@ -2,6 +2,31 @@
 #include "../source/game_menu_bar.h"
 #include <stdexcept>
 
+// Model synchronous show events delivered while a native transition is still
+// restoring decorations. A second transition at that point corrupts MSW state.
+class ReentrantFrame : public wxFrame
+{
+    bool m_transition = false;
+public:
+    ReentrantFrame()
+        : wxFrame(nullptr, wxID_ANY, "Spellcross menu regression",
+            wxDefaultPosition, wxSize(800, 600)) {}
+
+    bool ShowFullScreen(bool show, long style = wxFULLSCREEN_ALL) override
+    {
+        if (m_transition)
+            throw std::runtime_error("Fullscreen transition re-entered");
+        m_transition = true;
+        wxShowEvent event(GetId(), true);
+        event.SetEventObject(this);
+        GetEventHandler()->ProcessEvent(event);
+        wxYield();
+        const bool result = wxFrame::ShowFullScreen(show, style);
+        m_transition = false;
+        return result;
+    }
+};
+
 class MenuTestApp : public wxApp
 {
     static void Check(bool condition, const char* message)
@@ -12,8 +37,7 @@ class MenuTestApp : public wxApp
 
     static wxFrame* Screen()
     {
-        auto* frame = new wxFrame(nullptr, wxID_ANY, "Spellcross menu regression",
-            wxDefaultPosition, wxSize(800, 600));
+        auto* frame = new ReentrantFrame;
         auto* model = new wxMenuBar;
         auto* options = new wxMenu;
         options->Append(10001, "Audio\tCtrl+O");
@@ -93,6 +117,22 @@ public:
             wxYield();
             Check(!frames[0]->IsFullScreen(), "Returning screen kept old mode");
             Check(frames[0]->GetSize() == windowSize, "Window size not restored");
+            for (auto* frame : frames)
+            {
+                frame->Show();
+                wxYield();
+                for (int cycle = 0; cycle < 10; ++cycle)
+                {
+                    Toggle(frame);
+                    wxYield();
+                    Check(frame->IsFullScreen(), "Repeated fullscreen entry failed");
+                    Toggle(frame);
+                    wxYield();
+                    Check(!frame->IsFullScreen(), "Repeated fullscreen exit failed");
+                    Check(frame->GetToolBar()->IsShown(), "Repeated transition hid menu");
+                }
+                frame->Hide();
+            }
         }
         catch (const std::exception& error)
         {

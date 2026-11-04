@@ -25,15 +25,44 @@ namespace spellcross_window
         return id;
     }
 
+    inline bool& ChangingMode()
+    {
+        static bool changing = false;
+        return changing;
+    }
+
     inline void Apply(wxFrame* frame)
     {
-        if (frame->IsFullScreen() == Fullscreen())
+        if (ChangingMode() || frame->IsBeingDeleted() || !frame->IsShown() ||
+            frame->IsFullScreen() == Fullscreen())
             return;
-        // Retain the toolbar containing the game menu in fullscreen.
-        frame->ShowFullScreen(Fullscreen(),
+
+        // MSW restores decorations and bars synchronously, dispatching window
+        // events before ShowFullScreen returns. Those events must not re-enter.
+        struct TransitionGuard
+        {
+            TransitionGuard() { ChangingMode() = true; }
+            ~TransitionGuard() { ChangingMode() = false; }
+        } guard;
+        const bool requested = Fullscreen();
+        const bool changed = frame->ShowFullScreen(requested,
             wxFULLSCREEN_NOCAPTION | wxFULLSCREEN_NOBORDER | wxFULLSCREEN_NOSTATUSBAR);
+        if (!changed)
+            Fullscreen() = frame->IsFullScreen();
         frame->Layout();
         frame->Refresh();
+    }
+
+    inline void RequestApply(wxFrame* frame)
+    {
+        if (ChangingMode())
+            return;
+        const wxWeakRef<wxFrame> window(frame);
+        // Leave the native menu/show/focus callback before changing HWND styles.
+        frame->CallAfter([window]() {
+            if (window)
+                Apply(window.get());
+        });
     }
 
     inline void AddFullscreen(wxMenu* options)
@@ -58,6 +87,7 @@ namespace spellcross_menu
         std::vector<wxMenu*> m_stack;
         std::vector<wxMenuItem*> m_rows;
         int m_selected = -1;
+        bool m_closing = false;
         int m_rowHeight;
         int m_padding;
 
@@ -94,6 +124,9 @@ namespace spellcross_menu
 
         void ClosePopup()
         {
+            if (m_closing)
+                return;
+            m_closing = true;
             Dismiss();
             ReturnFocus();
             Destroy();
@@ -216,7 +249,7 @@ namespace spellcross_menu
         }
 
     protected:
-        void OnDismiss() override { ReturnFocus(); Destroy(); }
+        void OnDismiss() override { ClosePopup(); }
 
     public:
         Popup(wxFrame* frame, wxMenu* menu, wxWindow* anchor)
@@ -341,12 +374,12 @@ namespace spellcross_menu
             frame->SetAcceleratorTable(wxAcceleratorTable(
                 static_cast<int>(entries.size()), entries.data()));
             frame->Bind(wxEVT_MENU, [frame](wxCommandEvent&) {
-                spellcross_window::Fullscreen() = !frame->IsFullScreen();
-                spellcross_window::Apply(frame);
+                spellcross_window::Fullscreen() = !spellcross_window::Fullscreen();
+                spellcross_window::RequestApply(frame);
             }, spellcross_window::FullscreenId());
             frame->Bind(wxEVT_SHOW, [frame](wxShowEvent& event) {
-                if (event.IsShown())
-                    spellcross_window::Apply(frame);
+                if (event.GetEventObject() == frame && event.IsShown())
+                    spellcross_window::RequestApply(frame);
                 event.Skip();
             });
         }
