@@ -105,3 +105,9 @@ jobs:
             if (Test-Path menu-test-failure.txt) { Get-Content menu-test-failure.txt }
             throw "Fullscreen test failed: $($process.ExitCode)"
           }
+      - name: Retain Windows strategic theme preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategic-theme-windows
+          path: strategic-theme-preview.png
+          retention-days: 7

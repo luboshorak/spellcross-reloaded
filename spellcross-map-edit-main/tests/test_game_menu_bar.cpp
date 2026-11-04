@@ -3,6 +3,7 @@
 #include "../source/strategic_ui_theme.h"
 #include <stdexcept>
 #include <fstream>
+#include <wx/dcscreen.h>
 
 // Model synchronous show events delivered while a native transition is still
 // restoring decorations. A second transition at that point corrupts MSW state.
@@ -165,6 +166,29 @@ public:
                     "Strategic briefing lost readable text colour");
                 Check(button->GetFont().GetFaceName() == frames[0]->GetToolBar()->GetFont().GetFaceName(),
                     "Strategic font differs from menu font");
+#ifdef __WXMSW__
+                // Check actual pixels: a native Windows button would be grey.
+                button->Update();
+                wxBitmap buttonImage(button->GetClientSize());
+                wxMemoryDC buttonDC(buttonImage);
+                wxClientDC buttonSource(button);
+                buttonDC.Blit(0, 0, buttonImage.GetWidth(), buttonImage.GetHeight(), &buttonSource, 0, 0);
+                wxColour pixel;
+                buttonDC.GetPixel(4, 4, &pixel);
+                Check(pixel == spellcross_menu::Background() || pixel == spellcross_menu::Highlight(),
+                    "Windows replaced the strategic button artwork");
+                buttonDC.SelectObject(wxNullBitmap);
+                wxInitAllImageHandlers();
+                const auto previewSize = strategy.GetClientSize();
+                wxBitmap preview(previewSize);
+                wxMemoryDC previewDC(preview);
+                wxScreenDC screen;
+                const auto origin = strategy.ClientToScreen(wxPoint(0, 0));
+                previewDC.Blit(0, 0, previewSize.x, previewSize.y, &screen, origin.x, origin.y);
+                previewDC.SelectObject(wxNullBitmap);
+                Check(preview.SaveFile("strategic-theme-preview.png", wxBITMAP_TYPE_PNG),
+                    "Could not save strategic theme preview");
+#endif
                 int clicks = 0;
                 panel->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) { ++clicks; }, button->GetId());
 #ifdef __WXMSW__
