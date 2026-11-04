@@ -2648,6 +2648,14 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
         MainFrame* main = m_main;
         const bool wasCurrentStrategic = main && main->m_strategicLevel == this;
         const bool appIsExiting = main && main->IsApplicationExitInProgress();
+        if (wasCurrentStrategic && !appIsExiting && !main->SaveContinueGame() && ev.CanVeto())
+        {
+            wxMessageBox(spellcross_ui_locale::Tr("resume.save_failed",
+                "Could not save the current game. The game is still running."),
+                "Spellcross", wxOK | wxICON_ERROR, this);
+            ev.Veto();
+            return;
+        }
         if (wasCurrentStrategic)
             main->m_strategicLevel = nullptr;
         ev.Skip(); // proceed with default close/destroy
@@ -2876,7 +2884,7 @@ static bool LoadStrategicStateFile(
     std::string* out_timestamp,
     int* out_difficulty);
 
-static void SaveStrategicStateFile(
+static bool SaveStrategicStateFile(
     const std::filesystem::path& path,
     const LevelData& level,
     int turn,
@@ -6437,37 +6445,14 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
                 return;
             }
 
-            // STROPT.QH #3: native Exit/Konec rectangle = 327,435,113x41.
-            // In the remake this exits the whole application, not merely the
-            // strategic window. Offer an explicit save first; Cancel at either
-            // dialog keeps the game running.
+            // STROPT.QH #3: Exit saves the active campaign for Continue.
             if (wxRect(kOptExit.x, kOptExit.y, kOptExit.w, kOptExit.h).Contains(lx, ly))
             {
-                wxMessageDialog quitDlg(
-                    this,
-                    "Save the game before exiting?",
-                    "Exit Spellcross",
-                    wxYES_NO | wxCANCEL | wxICON_QUESTION);
-                const int answer = quitDlg.ShowModal();
-                if (answer == wxID_CANCEL)
-                    return;
-                // Use the same file picker as Strategic -> Save game.  This
-                // also removes the last shutdown path that still invoked the
-                // legacy slot chooser.  Cancelling the save cancels exit.
-                if (answer == wxID_YES)
-                {
-                    const bool saved = m_main
-                        ? m_main->ShowUnifiedSaveGameDialog(this)
-                        : PromptStrategicSaveFile(false);
-                    if (!saved)
-                        return;
-                }
-
                 if (m_main)
                     m_main->RequestApplicationExit();
                 else
                     Close(true);
-                return;
+            return;
             }
             return;
         }
@@ -7273,7 +7258,7 @@ static bool PeekStrategicSaveSummary(const std::filesystem::path& path, int& out
     return true;
 }
 
-void StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& path, bool notify)
+bool StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& path, bool notify)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -7309,7 +7294,7 @@ void StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& p
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
-    SaveStrategicStateFile(path, m_level, m_turn, m_money, m_research, m_selectedTerritory, m_player,
+    const bool saved = SaveStrategicStateFile(path, m_level, m_turn, m_money, m_research, m_selectedTerritory, m_player,
         m_territoryCurrentMission, m_territoryLaunchCount, m_playerUnits,
         m_playerCommanders, m_availableCommanders, m_cmdGenWindowStartTurn, m_cmdGenCountInWindow,
         m_gameModeEnabled, m_ownedTerritories, m_territoryResources,
@@ -7324,7 +7309,9 @@ void StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& p
 
     m_originalStrategicDirty = true;
     if (notify)
-        wxMessageBox("Game saved.", "Save game", wxOK | wxICON_INFORMATION, this);
+        wxMessageBox(saved ? "Game saved." : "Save game failed.", "Save game",
+            wxOK | (saved ? wxICON_INFORMATION : wxICON_ERROR), this);
+    return saved;
 }
 
 void StrategicLevelFrame::SaveStrategicGameToSlot(int slot, bool notify)
@@ -7650,8 +7637,7 @@ bool StrategicLevelFrame::PromptStrategicSaveFile(bool notify)
     if (path.extension().empty())
         path.replace_extension(".json");
 
-    SaveStrategicGameToPath(path, notify);
-    return true;
+    return SaveStrategicGameToPath(path, notify);
 }
 
 void StrategicLevelFrame::OnSaveGame(wxCommandEvent&)
@@ -10914,7 +10900,8 @@ int StrategicLevelFrame::GetUnitExperienceLevel(int unitId, int experience) cons
         if (auto* rec = m_spellData->units->GetUnit(unitId))
         {
             int level = 1;
-            while (level < 12 && xp >= rec->GetNextExperiencePts(level))
+            while (rec->GetNextExperiencePts(1) != 0 && level < 12 &&
+                xp >= rec->GetNextExperiencePts(level))
                 ++level;
             return level;
         }
@@ -10988,6 +10975,15 @@ void StrategicLevelFrame::NormalizeStrategicUnitInstances()
             }
             used.insert(st.uid);
             st.experience = std::max(0, st.experience);
+            // A legacy rescued Commando can carry XP above the reachable cap.
+            // Restore the opening mission's authored rank only for that invalid
+            // range, since a company can legitimately earn rank 12 in combat.
+            if (src.unit_id == 3 && m_spellData && m_spellData->units)
+            {
+                if (auto* rec = m_spellData->units->GetUnit(src.unit_id))
+                    if (rec->GetExperiencePts(12) > 0 && st.experience > rec->GetExperiencePts(12))
+                        st.experience = rec->GetExperiencePts(6);
+            }
             st.level = GetUnitExperienceLevel(src.unit_id, st.experience);
             states.push_back(std::move(st));
         }
@@ -11732,12 +11728,11 @@ void StrategicLevelFrame::RestoreHierarchyAssignments(
         }
     }
 
-    // Then restore each commander's host company.  Doing this after the unit
-    // pass lets us derive a clean display label even for custom unit names.
+    // Older saves can contain two different host UIDs. The assignment box
+    // is what the player saw and selected. Fall back to the commander record
+    // for saves that only recorded the assignment there.
     for (const auto& rec : records)
     {
-        if (rec.assigned_unit_uid == 0)
-            continue;
         const auto it = m_hierarchySlotIndex.find(rec.slot_id);
         if (it == m_hierarchySlotIndex.end())
             continue;
@@ -11745,11 +11740,19 @@ void StrategicLevelFrame::RestoreHierarchyAssignments(
         if (slot.type != "commander" || slot.commander_uid == 0)
             continue;
 
-        const wxString display = unitDisplay(rec.assigned_unit_uid);
-        if (display.empty())
-            continue;
-        slot.assigned_unit_uid = rec.assigned_unit_uid;
-        slot.assigned_unit_display = display;
+        const std::string hostSlotId = slot.id.rfind("battalion_", 0) == 0
+            ? slot.id + "_unit"
+            : slot.id.substr(0, slot.id.size() - std::string("_commander").size()) + "_unit";
+        const auto hostSlot = m_hierarchySlotIndex.find(hostSlotId);
+        const uint32_t visibleUid = hostSlot == m_hierarchySlotIndex.end()
+            ? 0 : m_hierarchySlots[hostSlot->second].unit_uid;
+        const uint32_t hostUid = visibleUid != 0 ? visibleUid : rec.assigned_unit_uid;
+        const wxString display = unitDisplay(hostUid);
+        if (!display.empty())
+        {
+            slot.assigned_unit_uid = hostUid;
+            slot.assigned_unit_display = display;
+        }
     }
 
     for (auto& slot : m_hierarchySlots)
@@ -12725,6 +12728,19 @@ void StrategicLevelFrame::UpdateCommanderHierarchyLabel(const std::string& comma
     HierarchySlot& cs = m_hierarchySlots[it->second];
     if (cs.type != "commander" || !cs.label)
         return;
+
+    const std::string hostSlotId = cs.id.rfind("battalion_", 0) == 0
+        ? cs.id + "_unit"
+        : cs.id.substr(0, cs.id.size() - std::string("_commander").size()) + "_unit";
+    const auto hostSlot = m_hierarchySlotIndex.find(hostSlotId);
+    if (hostSlot != m_hierarchySlotIndex.end())
+    {
+        HierarchySlot& host = m_hierarchySlots[hostSlot->second];
+        host.unit_uid = cs.assigned_unit_uid;
+        host.unit_display = cs.assigned_unit_display;
+        if (host.label)
+            host.label->SetLabel(host.unit_uid != 0 ? host.unit_display : host.placeholder);
+    }
 
     if (cs.commander_name.empty())
     {
@@ -16973,7 +16989,7 @@ static bool LoadStrategicStateFile(
     return true;
 }
 
-static void SaveStrategicStateFile(
+static bool SaveStrategicStateFile(
     const std::filesystem::path& path,
     const LevelData& level,
     int turn,
@@ -16998,7 +17014,7 @@ static void SaveStrategicStateFile(
 {
     std::ofstream f(path);
     if (!f)
-        return;
+        return false;
 
     f << "{\n";
     f << "  \"version\": 2,\n";
@@ -17326,6 +17342,8 @@ static void SaveStrategicStateFile(
     }
     f << "  ]\n";
     f << "}\n";
+    f.close();
+    return !f.fail();
 }
 
 void StrategicLevelFrame::LoadStrategicState()

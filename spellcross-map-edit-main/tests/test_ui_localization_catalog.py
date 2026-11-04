@@ -174,7 +174,10 @@ class LocalizationCatalogTests(unittest.TestCase):
             "SELTAB", "SPECOBJ", "UNITS", "UPGRADES",
         ):
             self.assertIn('{"' + resource + '", ', engine)
-        self.assertIn('units->IsEnglish() ? ".ENG" : ".CZ"', engine)
+        self.assertIn("text_language = SelectSpellLanguage(units->IsEnglish(),", engine)
+        self.assertIn("SpellLanguageExtension(text_language)", engine)
+        for extension in ("CZ", "ENG", "PL", "IT"):
+            self.assertIn('common_fs->GetFile("UNITS.' + extension + '")', engine)
         self.assertIn("common_fs->GetFile(filename.c_str(), &data, &size)", engine)
         self.assertIn("ParseOriginalLanguageLines(data, size)", engine)
         self.assertIn("current[first] != ';'", engine)
@@ -191,7 +194,7 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn("names.size() != records.size()", engine)
         self.assertIn("names[i].size() >= sizeof(records[i]->name)", engine)
         self.assertIn("std::memcpy(records[i]->name, names[i].data(), names[i].size())", engine)
-        self.assertIn('spell_data->units->IsEnglish() ? "UNITS.ENG" : "UNITS.CZ"', loader)
+        self.assertIn('std::string("UNITS") + SpellLanguageExtension(spell_data->GetTextLanguage())', loader)
 
     def test_original_rank_names_are_full_and_short_pairs(self):
         source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
@@ -218,7 +221,7 @@ class LocalizationCatalogTests(unittest.TestCase):
     def test_original_text_is_not_in_ui_catalogs(self):
         # Mission text still comes from TEXTS.FS; catalogs contain only UI keys.
         engine = (ROOT / "source" / "spellcross.cpp").read_text(encoding="utf-8")
-        self.assertIn('units && units->IsEnglish() ? SpellLang::ENG : SpellLang::CZE', engine)
+        self.assertIn('new SpellTexts(texts_fs, text_language, sounds)', engine)
         for lang in ("en", "cs"):
             keys = catalog(lang)
             self.assertFalse(any(k.startswith(("mission.text.", "texts_fs.")) for k in keys))

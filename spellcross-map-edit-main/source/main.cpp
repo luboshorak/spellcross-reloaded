@@ -90,6 +90,9 @@ namespace
         std::vector<std::uint64_t> sent_unit_indices;
         std::vector<std::uint32_t> sent_unit_uids;
         SpellMap::MissionLossStats mission_losses;
+        bool has_camera = false;
+        std::int32_t camera_x = 0;
+        std::int32_t camera_y = 0;
     };
 
     static wxBitmap MakeSpellTextBitmap(SpellFont* font, const wxString& text,
@@ -144,7 +147,7 @@ namespace
 
     static constexpr char kTacticalContextMarker[] = "\n--SPELLCROSS-STRATEGIC-CONTEXT-V1--\n";
     static constexpr std::uint32_t kTacticalContextMagic = 0x31584353u; // SCX1
-    static constexpr std::uint32_t kTacticalContextVersion = 4u;
+    static constexpr std::uint32_t kTacticalContextVersion = 5u;
 
     template <typename T>
     static bool WriteCtxPod(std::ostream& os, const T& v)
@@ -212,7 +215,9 @@ namespace
         }
         const std::int32_t attackId = static_cast<std::int32_t>(ctx.counter_attack_id);
         if (!WriteCtxPod(os, attackId)) return false;
-        return static_cast<bool>(os);
+        if (!WriteCtxPod(os, ctx.camera_x) || !WriteCtxPod(os, ctx.camera_y)) return false;
+        os.close();
+        return !os.fail();
     }
 
     static bool ReadTacticalCampaignContext(const std::wstring& path, TacticalCampaignContext& ctx)
@@ -269,6 +274,11 @@ namespace
             std::int32_t attackId = 0;
             if (!ReadCtxPod(is, attackId) || attackId < 0) return false;
             ctx.counter_attack_id = attackId;
+        }
+        if (ver >= 5u)
+        {
+            if (!ReadCtxPod(is, ctx.camera_x) || !ReadCtxPod(is, ctx.camera_y)) return false;
+            ctx.has_camera = true;
         }
         ctx.present = true;
         return true;
@@ -3160,11 +3170,92 @@ void MainFrame::OnOptionsScreen(wxCommandEvent& event)
 }
 
 
+static std::filesystem::path ContinueSavePath()
+{
+    return std::filesystem::current_path() / "save" / "continue.dat";
+}
+
+bool MainFrame::SaveContinueGame()
+{
+    namespace fs = std::filesystem;
+    const bool strategic = m_strategicLevel && m_strategicLevel->IsShown();
+    const bool tactical = (IsShown() || m_mainMenuReturnToTactical) &&
+        spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && !m_mission_end_flow;
+    if (!strategic && !tactical)
+        return true;
+
+    const fs::path path = ContinueSavePath();
+    fs::path temporary = path;
+    temporary += "." + std::to_string(GetCurrentProcessId()) + ".tmp";
+    std::error_code ec;
+    fs::create_directories(path.parent_path(), ec);
+    if (ec)
+        return false;
+
+    const bool saved = strategic
+        ? m_strategicLevel->SaveStrategicGameToPath(temporary, false)
+        : SaveTacticalGameWithCampaignContext(temporary.wstring());
+    if (saved && MoveFileExW(temporary.c_str(), path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        return true;
+
+    fs::remove(temporary, ec);
+    return false;
+}
+
+bool MainFrame::LoadContinueGame()
+{
+    const auto path = ContinueSavePath();
+    std::ifstream input(path, std::ios::binary);
+    std::string opening, format;
+    if (!std::getline(input, opening) || !std::getline(input, format))
+        return false;
+    input.close();
+
+    if (format.find("spellcross_map_editor_save") == std::string::npos)
+        return OpenStrategicSaveGame(path);
+    if (!LoadTacticalGameWithCampaignContext(path.wstring()))
+        return false;
+
+    ShowTacticalWindow();
+    return true;
+}
+
 // on form close
 void MainFrame::RequestApplicationExit()
 {
     if (m_applicationExitInProgress)
         return;
+
+    const bool activeBattle = (IsShown() || m_mainMenuReturnToTactical) &&
+        spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && !m_mission_end_flow;
+    if (activeBattle && (m_deployment_active || CheckMessageState() || !spell_map->CanSavePausedBattle()))
+    {
+        if (m_mainMenuReturnToTactical && !form_mmenu)
+        {
+            m_mainMenuReturnToTactical = false;
+            ShowTacticalWindow();
+        }
+        wxMessageBox(spellcross_ui_locale::Tr("resume.battle_busy",
+            "Finish deployment, close the battle message or wait for the current action to finish before exiting."),
+            "Spellcross", wxOK | wxICON_INFORMATION, IsShown() ? this : nullptr);
+        return;
+    }
+
+    if (!SaveContinueGame())
+    {
+        wxMessageBox(spellcross_ui_locale::Tr("resume.save_failed",
+            "Could not save the current game. The game is still running."),
+            "Spellcross", wxOK | wxICON_ERROR, this);
+        if (!IsShown() && (!m_strategicLevel || !m_strategicLevel->IsShown()))
+        {
+            if (m_mainMenuReturnToTactical)
+                ShowTacticalWindow();
+            else
+                ShowMainMenuWindow();
+        }
+        return;
+    }
 
     m_applicationExitInProgress = true;
     wxLogDebug("[SHUTDOWN] beginning application shutdown");
@@ -3629,6 +3720,7 @@ void MainFrame::OnOpenMainMenu(wxCommandEvent& event)
     form_mmenu = new FormMainMenu(canvas, ID_MMENU_WIN, spell_map, spell_data,
         [this](FormMainMenuAction action) { OnMainMenuAction(action); });
 
+    m_inspectUnit = false;
     HideTacticalWindow();
 }
 
@@ -3684,6 +3776,7 @@ static bool StrategicContextMatchesLoadedMission(const StrategicLevelFrame* stra
 void MainFrame::SyncUiAfterTacticalLoad()
 {
     ResetDeploymentUI();
+    m_inspectUnit = false;
     if (!spell_map || !spell_map->isGameMode()) return;
     SetTitle(BuildSpellcrossWindowTitle(spell_map));
     wxCommandEvent ignored;
@@ -3717,6 +3810,9 @@ bool MainFrame::SaveTacticalGameWithCampaignContext(const std::wstring& path)
     // GetMissionLossStats() after load; storing that transient corpse here as
     // well would count it twice.
     ctx.mission_losses = spell_map->GetRecordedMissionLossStats();
+    const auto [cameraX, cameraY] = spell_map->scroller.GetScroll();
+    ctx.camera_x = cameraX;
+    ctx.camera_y = cameraY;
 
     if (m_strategicLevel)
     {
@@ -3873,6 +3969,8 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
         destroyOldStrategic();
 
     SyncUiAfterTacticalLoad();
+    if (hasEmbeddedContext && ctx.has_camera)
+        spell_map->scroller.SetPos(ctx.camera_x, ctx.camera_y);
     return true;
 }
 
@@ -4290,12 +4388,13 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                     break;
                 }
 
-                // Outside an ESC/pause flow there is no live tactical session to
-                // resume. Keep the menu visible rather than silently reloading a
-                // map definition and pretending that it is a continuation.
-                wxMessageBox("No paused tactical game to continue.", "Main menu",
-                    wxOK | wxICON_INFORMATION, this);
-                ShowMainMenuWindow();
+                if (!LoadContinueGame())
+                {
+                    wxMessageBox(spellcross_ui_locale::Tr("resume.load_failed",
+                        "No saved game could be resumed."), "Spellcross",
+                        wxOK | wxICON_INFORMATION, this);
+                    ShowMainMenuWindow();
+                }
                 break;
             }
             case FormMainMenuAction::LoadGame:
@@ -5520,6 +5619,11 @@ void MainFrame::OnHUDbuttonsClick(wxMouseEvent& event)
             btn->cb_press();
         if(btn->is_press)
             return;
+        if (btn->action_id == SpellMap::HUD_ACTION_INFO && spell_map->isGameMode())
+        {
+            m_inspectUnit = !m_inspectUnit;
+            SetCursor(m_inspectUnit ? *spell_data->gres.cur_question : *spell_data->gres.cur_pointer);
+        }
         if(btn->action_id == SpellMap::HUD_ACTION_MINIMAP)
         {
             // show minimap
@@ -5870,6 +5974,26 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     }
     if (form_minimap && form_minimap->form)
         wxQueueEvent(form_minimap->form, new wxCloseEvent(wxEVT_CLOSE_WINDOW, ID_MINIMAP_WIN));
+    if (m_inspectUnit)
+    {
+        auto* unit = spell_map->GetCursorUnit();
+        if (unit && unit->unit && !unit->hide && (!unit->is_enemy || unit->is_visible == 2))
+        {
+            m_inspectUnit = false;
+            SetCursor(*spell_data->gres.cur_pointer);
+            const wxString name = wxString(char2wstringCP895(unit->unit->name));
+            wxString format = spellcross_ui_locale::Tr("battle.unit_details",
+                "Level: %d |Ready: %d |Wounded: %d |Morale: %d%% |Action points: %d |Attack (light / heavy / air): %d / %d / %d |Defence: %d");
+            format.Replace(" |", "\n");
+            const wxString details = wxString::Format(format,
+                unit->experience_level, unit->man, unit->wounded, static_cast<int>(unit->morale),
+                unit->action_points, unit->GetAttack(MapUnit::TARGET_TYPE::LIGHT),
+                unit->GetAttack(MapUnit::TARGET_TYPE::ARMOR), unit->GetAttack(MapUnit::TARGET_TYPE::AIR),
+                unit->GetDefence());
+            wxMessageBox(details, name, wxOK | wxICON_INFORMATION, this);
+        }
+        return;
+    }
     select_pos = spell_map->GetSelection(nullptr);
     if (m_tutorial_stage == 1 && m_tutorial_command == 7 &&
         select_pos.IsSelected() && spell_map->ConvXY(select_pos) == 868)
@@ -5965,7 +6089,8 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
         }
         const int options = spell_map->GetUnitOptions();
         wxCursor* cur = spell_data->gres.cur_pointer;
-        if (options == SpellMap::UNIT_OPT_MOVE) cur = spell_data->gres.cur_move;
+        if (m_inspectUnit) cur = spell_data->gres.cur_question;
+        else if (options == SpellMap::UNIT_OPT_MOVE) cur = spell_data->gres.cur_move;
         else if (options == SpellMap::UNIT_OPT_SELECT) cur = spell_data->gres.cur_select;
         else if (options == SpellMap::UNIT_OPT_LOWER) cur = spell_data->gres.cur_attack_down;
         else if (options == SpellMap::UNIT_OPT_UPPER) cur = spell_data->gres.cur_attack_up;
@@ -5994,6 +6119,12 @@ void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
     }
 
     int key = event.GetKeyCode();
+    if (key == WXK_ESCAPE && m_inspectUnit)
+    {
+        m_inspectUnit = false;
+        SetCursor(*spell_data->gres.cur_pointer);
+        return;
+    }
 
     if (m_tutorial_stage == 1 && m_tutorial_command == 4 &&
         (key == 'M' || key == 'm'))

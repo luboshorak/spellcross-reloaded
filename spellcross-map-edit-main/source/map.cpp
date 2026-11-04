@@ -960,6 +960,17 @@ SpellMap::SpellMap()
 	SetRenderFilter(NULL);
 }
 
+bool SpellMap::CanSavePausedBattle() const
+{
+	// The save format stores map state, while these phases also need live
+	// movement, combat and AI queues to resume correctly.
+	if (enemy_turn_running || panic_turn_running || group_move_active ||
+		reaction_fire_active || !reaction_fire_queue.empty())
+		return false;
+
+	return std::none_of(units.begin(), units.end(), IsUnitBusy);
+}
+
 int SpellMap::SaveGameStateToFile(const std::wstring& path)
 {
 	if (!IsLoaded() || !saves)
@@ -1107,7 +1118,8 @@ int SpellMap::SaveGameStateToFile(const std::wstring& path)
 		}
 	}
 
-	return 0;
+	f.close();
+	return f.fail() ? 3 : 0;
 }
 
 void SpellMap::CheckAndTriggerMissionEnd()
@@ -2868,7 +2880,7 @@ if (!mission_data || !mission_data->Size())
 				}
 
 				// experience
-				unit->InitExperience(stoi(cmd->parameters->at(3)));
+				unit->InitExperience(stoi(cmd->parameters->at(3)) + 1);
 
 				// man count
 				unit->man = (std::min)(stoi(cmd->parameters->at(4)), unit->unit->cnt);
@@ -3476,7 +3488,7 @@ int SpellMap::SaveDEF(std::wstring path)
 		std::string name = unit->name;
 		if (name.empty())
 			name = "-";
-		mission_data += string_format("    AddUnit(%d,%d,%d,%d,%d,%s,%s)\n", unit->id, unit->unit->type_id, ConvXY(unit->coor), unit->experience_init, unit->man, unit->behave.GetString().c_str(), name.c_str());
+		mission_data += string_format("    AddUnit(%d,%d,%d,%d,%d,%s,%s)\n", unit->id, unit->unit->type_id, ConvXY(unit->coor), (std::max)(0, unit->experience_init - 1), unit->man, unit->behave.GetString().c_str(), name.c_str());
 	}
 
 	// place events:
@@ -7657,7 +7669,7 @@ int SpellMap::ResetUnitsAP()
 }
 
 
-bool SpellMap::IsUnitBusy(MapUnit* unit)
+bool SpellMap::IsUnitBusy(const MapUnit* unit)
 {
     if (!unit)
         return(false);
@@ -10111,7 +10123,12 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		{
 			int skill_frac_base = unit->unit->GetExperiencePts(unit->experience_level);
 			int skill_frac_next = unit->unit->GetNextExperiencePts(unit->experience_level);
-			skill_fraction_pix = 51 * (unit->experience - skill_frac_base) / (skill_frac_next - skill_frac_base);
+			if (skill_frac_next > skill_frac_base)
+			{
+				const auto xp = std::clamp(unit->experience, skill_frac_base, skill_frac_next);
+				skill_fraction_pix = static_cast<int>(
+					51LL * (xp - skill_frac_base) / (skill_frac_next - skill_frac_base));
+			}
 		}
 		for (int y = 0; y < 2; y++)
 			memset(&buf[hud_left + ix_ref + 5 + (hud_top + y + 77) * buf_x_size], 235, (std::min)((std::max)(skill_fraction_pix, 1), 51));
@@ -10171,11 +10188,18 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		// pos b: 579,23  size: 60x50
 		unit->unit->icon_glyph->Render(buf, buf_end, buf_x_size, hud_left + ((pid == 0) ? (1) : (579)), hud_top + 23);
 
-		// Render active formation mark in the unit information panel.
-		// WM_FORM0/1/2 are the original battalion/regiment/brigade glyphs.
+		// The information panel identifies the commander carried by this unit.
+		// Formation membership is shown separately on the battlefield plate.
 		// pos a: 48,25
 		// pos b: 626,25
-		const int command_level = (std::max)(0, (std::min)(unit->formation_level, 3));
+		const auto host_mask = unit->formation_commander_mask;
+		int command_level = unit->is_commander ? 1 : 0;
+		if (host_mask & 0x04)
+			command_level = 3;
+		else if (host_mask & 0x02)
+			command_level = 2;
+		else if (host_mask & 0x01)
+			command_level = 1;
 		if (command_level && gres.wm_form[command_level - 1])
 			gres.wm_form[command_level - 1]->Render(buf, buf_end, buf_x_size, hud_left + ix_ref + 48, hud_top + 25);
 
@@ -10297,7 +10321,7 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 					buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchEndTurn, this), NULL);
 
 			CreateHUDbutton(gres.wm_glyph_unit_info, hud_origin, btn_right[4], buf, buf_end, buf_x_size, 0, bind(&SpellMap::OnHUDswitchUnitHUD, this), NULL);
-			CreateHUDbutton(gres.wm_glyph_info, hud_origin, btn_right[5], buf, buf_end, buf_x_size, 0, NULL, NULL);
+			CreateHUDbutton(gres.wm_glyph_info, hud_origin, btn_right[5], buf, buf_end, buf_x_size, HUD_ACTION_INFO, NULL, NULL);
 			CreateHUDbutton(gres.wm_glyph_options, hud_origin, btn_right[6], buf, buf_end, buf_x_size, HUD_ACTION_MAP_OPTIONS, NULL, NULL);
 			CreateHUDbutton(gres.wm_glyph_retreat, hud_origin, btn_right[7], buf, buf_end, buf_x_size, HUD_ACTION_RETREAT, NULL, NULL);
 		}
@@ -11185,34 +11209,33 @@ void SpellMap::ViewRange::ClearEvents(bool cleanup)
 }
 
 // add unit to task list with filtering of duplicite tasks (thread safe)
-int SpellMap::ViewRange::AddViewUnitTask(MapUnit* unit, ClearMode clear, bool rec_events, bool force)
+int SpellMap::ViewRange::AddViewUnitTask(MapUnit* unit, ClearMode clear, bool rec_events, bool report_contact)
 {
 	queue_lock.lock();
 	ctrl_lock.lock();
-	if (!force)
+	for (int k = pending.size() - 1; k >= 0; k--)
 	{
-		for (int k = pending.size() - 1; k >= 0; k--)
-		{
-			auto* task = &pending.at(k);
-			if (task->action != Action::NONE)
-				break;
-			if (!task->unit)
-				continue;
-			if (task->unit->id != unit->id)
-				continue;
-			if (task->unit->coor != unit->coor)
-				continue;
-			if (task->clear != clear)
-				continue;
-			// Keep event detection when merging with a pending view-only task.
-			task->detect_events = task->detect_events || rec_events;
-			ctrl_lock.unlock();
-			queue_lock.unlock();
-			return(1);
-		}
+		auto* task = &pending.at(k);
+		if (task->action != Action::NONE)
+			break;
+		if (!task->unit)
+			continue;
+		if (task->unit->id != unit->id)
+			continue;
+		if (task->unit->coor != unit->coor)
+			continue;
+		if (task->clear != clear)
+			continue;
+		// Keep event detection when merging with a pending view-only task.
+		task->detect_events = task->detect_events || rec_events;
+		task->report_contact = task->report_contact || report_contact;
+		ctrl_lock.unlock();
+		queue_lock.unlock();
+		return(1);
 	}
 	// no dupla found: add task	
 	pending.emplace_back(unit, clear, Action::NONE, rec_events);
+	pending.back().report_contact = report_contact;
 	ctrl_lock.unlock();
 	queue_lock.unlock();
 
@@ -11224,7 +11247,7 @@ int SpellMap::ViewRange::AddViewUnitTask(MapUnit* unit, ClearMode clear, bool re
 void SpellMap::ViewRange::AddUnitView(MapUnit* unit, ClearMode clear, int* new_contact, vector<SpellMapEventRec*>* events)
 {
 	// Allied visibility must trigger events even when results are collected later.
-	AddViewUnitTask(unit, clear, map->isGameMode() && !unit->is_enemy);
+	AddViewUnitTask(unit, clear, map->isGameMode() && !unit->is_enemy, new_contact != nullptr);
 
 	// wait for results?
 	if (!new_contact && !events)
@@ -11446,6 +11469,7 @@ void SpellMap::ViewRange::Worker()
 		ClearMode clear = ClearMode::NONE;
 		Action action = Action::NONE;
 		int detect_events = false;
+		bool report_contact = false;
 
 		// new task?
 		ctrl_lock.lock();
@@ -11469,6 +11493,7 @@ void SpellMap::ViewRange::Worker()
 			clear = pending.front().clear;
 			action = pending.front().action;
 			detect_events = pending.front().detect_events;
+			report_contact = pending.front().report_contact;
 			pending.pop_front();
 		}
 		else
@@ -11686,7 +11711,7 @@ void SpellMap::ViewRange::Worker()
 						if (u->is_visible < 2 && u->is_enemy != target->is_enemy)
 						{
 							seen_units.push_back(u->id);
-							if (detect_events)
+							if (detect_events && !target->is_enemy && !u->was_seen)
 								new_contact = true;
 						}
 
@@ -11833,7 +11858,7 @@ void SpellMap::ViewRange::Worker()
 									{
 										// add seen oponents to list
 										seen_units.push_back(unit->id);
-										if (detect_events)
+										if (detect_events && !target->is_enemy && !unit->was_seen)
 											new_contact = true;
 									}
 									// check linked events?
@@ -11925,7 +11950,7 @@ void SpellMap::ViewRange::Worker()
 									{
 										// add seen oponents to list
 										seen_units.push_back(unit->id);
-										if (detect_events)
+										if (detect_events && !target->is_enemy && !unit->was_seen)
 											new_contact = true;
 									}
 									// check linked SeeUnit() event?
@@ -12027,7 +12052,7 @@ void SpellMap::ViewRange::Worker()
 			result_lock.lock();
 			view = units_view;
 			target->view_map = this_unit_view;
-			was_new_contact |= new_contact;
+			was_new_contact |= report_contact && new_contact;
 			event_list.insert(event_list.end(), events_list.begin(), events_list.end());
 			result_lock.unlock();
 		}
@@ -12520,7 +12545,7 @@ void SpellMap::CleanupDeadUnits()
 		ApplyCommanderDeathMorale(dead);
 		auto extracted = ExtractUnit(dead);
 		if (extracted)
-			extracted->Kill();
+			extracted->Kill(event_list);
 	}
 	if (!dead_list.empty())
 		SortUnits();
@@ -13033,7 +13058,7 @@ int SpellMap::Tick()
 					else
 					{
 						new_contact = 0;
-						UpdateEnemyVisibilityFromPlayerView(this, unit_view, unit, &new_contact);
+						UpdateEnemyVisibilityFromPlayerView(this, unit_view, unit, nullptr);
 					}
 					if (new_contact)
 					{
@@ -13670,14 +13695,7 @@ int SpellMap::Tick()
 					ApplyCommanderDeathMorale(target);
 					auto dead = ExtractUnit(target, unit);
 					if (dead)
-					{
-						// kill unit
-						auto kill_evt = dead->Kill();
-
-						// equeue linked event
-						if (kill_evt)
-							event_list.push_back(kill_evt);
-					}
+						dead->Kill(event_list);
 
 					// clear stale pointer - target memory is freed by Kill()
 					unit->attack_target = NULL;
@@ -14122,10 +14140,9 @@ int SpellMap::Tick()
 
 	// try fetch unread view events
 	SpellMapEventsList new_events;
-	int new_contact = unit_view->GetResults(&new_events);
-	// new contact detected?
-	if (unit && new_contact)
-		unit->PlayContact();
+	// Background visibility rebuilds have no reporting unit. Movement and
+	// radar actions play their own contact sound using the synchronous result.
+	unit_view->GetResults(&new_events);
 	// add new events to pending list
 	if (!new_events.empty())
 		event_list.insert(event_list.end(), new_events.begin(), new_events.end());

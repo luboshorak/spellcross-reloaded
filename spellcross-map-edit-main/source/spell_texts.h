@@ -5,7 +5,7 @@
 #include "spell_font.h"
 #include <string>
 
-enum class SpellLang {ENG, CZE};
+#include "spell_language.h"
 
 class SpellTextChunk
 {
@@ -51,3 +51,4 @@ public:
     vector<SpellTextRec*> &GetTexts();
     int GetTextId(SpellTextRec* text);
 };
+

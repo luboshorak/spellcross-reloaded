@@ -131,6 +131,7 @@ private:
 	int GenerateSpecialTiles();
 	int LoadAuxGraphics(FSarchive* fs,std::function<void(std::string)> status_item=NULL);
 
+	SpellLang text_language = SpellLang::CZE;
 	FSarchive* common_fs;
 	FSarchive* terrain_fs;
 	// Original retail CP895 tables, grouped by COMMON.FS resource stem.
@@ -138,6 +139,7 @@ private:
 
 public:
 	FSarchive* GetCommonFS() { return common_fs; }
+	SpellLang GetTextLanguage() const { return text_language; }
 	std::string GetOriginalText(const char* resource_stem, size_t index) const;
 	// data paths
 	std::wstring data_path;
@@ -190,6 +192,7 @@ public:
 	int BuildSpriteContextOfMaps(wstring folder,string terrain_name,std::function<void(std::string)> status_cb);	
 	int BuildHouseObjectsOfMaps(wstring folder,string terrain_name,std::function<void(std::string)> status_cb);
 };
+
 
 
 

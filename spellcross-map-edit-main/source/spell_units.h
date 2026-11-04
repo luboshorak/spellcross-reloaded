@@ -692,7 +692,7 @@ public:
 	AttackResult DamageTarget(MapSprite* target);
 	AttackResult DamageTarget(MapUnit* target);
 	int isDead() const;
-	SpellMapEventRec *Kill();
+	void Kill(std::vector<SpellMapEventRec*>& pending);
 
 
 	MapUnit(SpellMap *map);

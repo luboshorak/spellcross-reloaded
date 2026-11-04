@@ -27,6 +27,49 @@ std::string wstring2string(const std::wstring& str)
     return myconv.to_bytes(str);
 }
 
+// Original Polish language tables use Windows-1250, not UTF-8.
+// Undefined code-page bytes are replaced so a damaged label cannot abort loading.
+std::wstring char2wstringCP1250(const char* str)
+{
+    static constexpr wchar_t codes[] =
+        L"\u20AC\uFFFD\u201A\uFFFD\u201E\u2026\u2020\u2021\uFFFD\u2030\u0160\u2039\u015A\u0164\u017D\u0179"
+        L"\uFFFD\u2018\u2019\u201C\u201D\u2022\u2013\u2014\uFFFD\u2122\u0161\u203A\u015B\u0165\u017E\u017A"
+        L"\u00A0\u02C7\u02D8\u0141\u00A4\u0104\u00A6\u00A7\u00A8\u00A9\u015E\u00AB\u00AC\u00AD\u00AE\u017B"
+        L"\u00B0\u00B1\u02DB\u0142\u00B4\u00B5\u00B6\u00B7\u00B8\u0105\u015F\u00BB\u013D\u02DD\u013E\u017C"
+        L"\u0154\u00C1\u00C2\u0102\u00C4\u0139\u0106\u00C7\u010C\u00C9\u0118\u00CB\u011A\u00CD\u00CE\u010E"
+        L"\u0110\u0143\u0147\u00D3\u00D4\u0150\u00D6\u00D7\u0158\u016E\u00DA\u0170\u00DC\u00DD\u0162\u00DF"
+        L"\u0155\u00E1\u00E2\u0103\u00E4\u013A\u0107\u00E7\u010D\u00E9\u0119\u00EB\u011B\u00ED\u00EE\u010F"
+        L"\u0111\u0144\u0148\u00F3\u00F4\u0151\u00F6\u00F7\u0159\u016F\u00FA\u0171\u00FC\u00FD\u0163\u02D9";
+    std::wstring result;
+    while (*str)
+    {
+        const auto code = static_cast<unsigned char>(*str++);
+        result.push_back(code < 128 ? static_cast<wchar_t>(code) : codes[code - 128]);
+    }
+    return result;
+}
+
+// Western single-byte text in the Italian retail tables (including accented vowels).
+std::wstring char2wstringCP1252(const char* str)
+{
+    static constexpr wchar_t codes[] =
+        L"\u20AC\uFFFD\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\uFFFD\u017D\uFFFD"
+        L"\uFFFD\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\uFFFD\u017E\u0178"
+        L"\u00A0\u00A1\u00A2\u00A3\u00A4\u00A5\u00A6\u00A7\u00A8\u00A9\u00AA\u00AB\u00AC\u00AD\u00AE\u00AF"
+        L"\u00B0\u00B1\u00B2\u00B3\u00B4\u00B5\u00B6\u00B7\u00B8\u00B9\u00BA\u00BB\u00BC\u00BD\u00BE\u00BF"
+        L"\u00C0\u00C1\u00C2\u00C3\u00C4\u00C5\u00C6\u00C7\u00C8\u00C9\u00CA\u00CB\u00CC\u00CD\u00CE\u00CF"
+        L"\u00D0\u00D1\u00D2\u00D3\u00D4\u00D5\u00D6\u00D7\u00D8\u00D9\u00DA\u00DB\u00DC\u00DD\u00DE\u00DF"
+        L"\u00E0\u00E1\u00E2\u00E3\u00E4\u00E5\u00E6\u00E7\u00E8\u00E9\u00EA\u00EB\u00EC\u00ED\u00EE\u00EF"
+        L"\u00F0\u00F1\u00F2\u00F3\u00F4\u00F5\u00F6\u00F7\u00F8\u00F9\u00FA\u00FB\u00FC\u00FD\u00FE\u00FF";
+    std::wstring result;
+    while (*str)
+    {
+        const auto code = static_cast<unsigned char>(*str++);
+        result.push_back(code < 128 ? static_cast<wchar_t>(code) : codes[code - 128]);
+    }
+    return result;
+}
+
 // convert char str to wstring using CZ CP852 encoding
 std::wstring char2wstringCP852(const char* str)
 {
@@ -383,5 +426,6 @@ double randgman(double shape,double scale,double max, double min)
 
     return(num);
 }
+
 
 

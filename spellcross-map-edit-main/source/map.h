@@ -370,7 +370,7 @@ public:
 		void ApplyMoraleSpecialAction(MapUnit* unit);
 		void ApplyCommanderDeathMorale(MapUnit* commander_host);
 		bool MovePanickedEnemy(MapUnit* unit);
-		bool IsUnitBusy(MapUnit* unit);
+		static bool IsUnitBusy(const MapUnit* unit);
 		// Original Spellcross defensive/opportunity fire. Either side may react
 		// when a moving opponent enters previously unseen direct sight while the
 		// defender still has enough AP for at least one shot.
@@ -727,6 +727,7 @@ public:
 				Action action;
 				// collect events
 				int detect_events;
+				bool report_contact = false;
 
 				Task(MapUnit *unit, ClearMode clear, Action action, bool detect_events)
 				{
@@ -771,7 +772,7 @@ public:
 			
 			void Worker();
 			//void Stop();
-			int AddViewUnitTask(MapUnit *unit,ClearMode clear=ClearMode::NONE,bool rec_events=false,bool force=false);
+			int AddViewUnitTask(MapUnit *unit,ClearMode clear=ClearMode::NONE,bool rec_events=false,bool report_contact=false);
 			int ClearUnitsViewCore(ClearMode clear,std::vector<int>* p_view=NULL);
 			int PrepareUnitsViewMaskCore();
 			int RestoreUnitsViewCore();
@@ -903,6 +904,7 @@ public:
 		int SetGameMode(int new_mode);
 		int isGameMode();
 		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
+		bool CanSavePausedBattle() const;
 		void SetGameDifficulty(GameDifficulty difficulty);
 		GameDifficulty GetGameDifficulty() const { return game_difficulty; };
 		int GetTacticalSaveLimit() const;
@@ -1131,7 +1133,8 @@ public:
 			HUD_ACTION_MAP_OPTIONS,
 			HUD_ACTION_RETREAT,
 			HUD_ACTION_DEPLOY_FINISH,
-			HUD_ACTION_DEPLOY_NEXT_UNIT
+			HUD_ACTION_DEPLOY_NEXT_UNIT,
+			HUD_ACTION_INFO
 		};
 
 		MapSound* GetRandomSound(double* left=NULL,double* right=NULL);
