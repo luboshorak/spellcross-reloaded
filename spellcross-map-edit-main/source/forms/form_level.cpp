@@ -15842,29 +15842,11 @@ std::string StrategicLevelFrame::ResolveMissionTokenForTerritory(int territory_i
     if (!terr)
         return std::string();
 
-    // Army defence/occupation is a generated battle, independent of the
-    // territory's completed story mission. Older saves reused that A/B token.
-    for (auto attack = m_counterAttacks.rbegin(); attack != m_counterAttacks.rend(); ++attack)
-    {
-        if (attack->territory_id != territory_id ||
-            !((attack->triggered && !attack->completed) || attack->territory_lost))
-            continue;
-        const std::string counter = to_lower(attack->counter_mission);
-        const bool generated = !attack->enemy_units.empty() || attack->territory_lost ||
-            spellcross_strategy::IsGeneratedMissionToken(counter) ||
-            counter == to_lower(terr->mission) || counter == to_lower(terr->intro_mission);
-        const std::string token = spellcross_strategy::GeneratedMissionToken(terr->mission);
-        if (generated && !token.empty())
-            return token;
-        if (!counter.empty() && counter != "none")
-            return counter; // retain explicitly authored legacy defence missions
-    }
-
     const auto it = m_territoryCurrentMission.find(territory_id);
     const std::string current = it == m_territoryCurrentMission.end()
         ? std::string() : it->second;
-    return spellcross_strategy::ResolveActiveMissionToken(
-        terr->mission, terr->intro_mission, current, launches);
+    return spellcross_strategy::ResolveTerritoryMissionToken(
+        terr->mission, terr->intro_mission, current, launches, territory_id, m_counterAttacks);
 }
 
 wxString StrategicLevelFrame::GetGeneratedBattleBriefing(int territory_id) const

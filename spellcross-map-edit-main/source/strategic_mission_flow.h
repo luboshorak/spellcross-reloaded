@@ -61,4 +61,35 @@ inline std::string ResolveActiveMissionToken(
 
     return hasToken(currentMission) ? currentMission : baseMission;
 }
+// Use the same battle identity for briefing, launch, deadlines and results.
+// AttackRange is the saved CounterAttackState collection (also usable by CI
+// without wxWidgets or commercial assets).
+template<class AttackRange>
+inline std::string ResolveTerritoryMissionToken(
+    const std::string& baseMission, const std::string& introMission,
+    const std::string& currentMission, int launchCount, int territoryId,
+    const AttackRange& attacks)
+{
+    const auto lower = [](std::string token) {
+        std::transform(token.begin(), token.end(), token.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return token;
+    };
+    for (auto attack = attacks.rbegin(); attack != attacks.rend(); ++attack)
+    {
+        if (attack->territory_id != territoryId ||
+            !((attack->triggered && !attack->completed) || attack->territory_lost))
+            continue;
+        const std::string counter = lower(attack->counter_mission);
+        const bool generated = !attack->enemy_units.empty() || attack->territory_lost ||
+            IsGeneratedMissionToken(counter) || counter == lower(baseMission) ||
+            counter == lower(introMission);
+        const std::string token = GeneratedMissionToken(baseMission);
+        if (generated && !token.empty())
+            return token;
+        if (!counter.empty() && counter != "none")
+            return counter; // explicitly authored legacy defence mission
+    }
+    return ResolveActiveMissionToken(baseMission, introMission, currentMission, launchCount);
+}
 } // namespace spellcross_strategy
