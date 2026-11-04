@@ -79,4 +79,7 @@ jobs:
             $process.Kill()
             throw 'Fullscreen test timed out'
           }
-          if ($process.ExitCode -ne 0) { throw "Fullscreen test failed: $($process.ExitCode)" }
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path menu-test-failure.txt) { Get-Content menu-test-failure.txt }
+            throw "Fullscreen test failed: $($process.ExitCode)"
+          }

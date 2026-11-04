@@ -1,6 +1,7 @@
 // Run with a display server, e.g. xvfb-run -a ./test_game_menu_bar.
 #include "../source/game_menu_bar.h"
 #include <stdexcept>
+#include <fstream>
 
 // Model synchronous show events delivered while a native transition is still
 // restoring decorations. A second transition at that point corrupts MSW state.
@@ -152,6 +153,7 @@ public:
         }
         catch (const std::exception& error)
         {
+            std::ofstream("menu-test-failure.txt") << error.what() << '\n';
             wxFprintf(stderr, "FAIL: %s\n", error.what());
             for (auto* frame : frames)
                 delete frame;
