@@ -109,6 +109,7 @@
     <ClInclude Include="spell_texts.h" />
     <ClInclude Include="spell_ui_locale.h" />
     <ClInclude Include="game_menu_bar.h" />
+    <ClInclude Include="game_controls.h" />
     <ClInclude Include="tactical_zoom.h" />
     <ClInclude Include="spell_map_event.h" />
     <ClInclude Include="RtAudio.h" />

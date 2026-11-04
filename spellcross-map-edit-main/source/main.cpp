@@ -31,6 +31,7 @@
 #endif
 #include "iso9660_import.h"
 #include "game_menu_bar.h"
+#include "game_controls.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
@@ -2816,8 +2817,7 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuGame->Append(ID_mmUnitViewMode, spellcross_ui_locale::Tr("menu.range", "View unit move/attack range (Space)"));
 
     // Help menu
-    wxMenu* menuHelp = new wxMenu;
-    menuHelp->Append(wxID_ABOUT, spellcross_ui_locale::Tr("menu.about", "&About"));
+    wxMenu* menuHelp = spellcross_help::BuildMenu();
 
     // Options menu (accessible in game mode too)
     wxMenu* menuOptions = new wxMenu;
@@ -2843,6 +2843,8 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuBar->Append(menuOptions, spellcross_ui_locale::Tr("menu.options", "&Options"));
     menuBar->Append(menuHelp, spellcross_ui_locale::Tr("menu.help", "&Help"));
     spellcross_menu::Install(this, menuBar);
+    spellcross_help::BindControls(this);
+    SetBackgroundColour(spellcross_menu::Background());
     
     CreateStatusBar(8);
     const int ss_w[] = {45,45,45,60,100,100,100,-1};
@@ -2859,7 +2861,8 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     this->SetSizeHints(wxDefaultSize,wxDefaultSize);
 
     // make and attach render canvas
-    canvas = new wxPanel(this,ID_Canvas,wxDefaultPosition,wxDefaultSize,wxTAB_TRAVERSAL);
+    canvas = new wxPanel(this,ID_Canvas,wxDefaultPosition,wxDefaultSize,wxTAB_TRAVERSAL | wxBORDER_NONE);
+    canvas->SetBackgroundColour(spellcross_menu::Background());
     sizer->Add(canvas,1,wxEXPAND|wxALL,1);
     canvas->SetBackgroundStyle(wxBG_STYLE_PAINT);
     canvas->SetDoubleBuffered(true);

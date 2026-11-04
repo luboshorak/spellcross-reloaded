@@ -9,6 +9,7 @@ on:
       - 'spellcross-map-edit-main/source/map.h'
       - 'spellcross-map-edit-main/tests/test_tactical_zoom.cpp'
       - 'spellcross-map-edit-main/source/game_menu_bar.h'
+      - 'spellcross-map-edit-main/source/game_controls.h'
       - 'spellcross-map-edit-main/source/game_menu_font.rc'
       - 'spellcross-map-edit-main/data/font.ttf'
       - 'spellcross-map-edit-main/source/main.cpp'
@@ -78,8 +79,8 @@ jobs:
           & $zoomTest
           if ($LASTEXITCODE -ne 0) { throw 'Zoom test failed' }
           $source = Join-Path $PWD 'spellcross-map-edit-main/source'
-          foreach ($file in @('main.cpp', 'map.cpp')) {
-            $object = Join-Path $env:RUNNER_TEMP ($file + '.obj')
+          foreach ($file in @('main.cpp', 'map.cpp', 'forms/form_level.cpp', 'forms/form_mmenu.cpp')) {
+            $object = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileName($file) + '.obj')
             & cl.exe /nologo /c /std:c++17 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" (Join-Path $source $file) "/Fo:$object"
             if ($LASTEXITCODE -ne 0) { throw "Tactical source compilation failed: $file" }
           }

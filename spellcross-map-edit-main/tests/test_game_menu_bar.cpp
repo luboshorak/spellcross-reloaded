@@ -1,5 +1,5 @@
 // Run with a display server, e.g. xvfb-run -a ./test_game_menu_bar.
-#include "../source/game_menu_bar.h"
+#include "../source/game_controls.h"
 #include <stdexcept>
 #include <fstream>
 
@@ -52,7 +52,9 @@ class MenuTestApp : public wxApp
         submenu->AppendRadioItem(10003, "Hard");
         options->AppendSubMenu(submenu, "Difficulty");
         model->Append(options, "&Options");
+        model->Append(spellcross_help::BuildMenu(), "&Help");
         spellcross_menu::Install(frame, model);
+        spellcross_help::BindControls(frame);
         auto* canvas = new wxPanel(frame, 10004);
         frame->Show();
         canvas->SetFocus();
@@ -116,6 +118,22 @@ public:
             wxYield();
             Check(wxWindow::FindFocus() == frames[0]->FindWindow(10004),
                 "Closing menu lost gameplay focus");
+            // Exercise the real menu command and close its modal controls dialog.
+            Check(spellcross_menu::Model(frames[0])->FindItem(spellcross_help::ControlsId()),
+                "Controls menu missing");
+            bool helpOpened = false;
+            frames[0]->CallAfter([&] {
+                for (auto* child : frames[0]->GetChildren())
+                    if (auto* dialog = dynamic_cast<spellcross_help::ControlsDialog*>(child))
+                    {
+                        helpOpened = dialog->IsModal() && dialog->IsShown()
+                            && dialog->GetFont().GetFaceName() == frames[0]->GetToolBar()->GetFont().GetFaceName();
+                        dialog->EndModal(wxID_OK);
+                    }
+            });
+            wxCommandEvent controls(wxEVT_MENU, spellcross_help::ControlsId());
+            frames[0]->GetEventHandler()->ProcessEvent(controls);
+            Check(helpOpened, "Controls menu did not open the styled modal guide");
             const auto windowSize = frames[0]->GetSize();
             auto* fullscreenPopup = new spellcross_menu::Popup(frames[0],
                 spellcross_menu::Model(frames[0])->GetMenu(1), anchor);

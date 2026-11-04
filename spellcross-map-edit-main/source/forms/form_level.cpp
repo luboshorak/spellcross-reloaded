@@ -1,5 +1,7 @@
 #include "form_level.h"
 #include "../game_menu_bar.h"
+#include "../game_controls.h"
+#include "form_about.h"
 #include "app_identity.h"
 
 #include "main.h"
@@ -2945,7 +2947,13 @@ void StrategicLevelFrame::BuildMenu()
     strategicUi->Check(ID_MENU_STRATEGIC_UI_ORIGINAL, true);
     bar->Append(strategicUi, spellcross_ui_locale::Tr("menu.strategic_ui", "Strategic &UI"));
 
+    bar->Append(spellcross_help::BuildMenu(), spellcross_ui_locale::Tr("menu.help", "&Help"));
     spellcross_menu::Install(this, bar);
+    spellcross_help::BindControls(this);
+    Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+        FormAbout dialog(this);
+        dialog.ShowModal();
+    }, wxID_ABOUT);
     SyncDifficultyMenu();
 
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnSaveGame, this, ID_MENU_SAVE_GAME);
