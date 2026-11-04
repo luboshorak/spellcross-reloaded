@@ -276,12 +276,19 @@ public:
                 wxYield();
                 for (int cycle = 0; cycle < 10; ++cycle)
                 {
+                    auto* gameplay = frame->FindWindow(10004);
+                    gameplay->SetFocus();
+                    wxYield();
                     Toggle(frame);
                     wxYield();
                     Check(frame->IsFullScreen(), "Repeated fullscreen entry failed");
+                    Check(wxWindow::FindFocus() == gameplay,
+                        "Fullscreen entry lost gameplay keyboard focus");
                     Toggle(frame);
                     wxYield();
                     Check(!frame->IsFullScreen(), "Repeated fullscreen exit failed");
+                    Check(wxWindow::FindFocus() == gameplay,
+                        "Fullscreen exit lost gameplay keyboard focus");
                     Check(frame->GetToolBar()->IsShown(), "Repeated transition hid menu");
                     Check(frame->GetStatusBar()->IsShown(), "Windowed status bar not restored");
                 }

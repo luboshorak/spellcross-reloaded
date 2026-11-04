@@ -302,7 +302,7 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     form->Bind(wxEVT_MOTION, &FormMainMenu::OnMouseMove, this);
     form->Bind(wxEVT_LEAVE_WINDOW, &FormMainMenu::OnMouseLeave, this);
     form->Bind(wxEVT_LEFT_UP, &FormMainMenu::OnMouseClick, this);
-    form->Bind(wxEVT_KEY_DOWN, &FormMainMenu::OnKeyDown, this);
+    form->Bind(wxEVT_CHAR_HOOK, &FormMainMenu::OnKeyDown, this);
 
     form->CentreOnScreen();
     form->Show();
@@ -319,7 +319,7 @@ FormMainMenu::~FormMainMenu()
         form->Unbind(wxEVT_MOTION, &FormMainMenu::OnMouseMove, this);
         form->Unbind(wxEVT_LEAVE_WINDOW, &FormMainMenu::OnMouseLeave, this);
         form->Unbind(wxEVT_LEFT_UP, &FormMainMenu::OnMouseClick, this);
-        form->Unbind(wxEVT_KEY_DOWN, &FormMainMenu::OnKeyDown, this);
+        form->Unbind(wxEVT_CHAR_HOOK, &FormMainMenu::OnKeyDown, this);
         form->Unbind(wxEVT_MENU, &FormMainMenu::OnOptionsAudio,  this, ID_MMENU_OPTIONS_AUDIO);
         form->Unbind(wxEVT_MENU, &FormMainMenu::OnOptionsScreen, this, ID_MMENU_OPTIONS_SCREEN);
         form->Unbind(wxEVT_MENU, &FormMainMenu::OnOpenEditor, this, ID_MMENU_OPEN_EDITOR);
@@ -1007,7 +1007,8 @@ void FormMainMenu::OnKeyDown(wxKeyEvent& event)
     int kc = event.GetKeyCode();
     if (kc == '`' || kc == '~' || event.GetRawKeyCode() == 0xC0)
     {
-        OnConsoleCommand();
+        if (!event.IsAutoRepeat())
+            OnConsoleCommand();
         return;
     }
     event.Skip();

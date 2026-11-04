@@ -2637,9 +2637,17 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
 void StrategicLevelFrame::OnConsoleKeyDown(wxKeyEvent& ev)
 {
     const int key = ev.GetKeyCode();
+    if (key == WXK_ESCAPE)
+    {
+        // Use the normal close path: save the campaign, then show the menu.
+        if (!ev.IsAutoRepeat())
+            Close();
+        return;
+    }
     if (key == '`' || key == '~' || ev.GetRawKeyCode() == 0xC0)
     {
-        OnConsoleCommand();
+        if (!ev.IsAutoRepeat())
+            OnConsoleCommand();
         return;
     }
     ev.Skip();
@@ -2675,7 +2683,7 @@ void StrategicLevelFrame::OnConsoleCommand()
         RefreshOriginalStrategicView();
         SaveStrategicState();
     }
-    else if (cmd == "AGAINAGAIN" || cmd == "ALLDONE")
+    else if (cmd == "AGAINAGAIN" || cmd == "ALLDONE" || cmd == "SHOWMAP")
     {
         wxMessageBox("This command belongs to tactical combat.",
                      "Console", wxOK | wxICON_INFORMATION, this);
