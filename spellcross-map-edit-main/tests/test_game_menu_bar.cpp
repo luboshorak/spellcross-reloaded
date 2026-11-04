@@ -79,7 +79,7 @@ public:
             {
 #ifdef __WXMSW__
                 const HMODULE module = GetModuleHandleW(nullptr);
-                const HRSRC resource = FindResourceW(module, L"SPELLCROSS_MENU_FONT", RT_RCDATA);
+                const HRSRC resource = FindResourceW(module, MAKEINTRESOURCEW(IDR_GAME_MENU_FONT), RT_RCDATA);
                 const DWORD resourceError = GetLastError();
                 const DWORD size = resource ? SizeofResource(module, resource) : 0;
                 const HGLOBAL bytes = resource ? LoadResource(module, resource) : nullptr;

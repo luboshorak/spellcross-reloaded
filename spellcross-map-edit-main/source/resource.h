@@ -4,6 +4,7 @@
 //
 #define wxUSE_NO_MANIFEST               1
 #define IDI_ICON1                       101
+#define IDR_GAME_MENU_FONT              102
 #define SUBVERSION_MASK                 0x000000FF
 #define _WIN32_IE_IE20                  0x0200
 #define _WIN32_IE_IE30                  0x0300

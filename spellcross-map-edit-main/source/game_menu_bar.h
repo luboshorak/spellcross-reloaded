@@ -11,6 +11,9 @@
 #include <memory>
 #include <vector>
 #include "spell_ui_locale.h"
+#ifdef __WXMSW__
+#include "resource.h"
+#endif
 
 // All three game windows share a session display preference.
 namespace spellcross_window
@@ -83,7 +86,7 @@ namespace spellcross_menu
 #ifdef __WXMSW__
             // The private memory font remains available until process exit.
             const HMODULE module = GetModuleHandleW(nullptr);
-            const HRSRC resource = FindResourceW(module, L"SPELLCROSS_MENU_FONT", RT_RCDATA);
+            const HRSRC resource = FindResourceW(module, MAKEINTRESOURCEW(IDR_GAME_MENU_FONT), RT_RCDATA);
             if (!resource)
                 return false;
             const DWORD size = SizeofResource(module, resource);
