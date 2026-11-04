@@ -99,25 +99,25 @@ public:
             }
             Check(frames[0]->GetToolBar()->GetFont().GetFaceName() == "Fixedsys Excelsior 3.01",
                 "Menu did not select the bundled font");
-            Check(wxWindow::FindWindowByName("Options", frames[0]) != nullptr,
-                "Options button missing");
+            auto* anchor = wxWindow::FindWindowByName("Options", frames[0]);
+            Check(anchor != nullptr, "Options button missing");
             Check(frames[0]->GetAcceleratorTable()->IsOk(), "Menu shortcuts missing");
-            auto* options = spellcross_menu::Model(frames[0])->GetMenu(1);
-            auto nativePopup = spellcross_menu::CloneMenu(options);
-            auto* audio = nativePopup->FindItem(10001);
-            Check(audio && audio->GetItemLabelText() == "Audio" && audio->IsEnabled(),
-                "Native popup menu lost its accessible command label or enabled state");
-            auto* fullscreen = nativePopup->FindItem(spellcross_window::FullscreenId());
-            Check(fullscreen && fullscreen->IsCheckable(),
-                "Native popup menu lost its fullscreen check state");
-            auto* radio = nativePopup->FindItem(10002);
-            if (!radio || !radio->IsRadio())
-                throw std::runtime_error("Native popup menu lost its radio command role");
-            radio->Check(true);
-            spellcross_menu::CopyMenuChecks(nativePopup.get(), options);
-            auto* selectedRadio = options->FindItem(10002);
-            Check(selectedRadio && selectedRadio->IsChecked(),
-                "Native popup menu did not synchronize its selected state");
+            auto* popup = new spellcross_menu::Popup(frames[0],
+                spellcross_menu::Model(frames[0])->GetMenu(1), anchor);
+            wxYield();
+            Check(popup->IsShown(), "Popup dismissed while opening");
+            Check(popup->GetPosition().x == anchor->ClientToScreen(wxPoint(0, 0)).x,
+                "Popup not aligned with its own menu button");
+            Check(popup->GetPosition().y == anchor->ClientToScreen(wxPoint(0, anchor->GetSize().y)).y,
+                "Popup not positioned below its own menu button");
+            Check(popup->GetFont().GetFaceName() == anchor->GetFont().GetFaceName(),
+                "Popup font differs from menu font");
+            wxKeyEvent escape(wxEVT_CHAR_HOOK);
+            escape.m_keyCode = WXK_ESCAPE;
+            popup->GetEventHandler()->ProcessEvent(escape);
+            wxYield();
+            Check(wxWindow::FindFocus() == frames[0]->FindWindow(10004),
+                "Closing menu lost gameplay focus");
             // Exercise the real menu command and close its modal controls dialog.
             Check(spellcross_menu::Model(frames[0])->FindItem(spellcross_help::ControlsId()),
                 "Controls menu missing");
@@ -135,7 +135,13 @@ public:
             frames[0]->GetEventHandler()->ProcessEvent(controls);
             Check(helpOpened, "Controls menu did not open the styled modal guide");
             const auto windowSize = frames[0]->GetSize();
-            Toggle(frames[0]);
+            auto* fullscreenPopup = new spellcross_menu::Popup(frames[0],
+                spellcross_menu::Model(frames[0])->GetMenu(1), anchor);
+            wxYield();
+            wxKeyEvent altEnter(wxEVT_CHAR_HOOK);
+            altEnter.m_keyCode = WXK_RETURN;
+            altEnter.SetAltDown(true);
+            fullscreenPopup->GetEventHandler()->ProcessEvent(altEnter);
             wxYield();
             Check(frames[0]->IsFullScreen(), "Fullscreen command failed");
             Check(frames[0]->GetToolBar()->IsShown(), "Menu hidden in fullscreen");

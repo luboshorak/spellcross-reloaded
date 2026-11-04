@@ -1,7 +1,7 @@
 name: Fullscreen menu regression
 on:
   push:
-    branches: [feature/fullscreen-menu]
+    branches: [main, feature/fullscreen-menu]
   pull_request:
     paths:
       - 'spellcross-map-edit-main/source/tactical_zoom.h'
