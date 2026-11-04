@@ -1,186 +1,138 @@
-# Building Spellcross Reloaded for Windows
+# Building and releasing Spellcross Reloaded
 
-This is the build guide for the **game and its standalone map editor**. If you just want to play, you don't need any of this: **[download the latest published release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** and follow the [main README](../README.md).
+This guide builds the Windows x64 game and its pinned standalone editor. For installation and gameplay, see the [main README](../README.md).
 
-The build produces a portable Windows x64 ZIP **and**, if WinRAR is installed, a self-extracting SFX `.exe` installer. Both packages include the game, standalone map editor, and support files, but **not the original commercial Spellcross archives**.
+## Requirements
 
-## Build the game and editor
+- Windows with Visual Studio C++ build tools and MSBuild. The projects use the **v145** toolset.
+- A compatible wxWidgets/vcpkg x64 installation.
+- The editor submodule initialized at the revision pinned by this repository.
+- All **37 fallback MP4s** matching `data/movie_fallback/MANIFEST.tsv`.
+- **WinRAR** for the optional graphical SFX installer.
 
-You'll need Windows, Visual Studio/MSVC C++ build tools, and a compatible wxWidgets installation (the integrated projects currently use the v145 MSVC toolset). Run these commands in PowerShell from your existing repository checkout:
+Original commercial Spellcross archives are not bundled.
+
+## Build v0.9.4.1
+
+From a checkout containing the v0.9.4.1 version update:
 
 ```powershell
-git fetch origin
-git switch v0.9.4
-git pull --ff-only origin v0.9.4
+git switch main
+git pull --ff-only
 git submodule sync --recursive
 git submodule update --init --recursive
 .\packaging\Build-CombinedRelease.ps1 -Rebuild
 ```
 
-If PowerShell refuses to run `Build-CombinedRelease.ps1` because it is not digitally signed, allow scripts **for this PowerShell session only** and rerun the build:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-.\packaging\Build-CombinedRelease.ps1
-```
-
-This does not change the execution policy permanently. A policy enforced by your organization may still prevent the script from running.
-
-Use `-Rebuild` when preparing an official release so the application version and embedded Windows EXE version resource are freshly compiled. If you only need an incremental developer build, running the script without `-Rebuild` is fine.
-
-If you're starting from scratch, first clone with submodules:
+For a new checkout:
 
 ```powershell
 git clone --recurse-submodules https://github.com/luboshorak/spellcross-reloaded.git
 cd spellcross-reloaded
+.\packaging\Build-CombinedRelease.ps1 -Rebuild
 ```
 
-If the build can't find wxWidgets, specify the path to your vcpkg x64 installation:
+If script execution is blocked by a local PowerShell policy, allow it for the current process and rerun the build:
 
 ```powershell
-.\packaging\Build-CombinedRelease.ps1 -WxRoot "$HOME\vcpkg\installed\x64-windows"
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\packaging\Build-CombinedRelease.ps1 -Rebuild
 ```
 
-The output is:
+For a custom dependency or video location:
+
+```powershell
+.\packaging\Build-CombinedRelease.ps1 -Rebuild `
+    -WxRoot "$HOME\vcpkg\installed\x64-windows" `
+    -MovieSource "D:\Games\Spellcross-previous-build"
+```
+
+The script rebuilds the game and editor, checks the compiled game version, verifies video hashes, copies runtime dependencies and stages the package. Output:
 
 ```text
-dist/Spellcross_Reloaded_v0.9.4-RC2.zip
-dist/Spellcross_Reloaded_v0.9.4-RC2.exe    (WinRAR SFX, when WinRAR is installed)
+dist/Spellcross_Reloaded_v0.9.4.1.zip
+dist/Spellcross_Reloaded_v0.9.4.1.exe
 ```
 
-To regenerate the SFX **without compiling or rebuilding the ZIP**, run:
+The EXE is produced when WinRAR is available. Without WinRAR, the ZIP is still built.
+
+## Version and package contents
+
+The version comes from `spellcross-map-edit-main/source/app_version.h`:
+
+| Field | v0.9.4.1 value |
+| --- | --- |
+| Windows FileVersion / ProductVersion | `0.9.4.1` |
+| Display and package label | `0.9.4.1` |
+| Git tag | `v0.9.4.1` |
+
+The Windows resource strings in `source/resources.rc` must agree. Packaging stops if the actual game executable has a different version, including with `-SkipBuild`.
+
+Both distributions have the same layout:
+
+```text
+Spellcross.exe
+data/
+locales/
+Editor/
+  spellcross_map_editor.exe
+  data/
+README-FIRST.txt
+BUILD-INFO.txt
+LICENSE-Reloaded.txt
+LICENSE-Map-Editor.txt
+```
+
+When SFX generation is enabled, `setup/` also contains the installer icon and branding. `BUILD-INFO.txt` records the source commit, release label, numeric version and executable SHA-256. The packager excludes personal settings, saves and imported retail archives.
+
+Game and editor keep separate configurations. The editor's `Editor/data/COMMON.fs` contains editor resources; it is distinct from the original game's `COMMON.FS`.
+
+## Packaging options
+
+| Option | Purpose |
+| --- | --- |
+| `-Rebuild` | Clean rebuild for a release |
+| `-WxRoot <path>` | Explicit wxWidgets/vcpkg x64 installation |
+| `-MovieSource <path>` | Directory containing the manifest-matching fallback videos |
+| `-SkipBuild` | Repackage executables already compiled for this exact version |
+| `-NoZip` | Stage files without rebuilding the ZIP |
+| `-NoSfx` | Disable the EXE installer |
+| `-WinRARPath <path>` | Explicit path to `WinRAR.exe` |
+
+For example, regenerate only the SFX from exact-version executables:
 
 ```powershell
 .\packaging\Build-CombinedRelease.ps1 -SkipBuild -NoZip
 ```
 
-The version is read automatically from `spellcross-map-edit-main/source/app_version.h` (numeric Windows version `0.9.4.0`, release label `0.9.4-RC2`), so the filename changes with the game version or release channel. The build also leaves dated staging folders in `dist/`; the same stable versioned package names are reused on a rebuild.
+The SFX lets players choose the install directory and creates a Desktop shortcut. Its default destination is `%USERPROFILE%\Games\Spellcross Reloaded`. Branding files and WinRAR's `Default.SFX` module are required; missing files stop SFX generation. The EXE is unsigned unless signed separately.
 
-Packaging checks the compiled `Spellcross.exe` FileVersion and ProductVersion against that header and **stops** if they do not match. In particular, `-SkipBuild` cannot silently repackage an outdated executable under a new release number.
+## Verify before publication
 
-### WinRAR SFX installer
+Use a clean Windows x64 rebuild and test the extracted package outside the source checkout.
 
-With WinRAR installed, the regular command also creates the graphical installer automatically. It has:
+- Launch the game and editor, import CZ/EN data and restart.
+- Check strategic and tactical Continue, objectives, temporary companies, fullscreen, console and Escape.
+- In the desert chapter, complete the major rescue, refuse an OS attack on territory 10 and verify that recapture uses a generated battle. Save/reload and check that the rescue stays completed.
+- Exercise a chapter transition, sound, cinematics and tactical save/load.
+- Test editor save/reopen and a custom mission.
+- Run the SFX into a custom folder and verify its Desktop shortcut.
+- On a clean Windows 10/11 x64 machine, check the [Visual C++ Redistributable](https://aka.ms/vc14/vc_redist.x64.exe) requirement.
 
-- Standard (93x302) and high-DPI (186x604) vertical Spellcross logos on the left side.
-- The supplied `spellcross_reloaded.ico` as the setup executable icon.
-- An automatic **Spellcross Reloaded** shortcut on the player's Desktop, using that icon.
-- A **user-selectable extraction directory** and **SavePath** to remember the directory on later updates.
-- An initial writable destination of `%USERPROFILE%\Games\Spellcross Reloaded`, which the player can freely change.
+## Tag and publish the tested build
 
-The layout inside both archives has `Spellcross.exe` **at the root**, not inside a version-numbered directory. The installed shortcut therefore correctly follows whichever installation directory the player selects. When SFX generation is enabled, the staged release bundles `setup/spellcross_reloaded.ico`, because the shortcut needs that icon after extraction.
-
-Keep these three files in the repository's `packaging/setup/` directory:
-
-```text
-packaging/setup/spellcross_sfx_logo.png      (93 x 302)
-packaging/setup/spellcross_sfx_logo_hd.png   (186 x 604)
-packaging/setup/spellcross_reloaded.ico
-```
-
-WinRAR is detected through `PATH`, `C:\Program Files\WinRAR\WinRAR.exe`, or the x86 Program Files location. You can also specify its exact location:
-
-```powershell
-.\packaging\Build-CombinedRelease.ps1 -WinRARPath 'C:\Program Files\WinRAR\WinRAR.exe'
-```
-
-If WinRAR is not installed, the build still creates the ZIP and warns that it skipped SFX. If SFX is enabled but its branding files or the WinRAR `Default.SFX` module are missing, the script stops with a clear error rather than producing an incorrectly branded installer. To disable SFX explicitly, use `-NoSfx`.
-
-**Note:** An unsigned SFX executable may still trigger a Microsoft Defender SmartScreen warning for an unknown publisher or uncommon download. Using WinRAR does not sign the installer.
-
-### About the video files
-
-The project uses **37 MP4 fallback cutscenes**, which aren't stored in Git. The packager looks for existing local copies and verifies their SHA-256 hashes against the manifest. If you have them in an older extracted build, supply that directory:
-
-```powershell
-.\packaging\Build-CombinedRelease.ps1 -MovieSource "D:\Games\Spellcross-v0.8.0"
-```
-
-Missing or mismatched clips cause packaging to stop, rather than producing an incomplete release.
-
-## Useful build options
-
-| Option | When to use it |
-| --- | --- |
-| `-Rebuild` | Perform a clean MSVC rebuild (recommended when changing the release version) |
-| `-WxRoot <path>` | wxWidgets/vcpkg isn't detected automatically |
-| `-MovieSource <path>` | Point to existing copies of the fallback videos |
-| `-SkipBuild` | Repackage already compiled Release executables (only after building this exact version) |
-| `-NoZip` | Prepare the staged files without creating the ZIP (SFX still created) |
-| `-NoSfx` | Skip the WinRAR installer even when WinRAR is installed |
-| `-WinRARPath <path>` | Supply an explicit path to `WinRAR.exe` |
-
-Older staging folders can be removed manually from `dist/` after checking their contents. The previously documented `Clean-OldBuilds.ps1` helper is not present in the current repository, so do not use `-PruneOldBuilds` for now.
-
-## What's in the ZIP and SFX?
-
-```text
-Spellcross.exe                 playable game
-data/                          game support files and video fallbacks
-Editor/
-  spellcross_map_editor.exe   standalone editor
-  data/                        editor support files
-README-FIRST.txt
-LICENSE-Reloaded.txt
-LICENSE-Map-Editor.txt
-setup/                        included when WinRAR SFX is enabled
-  spellcross_reloaded.ico   icon for the installed desktop shortcut
-  spellcross_sfx_logo.png   standard branding asset
-  spellcross_sfx_logo_hd.png high-DPI branding asset
-```
-
-The game creates its `config.ini` and keeps new original-data imports under `game_data/imports/DATA-*/` on first use. Existing `game_data/DATA/` folders from older releases are preserved and remain usable. The editor keeps a separate `Editor/config.ini`. Its own `Editor/data/COMMON.fs` supplies editor resources and is different from the original retail `COMMON.FS`.
-
-The packager intentionally leaves out your saves, settings, imported commercial archives and other local/private files. Keep those separately.
-
-## Check a build before distributing it
-
-A successful compile is a good start, but a portable release needs a quick hands-on test:
-
-1. Extract the ZIP **outside** your source checkout and launch `Spellcross.exe` without Visual Studio installed. Run the SFX on a test Windows system, select a custom install folder, and check the Desktop shortcut target and icon.
-2. Import original data from a **raw ISO file**, or try an existing `DATA` directory. Check that the game still works after restarting.
-3. Open a tactical mission, check graphics, sound and a save/load cycle.
-4. Launch the map editor from the game. Test the save/open/cancel prompts and what happens if the editor executable or mission file is missing.
-5. In the editor, paint terrain, roads and buildings; test Undo, flat tile rotation, L2 object dragging and save/reopen.
-6. Load a standalone `.DEF` + `.DTA` mission in the playable game and check that it starts correctly.
-7. On a clean Windows 10/11 x64 machine, confirm that the portable package needs only the [VC++ Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), not your development environment.
-
-Publish the ZIP and SFX as separate optional GitHub Release assets after a Windows smoke test.
-
-### Preparing and publishing v0.9.4 RC2
-
-Build the prepared `v0.9.4` branch and its pinned editor submodule:
-
-```powershell
-git fetch origin
-git switch v0.9.4
-git pull --ff-only origin v0.9.4
-git submodule sync --recursive
-git submodule update --init --recursive
-.\packaging\Build-CombinedRelease.ps1 -Rebuild
-```
-
-Use `-WxRoot` and `-MovieSource` if required. The script checks the compiled `Spellcross.exe` FileVersion and ProductVersion are both `0.9.4.0` while outputting the **RC2-labeled** ZIP/SFX. It fails when the 37 required fallback MP4s are missing or differ from their manifest. The `BUILD-INFO.txt` in the staged folder records the **source commit, RC label, Windows version and EXE SHA-256**.
-
-Perform a Windows smoke test, ideally on a clean x64 machine, including the six Divac1 regressions (#84–#89), strategic and tactical Continue after restarting, CZ/EN data loading, chapter transitions, sound, cutscenes and the map editor. Also exercise PL/IT loading with locally owned data. Backup older saves before testing.
-
-After **both** ZIP and SFX are verified, create the tag on the exact tested source commit and publish a **GitHub prerelease** with both assets. The `gh` commands below require the authenticated [GitHub CLI](https://cli.github.com/):
+Use the exact clean source commit that produced the verified packages. v0.9.4.1 is a regular release; do not mark it as a prerelease.
 
 ```powershell
 git status --short
-git tag -a v0.9.4-RC2 -m "Spellcross Reloaded v0.9.4 RC2"
-git push origin v0.9.4-RC2
-gh release create v0.9.4-RC2 `
-    dist/Spellcross_Reloaded_v0.9.4-RC2.zip `
-    dist/Spellcross_Reloaded_v0.9.4-RC2.exe `
-    --prerelease `
+git tag -a v0.9.4.1 -m "Spellcross Reloaded v0.9.4.1"
+git push origin v0.9.4.1
+gh release create v0.9.4.1 `
+    dist/Spellcross_Reloaded_v0.9.4.1.zip `
+    dist/Spellcross_Reloaded_v0.9.4.1.exe `
     --verify-tag `
-    --title "Spellcross Reloaded v0.9.4 RC2" `
-    --notes-file packaging/releases/v0.9.4-RC2.md
+    --title "Spellcross Reloaded v0.9.4.1" `
+    --notes-file packaging/releases/v0.9.4.1.md
 ```
 
-If WinRAR is not installed, upload only the ZIP and clearly document that no SFX installer was produced. **Never reuse the v0.9.2.3 EXE or an earlier ZIP with RC2 filenames.** No retail ISO/CD archives belong in the release package.
-
-## Notes
-
-The program and support files are distributed separately from the original commercial game archives, which users must supply themselves. Review third-party runtime licenses before redistribution. Original game cinematics and other retail assets are not covered by the project's source-code MIT license.
+If only the ZIP was built, omit the EXE argument. Review third-party runtime licenses before distribution. Original game assets are not covered by the source-code MIT license.
