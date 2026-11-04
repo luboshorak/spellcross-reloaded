@@ -44,7 +44,7 @@ public:
         {
             frames[0] = Screen();
             wxYield();
-            Check(frames[0]->GetAcceleratorTable().IsOk(), "Menu shortcuts missing");
+            Check(frames[0]->GetAcceleratorTable()->IsOk(), "Menu shortcuts missing");
             auto* popup = new spellcross_menu::Popup(frames[0],
                 spellcross_menu::Model(frames[0])->GetMenu(0), frames[0]->GetToolBar());
             wxYield();
