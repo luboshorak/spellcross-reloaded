@@ -40,7 +40,12 @@ class OriginalStrategyScriptsTest(unittest.TestCase):
         )[1].split(
             "std::wstring StrategicLevelFrame::ResolveMapDefPathForMissionToken(", 1
         )[0]
-        self.assertIn("spellcross_strategy::ResolveActiveMissionToken(", resolver)
+        self.assertIn("spellcross_strategy::ResolveTerritoryMissionToken(", resolver)
+        flow = (ROOT / "source" / "strategic_mission_flow.h").read_text(encoding="utf-8")
+        self.assertIn(
+            "return ResolveActiveMissionToken(baseMission, introMission, currentMission, launchCount);",
+            flow,
+        )
         self.assertNotIn("if (launches == 0 &&", resolver)
         self.assertIn('m_territoryCurrentMission[t.id] = to_lower(mission->end_bad_mission)', self.strat)
         self.assertIn('L"Zbývající čas: %d tahů', self.strat)

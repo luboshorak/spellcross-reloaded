@@ -46,14 +46,14 @@ int main(int argc, char** argv)
         std::string rawName;
         for (const auto& event : level.events)
             for (const auto& company : event.add_units)
-                if (spellcross_company::OriginalNameToUtf8(company.name) == u8"1.Tاk� p�chota")
+                if (spellcross_company::OriginalNameToUtf8(company.name) == u8"1.T\u011b\u017ek\u00e1 p\u011bchota")
                     rawName = company.name;
         Check(!rawName.empty(), "Czech retail support fixture missing");
         const std::string name = spellcross_company::OriginalNameToUtf8(rawName);
         Check(!wxString::FromUTF8(name).empty(), "Support name is blank in strategic UI");
         Check(spellcross_company::NormalizeStoredName(rawName) == name, "Legacy saved name not repaired");
         Check(spellcross_company::NormalizeStoredName(name) == name, "UTF-8 name converted twice");
-        Check(spellcross_company::NormalizeStoredName(u8"Moje rota �lu��sek") == u8"Moje rota �lu��sek",
+        Check(spellcross_company::NormalizeStoredName(u8"Moje rota \u017dlu\u0165\u00e1sek") == u8"Moje rota \u017dlu\u0165\u00e1sek",
             "Player UTF-8 name damaged");
         Check(spellcross_company::TacticalName(name) == rawName, "Tactical CP895 name lost accents");
         Check(spellcross_company::OriginalNameToUtf8("Support company") == "Support company", "English name damaged");

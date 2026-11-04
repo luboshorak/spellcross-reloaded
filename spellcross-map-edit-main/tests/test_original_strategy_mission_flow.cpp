@@ -16,6 +16,7 @@
 #include <cassert>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 struct MissionDef {
     int time;
@@ -70,6 +71,48 @@ void Tick(Territory& t, int turn)
 
 int main()
 {
+    assert(spellcross_strategy::GeneratedMissionToken("m04_10") == "r0410");
+    assert(spellcross_strategy::GeneratedMissionToken("M04_10A") == "r0410");
+    assert(spellcross_strategy::GeneratedMissionToken("R0410") == "r0410");
+    assert(spellcross_strategy::GeneratedMissionToken("m10_03b") == "r1003");
+    assert(spellcross_strategy::GeneratedMissionToken("custom-map").empty());
+    assert(spellcross_strategy::GeneratedMissionToken("m0x_10").empty());
+    assert(spellcross_strategy::IsGeneratedMissionToken("R0410"));
+    assert(!spellcross_strategy::IsGeneratedMissionToken("m04_10a"));
+
+    // Exact production resolver, exercised by the existing resource-free CI.
+    // Legacy saves named Army attacks after the already completed rescue A.
+    struct AttackSnapshot {
+        int territory_id;
+        std::string counter_mission;
+        bool triggered, completed, territory_lost;
+        std::vector<int> enemy_units;
+    };
+    std::vector<AttackSnapshot> attacks;
+    std::string completedRescue = "m04_10a";
+    const auto resolve = [&]() {
+        return spellcross_strategy::ResolveTerritoryMissionToken(
+            "m04_10", "m04_10a", completedRescue, 1, 10, attacks);
+    };
+    assert(resolve() == "m04_10a");
+    attacks.push_back({10, "m04_10a", true, false, false, {37,38,47}});
+    assert(resolve() == "r0410"); // active defence
+    attacks.back().completed = true;
+    attacks.back().territory_lost = true;
+    assert(resolve() == "r0410"); // refused/lost defence, including old saves
+    attacks.back().enemy_units.clear();
+    assert(resolve() == "r0410"); // legacy save missing the concrete Army list
+    completedRescue = "r0410";
+    attacks.clear();
+    assert(resolve() == "r0410"); // successful recapture and save reload
+    attacks.push_back({10, "m04_10a", true, false, false, {37,38,47}});
+    assert(resolve() == "r0410"); // second occupation
+    attacks.back().territory_id = 11;
+    completedRescue = "m04_10a";
+    assert(resolve() == "m04_10a"); // unrelated territory cannot override the rescue
+    attacks = {{10, "m04_10b", true, false, false, {}}};
+    assert(resolve() == "m04_10b"); // explicit legacy defence remains authored
+
     // Mission 4 starts with A despite initial base M03_04.
     Territory sector4{"m03_04","m03_04a","m03_04"};
     assert(Token(sector4) == "m03_04a");

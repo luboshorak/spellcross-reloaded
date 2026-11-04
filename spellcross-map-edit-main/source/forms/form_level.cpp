@@ -15218,10 +15218,8 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
                          != m_ownedTerritories.end();
 
     // Resolve current mission token for this territory
-    std::string cur = t.mission;
+    const std::string cur = ResolveMissionTokenForTerritory(t.id);
     auto itc = m_territoryCurrentMission.find(t.id);
-    if (itc != m_territoryCurrentMission.end() && !itc->second.empty())
-        cur = itc->second;
 
     wxString info;
     const bool english = strategic_english(m_spellData);
@@ -15252,7 +15250,11 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
         // Resolve TEXTS dir
         std::filesystem::path texts_dir = FindTextsDirForLevel(m_level, m_spellData);
 
-        if (hasCounterAttack)
+        if (spellcross_strategy::IsGeneratedMissionToken(cur) && (!isOwned || hasCounterAttack))
+        {
+            info = GetGeneratedBattleBriefing(t.id);
+        }
+        else if (hasCounterAttack)
         {
             // Counter-attack active: show .S text. TEXTS.FS is authoritative;
             // loose DATA/TEXTS is only a modding fallback.
@@ -15843,8 +15845,27 @@ std::string StrategicLevelFrame::ResolveMissionTokenForTerritory(int territory_i
     const auto it = m_territoryCurrentMission.find(territory_id);
     const std::string current = it == m_territoryCurrentMission.end()
         ? std::string() : it->second;
-    return spellcross_strategy::ResolveActiveMissionToken(
-        terr->mission, terr->intro_mission, current, launches);
+    return spellcross_strategy::ResolveTerritoryMissionToken(
+        terr->mission, terr->intro_mission, current, launches, territory_id, m_counterAttacks);
+}
+
+wxString StrategicLevelFrame::GetGeneratedBattleBriefing(int territory_id) const
+{
+    const bool owned = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
+        territory_id) != m_ownedTerritories.end();
+    const bool defending = std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+        [territory_id](const CounterAttackState& attack) {
+            return attack.territory_id == territory_id && attack.triggered && !attack.completed;
+        });
+    if (owned && !defending)
+        return spellcross_ui_locale::Tr("strategic.territory_secured", "Territory secured.");
+    if (owned)
+        return strategic_english(m_spellData)
+            ? wxString("Enemy forces are attacking this territory. Destroy all enemy units to hold it.")
+            : wxString::FromUTF8("Nepřátelské jednotky útočí na toto území. Zničte všechny nepřátele a území udržte.");
+    return strategic_english(m_spellData)
+        ? wxString("Enemy forces occupy this territory. Destroy all enemy units to recapture it.")
+        : wxString::FromUTF8("Území obsadily nepřátelské jednotky. Zničte všechny nepřátele a získejte území zpět.");
 }
 
 std::wstring StrategicLevelFrame::ResolveMapDefPathForMissionToken(const std::string& mission_token) const
@@ -20173,6 +20194,19 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
         }
     }
 
+    // A legacy tactical save can still call this with the old conquest token.
+    // Resolve its actual battle role before completing/removing the attack.
+    const std::string resolvedBattle = ResolveMissionTokenForTerritory(territory_id);
+    const bool generatedBattle = spellcross_strategy::IsGeneratedMissionToken(mission_token) ||
+        spellcross_strategy::IsGeneratedMissionToken(resolvedBattle);
+    if (generatedBattle)
+    {
+        m_territoryCurrentMission[territory_id] =
+            spellcross_strategy::IsGeneratedMissionToken(resolvedBattle)
+                ? resolvedBattle : to_lower(mission_token);
+        m_territoryTimeoutTurn.erase(territory_id);
+    }
+
     // Collect battle results from the tactical map (losses, damage, unit experience).
     // John Alexander's *strategic* XP is not derived from kill counts; the
     // original campaign scripts provide the mission rewards explicitly via
@@ -20226,7 +20260,7 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
 
     // Generated defence has its own outcome; conquest DEF rewards, successor
     // missions and chapter completion do not belong to this battle.
-    if (wasCounterAttack)
+    if (wasCounterAttack || generatedBattle)
         mission = nullptr;
 
     if (success)
@@ -20317,14 +20351,15 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
                         (!baseUp.empty() && baseUp != "NONE" && tokenUp.rfind(baseUp, 0) == 0) ||
                         (!introUp.empty() && introUp != "NONE" && tokenUp.rfind(introUp, 0) == 0);
                 }
-                isLevelComplete = !wasCounterAttack && (territory_id == m_level.end_territory) && tokenMatchesFinal;
+                isLevelComplete = !wasCounterAttack && !generatedBattle &&
+                    (territory_id == m_level.end_territory) && tokenMatchesFinal;
             }
             else if (mission && mission->is_level_final)
             {
                 // Compatibility for custom definitions that do not use End(n).
                 isLevelComplete = true;
             }
-            else if (!m_gameModeEnabled)
+            else if (!m_gameModeEnabled && !generatedBattle)
             {
                 // Editor/debug fallback only.  The campaign must never use this
                 // shortcut because discovery order and End(n) are authoritative.
@@ -20707,7 +20742,8 @@ void StrategicLevelFrame::ConquestTerritory(int territory_id)
     }
     
     // Play conquest video if defined
-    if (terr && !terr->conquest_video.empty() && terr->conquest_video != "none")
+    if (terr && !terr->conquest_video.empty() && terr->conquest_video != "none" &&
+        !spellcross_strategy::IsGeneratedMissionToken(ResolveMissionTokenForTerritory(territory_id)))
     {
         PlayVideo(terr->conquest_video);
     }
@@ -20898,6 +20934,15 @@ void StrategicLevelFrame::SurrenderCounterAttack(CounterAttackState& attack)
     attack.triggered = true;
     attack.completed = true;
     attack.territory_lost = true;
+    const std::string token = ResolveMissionTokenForTerritory(attack.territory_id);
+    if (!token.empty())
+    {
+        attack.counter_mission = token;
+        m_territoryCurrentMission[attack.territory_id] = token;
+    }
+    m_territoryTimeoutTurn.erase(attack.territory_id);
+    if (m_selectedTerritory == attack.territory_id)
+        ShowBriefing(attack.territory_id);
     ApplyTerritoryVisibility();
     MarkOverlayDirty();
 }
@@ -20943,6 +20988,7 @@ void StrategicLevelFrame::CheckCounterAttacks()
             ca.triggered = true;
 
             // Set the counter-attack mission on the territory
+            ca.counter_mission = ResolveMissionTokenForTerritory(ca.territory_id);
             if (!ca.counter_mission.empty())
                 m_territoryCurrentMission[ca.territory_id] = to_lower(ca.counter_mission);
 
@@ -21261,7 +21307,9 @@ void StrategicLevelFrame::ProcessLevelEvents()
             eventAttack.territory_id = target_tid;
             eventAttack.conquest_turn = m_turn;
             eventAttack.trigger_turn = m_turn;
-            eventAttack.counter_mission = ResolveMissionTokenForTerritory(target_tid);
+            const std::string currentToken = ResolveMissionTokenForTerritory(target_tid);
+            const std::string generatedToken = spellcross_strategy::GeneratedMissionToken(currentToken);
+            eventAttack.counter_mission = generatedToken.empty() ? currentToken : generatedToken;
             eventAttack.triggered = true;
             eventAttack.completed = false;
             eventAttack.territory_lost = false;
@@ -21269,6 +21317,8 @@ void StrategicLevelFrame::ProcessLevelEvents()
                 eventAttack.enemy_units.insert(eventAttack.enemy_units.end(), army.units.begin(), army.units.end());
             m_counterAttacks.push_back(std::move(eventAttack));
             CounterAttackState& activeAttack = m_counterAttacks.back();
+            m_territoryCurrentMission[target_tid] = activeAttack.counter_mission;
+            m_territoryTimeoutTurn.erase(target_tid);
 
             // Select the territory visually
             SelectTerritoryById(target_tid);
@@ -21333,7 +21383,11 @@ void StrategicLevelFrame::ShowBriefing(int territory_id)
 
     wxString info;
     const bool english = strategic_english(m_spellData);
-    if (isCounterAttack)
+    if (spellcross_strategy::IsGeneratedMissionToken(token))
+    {
+        info = GetGeneratedBattleBriefing(territory_id);
+    }
+    else if (isCounterAttack)
     {
         bool found = try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
             texts_dir, token, ".S", english ? "Counter-Attack Briefing" : "Instrukce k obraně", false, false);
@@ -21355,6 +21409,8 @@ void StrategicLevelFrame::ShowBriefing(int territory_id)
         return;
     }
 
+    // Both the reconstructed screen and native text control use this state.
+    m_originalBriefingText = info;
     // Show in the textbox under the map
     if (m_mapPanel)
     {
