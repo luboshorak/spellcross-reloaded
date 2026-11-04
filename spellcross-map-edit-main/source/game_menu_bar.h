@@ -2,7 +2,6 @@
 
 #include <wx/wx.h>
 #include <wx/dcbuffer.h>
-#include <wx/popupwin.h>
 #include <wx/toolbar.h>
 #include <wx/weakref.h>
 #include <wx/stdpaths.h>
@@ -133,201 +132,48 @@ namespace spellcross_menu
     inline wxColour Accent() { return wxColour(61, 207, 32); }
     inline wxColour Text() { return wxColour(62, 224, 25); }
 
-    class Popup final : public wxPopupTransientWindow
+    inline std::unique_ptr<wxMenu> CloneMenu(const wxMenu* source)
     {
-        wxFrame* m_frame;
-        wxWeakRef<wxWindow> m_previousFocus;
-        std::vector<wxMenu*> m_stack;
-        std::vector<wxMenuItem*> m_rows;
-        int m_selected = -1;
-        bool m_closing = false;
-        int m_rowHeight;
-        int m_padding;
-
-        void Rebuild()
+        auto clone = std::make_unique<wxMenu>();
+        for (auto* item : source->GetMenuItems())
         {
-            m_rows.clear();
-            if (m_stack.size() > 1)
-                m_rows.push_back(nullptr); // Back to the parent menu.
-            wxClientDC dc(this);
-            dc.SetFont(GetFont());
-            int width = FromDIP(260);
-            for (auto* item : m_stack.back()->GetMenuItems())
-            {
-                m_rows.push_back(item);
-                const auto label = item->GetItemLabel();
-                width = std::max(width, dc.GetTextExtent(label).x + FromDIP(96));
-            }
-            SetClientSize(width, static_cast<int>(m_rows.size()) * m_rowHeight + 2 * m_padding);
-            m_selected = -1;
-            Refresh();
-        }
-
-        bool Selectable(int row) const
-        {
-            return row >= 0 && row < static_cast<int>(m_rows.size()) &&
-                (!m_rows[row] || (!m_rows[row]->IsSeparator() && m_rows[row]->IsEnabled()));
-        }
-
-        void ReturnFocus()
-        {
-            if (m_previousFocus && m_previousFocus->IsShownOnScreen() && m_previousFocus->IsEnabled())
-                m_previousFocus->SetFocus();
-        }
-
-        void ClosePopup()
-        {
-            if (m_closing)
-                return;
-            m_closing = true;
-            Dismiss();
-            ReturnFocus();
-            Destroy();
-        }
-
-        void Activate()
-        {
-            if (!Selectable(m_selected))
-                return;
-            auto* item = m_rows[m_selected];
-            if (!item)
-            {
-                m_stack.pop_back();
-                Rebuild();
-            }
+            if (item->IsSeparator())
+                clone->AppendSeparator();
             else if (item->GetSubMenu())
             {
-                m_stack.push_back(item->GetSubMenu());
-                Rebuild();
+                auto submenu = CloneMenu(item->GetSubMenu());
+                auto* copy = wxMenuItem::New(clone.get(), item->GetId(),
+                    item->GetItemLabel(), item->GetHelp(), item->GetKind(), submenu.release());
+                clone->Append(copy);
+                copy->Enable(item->IsEnabled());
             }
             else
             {
+                auto* copy = clone->Append(item->GetId(), item->GetItemLabel(),
+                    item->GetHelp(), item->GetKind());
+                copy->Enable(item->IsEnabled());
                 if (item->IsCheckable())
-                    item->Check(item->IsRadio() || !item->IsChecked());
-                auto* command = new wxCommandEvent(wxEVT_MENU, item->GetId());
-                command->SetInt(item->IsCheckable() && item->IsChecked());
-                wxQueueEvent(m_frame, command);
-                ClosePopup();
+                    copy->Check(item->IsChecked());
             }
         }
+        return clone;
+    }
 
-        void Paint(wxPaintEvent&)
+    inline void CopyMenuChecks(wxMenu* source, wxMenu* target)
+    {
+        auto sourceItem = source->GetMenuItems().begin();
+        auto targetItem = target->GetMenuItems().begin();
+        for (; sourceItem != source->GetMenuItems().end() &&
+            targetItem != target->GetMenuItems().end(); ++sourceItem, ++targetItem)
         {
-            wxAutoBufferedPaintDC dc(this);
-            dc.SetBackground(wxBrush(Background()));
-            dc.Clear();
-            dc.SetFont(GetFont());
-            dc.SetPen(wxPen(wxColour(19, 43, 14)));
-            for (int x = FromDIP(8); x < GetClientSize().x; x += FromDIP(12))
-                dc.DrawLine(x, 1, x, GetClientSize().y - 1);
-            for (int y = FromDIP(8); y < GetClientSize().y; y += FromDIP(12))
-                dc.DrawLine(1, y, GetClientSize().x - 1, y);
-            dc.SetPen(wxPen(wxColour(121, 128, 115)));
-            dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            dc.DrawRectangle(GetClientRect());
-            for (int row = 0; row < static_cast<int>(m_rows.size()); ++row)
-            {
-                const int y = m_padding + row * m_rowHeight;
-                auto* item = m_rows[row];
-                if (item && item->IsSeparator())
-                {
-                    dc.SetPen(wxPen(wxColour(65, 73, 77)));
-                    dc.DrawLine(FromDIP(12), y + m_rowHeight / 2,
-                        GetClientSize().x - FromDIP(12), y + m_rowHeight / 2);
-                    continue;
-                }
-                if (row == m_selected && Selectable(row))
-                {
-                    dc.SetPen(*wxTRANSPARENT_PEN);
-                    dc.SetBrush(wxBrush(Highlight()));
-                    dc.DrawRectangle(FromDIP(3), y, GetClientSize().x - FromDIP(6), m_rowHeight);
-                }
-                dc.SetTextForeground(!item || item->IsEnabled() ? Text() : wxColour(115, 120, 124));
-                const wxString title = item ? item->GetItemLabelText()
-                    : spellcross_ui_locale::Tr("menu.back", "Back");
-                const int textY = y + (m_rowHeight - dc.GetTextExtent(title).y) / 2;
-                dc.DrawText(title, FromDIP(30), textY);
-                if (!item)
-                    dc.DrawText("<", FromDIP(12), textY);
-                if (item && item->IsCheckable() && item->IsChecked())
-                {
-                    dc.SetPen(wxPen(Accent()));
-                    dc.SetBrush(wxBrush(Accent()));
-                    dc.DrawCircle(FromDIP(15), y + m_rowHeight / 2, FromDIP(3));
-                }
-                if (item && item->GetSubMenu())
-                    dc.DrawText(">", GetClientSize().x - FromDIP(20), textY);
-                else if (item && item->GetItemLabel().Contains("\t"))
-                {
-                    const auto shortcut = item->GetItemLabel().AfterFirst('\t');
-                    dc.SetTextForeground(Accent());
-                    dc.DrawText(shortcut,
-                        GetClientSize().x - FromDIP(16) - dc.GetTextExtent(shortcut).x, textY);
-                }
-            }
+            auto* sourceRow = *sourceItem;
+            auto* targetRow = *targetItem;
+            if (sourceRow->IsCheckable())
+                targetRow->Check(sourceRow->IsChecked());
+            if (sourceRow->GetSubMenu() && targetRow->GetSubMenu())
+                CopyMenuChecks(sourceRow->GetSubMenu(), targetRow->GetSubMenu());
         }
-
-        void Key(wxKeyEvent& event)
-        {
-            const int key = event.GetKeyCode();
-            if (event.AltDown() && (key == WXK_RETURN || key == WXK_NUMPAD_ENTER))
-            {
-                wxQueueEvent(m_frame, new wxCommandEvent(wxEVT_MENU, spellcross_window::FullscreenId()));
-                ClosePopup();
-            }
-            else if (key == WXK_ESCAPE)
-                ClosePopup();
-            else if (key == WXK_UP || key == WXK_DOWN)
-            {
-                const int count = static_cast<int>(m_rows.size());
-                const int direction = key == WXK_DOWN ? 1 : -1;
-                for (int step = 0; step < count; ++step)
-                {
-                    m_selected = (m_selected + direction + count) % count;
-                    if (Selectable(m_selected))
-                        break;
-                }
-                Refresh();
-            }
-            else if (key == WXK_LEFT && m_stack.size() > 1)
-            {
-                m_stack.pop_back();
-                Rebuild();
-            }
-            else if (key == WXK_RETURN || key == WXK_NUMPAD_ENTER || key == WXK_SPACE ||
-                key == WXK_RIGHT)
-                Activate();
-            else
-                event.Skip();
-        }
-
-    protected:
-        void OnDismiss() override { ClosePopup(); }
-
-    public:
-        Popup(wxFrame* frame, wxMenu* menu, wxWindow* anchor)
-            : wxPopupTransientWindow(frame, wxBORDER_NONE), m_frame(frame),
-              m_previousFocus(wxWindow::FindFocus()), m_stack{menu}, m_rowHeight(FromDIP(30)), m_padding(FromDIP(5))
-        {
-            SetBackgroundStyle(wxBG_STYLE_PAINT);
-            SetFont(anchor->GetFont());
-            Rebuild();
-            Bind(wxEVT_PAINT, &Popup::Paint, this);
-            Bind(wxEVT_CHAR_HOOK, &Popup::Key, this);
-            Bind(wxEVT_MOTION, [this](wxMouseEvent& event) {
-                m_selected = (event.GetY() - m_padding) / m_rowHeight;
-                if (event.GetY() < m_padding)
-                    m_selected = -1;
-                Refresh();
-            });
-            Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) { Activate(); });
-            // Position adds the supplied size to both coordinates. Only the
-            // height belongs here: align the popup with this button's left edge.
-            Position(anchor->ClientToScreen(wxPoint(0, 0)), wxSize(0, anchor->GetSize().y));
-            wxPopupTransientWindow::Popup();
-            SetFocus();
-        }
-    };
+    }
 
     // The toolbar reserves client space on every frame, including the menu
     // screen that paints directly into its frame rather than a child canvas.
@@ -340,9 +186,14 @@ namespace spellcross_menu
         {
             if (!m_model->IsEnabledTop(index))
                 return;
+            auto* frame = static_cast<wxFrame*>(GetParent());
             if (auto* item = m_model->FindItem(spellcross_window::FullscreenId()))
-                item->Check(static_cast<wxFrame*>(GetParent())->IsFullScreen());
-            new Popup(static_cast<wxFrame*>(GetParent()), m_model->GetMenu(index), anchor);
+                item->Check(frame->IsFullScreen());
+            const wxPoint position = frame->ScreenToClient(
+                anchor->ClientToScreen(wxPoint(0, anchor->GetSize().y)));
+            auto popup = CloneMenu(m_model->GetMenu(index));
+            frame->PopupMenu(popup.get(), position);
+            CopyMenuChecks(popup.get(), m_model->GetMenu(index));
         }
 
         void AddAccelerators(wxMenu* menu, std::vector<wxAcceleratorEntry>& entries)
