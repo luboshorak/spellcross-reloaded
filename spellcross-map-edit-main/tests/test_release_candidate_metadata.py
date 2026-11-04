@@ -1,4 +1,4 @@
-"""Source metadata regression for the RC2 packaging pipeline."""
+"""Source metadata regression for the current release packaging pipeline."""
 import pathlib
 import re
 import unittest
@@ -17,16 +17,16 @@ def macro(name):
     return match.group(1)
 
 
-class ReleaseCandidateVersionTest(unittest.TestCase):
+class ReleaseMetadataTest(unittest.TestCase):
     def test_numeric_windows_resource_matches_header(self):
-        self.assertEqual(macro("SPELLCROSS_VERSION_STRING"), "0.9.4.0")
-        self.assertIn("#define SPELLCROSS_VERSION_COMMA 0,9,4,0", HEADER)
-        self.assertEqual(RESOURCE.count('"0.9.4.0\\0"'), 2)
+        self.assertEqual(macro("SPELLCROSS_VERSION_STRING"), "0.9.4.1")
+        self.assertIn("#define SPELLCROSS_VERSION_COMMA 0,9,4,1", HEADER)
+        self.assertEqual(RESOURCE.count('"0.9.4.1\\0"'), 2)
         self.assertNotIn('"0.9.2.3\\0"', RESOURCE)
 
     def test_release_label_and_tag(self):
-        self.assertEqual(macro("SPELLCROSS_RELEASE_LABEL"), "0.9.4-RC2")
-        self.assertEqual(macro("SPELLCROSS_RELEASE_TAG"), "v0.9.4-RC2")
+        self.assertEqual(macro("SPELLCROSS_RELEASE_LABEL"), "0.9.4.1")
+        self.assertEqual(macro("SPELLCROSS_RELEASE_TAG"), "v0.9.4.1")
         self.assertIn('SPELLCROSS_RELEASE_LABEL', IDENTITY)
 
     def test_packaging_uses_label_but_checks_binary_version(self):
@@ -39,7 +39,7 @@ class ReleaseCandidateVersionTest(unittest.TestCase):
         self.assertIn('MP4 integrity check failed', PACKAGER)
 
     def test_release_notes_present(self):
-        notes = ROOT.parent / "packaging/releases/v0.9.4-RC2.md"
+        notes = ROOT.parent / "packaging/releases/v0.9.4.1.md"
         self.assertTrue(notes.is_file())
 
 

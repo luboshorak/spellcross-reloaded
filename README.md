@@ -4,105 +4,54 @@
 
 # Spellcross Reloaded
 
-**The classic 1997 strategy game, brought back to life for modern Windows.**
+**The classic 1997 strategy game, restored for modern Windows.**
 
-Spellcross Reloaded is an open-source, fan-made restoration of **Spellcross: The Last Battle**. Command the Alliance against the invading Other Side, build your army, and fight your way through the original campaign.
+Spellcross Reloaded is an open-source, fan-made restoration of **Spellcross: The Last Battle**. Lead the Alliance through the original campaign, manage your army on the strategic map and fight tactical battles using the original artwork, sound and game data.
 
-The idea is simple: **keep Spellcross looking, sounding and playing like Spellcross** — with its original artwork, atmosphere and gameplay, but without needing an old DOS computer.
+**[Download the latest published release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** · [Report a bug](https://github.com/luboshorak/spellcross-reloaded/issues) · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor)
 
-**[Download the latest release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor) · [Report a bug](https://github.com/luboshorak/spellcross-reloaded/issues)
+## v0.9.4.1
 
-## Back to the battlefield
+This maintenance release improves campaign continuity, saved games and the strategic interface:
 
-**Lead the campaign.** Choose your battles on the strategic map, recruit and upgrade troops, research new technology, manage your resources and organize commanders into formations.
+- Enemy attacks and recaptures keep completed story missions completed.
+- Mission objectives retain their text after loading a tactical save.
+- Temporary companies keep their names and support markings in battle.
+- Fullscreen keyboard focus and console access are more reliable; Escape returns from the strategic screen to the main menu.
+- The strategic interface shares the game's menu styling, with an in-game controls guide.
 
-**Fight tactical battles.** Use infantry, tanks, artillery and aircraft on the original maps. Terrain, visibility, morale, experience and defensive fire can make all the difference.
-
-**Enjoy the original Spellcross.** Reloaded uses the original graphics, animations, sounds, music and game data wherever possible. It supports both the Czech and English editions and includes converted versions of 37 original cinematics in the Windows package.
+See the [release notes](./packaging/releases/v0.9.4.1.md) for the full changes. Earlier release notes are kept in [packaging/releases](./packaging/releases).
 
 ## Download and play
 
-1. Download the **Windows 64-bit** ZIP or EXE from [GitHub Releases](https://github.com/luboshorak/spellcross-reloaded/releases).
-2. If you chose the ZIP, extract it into a writable folder. If you chose the EXE installer, select where you want the game installed.
-3. Start `Spellcross.exe`.
-4. On first launch, follow the game-data wizard. You can download a supported Czech or English ISO through the wizard, or point it to your original CD, ISO or existing Spellcross `DATA` folder.
+1. Download the **Windows x64 ZIP** or **EXE installer** from [Releases](https://github.com/luboshorak/spellcross-reloaded/releases).
+2. Extract or install the complete package into a writable folder.
+3. Start `Spellcross.exe` and follow the game-data wizard. Select your original CD, ISO or installed `DATA` folder, or use the supported CZ/EN download option.
 
-**Switching Czech/English editions:** Close the game and launch `Spellcross.exe --select-game-data` to reopen the source wizard, even if the configured archives are still valid. Select a *complete* original ISO/CD or installed `DATA` directory. Reloaded does not silently mix archives from two editions or translate names inside the original `COMMON.FS`; the original unit type names come from `UNITS.CZ` / `UNITS.ENG` inside `COMMON.FS`; `JEDNOTKY.DEF` holds their binary attributes. Imported editions are stored in separate folders under `game_data/imports/` so switching versions or a failed import does not overwrite your existing game data.
+Original commercial game archives are **not included** in the package. Czech and English editions are supported; Polish and Italian retail-data loading remains experimental.
 
-You may also need the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) on a fresh Windows installation.
+To switch editions, close the game and start `Spellcross.exe --select-game-data`. A fresh Windows installation may also need the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe).
 
-**Please note:** Original commercial Spellcross game data is not included in this repository or release package.
+## Playing and saving
 
-## v0.9.3 RC1 — release candidate
+The campaign includes research, recruitment, upgrades, commanders and formations. Tactical battles use terrain, shared visibility, morale, experience and defensive fire.
 
-This candidate brings the original strategic campaign closer to its retail behavior. The biggest changes since v0.9.2.3 are:
+Open **Help → Controls** in the game for keyboard and mouse instructions. **Alt+Enter** toggles fullscreen. **Escape** closes tactical overlays or cancels the active mode; otherwise it opens the main menu. In the strategic screen, Escape saves progress and returns to the menu.
 
-- **Unit readiness:** purchased units and those returning from battle obey the original turn lockout. Engine, armour and weapon upgrades can be ordered together, completing on one shared countdown.
-- **Unit unlocks:** original `RESEARCH.DEF` and chapter script prerequisites determine availability; starting units such as **Hummer** are correctly purchasable.
-- **Strategic-map countdowns:** values above nine use the original individual digit graphics to display **10, 12, 15**, and so on.
-- **Chapter endings:** completing the final mission no longer fires leftover enemy-attack or reinforcement events from the old map. The next chapter's introductory events wait for transition movies.
+**Continue** restores the saved campaign or battle after restarting. Finish deployment and let an active action or enemy turn complete before exiting. Keep a backup of saves when updating.
 
-The tactical engine and AI continue the v0.9.2.3 line; late-campaign battles have been played successfully, but this is a candidate for additional testing.
+This is an actively developed fan restoration. Please [report bugs](https://github.com/luboshorak/spellcross-reloaded/issues) with the game version, reproduction steps and a save or startup log where possible.
 
-[Read the v0.9.3 RC1 release notes](./packaging/releases/v0.9.3-RC1.md). **The downloadable RC1 is published only after the Windows build and packaging checks.**
+## Map editor
 
-## What's new in 0.9.2.2?
+The package includes a standalone map editor under `Editor/spellcross_map_editor.exe`. Create or edit terrain, objects, units and mission events, then load a custom tactical mission in Reloaded with **Ctrl+Alt+O**.
 
-This maintenance release focuses on more reliable strategic counter-attacks and tactical battles, without changing the original game's look or assets.
+[Map editor repository](https://github.com/luboshorak/spellcross-reloaded-editor) · [Building and packaging guide](./packaging/README.md)
 
-- **Counter-attacks and deployment:** defensive battles now use the original map-authored deployment positions, and mission definitions load correctly regardless of whether the `.DEF` extension is uppercase or lowercase.
-- **Correct combat range:** melee units such as Magotar no longer gain unrealistic long-range attacks from elevation differences.
-- **Smarter enemy reactions:** enemy groups can respond after being attacked even without immediately spotting the attacker, and units no longer unnecessarily step away from an already reached movement destination.
-- **Full battlefield access:** the tactical camera can reach valid tiles near the map edges, including units arriving there through group movement or enemy AI.
-- **Safer unit placement:** fixed out-of-bounds memory access when searching for free placement tiles near the map boundary.
-- **Quiet menus:** battlefield ambient sounds and the tactical simulation stop while the tactical window is hidden behind the main menu or strategic screen.
+## Credits and license
 
-[Read the v0.9.2.2 release notes](./packaging/releases/v0.9.2.2.md) for the complete list of fixes.
+Spellcross Reloaded is an independent fan project and is not an official Cauldron release.
 
-## What's new in 0.9.2.1?
+The project grew from **Stanislav Mašláň's [Spellcross Map Editor](https://github.com/smaslan/spellcross-map-edit)** and research. His original work remains the foundation of the editor and restoration.
 
-- **Strategic counter-attacks and recaptures:** fixed generated `Rxxxx` mission map lookup, improved attack target selection and corrected crossed-swords indicators.
-- **Shared campaign save slots:** nine slots now follow the player across strategic regions, with non-destructive migration of previous level-specific slots.
-- **Consistent tactical loss statistics:** restoring an in-game tactical save restores the casualty history of that saved position.
-- **Region transition videos:** sequential cutscenes are queued and shown above the strategic map rather than playing audio behind it.
-- **Build diagnostics:** packaged `BUILD-INFO.txt` records source revision and executable checksum; full builds can use `-Rebuild`.
-
-## What's new in 0.9.2?
-
-- **A more authentic main menu**, with the original hover artwork, improved tutorial screens and smoother rendering.
-- **Faster enemy turns**, especially when enemies are moving outside your field of view.
-- **More reliable battles**, with fixes to unit movement, pathfinding and occupied tiles.
-- **Sound and video stability improvements**, reducing problems with playback and timing.
-- **Easier Windows installation**, with a portable ZIP and an optional graphical EXE installer.
-
-Spellcross Reloaded is still being developed and improved. Some missions and less common game situations may still have bugs.
-
-## Make your own maps
-
-The download also includes a **standalone map editor** based on Stanislav Mašláň's original Spellcross Map Editor. You can edit terrain, buildings, units and mission events, then try your own tactical missions in Reloaded.
-
-Launch `Editor/spellcross_map_editor.exe`, or open a custom tactical mission in the game with `Ctrl+Alt+O`.
-
-[Visit the map editor project](https://github.com/luboshorak/spellcross-reloaded-editor)
-
-## Useful controls
-
-| Key | Action |
-| --- | --- |
-| `Space` | Switch between normal, movement and attack modes |
-| Hold `M` / `A` | Show movement range / firing range |
-| `Tab` | Open the tactical map |
-| `I` / `O` | Unit information / tactical options |
-| `1`–`8` | Choose a unit group (English-edition feature) |
-| `Esc` | Cancel or leave the current mode |
-| `Ctrl+Alt+O` | Load a custom tactical mission |
-
-## About the project
-
-Spellcross Reloaded is an independent fan project, not an official release by Cauldron. It grew out of reverse-engineering and map-editing tools and continues to aim for a faithful restoration rather than a modern redesign.
-
-Special thanks to **Stanislav Mašláň**, whose [Spellcross Map Editor](https://github.com/smaslan/spellcross-map-edit) and research laid the groundwork for this project.
-
-The project's source code is available under the [MIT License](./LICENSE). The original Spellcross game, artwork, music and other commercial assets remain the property of their respective rights holders.
-
-Want to build it yourself? See the [building and packaging guide](./packaging/README.md).
+The source code is available under the [MIT License](./LICENSE). Original Spellcross artwork, music, cinematics and other commercial assets remain the property of their respective rights holders.
