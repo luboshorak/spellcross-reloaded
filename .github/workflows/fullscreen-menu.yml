@@ -10,6 +10,7 @@ on:
       - 'spellcross-map-edit-main/tests/test_tactical_zoom.cpp'
       - 'spellcross-map-edit-main/source/game_menu_bar.h'
       - 'spellcross-map-edit-main/source/game_controls.h'
+      - 'spellcross-map-edit-main/source/strategic_ui_theme.h'
       - 'spellcross-map-edit-main/source/game_menu_font.rc'
       - 'spellcross-map-edit-main/data/font.ttf'
       - 'spellcross-map-edit-main/source/main.cpp'

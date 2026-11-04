@@ -1,6 +1,7 @@
 #include "form_level.h"
 #include "../game_menu_bar.h"
 #include "../game_controls.h"
+#include "../strategic_ui_theme.h"
 #include "form_about.h"
 #include "app_identity.h"
 
@@ -1255,11 +1256,6 @@ struct StrategicTextSpan
     const wxFont* font = nullptr;
 };
 
-static wxString StrategicFontFaceName()
-{
-    return wxString::FromUTF8("Fixedsys Excelsior 3.01");
-}
-
 static std::filesystem::path BundledDataDir()
 {
     namespace fs = std::filesystem;
@@ -1281,40 +1277,11 @@ static std::filesystem::path BundledDataDir()
     return fs::path("data");
 }
 
-static std::filesystem::path StrategicFontPath()
-{
-    return BundledDataDir() / "font.ttf";
-}
-
-static void EnsureStrategicFontLoaded()
-{
-    static bool loaded = false;
-    if (loaded)
-        return;
-
-    const auto fontPath = StrategicFontPath();
-    if (std::filesystem::exists(fontPath))
-        // wxFont::AddPrivateFont(wxString::FromUTF8(fontPath.string()));
-        loaded = true;
-}
-
 static wxFont MakeStrategicFont(int pixelSize, bool bold)
 {
-    // Clean wx branch: stay with the native Windows GUI family, but size it up
-    // a little more so the controls read comfortably at the strategic-window
-    // scale. Use a slightly stronger default weight for a more "native app"
-    // look without going back to custom DOS fonts.
     (void)pixelSize;
-    wxFont font = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
-    const int pt = font.GetPointSize();
-    if (pt > 0)
-        font.SetPointSize(pt + (bold ? 4 : 2));
-#ifdef wxFONTWEIGHT_MEDIUM
-    font.SetWeight(bold ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_MEDIUM);
-#else
-    if (bold)
-        font.SetWeight(wxFONTWEIGHT_BOLD);
-#endif
+    wxFont font = spellcross_menu::MenuFont();
+    if (bold) font.SetWeight(wxFONTWEIGHT_BOLD);
     return font;
 }
 
@@ -1719,12 +1686,11 @@ static wxButton* CreateStrategicButton(
     const wxColour& background,
     const wxSize& minSize = wxDefaultSize)
 {
-    // Keep the native platform renderer. Custom button colours interfere with
-    // Windows themed hover/pressed states, so only the system font is applied.
+    // Custom rendering retains wxButton commands and keyboard behaviour.
     (void)textColor;
     (void)background;
 
-    auto* btn = new wxButton(parent, id, text);
+    auto* btn = new spellcross_strategic_ui::Button(parent, id, text);
     btn->SetFont(font);
     int minWidth = -1;
     if (minSize != wxDefaultSize && minSize.GetWidth() > 0)
@@ -2682,6 +2648,7 @@ void StrategicLevelFrame::OnConsoleKeyDown(wxKeyEvent& ev)
 void StrategicLevelFrame::OnConsoleCommand()
 {
     wxTextEntryDialog dlg(this, "Enter command:", "Console", "");
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() != wxID_OK)
         return;
 
@@ -7617,6 +7584,7 @@ bool StrategicLevelFrame::PromptStrategicSaveSlot(int maxSlots, bool notify)
 
     wxSingleChoiceDialog dlg(this, "Choose a slot to save:", "Save game", choices);
     dlg.SetSelection(0);
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() != wxID_OK)
         return false;
 
@@ -7908,6 +7876,7 @@ void StrategicLevelFrame::OnOptionsAudio(wxCommandEvent& ev)
     sldMusic->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { applyAudio(); });
     sldSfx->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { applyAudio(); });
 
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() == wxID_OK)
         applyAudio();
     else
@@ -7948,6 +7917,7 @@ void StrategicLevelFrame::OnOptionsScreen(wxCommandEvent& ev)
 
     sldBrightness->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { applyScreen(); });
 
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() == wxID_OK)
         applyScreen();
     else
@@ -8354,25 +8324,25 @@ bool StrategicLevelFrame::EnsureUpgradeDefsLoaded() const
 
 void StrategicLevelFrame::BuildUI()
 {
-    m_rootPanel = new wxPanel(this);
+    m_rootPanel = new spellcross_strategic_ui::Panel(this);
     auto* root = m_rootPanel;
-    // Normal wx branch: use platform colours and fonts only.
-    m_palette.text = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
-    m_palette.heading = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
-    m_palette.background = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
-    m_palette.inactive = wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT);
-    m_palette.statusHeading = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
-    m_palette.statusNumber = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
-    m_palette.buttonText = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNTEXT);
-    m_palette.buttonBackground = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
+    // Share the menu palette and embedded font across the wx strategic pages.
+    m_palette.text = spellcross_menu::Text();
+    m_palette.heading = spellcross_strategic_ui::Heading();
+    m_palette.background = spellcross_menu::Background();
+    m_palette.inactive = spellcross_strategic_ui::Inactive();
+    m_palette.statusHeading = spellcross_menu::Accent();
+    m_palette.statusNumber = spellcross_strategic_ui::Heading();
+    m_palette.buttonText = spellcross_menu::Text();
+    m_palette.buttonBackground = spellcross_menu::Background();
     m_palette.shadow = m_palette.background;
 
     m_fontText = MakeStrategicFont(0, false);
     m_fontHeading = MakeStrategicFont(0, true);
     root->SetFont(m_fontText);
 
-    // Normal layout container
-    m_normalLayoutPanel = new wxPanel(root);
+    // Shared layout container
+    m_normalLayoutPanel = new spellcross_strategic_ui::Panel(root);
     auto* mainSizer = new wxBoxSizer(wxHORIZONTAL);
 
     // ============================================================
@@ -8381,7 +8351,7 @@ void StrategicLevelFrame::BuildUI()
     m_leftBook = new wxSimplebook(m_normalLayoutPanel, wxID_ANY);
 
     // --- Page 0: Strategic map ---
-    m_mapPanel = new wxPanel(m_leftBook);
+    m_mapPanel = new spellcross_strategic_ui::Panel(m_leftBook);
 
     m_mapSizer = new wxBoxSizer(wxVERTICAL);
 
@@ -8389,7 +8359,7 @@ void StrategicLevelFrame::BuildUI()
 
     // Paint surface for the strategic background (map) - the clean wx branch
     // keeps the real game map visible as its main visual anchor.
-    m_mapCanvas = new wxPanel(mapBox->GetStaticBox());
+    m_mapCanvas = new spellcross_strategic_ui::Panel(mapBox->GetStaticBox());
     m_mapCanvas->SetBackgroundStyle(wxBG_STYLE_PAINT);
     m_mapCanvas->SetMinSize(wxSize(520, 300));
     m_mapCanvas->Bind(wxEVT_PAINT, &StrategicLevelFrame::OnMapPaint, this);
@@ -8398,14 +8368,13 @@ void StrategicLevelFrame::BuildUI()
     mapBox->Add(m_mapCanvas, 1, wxALL | wxEXPAND, kCleanUiMargin);
     m_mapSizer->Add(mapBox, 3, wxLEFT | wxRIGHT | wxTOP | wxEXPAND, kCleanUiMargin);
 
-    // Under-map panel: territory buttons fallback + mission briefing. Keep it
-    // clean and Windows-like; no sliced DOS background here.
-    auto* under = new wxPanel(m_mapPanel);
+    // Under-map territory fallback and briefing use the common themed panels.
+    auto* under = new spellcross_strategic_ui::Panel(m_mapPanel);
     auto* underSizer = new wxBoxSizer(wxVERTICAL);
     auto* briefingBox = new wxStaticBoxSizer(wxVERTICAL, under, "Mission briefing");
 
     // Territory buttons (fallback UI). When CLK is available (click map regions), this stays hidden.
-    m_territoryButtonsPanel = new wxPanel(briefingBox->GetStaticBox());
+    m_territoryButtonsPanel = new spellcross_strategic_ui::Panel(briefingBox->GetStaticBox());
     auto* grid = new wxGridSizer(0, 4, 6, 6);
     for (size_t i = 0; i < m_level.territories.size(); ++i)
     {
@@ -8413,7 +8382,7 @@ void StrategicLevelFrame::BuildUI()
         const auto id = ID_TERRITORY_BASE + (int)i;
 
         wxString label = wxString::Format("T%02d - %s", t.id, t.mission);
-        auto* btn = new wxButton(m_territoryButtonsPanel, id, label, wxDefaultPosition, wxSize(-1, kCleanButtonHeight));
+        auto* btn = new spellcross_strategic_ui::Button(m_territoryButtonsPanel, id, label, wxDefaultPosition, wxSize(-1, kCleanButtonHeight));
         btn->SetFont(m_fontText);
         btn->Bind(wxEVT_BUTTON, &StrategicLevelFrame::OnTerritory, this);
         grid->Add(btn, 0, wxEXPAND);
@@ -8443,25 +8412,25 @@ void StrategicLevelFrame::BuildUI()
     m_mapPanel->SetSizer(m_mapSizer);
 
     // --- Page 1: Hierarchy ---
-    auto* hierarchyPanel = new wxPanel(m_leftBook);
+    auto* hierarchyPanel = new spellcross_strategic_ui::Panel(m_leftBook);
     BindStrategicScreenSlice(hierarchyPanel, m_spellData, "VMH_FULL.LZ",
         wxRect(0, 0, kMapChromeW, kStrategicScreenH));
     BuildHierarchyPage(hierarchyPanel);
 
     // --- Page 2: Resources ---
-    m_resourcesPanel = new wxPanel(m_leftBook);
+    m_resourcesPanel = new spellcross_strategic_ui::Panel(m_leftBook);
     BindStrategicScreenSlice(m_resourcesPanel, m_spellData, "VMF_FULL.LZ",
         wxRect(0, 0, kMapChromeW, kStrategicScreenH));
     BuildResourcesPage();
 
     // --- Page 3: Statistics (integrated into this frame) ---
-    m_statsPanel = new wxPanel(m_leftBook);
+    m_statsPanel = new spellcross_strategic_ui::Panel(m_leftBook);
     BindStrategicScreenSlice(m_statsPanel, m_spellData, "VMS_FULL.LZ",
         wxRect(0, 0, kMapChromeW, kStrategicScreenH));
 
 
     // --- Page 4: Research – left side (active research + browser detail) ---
-    m_researchPanel = new wxPanel(m_leftBook);
+    m_researchPanel = new spellcross_strategic_ui::Panel(m_leftBook);
     BindStrategicScreenSlice(m_researchPanel, m_spellData, "VMR_FULL.LZ",
         wxRect(0, 0, kMapChromeW, kStrategicScreenH));
     // Must NOT contribute a large minimum size – wxSimplebook propagates minimums
@@ -8491,7 +8460,7 @@ void StrategicLevelFrame::BuildUI()
         m_researchGaugeLabel->SetFont(m_fontText);
         gRow->Add(m_researchGaugeLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
 
-        m_btnResearchStart = new wxButton(m_researchPanel, wxID_ANY, "Start");
+        m_btnResearchStart = new spellcross_strategic_ui::Button(m_researchPanel, wxID_ANY, "Start");
         m_btnResearchStart->SetMinSize(wxSize(100, kCleanButtonHeight));
         m_btnResearchStart->SetFont(m_fontText);
         m_btnResearchStart->Bind(wxEVT_BUTTON, &StrategicLevelFrame::OnResearchStartStop, this);
@@ -8512,7 +8481,7 @@ void StrategicLevelFrame::BuildUI()
     }
 
     // --- Page 5: Info / Encyclopedia – left side (browser detail only) ---
-    m_infoPanel = new wxPanel(m_leftBook);
+    m_infoPanel = new spellcross_strategic_ui::Panel(m_leftBook);
     BindStrategicScreenSlice(m_infoPanel, m_spellData, "VMI_FULL.LZ",
         wxRect(0, 0, kMapChromeW, kStrategicScreenH));
     m_infoPanel->SetMinSize(wxSize(1, 1));
@@ -8546,7 +8515,7 @@ void StrategicLevelFrame::BuildUI()
     // Book for middle area: roster vs research
     m_midBook = new wxSimplebook(m_normalLayoutPanel, wxID_ANY);
 
-    m_midRosterPanel = new wxPanel(m_midBook);
+    m_midRosterPanel = new spellcross_strategic_ui::Panel(m_midBook);
     auto* mid = m_midRosterPanel;
     BindStrategicScreenSlice(mid, m_spellData, "VMM_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
@@ -8599,7 +8568,7 @@ void StrategicLevelFrame::BuildUI()
     m_midBook->AddPage(m_midRosterPanel, "Roster", true);
 
     // --- Middle Research page – categorized list with yellow group headers ---
-    m_midResearchPanel = new wxPanel(m_midBook);
+    m_midResearchPanel = new spellcross_strategic_ui::Panel(m_midBook);
     BindStrategicScreenSlice(m_midResearchPanel, m_spellData, "VMR_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
     m_midResearchPanel->SetMinSize(wxSize(1, 1));
@@ -8640,7 +8609,7 @@ void StrategicLevelFrame::BuildUI()
     m_midBook->AddPage(m_midResearchPanel, spellcross_ui_locale::Tr("strategic.research", "Research"), false);
 
     // --- Middle Info/Encyclopedia page – categorized list (read-only browsing) ---
-    m_midInfoPanel = new wxPanel(m_midBook);
+    m_midInfoPanel = new spellcross_strategic_ui::Panel(m_midBook);
     BindStrategicScreenSlice(m_midInfoPanel, m_spellData, "VMI_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
     m_midInfoPanel->SetMinSize(wxSize(1, 1));
@@ -8682,13 +8651,13 @@ void StrategicLevelFrame::BuildUI()
     // FACTORY.LZ and STATS.LZ are 569 px wide and deliberately cross the
     // left/middle split.  Give both screens a matching middle page so the
     // original artwork remains continuous across x=0..574.
-    m_midResourcesPanel = new wxPanel(m_midBook);
+    m_midResourcesPanel = new spellcross_strategic_ui::Panel(m_midBook);
     m_midResourcesPanel->SetMinSize(wxSize(1, 1));
     BindStrategicScreenSlice(m_midResourcesPanel, m_spellData, "VMF_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
     m_midBook->AddPage(m_midResourcesPanel, spellcross_ui_locale::Tr("strategic.resources", "Resources"), false);
 
-    m_midStatsPanel = new wxPanel(m_midBook);
+    m_midStatsPanel = new spellcross_strategic_ui::Panel(m_midBook);
     m_midStatsPanel->SetMinSize(wxSize(1, 1));
     BindStrategicScreenSlice(m_midStatsPanel, m_spellData, "VMS_FULL.LZ",
         wxRect(kMapChromeW, 0, kStrategicScreenW - kMapChromeW, kStrategicScreenH));
@@ -8705,12 +8674,12 @@ void StrategicLevelFrame::BuildUI()
     // ============================================================
     // The DOS screen is 575 px of content plus a 65 px control rail.
     // Keep that exact 412:163:65 relationship while the window is resized.
-    auto* right = new wxPanel(m_normalLayoutPanel);
+    auto* right = new spellcross_strategic_ui::Panel(m_normalLayoutPanel);
     right->SetMinSize(wxSize(1, 1));
     auto* rightSizer = new wxBoxSizer(wxVERTICAL);
 
     // Compact two-column status grid shared visually with the other wx pages.
-    auto* status = new wxPanel(right);
+    auto* status = new spellcross_strategic_ui::Panel(right);
     auto* statusSizer = new wxFlexGridSizer(3, 2, kCleanUiGap, kCleanUiGap);
     statusSizer->AddGrowableCol(1, 1);
     auto makeStatusRow = [&](const wxString& caption, wxStaticText*& outCaption, wxStaticText*& outValue)
@@ -8736,7 +8705,7 @@ void StrategicLevelFrame::BuildUI()
                 m_palette.buttonBackground,
                 wxSize(kCleanSidebarWidth - 2 * kCleanUiMargin, kCleanButtonHeight));
 
-            (void)iconName; // clean wx UI uses text-only buttons
+            (void)iconName; // Themed wx UI uses text-only buttons
 
             return btn;
         };
@@ -8781,13 +8750,13 @@ void StrategicLevelFrame::BuildUI()
     rootSizer->Add(m_normalLayoutPanel, 1, wxEXPAND);
 
     // --- Buy/Sell root panel (hidden by default) ---
-    m_buyMainPanel = new wxPanel(root);
+    m_buyMainPanel = new spellcross_strategic_ui::Panel(root);
     m_buyMainPanel->Show(false);
     BuildBuyPage();
     rootSizer->Add(m_buyMainPanel, 1, wxEXPAND);
 
     // --- Units Management root panel (hidden by default) ---
-    m_unitsMainPanel = new wxPanel(root);
+    m_unitsMainPanel = new spellcross_strategic_ui::Panel(root);
     m_unitsMainPanel->Show(false);
     BuildUnitsPage();
     rootSizer->Add(m_unitsMainPanel, 1, wxEXPAND);
@@ -8819,8 +8788,11 @@ void StrategicLevelFrame::BuildUI()
     rootSizer->Add(m_originalStrategicPanel, 1, wxEXPAND);
 
     root->SetSizer(rootSizer);
-    //použije rekurzivně transparentní pozadí na všechny elementy wx - opatrně!
-    //MakeChildrenTransparentRecursive(root);
+    root->SetBackgroundColour(m_palette.background);
+    SetBackgroundColour(m_palette.background);
+    spellcross_strategic_ui::Apply(m_normalLayoutPanel);
+    spellcross_strategic_ui::Apply(m_buyMainPanel);
+    spellcross_strategic_ui::Apply(m_unitsMainPanel);
 }
 
 // ============================================================
@@ -8840,7 +8812,7 @@ void StrategicLevelFrame::BuildBuyPage()
     // ---------------------------------------------------------------------
     // LEFT: Rosters
     // ---------------------------------------------------------------------
-    auto* leftPanel = new wxPanel(m_buyMainPanel);
+    auto* leftPanel = new spellcross_strategic_ui::Panel(m_buyMainPanel);
     BindStrategicScreenSlice(leftPanel, m_spellData, "VMB_FULL.LZ",
         wxRect(0, 0, 332, kStrategicScreenH));
     auto* leftSizer = new wxBoxSizer(wxVERTICAL);
@@ -8890,7 +8862,7 @@ void StrategicLevelFrame::BuildBuyPage()
     // ---------------------------------------------------------------------
     // MIDDLE: Shop + info + buy/sell action
     // ---------------------------------------------------------------------
-    auto* midPanel = new wxPanel(m_buyMainPanel);
+    auto* midPanel = new spellcross_strategic_ui::Panel(m_buyMainPanel);
     BindStrategicScreenSlice(midPanel, m_spellData, "VMB_FULL.LZ",
         wxRect(332, 0, kStrategicScreenW - 332, kStrategicScreenH));
     auto* midSizer = new wxBoxSizer(wxVERTICAL);
@@ -8899,7 +8871,7 @@ void StrategicLevelFrame::BuildBuyPage()
     {
         auto* tabRow = new wxBoxSizer(wxHORIZONTAL);
 
-        auto* btnTabBuy = new wxButton(midPanel, wxID_ANY, "Buy");
+        auto* btnTabBuy = new spellcross_strategic_ui::Button(midPanel, wxID_ANY, "Buy");
         btnTabBuy->SetMinSize(wxSize(-1, kCleanButtonHeight));
         btnTabBuy->SetFont(m_fontText);
         btnTabBuy->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
@@ -8907,7 +8879,7 @@ void StrategicLevelFrame::BuildBuyPage()
             RefreshBuyShopList();
             });
 
-        auto* btnTabSell = new wxButton(midPanel, wxID_ANY, "Sell");
+        auto* btnTabSell = new spellcross_strategic_ui::Button(midPanel, wxID_ANY, "Sell");
         btnTabSell->SetMinSize(wxSize(-1, kCleanButtonHeight));
         btnTabSell->SetFont(m_fontText);
         btnTabSell->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
@@ -8965,7 +8937,7 @@ void StrategicLevelFrame::BuildBuyPage()
     }
 
     // Buy/Sell action button
-    m_btnBuyAction = new wxButton(midPanel, ID_BTN_BUY_ACTION, "Buy");
+    m_btnBuyAction = new spellcross_strategic_ui::Button(midPanel, ID_BTN_BUY_ACTION, "Buy");
     m_btnBuyAction->SetMinSize(wxSize(-1, kCleanButtonHeight));
     m_btnBuyAction->SetFont(m_fontText);
     m_btnBuyAction->Enable(false);
@@ -8977,13 +8949,13 @@ void StrategicLevelFrame::BuildBuyPage()
     // ---------------------------------------------------------------------
     // RIGHT: Sidebar (status + all buttons) – no duplicates
     // ---------------------------------------------------------------------
-    auto* sidePanel = new wxPanel(m_buyMainPanel);
+    auto* sidePanel = new spellcross_strategic_ui::Panel(m_buyMainPanel);
     sidePanel->SetMinSize(wxSize(1, 1));
     auto* sideSizer = new wxBoxSizer(wxVERTICAL);
 
     // Status box (same two-column form layout as the main page).
     {
-        auto* status = new wxPanel(sidePanel);
+        auto* status = new spellcross_strategic_ui::Panel(sidePanel);
         auto* statusSizer = new wxFlexGridSizer(3, 2, kCleanUiGap, kCleanUiGap);
         statusSizer->AddGrowableCol(1, 1);
         auto makeStatusRow = [&](const wxString& caption, wxStaticText*& outCaption, wxStaticText*& outValue)
@@ -9010,7 +8982,7 @@ void StrategicLevelFrame::BuildBuyPage()
                 m_palette.buttonBackground,
                 wxSize(kCleanSidebarWidth - 2 * kCleanUiMargin, kCleanButtonHeight));
 
-            (void)iconName; // clean wx UI uses text-only buttons
+            (void)iconName; // Themed wx UI uses text-only buttons
 
             return btn;
         };
@@ -9129,7 +9101,7 @@ void StrategicLevelFrame::RefreshBuyRosters()
         m_buyUnitRoster->InsertItem(idx, GetUnitDisplayName(u.unit_id));
         m_buyUnitRoster->SetItem(idx, 1, wxString::Format("%d%%", u.health));
         if (u.health < 100)
-            m_buyUnitRoster->SetItemTextColour(idx, wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+            m_buyUnitRoster->SetItemTextColour(idx, spellcross_strategic_ui::Inactive());
     }
 
     // Refresh commander roster
@@ -9501,7 +9473,7 @@ void StrategicLevelFrame::BuildUnitsPage()
     // ---------------------------------------------------------------------
     // LEFT: Player units (permanent + temporary lists)
     // ---------------------------------------------------------------------
-    auto* leftPanel = new wxPanel(m_unitsMainPanel);
+    auto* leftPanel = new spellcross_strategic_ui::Panel(m_unitsMainPanel);
     BindStrategicScreenSlice(leftPanel, m_spellData, "VMU_FULL.LZ",
         wxRect(0, 0, 332, kStrategicScreenH));
     auto* leftSizer = new wxBoxSizer(wxVERTICAL);
@@ -9563,7 +9535,7 @@ void StrategicLevelFrame::BuildUnitsPage()
     // ---------------------------------------------------------------------
     // MIDDLE: Mode selector (Upgrade / Recruit / Info)
     // ---------------------------------------------------------------------
-    auto* modePanel = new wxPanel(m_unitsMainPanel);
+    auto* modePanel = new spellcross_strategic_ui::Panel(m_unitsMainPanel);
     BindStrategicScreenSlice(modePanel, m_spellData, "VMU_FULL.LZ",
         wxRect(332, 0, 80, kStrategicScreenH));
 
@@ -9575,7 +9547,7 @@ void StrategicLevelFrame::BuildUnitsPage()
 
     auto makeModeBtn = [&](const wxString& label, UnitsTab tab) -> wxButton*
         {
-            auto* b = new wxButton(modePanel, wxID_ANY, label);
+            auto* b = new spellcross_strategic_ui::Button(modePanel, wxID_ANY, label);
             b->SetMinSize(wxSize(-1, kCleanButtonHeight));
             b->Bind(wxEVT_BUTTON, [this, tab](wxCommandEvent&) { OnUnitsTabChange((int)tab); });
             return b;
@@ -9597,13 +9569,13 @@ void StrategicLevelFrame::BuildUnitsPage()
     // ---------------------------------------------------------------------
     // CENTER: Upgrade panel (always visible) + Unit info panel + bottom controls
     // ---------------------------------------------------------------------
-    auto* centerPanel = new wxPanel(m_unitsMainPanel);
+    auto* centerPanel = new spellcross_strategic_ui::Panel(m_unitsMainPanel);
     BindStrategicScreenSlice(centerPanel, m_spellData, "VMU_FULL.LZ",
         wxRect(412, 0, kStrategicScreenW - 412, kStrategicScreenH));
     auto* centerSizer = new wxBoxSizer(wxVERTICAL);
 
     // ── Upgrade panel (top) ───────────────────────────────────────────────
-    auto* upgradePanel = new wxPanel(centerPanel);
+    auto* upgradePanel = new spellcross_strategic_ui::Panel(centerPanel);
     auto* upgradeSizer = new wxBoxSizer(wxVERTICAL);
 
     // Top: upgrade list with title/value (Armour/Weapon/Engine style)
@@ -9679,7 +9651,7 @@ void StrategicLevelFrame::BuildUnitsPage()
     centerSizer->Add(upgradePanel, 3, wxALL | wxEXPAND, 0);
 
     // ── Unit info panel (bottom) ─────────────────────────────────────────
-    auto* infoPanel = new wxPanel(centerPanel);
+    auto* infoPanel = new spellcross_strategic_ui::Panel(centerPanel);
     auto* infoSizer = new wxBoxSizer(wxHORIZONTAL);
 
     m_unitsInfoText = new wxTextCtrl(infoPanel, wxID_ANY, "",
@@ -9689,7 +9661,7 @@ void StrategicLevelFrame::BuildUnitsPage()
     infoSizer->Add(m_unitsInfoText, 1, wxALL | wxEXPAND, 8);
 
     // Unit icon on the right (Spellcross-style)
-    m_unitsIconCanvas = new wxPanel(infoPanel, wxID_ANY, wxDefaultPosition, wxSize(140, -1));
+    m_unitsIconCanvas = new spellcross_strategic_ui::Panel(infoPanel, wxID_ANY, wxDefaultPosition, wxSize(140, -1));
     m_unitsIconCanvas->SetBackgroundStyle(wxBG_STYLE_PAINT);
     m_unitsIconCanvas->Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
         wxAutoBufferedPaintDC dc(m_unitsIconCanvas);
@@ -9721,7 +9693,7 @@ void StrategicLevelFrame::BuildUnitsPage()
     // ── Bottom controls: Disband / Time+Cost / OK ────────────────────────
     auto* bottomRow = new wxBoxSizer(wxHORIZONTAL);
 
-    m_btnUnitsDisband = new wxButton(centerPanel, wxID_ANY, "Disband");
+    m_btnUnitsDisband = new spellcross_strategic_ui::Button(centerPanel, wxID_ANY, "Disband");
     m_btnUnitsDisband->SetMinSize(wxSize(100, kCleanButtonHeight));
     m_btnUnitsDisband->SetFont(m_fontText);
     m_btnUnitsDisband->Bind(wxEVT_BUTTON, &StrategicLevelFrame::OnUnitsDisband, this);
@@ -9739,7 +9711,7 @@ void StrategicLevelFrame::BuildUnitsPage()
 
     bottomRow->Add(timeCostCol, 1, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 8);
 
-    m_btnUnitsAction = new wxButton(centerPanel, ID_BTN_UNITS_ACTION, "OK");
+    m_btnUnitsAction = new spellcross_strategic_ui::Button(centerPanel, ID_BTN_UNITS_ACTION, "OK");
     m_btnUnitsAction->SetMinSize(wxSize(100, kCleanButtonHeight));
     m_btnUnitsAction->SetFont(m_fontText);
     m_btnUnitsAction->Enable(false);
@@ -9755,13 +9727,13 @@ void StrategicLevelFrame::BuildUnitsPage()
     // ---------------------------------------------------------------------
     // FAR RIGHT: Sidebar (status + navigation buttons)
     // ---------------------------------------------------------------------
-    auto* sidePanel = new wxPanel(m_unitsMainPanel);
+    auto* sidePanel = new spellcross_strategic_ui::Panel(m_unitsMainPanel);
     sidePanel->SetMinSize(wxSize(1, 1));
     auto* sideSizer = new wxBoxSizer(wxVERTICAL);
 
     // Status box (same two-column form layout as the other pages).
     {
-        auto* status = new wxPanel(sidePanel);
+        auto* status = new spellcross_strategic_ui::Panel(sidePanel);
         auto* statusSizer = new wxFlexGridSizer(3, 2, kCleanUiGap, kCleanUiGap);
         statusSizer->AddGrowableCol(1, 1);
         auto makeStatusRow = [&](const wxString& caption, wxStaticText*& outCaption, wxStaticText*& outValue)
@@ -9788,7 +9760,7 @@ void StrategicLevelFrame::BuildUnitsPage()
                 m_palette.buttonBackground,
                 wxSize(kCleanSidebarWidth - 2 * kCleanUiMargin, kCleanButtonHeight));
 
-            (void)iconName; // clean wx UI uses text-only buttons
+            (void)iconName; // Themed wx UI uses text-only buttons
 
             return btn;
         };
@@ -9949,7 +9921,7 @@ void StrategicLevelFrame::RefreshUnitsRoster()
             list->SetItemData(idx, static_cast<long>(pIdx));
 
             if (u.health < 100)
-                list->SetItemTextColour(idx, wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+                list->SetItemTextColour(idx, spellcross_strategic_ui::Inactive());
         }
         for (int c = 0; c < 3; ++c)
             list->SetColumnWidth(c, wxLIST_AUTOSIZE_USEHEADER);
@@ -11263,7 +11235,7 @@ void StrategicLevelFrame::BuildHierarchyPage(wxPanel* parent)
     // the old HIERARCH artwork.
     auto* pageRow = new wxBoxSizer(wxHORIZONTAL);
     pageRow->AddStretchSpacer(1);
-    m_btnHierarchyPageToggle = new wxButton(parent, wxID_ANY, "Part 2");
+    m_btnHierarchyPageToggle = new spellcross_strategic_ui::Button(parent, wxID_ANY, "Part 2");
     m_btnHierarchyPageToggle->SetMinSize(wxSize(120, kCleanButtonHeight));
     m_btnHierarchyPageToggle->Bind(wxEVT_BUTTON, &StrategicLevelFrame::OnHierarchyTogglePage, this);
     pageRow->Add(m_btnHierarchyPageToggle, 0);
@@ -11277,7 +11249,7 @@ wxPanel* StrategicLevelFrame::BuildHierarchyFormation(wxWindow* parent,
     const wxColour& color,
     wxSizer* contents)
 {
-    auto* panel = new wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_THEME);
+    auto* panel = new spellcross_strategic_ui::Panel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_THEME);
 
     auto* borderSizer = new wxBoxSizer(wxVERTICAL);
     auto* title = new wxStaticText(panel, wxID_ANY, label);
@@ -11299,7 +11271,7 @@ wxPanel* StrategicLevelFrame::BuildHierarchySlot(wxWindow* parent,
     // Plain native slot; drag/drop and assignment behaviour are unchanged.
     const wxSize slotSize(180, 24);
 
-    auto* panel = new wxPanel(parent, wxID_ANY, wxDefaultPosition, slotSize, wxBORDER_THEME);
+    auto* panel = new spellcross_strategic_ui::Panel(parent, wxID_ANY, wxDefaultPosition, slotSize, wxBORDER_THEME);
 
     auto* label = new wxStaticText(panel, wxID_ANY, placeholder);
     label->SetFont(m_fontText);
@@ -11500,9 +11472,9 @@ wxWindow* StrategicLevelFrame::BuildHierarchyBookPage(wxWindow* parent, int brig
         int unitsStackOffsetY = 0;
         int brigadeCommanderY = 207;
 
-        // Native neutral connector colours for the plain wx view.
-        wxColour frameCol = wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT);
-        wxColour lineCol = wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT);
+        // Connectors share the menu accents.
+        wxColour frameCol = spellcross_strategic_ui::Border();
+        wxColour lineCol = spellcross_menu::Accent();
 
         // Connector geometry tweaks (helps if you want junction-style later)
         int lineInset = 0; // e.g. 2..6 if you want lines not touching borders
@@ -12336,6 +12308,7 @@ void StrategicLevelFrame::ChooseCommanderForHierarchySlot(const std::string& com
         "Choose a commander for this formation:",
         "Assign Commander", choices);
     dlg.SetSelection(selection);
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() != wxID_OK)
         return;
 
@@ -12452,6 +12425,7 @@ void StrategicLevelFrame::ChooseUnitForHierarchySlot(const std::string& unitSlot
         choices);
     dlg.SetSelection(sel);
 
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() != wxID_OK)
         return;
 
@@ -12648,6 +12622,7 @@ void StrategicLevelFrame::ChooseAssignedUnitForCommanderAssignmentSlot(const std
         "Assign Commander",
         pick);
     dlg.SetSelection(sel);
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() != wxID_OK)
         return;
 
@@ -13268,9 +13243,9 @@ void StrategicLevelFrame::UpdateRosterSelectionVisuals()
     if (!m_roster)
         return;
 
-    const wxColour clrSelected = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
-    const wxColour clrUnselected = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
-    const wxColour clrCooldown = wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT);
+    const wxColour clrSelected = spellcross_strategic_ui::Heading();
+    const wxColour clrUnselected = spellcross_menu::Text();
+    const wxColour clrCooldown = spellcross_strategic_ui::Inactive();
 
     // Update text color in the list control to match m_selectedUnitsForMission
     // We don't modify the native selection state - we only use colors for visual feedback
@@ -13309,8 +13284,8 @@ void StrategicLevelFrame::UpdateCommanderRosterSelectionVisuals()
     if (!m_cmdRoster)
         return;
 
-    const wxColour clrSelected = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
-    const wxColour clrUnselected = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
+    const wxColour clrSelected = spellcross_strategic_ui::Heading();
+    const wxColour clrUnselected = spellcross_menu::Text();
 
     // Update text color in the commander list to match m_selectedCommandersForMission
     const long count = m_cmdRoster->GetItemCount();
@@ -13467,8 +13442,8 @@ void StrategicLevelFrame::RefreshUI()
             if (c.uid == 0)
                 c.uid = m_nextCommanderUid++;
 
-            const wxColour clrSelected = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
-            const wxColour clrUnselected = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
+            const wxColour clrSelected = spellcross_strategic_ui::Heading();
+            const wxColour clrUnselected = spellcross_menu::Text();
             const bool isSelectedForMission = (m_selectedCommandersForMission.count(c.uid) > 0);
 
             long cidx = m_cmdRoster->InsertItem(crow++, wxString::FromUTF8(c.name));
@@ -13502,9 +13477,9 @@ void StrategicLevelFrame::RefreshUI()
     NormalizeStrategicUnitInstances();
 
     long row = 0;
-    const wxColour clrSelected = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
-    const wxColour clrUnselected = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
-    const wxColour clrCooldown = wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT);
+    const wxColour clrSelected = spellcross_strategic_ui::Heading();
+    const wxColour clrUnselected = spellcross_menu::Text();
+    const wxColour clrCooldown = spellcross_strategic_ui::Inactive();
     for (size_t pIdx = 0; pIdx < m_playerUnits.size(); ++pIdx)
     {
         const auto& u = m_playerUnits[pIdx];
@@ -13615,7 +13590,7 @@ void StrategicLevelFrame::BuildResourcesPage()
     auto* s = new wxBoxSizer(wxVERTICAL);
 
     // ── Map canvas (same paint handler as strategic map) ──
-    m_resourcesCanvas = new wxPanel(m_resourcesPanel);
+    m_resourcesCanvas = new spellcross_strategic_ui::Panel(m_resourcesPanel);
     m_resourcesCanvas->SetBackgroundStyle(wxBG_STYLE_PAINT);
     m_resourcesCanvas->SetMinSize(wxSize(1, 1));
     m_resourcesCanvas->Bind(wxEVT_PAINT, &StrategicLevelFrame::OnMapPaint, this);
@@ -13631,7 +13606,7 @@ void StrategicLevelFrame::BuildResourcesPage()
     s->Add(m_resourcesCanvas, 3, wxALL | wxEXPAND, 8);
 
     // ── Bottom controls ──
-    auto* under = new wxPanel(m_resourcesPanel);
+    auto* under = new spellcross_strategic_ui::Panel(m_resourcesPanel);
     auto* us = new wxBoxSizer(wxVERTICAL);
 
     // Header label (shows selected territory or global summary)
@@ -13789,8 +13764,8 @@ void StrategicLevelFrame::RefreshResourcesPage()
         m_resourcesTable->DeleteAllItems();
 
         const wxColour clrOwned = m_palette.text;
-        const wxColour clrDepleted = wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT);
-        const wxColour clrSelected = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
+        const wxColour clrDepleted = spellcross_strategic_ui::Inactive();
+        const wxColour clrSelected = spellcross_strategic_ui::Heading();
 
         for (int tid : m_ownedTerritories)
         {
@@ -15492,8 +15467,8 @@ void StrategicLevelFrame::OnBuyCommander(wxCommandEvent&)
     rootSizer->Add(list, 1, wxALL | wxEXPAND, 10);
 
     auto* btnSizer = new wxBoxSizer(wxHORIZONTAL);
-    auto* btnBuy = new wxButton(&dlg, wxID_OK, "Buy");
-    auto* btnCancel = new wxButton(&dlg, wxID_CANCEL, "Cancel");
+    auto* btnBuy = new spellcross_strategic_ui::Button(&dlg, wxID_OK, "Buy");
+    auto* btnCancel = new spellcross_strategic_ui::Button(&dlg, wxID_CANCEL, "Cancel");
     btnBuy->SetFont(m_fontText);
     btnCancel->SetFont(m_fontText);
     btnSizer->AddStretchSpacer(1);
@@ -15503,6 +15478,7 @@ void StrategicLevelFrame::OnBuyCommander(wxCommandEvent&)
 
     dlg.SetSizerAndFit(rootSizer);
 
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() != wxID_OK)
         return;
 
@@ -15568,8 +15544,8 @@ void StrategicLevelFrame::OnBuyUnits(wxCommandEvent&)
     rootSizer->Add(countSizer, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
 
     auto* btnSizer = new wxBoxSizer(wxHORIZONTAL);
-    auto* btnBuy = new wxButton(&dlg, wxID_OK, "Buy");
-    auto* btnCancel = new wxButton(&dlg, wxID_CANCEL, "Cancel");
+    auto* btnBuy = new spellcross_strategic_ui::Button(&dlg, wxID_OK, "Buy");
+    auto* btnCancel = new spellcross_strategic_ui::Button(&dlg, wxID_CANCEL, "Cancel");
     btnBuy->SetFont(m_fontText);
     btnCancel->SetFont(m_fontText);
     btnSizer->AddStretchSpacer(1);
@@ -15579,6 +15555,7 @@ void StrategicLevelFrame::OnBuyUnits(wxCommandEvent&)
 
     dlg.SetSizerAndFit(rootSizer);
 
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() != wxID_OK)
         return;
 
@@ -15726,8 +15703,8 @@ void StrategicLevelFrame::OnSellUnits(wxCommandEvent&)
     list->Bind(wxEVT_LISTBOX, [&](wxCommandEvent&) { updateSpinRange(); });
 
     auto* btnSizer = new wxBoxSizer(wxHORIZONTAL);
-    auto* btnSell = new wxButton(&dlg, wxID_OK, "Sell");
-    auto* btnCancel = new wxButton(&dlg, wxID_CANCEL, "Cancel");
+    auto* btnSell = new spellcross_strategic_ui::Button(&dlg, wxID_OK, "Sell");
+    auto* btnCancel = new spellcross_strategic_ui::Button(&dlg, wxID_CANCEL, "Cancel");
     btnSell->SetFont(m_fontText);
     btnCancel->SetFont(m_fontText);
     btnSizer->AddStretchSpacer(1);
@@ -15737,6 +15714,7 @@ void StrategicLevelFrame::OnSellUnits(wxCommandEvent&)
 
     dlg.SetSizerAndFit(rootSizer);
 
+    spellcross_strategic_ui::Apply(&dlg);
     if (dlg.ShowModal() != wxID_OK)
         return;
 
@@ -18974,7 +18952,7 @@ static bool BuildStrategicScreenBitmap(SpellData* spellData, const char* resourc
 static bool BindStrategicScreenSlice(wxPanel* panel, SpellData* spellData,
     const char* resourceName, const wxRect& sourceRect)
 {
-    // The wx strategic branch is intentionally a plain form UI now.
+    // The wx strategic branch uses themed controls without sliced game artwork.
     // Original game artwork is rendered only by m_originalStrategicPanel.
     (void)panel;
     (void)spellData;
@@ -19281,7 +19259,7 @@ void StrategicLevelFrame::OnMapPaint(wxPaintEvent& ev)
     const bool resourcesView = (target == m_resourcesCanvas);
 
     wxAutoBufferedPaintDC dc(target);
-    dc.SetBackground(wxBrush(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW)));
+    dc.SetBackground(wxBrush(spellcross_menu::Background()));
     dc.Clear();
 
     if (m_hasBg && m_bgBitmap.IsOk())
@@ -19769,9 +19747,7 @@ void StrategicLevelFrame::BuildStatsPage()
     if (!m_statsPanel || !m_midStatsPanel)
         return;
 
-    // Native Windows form layout: ordinary group boxes and static text.
-    // The former bitmap-label renderer was a leftover from the reconstructed
-    // DOS UI and could produce unreadable/black text in the clean wx branch.
+    // Group boxes and text retain their layout and use the shared wx theme.
     auto* leftRoot = new wxBoxSizer(wxVERTICAL);
 
     auto buildLossGroup = [&](wxWindow* parent, const wxString& title,

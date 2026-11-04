@@ -1,5 +1,6 @@
 // Run with a display server, e.g. xvfb-run -a ./test_game_menu_bar.
 #include "../source/game_controls.h"
+#include "../source/strategic_ui_theme.h"
 #include <stdexcept>
 #include <fstream>
 
@@ -134,6 +135,57 @@ public:
             wxCommandEvent controls(wxEVT_MENU, spellcross_help::ControlsId());
             frames[0]->GetEventHandler()->ProcessEvent(controls);
             Check(helpOpened, "Controls menu did not open the styled modal guide");
+            // A representative strategic page exercises the production theme
+            // without requiring commercial campaign data.
+            {
+                wxDialog strategy(frames[0], wxID_ANY, "Strategic UI");
+                auto* panel = new spellcross_strategic_ui::Panel(&strategy);
+                auto* layout = new wxBoxSizer(wxVERTICAL);
+                auto* button = new spellcross_strategic_ui::Button(panel, wxID_ANY, "End turn");
+                button->SetMinSize(wxSize(200, 38));
+                auto* list = new wxListCtrl(panel, wxID_ANY, wxDefaultPosition,
+                    wxSize(300, 100), wxLC_REPORT | wxLC_SINGLE_SEL);
+                list->InsertColumn(0, "Unit");
+                list->InsertItem(0, "Infantry");
+                auto* info = new wxTextCtrl(panel, wxID_ANY, "Mission briefing",
+                    wxDefaultPosition, wxSize(300, 60), wxTE_MULTILINE | wxTE_READONLY);
+                layout->Add(button, 0, wxALL | wxEXPAND, 8);
+                layout->Add(list, 1, wxALL | wxEXPAND, 8);
+                layout->Add(info, 0, wxALL | wxEXPAND, 8);
+                panel->SetSizer(layout);
+                auto* outer = new wxBoxSizer(wxVERTICAL);
+                outer->Add(panel, 1, wxEXPAND);
+                strategy.SetSizer(outer);
+                spellcross_strategic_ui::Apply(&strategy);
+                strategy.Show();
+                wxYield();
+                Check(list->GetBackgroundColour() == spellcross_menu::Background(),
+                    "Strategic roster lost dark background");
+                Check(info->GetForegroundColour() == spellcross_menu::Text(),
+                    "Strategic briefing lost readable text colour");
+                Check(button->GetFont().GetFaceName() == frames[0]->GetToolBar()->GetFont().GetFaceName(),
+                    "Strategic font differs from menu font");
+                int clicks = 0;
+                panel->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) { ++clicks; }, button->GetId());
+#ifdef __WXMSW__
+                // Exercise native button notifications after owner drawing.
+                SendMessage(reinterpret_cast<HWND>(button->GetHandle()), BM_CLICK, 0, 0);
+#else
+                wxCommandEvent click(wxEVT_BUTTON, button->GetId());
+                button->Command(click);
+#endif
+                Check(clicks == 1, "Themed strategic button lost its action");
+                button->SetLabel("Start research");
+                button->Disable();
+                wxYield();
+                Check(!button->IsEnabled() && button->GetLabel() == "Start research",
+                    "Themed button lost dynamic label or disabled state");
+                button->Enable();
+                button->SetFocus();
+                wxYield();
+                Check(button->HasFocus(), "Themed button cannot receive keyboard focus");
+                strategy.Hide();
+            }
             const auto windowSize = frames[0]->GetSize();
             auto* fullscreenPopup = new spellcross_menu::Popup(frames[0],
                 spellcross_menu::Model(frames[0])->GetMenu(1), anchor);
