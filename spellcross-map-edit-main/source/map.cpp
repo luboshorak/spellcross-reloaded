@@ -1520,6 +1520,7 @@ int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 		// --- EVENTS ---
 		uint32_t ecnt = 0;
 		if (!scsave::read(is, ecnt)) return 13;
+		auto definitions = events->GetEvents();
 
 		for (uint32_t ei = 0; ei < ecnt; ei++)
 		{
@@ -1548,6 +1549,35 @@ int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 			e->trig_unit_id = trig_uid;
 			e->position.x = px;
 			e->position.y = py;
+
+			// Saves omit objective labels. Load() above has read the original DEF;
+			// recover its metadata without changing the saved completion state or
+			// file format (including existing saves). CleanupEvents can remove
+			// earlier events, so match objective identity rather than event index.
+			if (e->is_objective)
+			{
+				auto definition = std::find_if(definitions.begin(), definitions.end(),
+					[e](const SpellMapEventRec* candidate)
+					{
+						if (!candidate->is_objective || candidate->evt_type != e->evt_type)
+							return false;
+						if (e->evt_type == SpellMapEventRec::EVT_SEE_PLACE ||
+							e->evt_type == SpellMapEventRec::EVT_DESTROY_OBJ)
+							return candidate->position.x == e->position.x &&
+								candidate->position.y == e->position.y;
+						if (e->evt_type == SpellMapEventRec::EVT_DESTROY_UNIT)
+							return candidate->trig_unit_id == e->trig_unit_id;
+						// Save/Transport objectives can be relinked from DEF SpecUnit
+						// IDs 48/49 to the campaign commander's runtime unit ID.
+						return true;
+					});
+				if (definition != definitions.end())
+				{
+					e->label = (*definition)->label;
+					e->type_name = (*definition)->type_name;
+					definitions.erase(definition);
+				}
+			}
 
 			if (!scsave::read_string(is, e->video)) return 14;
 
