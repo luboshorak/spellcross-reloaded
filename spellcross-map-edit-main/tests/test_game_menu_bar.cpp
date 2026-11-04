@@ -40,6 +40,9 @@ class MenuTestApp : public wxApp
         auto* frame = new ReentrantFrame;
         frame->CreateStatusBar(2);
         auto* model = new wxMenuBar;
+        auto* file = new wxMenu;
+        file->Append(10000, "Load");
+        model->Append(file, "&File");
         auto* options = new wxMenu;
         options->Append(10001, "Audio\tCtrl+O");
         spellcross_window::AddFullscreen(options);
@@ -71,11 +74,22 @@ public:
         {
             frames[0] = Screen();
             wxYield();
+            Check(spellcross_menu::EnsureMenuFontLoaded(), "Bundled menu font not loaded");
+            Check(frames[0]->GetToolBar()->GetFont().GetFaceName() == "Fixedsys Excelsior 3.01",
+                "Menu did not select the bundled font");
+            auto* anchor = wxWindow::FindWindowByName("Options", frames[0]);
+            Check(anchor != nullptr, "Options button missing");
             Check(frames[0]->GetAcceleratorTable()->IsOk(), "Menu shortcuts missing");
             auto* popup = new spellcross_menu::Popup(frames[0],
-                spellcross_menu::Model(frames[0])->GetMenu(0), frames[0]->GetToolBar());
+                spellcross_menu::Model(frames[0])->GetMenu(1), anchor);
             wxYield();
             Check(popup->IsShown(), "Popup dismissed while opening");
+            Check(popup->GetPosition().x == anchor->ClientToScreen(wxPoint(0, 0)).x,
+                "Popup not aligned with its own menu button");
+            Check(popup->GetPosition().y == anchor->ClientToScreen(wxPoint(0, anchor->GetSize().y)).y,
+                "Popup not positioned below its own menu button");
+            Check(popup->GetFont().GetFaceName() == anchor->GetFont().GetFaceName(),
+                "Popup font differs from menu font");
             wxKeyEvent escape(wxEVT_CHAR_HOOK);
             escape.m_keyCode = WXK_ESCAPE;
             popup->GetEventHandler()->ProcessEvent(escape);
@@ -84,7 +98,7 @@ public:
                 "Closing menu lost gameplay focus");
             const auto windowSize = frames[0]->GetSize();
             auto* fullscreenPopup = new spellcross_menu::Popup(frames[0],
-                spellcross_menu::Model(frames[0])->GetMenu(0), frames[0]->GetToolBar());
+                spellcross_menu::Model(frames[0])->GetMenu(1), anchor);
             wxYield();
             wxKeyEvent altEnter(wxEVT_CHAR_HOOK);
             altEnter.m_keyCode = WXK_RETURN;

@@ -1,0 +1,2 @@
+// Shared by the application and the native menu regression executable.
+"SPELLCROSS_MENU_FONT" RCDATA "../data/font.ttf"

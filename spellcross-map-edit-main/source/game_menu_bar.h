@@ -5,6 +5,8 @@
 #include <wx/popupwin.h>
 #include <wx/toolbar.h>
 #include <wx/weakref.h>
+#include <wx/stdpaths.h>
+#include <filesystem>
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -75,6 +77,54 @@ namespace spellcross_window
 
 namespace spellcross_menu
 {
+    inline bool EnsureMenuFontLoaded()
+    {
+        static const bool loaded = []() {
+#ifdef __WXMSW__
+            // The private memory font remains available until process exit.
+            const HMODULE module = GetModuleHandleW(nullptr);
+            const HRSRC resource = FindResourceW(module, L"SPELLCROSS_MENU_FONT", RT_RCDATA);
+            if (!resource)
+                return false;
+            const DWORD size = SizeofResource(module, resource);
+            const HGLOBAL bytes = LoadResource(module, resource);
+            void* data = bytes ? LockResource(bytes) : nullptr;
+            if (!data || !size)
+                return false;
+            DWORD count = 0;
+            const HANDLE font = AddFontMemResourceEx(data, size, nullptr, &count);
+            return font != nullptr && count > 0;
+#else
+            // Non-Windows builds load the same bundled file privately.
+            namespace fs = std::filesystem;
+            const fs::path executable(wxStandardPaths::Get().GetExecutablePath().ToStdWstring());
+            std::error_code ec;
+            const fs::path cwd = fs::current_path(ec);
+            const fs::path candidates[] = {
+                executable.parent_path() / "data" / "font.ttf",
+                cwd / "data" / "font.ttf",
+                cwd / "spellcross-map-edit-main" / "data" / "font.ttf"
+            };
+            for (const auto& path : candidates)
+            {
+                ec.clear();
+                if (fs::is_regular_file(path, ec) &&
+                    wxFont::AddPrivateFont(wxString(path.wstring())))
+                    return true;
+            }
+            return false;
+#endif
+        }();
+        return loaded;
+    }
+
+    inline wxFont MenuFont()
+    {
+        if (EnsureMenuFontLoaded())
+            return wxFont(wxFontInfo(12).FaceName("Fixedsys Excelsior 3.01"));
+        return wxFont(wxFontInfo(12).Family(wxFONTFAMILY_TELETYPE));
+    }
+
     inline wxColour Background() { return wxColour(8, 24, 7); }
     inline wxColour Highlight() { return wxColour(24, 51, 15); }
     inline wxColour Accent() { return wxColour(61, 207, 32); }
@@ -268,7 +318,9 @@ namespace spellcross_menu
                 Refresh();
             });
             Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) { Activate(); });
-            Position(anchor->ClientToScreen(wxPoint(0, 0)), anchor->GetSize());
+            // Position adds the supplied size to both coordinates. Only the
+            // height belongs here: align the popup with this button's left edge.
+            Position(anchor->ClientToScreen(wxPoint(0, 0)), wxSize(0, anchor->GetSize().y));
             wxPopupTransientWindow::Popup();
             SetFocus();
         }
@@ -314,7 +366,7 @@ namespace spellcross_menu
                 wxTB_HORIZONTAL | wxTB_FLAT | wxTB_NODIVIDER | wxBORDER_NONE),
               m_model(model)
         {
-            SetFont(wxFontInfo(10).Family(wxFONTFAMILY_TELETYPE).Bold());
+            SetFont(MenuFont());
             SetBackgroundColour(Background());
             SetMargins(FromDIP(4), FromDIP(2));
             std::vector<wxAcceleratorEntry> entries;
