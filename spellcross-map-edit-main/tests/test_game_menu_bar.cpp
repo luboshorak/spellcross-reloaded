@@ -3,7 +3,6 @@
 #include "../source/strategic_ui_theme.h"
 #include <stdexcept>
 #include <fstream>
-#include <wx/dcscreen.h>
 
 // Model synchronous show events delivered while a native transition is still
 // restoring decorations. A second transition at that point corrupts MSW state.
@@ -159,7 +158,12 @@ public:
                 strategy.SetSizer(outer);
                 spellcross_strategic_ui::Apply(&strategy);
                 strategy.Show();
+                strategy.Layout();
+                panel->Layout();
                 wxYield();
+                strategy.Update();
+                Check(panel->GetClientSize().x >= 300 && button->GetSize().y >= 38,
+                    "Strategic page layout clipped its controls");
                 Check(list->GetBackgroundColour() == spellcross_menu::Background(),
                     "Strategic roster lost dark background");
                 Check(info->GetForegroundColour() == spellcross_menu::Text(),
@@ -182,9 +186,11 @@ public:
                 const auto previewSize = strategy.GetClientSize();
                 wxBitmap preview(previewSize);
                 wxMemoryDC previewDC(preview);
-                wxScreenDC screen;
-                const auto origin = strategy.ClientToScreen(wxPoint(0, 0));
-                previewDC.Blit(0, 0, previewSize.x, previewSize.y, &screen, origin.x, origin.y);
+                // WM_PRINT renders children even on a CI desktop without a
+                // composited screen capture. Use the actual window paint path.
+                SendMessage(reinterpret_cast<HWND>(strategy.GetHandle()), WM_PRINT,
+                    reinterpret_cast<WPARAM>(previewDC.GetHDC()),
+                    PRF_CLIENT | PRF_ERASEBKGND | PRF_CHILDREN);
                 previewDC.SelectObject(wxNullBitmap);
                 Check(preview.SaveFile("strategic-theme-preview.png", wxBITMAP_TYPE_PNG),
                     "Could not save strategic theme preview");
