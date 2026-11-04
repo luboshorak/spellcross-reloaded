@@ -5423,10 +5423,17 @@ void MainFrame::OnThreadCanvas(wxThreadEvent& event)
     canvas->Refresh();
 }
 void MainFrame::OnPaintCanvas(wxPaintEvent& event)
-{       
-    // make buffer
-    if(!m_buffer.IsOk() || m_buffer.GetSize() != canvas->GetClientSize())
-        m_buffer = wxBitmap(canvas->GetClientSize(),24);
+{
+    wxPaintDC pdc(canvas);
+    const wxSize size = canvas->GetClientSize();
+    // Native fullscreen restoration can briefly leave a zero-sized canvas.
+    // Validate the paint event without allocating or rendering that surface.
+    if (size.x <= 0 || size.y <= 0 || !spell_map)
+        return;
+    if (!m_buffer.IsOk() || m_buffer.GetSize() != size)
+        m_buffer = wxBitmap(size, 24);
+    if (!m_buffer.IsOk())
+        return;
     
     // If wxWidgets had not assigned the canvas size during Show(), perform
     // the one-time deployment camera placement on its first actual paint.
@@ -5438,7 +5445,6 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
         canvas->ClearBackground();
     else
     {
-        wxPaintDC pdc(canvas);
         /*int frames = 100;
         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();        
         for(int k = 0; k < frames; k++)*/

@@ -5531,6 +5531,8 @@ double SpellMap::GetGamma()
 // render frame
 int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::function<void(void)> hud_buttons_cb)
 {
+	if (!bmp.IsOk() || bmp.GetWidth() <= 0 || bmp.GetHeight() <= 0)
+		return 1;
 	int i;
 	int m, n;
 
@@ -6491,6 +6493,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 	// render 24bit RGB data to raw bmp buffer
 	wxNativePixelData data(bmp);
+	if (!data)
+		return 1;
 	wxNativePixelData::Iterator p(data);
 	for (int y = 0; y < surf_y; ++y)
 	{

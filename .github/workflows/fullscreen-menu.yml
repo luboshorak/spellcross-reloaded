@@ -61,7 +61,7 @@ jobs:
           $include = $header.Directory.Parent.FullName
           $setupInclude = $setup.Directory.Parent.FullName
           $binary = Join-Path $env:RUNNER_TEMP 'spellcross-menu-test.exe'
-          & cl.exe /nologo /std:c++17 /EHsc /MD /D_UNICODE /DUNICODE /DWXUSINGDLL "/I$include" "/I$setupInclude" spellcross-map-edit-main/tests/test_game_menu_bar.cpp "/Fe:$binary" /link "/LIBPATH:$($core.DirectoryName)" /SUBSYSTEM:WINDOWS
+          & cl.exe /nologo /std:c++17 /EHsc /MD /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL "/I$include" "/I$setupInclude" spellcross-map-edit-main/tests/test_game_menu_bar.cpp "/Fe:$binary" /link "/LIBPATH:$($core.DirectoryName)" wxmsw32u_core.lib wxbase32u.lib /SUBSYSTEM:WINDOWS
           if ($LASTEXITCODE -ne 0) { throw 'Fullscreen test compilation failed' }
           Get-ChildItem $wxRoot -Recurse -Filter '*.dll' | Copy-Item -Destination $env:RUNNER_TEMP -Force
           $process = Start-Process $binary -PassThru
