@@ -404,6 +404,9 @@ public:
 		int pic_y_size;
 		uint8_t* pic;
 		uint8_t* pic_end; /* buffer end */
+		int hud_surface_height = 0;
+		int screen_surface_width = 0;
+		std::vector<uint8_t> screen_pixels;
 		vector<int> pic_y_buffer; /* used to find top most rendered pixel of HUD to cut off mouse area */
 		// scroll and surface range in tiles
 		int xs_size;
@@ -967,7 +970,7 @@ public:
 		tuple<int,int> GetMapSurfaceSize();
 		int isRenderSurfModified();
 		int CommitRenderSurfModified();		
-		int Render(wxBitmap &bmp, TScroll* scroll=NULL,SpellTool* tool=NULL,std::function<void(void)> hud_buttons_cb=NULL);
+		int Render(wxBitmap &bmp, TScroll* scroll=NULL,SpellTool* tool=NULL,std::function<void(void)> hud_buttons_cb=NULL,int zoom_percent=100);
 		int GetRender(uint8_t* buf, int x_size, int y_size, int x_pos, int y_pos);
 		void SetDefaultRenderFilter(uint8_t* filter);
 		void SetRenderFilter(uint8_t* filter);
@@ -976,7 +979,7 @@ public:
 				
 		int GetHUDstate();
 		int SetHUDstate(int state);
-		int RenderHUD(uint8_t* buf,uint8_t* buf_end,int buf_x_size,MapXY* cursor,MapUnit *cursor_unit,std::function<void(void)> hud_buttons_cb=NULL);
+		int RenderHUD(uint8_t* buf,uint8_t* buf_end,int buf_x_size,MapXY* cursor,MapUnit *cursor_unit,int screen_width,int screen_height,std::function<void(void)> hud_buttons_cb=NULL);
 		int RenderHUDrect(uint8_t* buf,uint8_t* buf_end,int buf_x_size,int x1,int y1,int w,int h,uint8_t color);
 		int GetHUDtop(int surf_x_pos);
 		SpellBtnHUD* CreateHUDbutton(SpellGraphicItem* glyph,t_xypos& hud_pos,t_xypos &pos,uint8_t* buf,uint8_t* buf_end,int buf_x_size,

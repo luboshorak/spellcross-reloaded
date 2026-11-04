@@ -15,6 +15,7 @@
 #include "simpleini.h"
 #include "spellcross.h"
 #include "map.h"
+#include "tactical_zoom.h"
 #include "spell_hud_buttons.h"
 #include "spell_texts.h"
 #include "forms/form_loader.h"
@@ -220,6 +221,10 @@ private:
     
     // map render buffer
     wxBitmap m_buffer;
+    spellcross_tactical::Zoom m_tacticalZoom;
+    int TacticalZoomPercent() const;
+    wxPoint TacticalMousePoint(const wxPoint& point) const;
+    wxSize TacticalMapSize(const wxSize& size) const;
     
     wxPanel* canvas;
     wxBoxSizer* sizer;

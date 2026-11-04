@@ -1,4 +1,7 @@
 #include "form_mmenu.h"
+#include "../game_menu_bar.h"
+#include "../game_controls.h"
+#include "form_about.h"
 #include "app_identity.h"
 #include "../spell_ui_locale.h"
 #include "../spell_units.h"
@@ -275,11 +278,18 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     auto* optMenu = new wxMenu();
     optMenu->Append(ID_MMENU_OPTIONS_AUDIO, spellcross_ui_locale::Tr("menu.home.audio", "&Audio...\tCtrl+A"));
     optMenu->Append(ID_MMENU_OPTIONS_SCREEN, spellcross_ui_locale::Tr("menu.home.screen", "&Screen...\tCtrl+S"));
+    spellcross_window::AddFullscreen(optMenu);
     bar->Append(optMenu, spellcross_ui_locale::Tr("menu.options", "&Options"));
     auto* editorMenu = new wxMenu();
     editorMenu->Append(ID_MMENU_OPEN_EDITOR, spellcross_ui_locale::Tr("menu.home.open_editor", "Open Map Editor..."), spellcross_ui_locale::Tr("menu.home.editor_help", "Launch the standalone Spellcross map editor"));
     bar->Append(editorMenu, spellcross_ui_locale::Tr("menu.home.editor", "&Map Editor"));
-    form->SetMenuBar(bar);
+    bar->Append(spellcross_help::BuildMenu(), spellcross_ui_locale::Tr("menu.help", "&Help"));
+    spellcross_menu::Install(form, bar);
+    spellcross_help::BindControls(form);
+    form->Bind(wxEVT_MENU, [menuFrame = form](wxCommandEvent&) {
+        FormAbout dialog(menuFrame);
+        dialog.ShowModal();
+    }, wxID_ABOUT);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsAudio, this, ID_MMENU_OPTIONS_AUDIO);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsScreen, this, ID_MMENU_OPTIONS_SCREEN);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOpenEditor, this, ID_MMENU_OPEN_EDITOR);

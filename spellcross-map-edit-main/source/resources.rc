@@ -2,6 +2,7 @@
 //
 #include "resource.h"
 #include "app_version.h"
+#include "game_menu_font.rc"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,7 @@
 #include "form_level.h"
+#include "../game_menu_bar.h"
+#include "../game_controls.h"
+#include "form_about.h"
 #include "app_identity.h"
 
 #include "main.h"
@@ -2721,9 +2724,9 @@ void StrategicLevelFrame::StartFreshGameMode(const std::vector<LevelData::Player
 {
     // Enable game mode
     m_gameModeEnabled = true;
-    if (GetMenuBar())
+    if (spellcross_menu::Model(this))
     {
-        auto* item = GetMenuBar()->FindItem(ID_MENU_GAME_MODE_TOGGLE);
+        auto* item = spellcross_menu::Model(this)->FindItem(ID_MENU_GAME_MODE_TOGGLE);
         if (item) item->Check(m_gameModeEnabled);
     }
 
@@ -2910,7 +2913,7 @@ static bool SaveStrategicStateFile(
 void StrategicLevelFrame::BuildMenu()
 {
     // Only build once
-    if (GetMenuBar() != nullptr)
+    if (spellcross_menu::Model(this) != nullptr)
         return;
 
     spellcross_ui_locale::SetLanguageFromEdition(strategic_english(m_spellData));
@@ -2924,6 +2927,7 @@ void StrategicLevelFrame::BuildMenu()
     auto* options = new wxMenu();
     options->Append(ID_MENU_OPTIONS_AUDIO, spellcross_ui_locale::Tr("menu.strategic.audio", "&Audio...\tCtrl+O"));
     options->Append(ID_MENU_OPTIONS_SCREEN, spellcross_ui_locale::Tr("menu.strategic.screen", "&Screen...\tCtrl+B"));
+    spellcross_window::AddFullscreen(options);
     auto* difficulty = new wxMenu();
     const bool englishDifficultyMenu = m_spellData && m_spellData->units && m_spellData->units->IsEnglish();
     if(!englishDifficultyMenu)
@@ -2943,7 +2947,13 @@ void StrategicLevelFrame::BuildMenu()
     strategicUi->Check(ID_MENU_STRATEGIC_UI_ORIGINAL, true);
     bar->Append(strategicUi, spellcross_ui_locale::Tr("menu.strategic_ui", "Strategic &UI"));
 
-    SetMenuBar(bar);
+    bar->Append(spellcross_help::BuildMenu(), spellcross_ui_locale::Tr("menu.help", "&Help"));
+    spellcross_menu::Install(this, bar);
+    spellcross_help::BindControls(this);
+    Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+        FormAbout dialog(this);
+        dialog.ShowModal();
+    }, wxID_ABOUT);
     SyncDifficultyMenu();
 
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnSaveGame, this, ID_MENU_SAVE_GAME);
@@ -2972,7 +2982,7 @@ void StrategicLevelFrame::SetOriginalStrategicUi(bool enabled)
 {
     m_originalStrategicUi = enabled;
 
-    if (auto* bar = GetMenuBar())
+    if (auto* bar = spellcross_menu::Model(this))
     {
         bar->Check(ID_MENU_STRATEGIC_UI_CURRENT, !enabled);
         bar->Check(ID_MENU_STRATEGIC_UI_ORIGINAL, enabled);
@@ -7423,9 +7433,9 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
         if (c.uid == 0) c.uid = m_nextCommanderUid++;
     RestoreHierarchyAssignments(loadedHierarchy);
 
-    if (GetMenuBar())
+    if (spellcross_menu::Model(this))
     {
-        auto* item = GetMenuBar()->FindItem(ID_MENU_GAME_MODE_TOGGLE);
+        auto* item = spellcross_menu::Model(this)->FindItem(ID_MENU_GAME_MODE_TOGGLE);
         if (item) item->Check(m_gameModeEnabled);
     }
 
@@ -7826,17 +7836,17 @@ void StrategicLevelFrame::OnToggleGameMode(wxCommandEvent& ev)
 
 void StrategicLevelFrame::SyncDifficultyMenu()
 {
-    if(!GetMenuBar())
+    if(!spellcross_menu::Model(this))
         return;
     const int d = (m_main && m_main->GetSpellMap())
         ? (int)m_main->GetGameDifficulty()
         : (int)SpellMap::GameDifficulty::NORMAL;
-    if(GetMenuBar()->FindItem(ID_MENU_OPTIONS_DIFFICULTY_EASY))
-        GetMenuBar()->Check(ID_MENU_OPTIONS_DIFFICULTY_EASY, d == (int)SpellMap::GameDifficulty::EASY);
-    if(GetMenuBar()->FindItem(ID_MENU_OPTIONS_DIFFICULTY_NORMAL))
-        GetMenuBar()->Check(ID_MENU_OPTIONS_DIFFICULTY_NORMAL, d == (int)SpellMap::GameDifficulty::NORMAL);
-    if(GetMenuBar()->FindItem(ID_MENU_OPTIONS_DIFFICULTY_HARD))
-        GetMenuBar()->Check(ID_MENU_OPTIONS_DIFFICULTY_HARD, d == (int)SpellMap::GameDifficulty::HARD);
+    if(spellcross_menu::Model(this)->FindItem(ID_MENU_OPTIONS_DIFFICULTY_EASY))
+        spellcross_menu::Model(this)->Check(ID_MENU_OPTIONS_DIFFICULTY_EASY, d == (int)SpellMap::GameDifficulty::EASY);
+    if(spellcross_menu::Model(this)->FindItem(ID_MENU_OPTIONS_DIFFICULTY_NORMAL))
+        spellcross_menu::Model(this)->Check(ID_MENU_OPTIONS_DIFFICULTY_NORMAL, d == (int)SpellMap::GameDifficulty::NORMAL);
+    if(spellcross_menu::Model(this)->FindItem(ID_MENU_OPTIONS_DIFFICULTY_HARD))
+        spellcross_menu::Model(this)->Check(ID_MENU_OPTIONS_DIFFICULTY_HARD, d == (int)SpellMap::GameDifficulty::HARD);
 }
 
 void StrategicLevelFrame::OnOptionsDifficulty(wxCommandEvent& ev)
@@ -17815,9 +17825,9 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
         }
     }
 
-    if (GetMenuBar())
+    if (spellcross_menu::Model(this))
     {
-        if (auto* item = GetMenuBar()->FindItem(ID_MENU_GAME_MODE_TOGGLE))
+        if (auto* item = spellcross_menu::Model(this)->FindItem(ID_MENU_GAME_MODE_TOGGLE))
             item->Check(true);
     }
 
@@ -18026,9 +18036,9 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
 
         // A valid strategic save with zero owned sectors represents a defeat.
         // Never silently restore Start(n) after the Other Side captured it.
-        if (GetMenuBar())
+        if (spellcross_menu::Model(this))
         {
-            auto* item = GetMenuBar()->FindItem(ID_MENU_GAME_MODE_TOGGLE);
+            auto* item = spellcross_menu::Model(this)->FindItem(ID_MENU_GAME_MODE_TOGGLE);
             if (item) item->Check(m_gameModeEnabled);
         }
         if (m_selectedTerritory >= 0)
@@ -18137,9 +18147,9 @@ void StrategicLevelFrame::LoadPlayerStateFromPreviousLevel()
 
     // Enable game mode (campaign = game mode)
     m_gameModeEnabled = true;
-    if (GetMenuBar())
+    if (spellcross_menu::Model(this))
     {
-        auto* item = GetMenuBar()->FindItem(ID_MENU_GAME_MODE_TOGGLE);
+        auto* item = spellcross_menu::Model(this)->FindItem(ID_MENU_GAME_MODE_TOGGLE);
         if (item) item->Check(m_gameModeEnabled);
     }
 
@@ -21764,9 +21774,9 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     if (newWin->m_ownedTerritories.empty() && !lvl.territories.empty())
         newWin->m_ownedTerritories.push_back(lvl.territories.front().id);
 
-    if (newWin->GetMenuBar())
+    if (spellcross_menu::Model(newWin))
     {
-        auto* item = newWin->GetMenuBar()->FindItem(ID_MENU_GAME_MODE_TOGGLE);
+        auto* item = spellcross_menu::Model(newWin)->FindItem(ID_MENU_GAME_MODE_TOGGLE);
         if (item) item->Check(newWin->m_gameModeEnabled);
     }
 

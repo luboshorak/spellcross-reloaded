@@ -10,6 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 LOCALES = ROOT / "locales"
 SOURCES = [
+    ROOT / "source" / "game_controls.h",
     ROOT / "source" / "main.cpp",
     ROOT / "source" / "forms" / "form_level.cpp",
     ROOT / "source" / "forms" / "form_mmenu.cpp",
@@ -41,6 +42,7 @@ class LocalizationCatalogTests(unittest.TestCase):
     def test_referenced_strings_are_translated(self):
         sources = "\n".join(src.read_text(encoding="utf-8") for src in SOURCES)
         referenced = set(CALL.findall(sources))
+        referenced.update(re.findall(r'"(help\.[a-z_.]+)"', sources))
         # Dynamically constructed rank keys are intentionally not literal.
         referenced.update(f"stats.rank.{i}" for i in range(9))
         referenced.update(f"buy.rank.{i}" for i in range(9))
