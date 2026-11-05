@@ -275,6 +275,7 @@ public:
     bool ImportBattleSaveContext(const std::string& strategic_state_json,
         const PendingMissionResult& pending);
     void RestoreTacticalCompanyIdentities(SpellMap& map) const;
+    std::vector<std::string> GetHostedCommanderNames(uint32_t company_uid) const;
     bool HasStrategicAutosave() const;
     bool RecoverPendingMissionFromLoadedBattle(const std::string& mission_token);
 
