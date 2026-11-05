@@ -5577,10 +5577,6 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
                         m_originalHierarchySelectedCommanderUid,
                         m_originalHierarchySelectedCommanderRank,
                         m_originalHierarchySelectedCommanderName);
-                else
-                    wxMessageBox("A commander is selected in the right-hand pool.\n\n"
-                        "Click a commander slot in the hierarchy tree, or click the same pool row again to deselect it.",
-                        "Hierarchy", wxOK | wxICON_INFORMATION, this);
             }
             else if (m_originalHierarchyPoolSelectionKind == OriginalHierarchyPoolSelectionKind::Unit)
             {
@@ -5588,22 +5584,37 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
                     handled = AssignUnitToHierarchySlot(hs.id,
                         m_originalHierarchySelectedUnitUid,
                         m_originalHierarchySelectedUnitDisplay);
-                else
-                    wxMessageBox("A unit is selected in the right-hand pool.\n\n"
-                        "Click a unit slot or assignment slot in the hierarchy tree, or click the same pool row again to deselect it.",
-                        "Hierarchy", wxOK | wxICON_INFORMATION, this);
             }
             else
             {
-                if (hs.commander)
-                    ChooseCommanderForHierarchySlot(hs.id);
-                else
-                    ChooseUnitForHierarchySlot(hs.id);
-                handled = true;
+                // Occupied tree slots can be picked just like pool rows. Empty
+                // slots wait for a selection; ordinary clicks never open a chooser.
+                const auto it = m_hierarchySlotIndex.find(hs.id);
+                if (it != m_hierarchySlotIndex.end())
+                {
+                    const HierarchySlot& slot = m_hierarchySlots[it->second];
+                    if (hs.commander && slot.commander_uid != 0)
+                    {
+                        m_originalHierarchyPoolSelectionKind = OriginalHierarchyPoolSelectionKind::Commander;
+                        m_originalHierarchySelectedCommanderUid = slot.commander_uid;
+                        m_originalHierarchySelectedCommanderRank = slot.rank;
+                        m_originalHierarchySelectedCommanderName = wxString::FromUTF8(slot.commander_name);
+                    }
+                    else if (!hs.commander && slot.unit_uid != 0)
+                    {
+                        m_originalHierarchyPoolSelectionKind = OriginalHierarchyPoolSelectionKind::Unit;
+                        m_originalHierarchySelectedUnitUid = slot.unit_uid;
+                        m_originalHierarchySelectedUnitDisplay = slot.unit_display;
+                    }
+                }
             }
 
             if (handled)
-                refreshRestored();
+            {
+                ClearOriginalHierarchyPoolSelection();
+                SaveStrategicState();
+            }
+            refreshRestored();
             return;
         }
         return;
@@ -6672,10 +6683,10 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
 
 void StrategicLevelFrame::OnOriginalStrategicRightDown(wxMouseEvent& ev)
 {
-    // The original Resources screen uses RMB on the allocation arrows for
-    // 10x stepping.  Keep RMB otherwise untouched so existing context/info
-    // behaviour elsewhere in the editor is not swallowed by the restored UI.
-    if (m_originalStrategicScreen != OriginalStrategicScreen::Resources ||
+    // Hierarchy uses RMB to remove the clicked assignment. Resources uses it
+    // for 10x allocation steps; other strategic screens retain their handlers.
+    if ((m_originalStrategicScreen != OriginalStrategicScreen::Resources &&
+         m_originalStrategicScreen != OriginalStrategicScreen::Hierarchy) ||
         !m_originalStrategicPanel || m_originalStrategicDrawRect.width <= 0 ||
         m_originalStrategicDrawRect.height <= 0)
     {
@@ -6696,6 +6707,25 @@ void StrategicLevelFrame::OnOriginalStrategicRightDown(wxMouseEvent& ev)
     const int ly = static_cast<int>(
         (static_cast<long long>(p.y - m_originalStrategicDrawRect.y) * StrategicOriginalRenderer::kScreenH) /
         m_originalStrategicDrawRect.height);
+
+    if (m_originalStrategicScreen == OriginalStrategicScreen::Hierarchy)
+    {
+        for (const auto& hs : OriginalHierarchySlotsForPage(m_originalHierarchyPage))
+        {
+            if (!hs.rect.Contains(lx, ly))
+                continue;
+            ClearHierarchySlot(hs.id);
+            ClearOriginalHierarchyPoolSelection();
+            SaveStrategicState();
+            m_originalStrategicDirty = true;
+            m_originalStrategicPanel->Refresh();
+            return;
+        }
+        ClearOriginalHierarchyPoolSelection();
+        m_originalStrategicDirty = true;
+        m_originalStrategicPanel->Refresh();
+        return;
+    }
 
     int delta = 0;
     if (wxRect(225, 419, 34, 28).Contains(lx, ly)) delta = -10;
@@ -11874,19 +11904,21 @@ void StrategicLevelFrame::ClearHierarchySlot(const std::string& slotId)
         slot.label->SetLabel(slot.placeholder);
         slot.label->GetParent()->Layout();
 
-        // If this unit was the assigned unit for the commander above, unassign it.
+        // Removing a physical company also invalidates commander hosts at every
+        // level above it. Clearing only a host reference affects that commander.
         if (oldUid != 0)
         {
             const std::string commanderId = GetCommanderSlotForUnitSlot(slotId);
-            auto itc = m_hierarchySlotIndex.find(commanderId);
-            if (itc != m_hierarchySlotIndex.end())
+            const bool physicalSlot = slotId.rfind("battalion_", 0) == 0 &&
+                slotId.find("_unit_") != std::string::npos;
+            for (auto& cs : m_hierarchySlots)
             {
-                HierarchySlot& cs = m_hierarchySlots[itc->second];
-                if (cs.type == "commander" && cs.assigned_unit_uid == oldUid)
+                if (cs.type == "commander" && cs.assigned_unit_uid == oldUid &&
+                    (physicalSlot || cs.id == commanderId))
                 {
                     cs.assigned_unit_uid = 0;
                     cs.assigned_unit_display.clear();
-                    UpdateCommanderHierarchyLabel(commanderId);
+                    UpdateCommanderHierarchyLabel(cs.id);
                 }
             }
         }
@@ -11954,6 +11986,10 @@ bool StrategicLevelFrame::AssignCommanderToHierarchySlot(const std::string& comm
             "Hierarchy", wxOK | wxICON_INFORMATION, this);
         return false;
     }
+
+    // Re-selecting the same commander must not silently detach their host.
+    if (slot.commander_uid == commanderUid)
+        return true;
 
     for (auto& other : m_hierarchySlots)
     {
@@ -12149,6 +12185,8 @@ bool StrategicLevelFrame::AssignUnitToHierarchySlot(const std::string& unitSlotI
     }
 
     const uint32_t oldUid = slot.unit_uid;
+    if (oldUid != 0 && oldUid != unitUid)
+        ClearHierarchySlot(unitSlotId);
     slot.unit_uid = unitUid;
     slot.unit_display = unitDisplay;
     slot.label->SetLabel(unitDisplay);
@@ -21909,3 +21947,4 @@ void StrategicLevelFrame::AdvanceToNextLevel()
 
     Destroy();
 }
+
