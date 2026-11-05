@@ -2657,7 +2657,7 @@ bool MyApp::OnInit()
     {
         spellcross_display::Settings settings;
         settings.scale_percent = static_cast<int>(ini.GetLongValue("STATE", "display_scale", 125));
-        settings.smooth_scaling = ini.GetBoolValue("STATE", "display_smoothing", false);
+        settings.smooth_scaling = ini.GetBoolValue("STATE", "display_smoothing", true);
         settings.brightness = static_cast<int>(ini.GetLongValue("STATE", "display_brightness", 100));
         settings.gamma = ini.GetDoubleValue("STATE", "display_gamma", 1.3);
         settings.temperature = static_cast<int>(ini.GetLongValue("STATE", "display_temperature", 6500));
