@@ -6292,7 +6292,7 @@ void MainFrame::HandleCanvasLeftClick(wxMouseEvent& event)
                 spellcross_diag::Log(spellcross_diag::Level::Warning, "CONTROL",
                     "No individual action at=(%d,%d) selected=%d ap=%d shots=%d"
                     " move_state=%d attack_state=%d group=%d box=%d group_moving=%d enemy_turn=%d"
-                    " consecutive_clicks=%u",
+                    " input_lock=%s consecutive_clicks=%u",
                     select_pos.x, select_pos.y,
                     selected ? selected->id : -1,
                     selected ? selected->action_points : -1,
@@ -6301,7 +6301,8 @@ void MainFrame::HandleCanvasLeftClick(wxMouseEvent& event)
                     selected ? static_cast<int>(selected->attack_state) : -1,
                     spell_map->GetActiveGroup(), static_cast<int>(spell_map->IsBoxGroupMode()),
                     static_cast<int>(spell_map->IsActiveGroupMoving()),
-                    static_cast<int>(spell_map->IsEnemyTurnRunning()), no_action_clicks);
+                    static_cast<int>(spell_map->IsEnemyTurnRunning()),
+                    spell_map->GetTacticalInputBlockReason(), no_action_clicks);
             }
         }
         else if (action_count != 0)
