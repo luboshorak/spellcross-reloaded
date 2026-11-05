@@ -20,5 +20,7 @@ int main()
     assert(CompareVersions("v0.9.4", "v0.9.4.1", comparable) < 0 && comparable);
     assert(CompareVersions("0.9.4.0", "v0.9.4.1", comparable) < 0 && comparable);
     assert(CompareVersions("v0.9.4.1", "0.9.4.1", comparable) == 0 && comparable);
+    assert(CompareVersions("v0.9.4.1", "v0.9.4.2", comparable) < 0 && comparable);
+    assert(CompareVersions("v0.9.4.2", "0.9.4.2", comparable) == 0 && comparable);
     return 0;
 }

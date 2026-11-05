@@ -12,9 +12,9 @@ This guide builds the Windows x64 game and its pinned standalone editor. For ins
 
 Original commercial Spellcross archives are not bundled.
 
-## Build v0.9.4.1
+## Build v0.9.4.2
 
-From a checkout containing the v0.9.4.1 version update:
+From a checkout containing the v0.9.4.2 version update:
 
 ```powershell
 git switch main
@@ -50,8 +50,8 @@ For a custom dependency or video location:
 The script rebuilds the game and editor, checks the compiled game version, verifies video hashes, copies runtime dependencies and stages the package. Output:
 
 ```text
-dist/Spellcross_Reloaded_v0.9.4.1.zip
-dist/Spellcross_Reloaded_v0.9.4.1.exe
+dist/Spellcross_Reloaded_v0.9.4.2.zip
+dist/Spellcross_Reloaded_v0.9.4.2.exe
 ```
 
 The EXE is produced when WinRAR is available. Without WinRAR, the ZIP is still built.
@@ -60,11 +60,11 @@ The EXE is produced when WinRAR is available. Without WinRAR, the ZIP is still b
 
 The version comes from `spellcross-map-edit-main/source/app_version.h`:
 
-| Field | v0.9.4.1 value |
+| Field | v0.9.4.2 value |
 | --- | --- |
-| Windows FileVersion / ProductVersion | `0.9.4.1` |
-| Display and package label | `0.9.4.1` |
-| Git tag | `v0.9.4.1` |
+| Windows FileVersion / ProductVersion | `0.9.4.2` |
+| Display and package label | `0.9.4.2` |
+| Git tag | `v0.9.4.2` |
 
 The Windows resource strings in `source/resources.rc` must agree. Packaging stops if the actual game executable has a different version, including with `-SkipBuild`.
 
@@ -121,18 +121,18 @@ Use a clean Windows x64 rebuild and test the extracted package outside the sourc
 
 ## Tag and publish the tested build
 
-Use the exact clean source commit that produced the verified packages. v0.9.4.1 is a regular release; do not mark it as a prerelease.
+Use the exact clean source commit that produced the verified packages. v0.9.4.2 is a regular release; do not mark it as a prerelease.
 
 ```powershell
 git status --short
-git tag -a v0.9.4.1 -m "Spellcross Reloaded v0.9.4.1"
-git push origin v0.9.4.1
-gh release create v0.9.4.1 `
-    dist/Spellcross_Reloaded_v0.9.4.1.zip `
-    dist/Spellcross_Reloaded_v0.9.4.1.exe `
+git tag -a v0.9.4.2 -m "Spellcross Reloaded v0.9.4.2"
+git push origin v0.9.4.2
+gh release create v0.9.4.2 `
+    dist/Spellcross_Reloaded_v0.9.4.2.zip `
+    dist/Spellcross_Reloaded_v0.9.4.2.exe `
     --verify-tag `
-    --title "Spellcross Reloaded v0.9.4.1" `
-    --notes-file packaging/releases/v0.9.4.1.md
+    --title "Spellcross Reloaded v0.9.4.2" `
+    --notes-file packaging/releases/v0.9.4.2.md
 ```
 
 If only the ZIP was built, omit the EXE argument. Review third-party runtime licenses before distribution. Original game assets are not covered by the source-code MIT license.

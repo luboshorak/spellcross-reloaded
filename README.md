@@ -10,17 +10,18 @@ Spellcross Reloaded is an open-source, fan-made restoration of **Spellcross: The
 
 **[Download the latest published release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** · [Report a bug](https://github.com/luboshorak/spellcross-reloaded/issues) · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor)
 
-## v0.9.4.1
+## v0.9.4.2
 
-This maintenance release improves campaign continuity, saved games and the strategic interface:
+This maintenance release restores original hierarchy controls and unit indicators, and fixes combat and transition behaviour:
 
-- Enemy attacks and recaptures keep completed story missions completed.
-- Mission objectives retain their text after loading a tactical save.
-- Temporary companies keep their names and support markings in battle.
-- Fullscreen keyboard focus and console access are more reliable; Escape returns from the strategic screen to the main menu.
-- The strategic interface shares the game's menu styling, with an in-game controls guide.
+- Hierarchy uses left-click to add and right-click to remove, with consistent commander hosts and formation bonuses after loading.
+- Strategic unit lists restore original strength bars and activity icons; wounded single-member units show their actual health in the tactical HUD.
+- Artillery cannot fire from slopes; mortar units retain their original exception.
+- Lost formation commanders are announced by name in the tactical information window.
+- Mission background sounds are muted during videos and restored afterwards.
+- Reinforcement messages wait until the strategic map is visible and painted.
 
-See the [release notes](./packaging/releases/v0.9.4.1.md) for the full changes. Earlier release notes are kept in [packaging/releases](./packaging/releases).
+See the [release notes](./packaging/releases/v0.9.4.2.md) for the full changes. Earlier release notes are kept in [packaging/releases](./packaging/releases).
 
 ## Download and play
 
