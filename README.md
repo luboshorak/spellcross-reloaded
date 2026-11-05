@@ -23,6 +23,13 @@ This maintenance release restores original hierarchy controls and unit indicator
 
 See the [release notes](./packaging/releases/v0.9.4.2.md) for the full changes. Earlier release notes are kept in [packaging/releases](./packaging/releases).
 
+
+For a crash or unexplained freeze in the development build, attach `debug.log`
+(and any `debug.1.log`–`debug.3.log`) from the game folder to your issue.
+The log rotates at 512 KiB per file; see the
+[runtime diagnostics guide](./docs/runtime-crash-diagnostics.md).
+This is diagnostic logging, **not** continuous autosaving.
+
 ## Download and play
 
 1. Download the **Windows x64 ZIP** or **EXE installer** from [Releases](https://github.com/luboshorak/spellcross-reloaded/releases).
