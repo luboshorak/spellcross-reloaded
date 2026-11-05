@@ -1,6 +1,7 @@
 #include "form_level.h"
 #include "../game_menu_bar.h"
 #include "../game_controls.h"
+#include "../display_settings.h"
 #include "../strategic_ui_theme.h"
 #include "form_about.h"
 #include "app_identity.h"
@@ -5357,7 +5358,7 @@ void StrategicLevelFrame::OnOriginalStrategicPaint(wxPaintEvent&)
     const int drawY = (client.y - drawH) / 2;
     m_originalStrategicDrawRect = wxRect(drawX, drawY, drawW, drawH);
 
-    wxBitmap drawBmp = m_originalStrategicBitmap;
+    wxBitmap drawBmp = spellcross_display::AdjustBitmap(m_originalStrategicBitmap);
     if (drawW != StrategicOriginalRenderer::kScreenW || drawH != StrategicOriginalRenderer::kScreenH)
         drawBmp = wxBitmap(m_originalStrategicBitmap.ConvertToImage().Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST));
 
@@ -7954,43 +7955,13 @@ void StrategicLevelFrame::OnOptionsAudio(wxCommandEvent& ev)
 
 void StrategicLevelFrame::OnOptionsScreen(wxCommandEvent& ev)
 {
-    SpellMap* spellMap = m_main ? m_main->GetSpellMap() : nullptr;
-    const double oldGamma = spellMap ? spellMap->GetGamma() : 1.3;
-
-    wxDialog dlg(this, wxID_ANY, "Screen", wxDefaultPosition, wxDefaultSize,
-        wxDEFAULT_DIALOG_STYLE);
-
-    auto* sizerTop = new wxBoxSizer(wxVERTICAL);
-
-    auto* lblBrightness = new wxStaticText(&dlg, wxID_ANY, "Brightness");
-    auto* sldBrightness = new wxSlider(&dlg, wxID_ANY,
-        (int)std::lround(oldGamma * 1000.0),
-        500, 2000,
-        wxDefaultPosition, wxSize(300, -1),
-        wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-
-    sizerTop->Add(lblBrightness, 0, wxALL, 8);
-    sizerTop->Add(sldBrightness, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
-
-    auto* btns = dlg.CreateButtonSizer(wxOK | wxCANCEL);
-    sizerTop->Add(btns, 0, wxALL | wxEXPAND, 8);
-    dlg.SetSizerAndFit(sizerTop);
-
-    auto applyScreen = [&]() {
-        if (spellMap)
-            spellMap->SetGamma(sldBrightness->GetValue() * 0.001);
-    };
-
-    sldBrightness->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { applyScreen(); });
-
-    spellcross_strategic_ui::Apply(&dlg);
-    if (dlg.ShowModal() == wxID_OK)
-        applyScreen();
-    else
-    {
-        if (spellMap)
-            spellMap->SetGamma(oldGamma);
-    }
+    spellcross_display::ShowScreenDialog(this, [this]() {
+        if (SpellMap* map = m_main ? m_main->GetSpellMap() : nullptr)
+            map->SetGamma(spellcross_display::Current().gamma);
+        if (m_originalStrategicPanel)
+            m_originalStrategicPanel->Refresh();
+        Refresh();
+    });
 }
 
 bool StrategicLevelFrame::EnsureUnitCostsLoaded()
