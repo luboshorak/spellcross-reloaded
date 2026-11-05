@@ -58,6 +58,7 @@
 #include "simpleini.h"
 #include "spellcross.h"
 #include "spell_ui_locale.h"
+#include "display_settings.h"
 #include "map.h"
 #include "runtime_diagnostics.h"
 
@@ -1915,7 +1916,7 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
     }
 
     SetTitle(BuildSpellcrossWindowTitle(spell_map));
-    spell_map->SetGamma(1.30);
+    spell_map->SetGamma(spellcross_display::Current().gamma);
 
     wxCommandEvent dummy;
     OnViewLayer(dummy);
@@ -2043,7 +2044,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
         return false;
 
     SetTitle(BuildSpellcrossWindowTitle(spell_map));
-    spell_map->SetGamma(1.30);
+    spell_map->SetGamma(spellcross_display::Current().gamma);
 
     wxCommandEvent dummy;
     OnViewLayer(dummy);
@@ -2650,6 +2651,19 @@ bool MyApp::OnInit()
         }
     }
 
+    // The game owns its pixel scale (100/125%) independently of Windows DPI.
+    // Keep the PerMonitorV2 manifest enabled and restore all display options
+    // before creating the map, main menu or strategic windows.
+    {
+        spellcross_display::Settings settings;
+        settings.scale_percent = static_cast<int>(ini.GetLongValue("STATE", "display_scale", 125));
+        settings.smooth_scaling = ini.GetBoolValue("STATE", "display_smoothing", false);
+        settings.brightness = static_cast<int>(ini.GetLongValue("STATE", "display_brightness", 100));
+        settings.gamma = ini.GetDoubleValue("STATE", "display_gamma", 1.3);
+        settings.temperature = static_cast<int>(ini.GetLongValue("STATE", "display_temperature", 6500));
+        spellcross_display::Set(settings);
+    }
+
     // Resolve/repair the external Spellcross data sources on the UI thread
     // before FormLoader starts. Required archives are requested individually;
     // optional audio sources can be skipped and that choice is remembered.
@@ -2701,7 +2715,7 @@ bool MyApp::OnInit()
             ini.SetValue("STATE", "last_map", "");
         }
     }
-    spell_map->SetGamma(1.3);
+    spell_map->SetGamma(spellcross_display::Current().gamma);
 
     // sound effects/midi volumes. Both subsystems remain valid in silent mode.
     if (spell_data->sounds && spell_data->sounds->channels)
@@ -2761,6 +2775,15 @@ int MyApp::OnExit()
         ini.SetLongValue("STATE", "sound_volume", 100.0*spell_data->sounds->channels->GetVolume());
     if (spell_data && spell_data->midi)
         ini.SetLongValue("STATE", "music_volume", 100.0*spell_data->midi->GetVolume());
+
+    // Persist display settings outside campaign saves: same visual preferences
+    // apply on every tactical map and strategic chapter.
+    const auto& screen = spellcross_display::Current();
+    ini.SetLongValue("STATE", "display_scale", screen.scale_percent);
+    ini.SetBoolValue("STATE", "display_smoothing", screen.smooth_scaling);
+    ini.SetLongValue("STATE", "display_brightness", screen.brightness);
+    ini.SetDoubleValue("STATE", "display_gamma", screen.gamma);
+    ini.SetLongValue("STATE", "display_temperature", screen.temperature);
 
     // save INI
     if (!config_path.empty())
@@ -3171,42 +3194,20 @@ void MainFrame::OnOptionsAudio(wxCommandEvent& event)
 
 void MainFrame::OnOptionsScreen(wxCommandEvent& event)
 {
-    const double oldGamma = spell_map ? spell_map->GetGamma() : 1.3;
-
-    wxDialog dlg(this, wxID_ANY, "Screen", wxDefaultPosition, wxDefaultSize,
-        wxDEFAULT_DIALOG_STYLE);
-
-    auto* sizerTop = new wxBoxSizer(wxVERTICAL);
-
-    auto* lblBrightness = new wxStaticText(&dlg, wxID_ANY, "Brightness");
-    auto* sldBrightness = new wxSlider(&dlg, wxID_ANY,
-        (int)std::lround(oldGamma * 1000.0), 500, 2000,
-        wxDefaultPosition, wxSize(300, -1),
-        wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-
-    sizerTop->Add(lblBrightness, 0, wxALL, 8);
-    sizerTop->Add(sldBrightness, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
-
-    auto* btns = dlg.CreateButtonSizer(wxOK | wxCANCEL);
-    sizerTop->Add(btns, 0, wxALL | wxEXPAND, 8);
-    dlg.SetSizerAndFit(sizerTop);
-
-    auto applyScreen = [&]() {
+    spellcross_display::ShowScreenDialog(this, [this]() {
         if (spell_map)
-            spell_map->SetGamma(sldBrightness->GetValue() * 0.001);
-    };
-
-    sldBrightness->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { applyScreen(); });
-
-    if (dlg.ShowModal() == wxID_OK)
-        applyScreen();
-    else
-    {
-        if (spell_map)
-            spell_map->SetGamma(oldGamma);
-    }
+            spell_map->SetGamma(spellcross_display::Current().gamma);
+        if (canvas)
+        {
+            const auto size = TacticalMapSize(canvas->GetClientSize());
+            if (spell_map)
+                spell_map->scroller.SetSurface(size.x, size.y);
+            canvas->Refresh();
+        }
+        if (m_strategicLevel)
+            m_strategicLevel->Refresh();
+    });
 }
-
 
 static std::filesystem::path ContinueSavePath()
 {
@@ -5525,15 +5526,15 @@ int MainFrame::TacticalZoomPercent() const
 wxPoint MainFrame::TacticalMousePoint(const wxPoint& point) const
 {
     const int percent = TacticalZoomPercent();
-    return wxPoint(spellcross_tactical::MapPixel(point.x, percent),
-        spellcross_tactical::MapPixel(point.y, percent));
+    return wxPoint(spellcross_tactical::MapPixel(spellcross_display::ToLogical(point.x), percent),
+        spellcross_tactical::MapPixel(spellcross_display::ToLogical(point.y), percent));
 }
 
 wxSize MainFrame::TacticalMapSize(const wxSize& size) const
 {
     const int percent = TacticalZoomPercent();
-    return wxSize(spellcross_tactical::MapExtent(size.x, percent),
-        spellcross_tactical::MapExtent(size.y, percent));
+    return wxSize(spellcross_tactical::MapExtent(spellcross_display::LogicalExtent(size.x), percent),
+        spellcross_tactical::MapExtent(spellcross_display::LogicalExtent(size.y), percent));
 }
 
 void MainFrame::OnPaintCanvas(wxPaintEvent& event)
@@ -5563,7 +5564,8 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();        
         for(int k = 0; k < frames; k++)*/
             spell_map->Render(m_buffer, nullptr, nullptr,
-                bind(&MainFrame::CreateHUDbuttons, this), TacticalZoomPercent());
+                bind(&MainFrame::CreateHUDbuttons, this), TacticalZoomPercent(),
+                spellcross_display::Current().scale_percent);
         /*std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         float time = 1e-6*std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
         SetStatusText(wxString::Format(wxT("%.0f fps"),frames/time),7);*/
@@ -5592,15 +5594,24 @@ void MainFrame::CreateHUDbuttons()
         if(!btn->IsValid())
             continue;
 
+        // Match the nearest-neighbour framebuffer transform exactly.
+        const wxPoint screenPos(spellcross_display::ToDevice(btn->x_pos),
+                                spellcross_display::ToDevice(btn->y_pos));
+        const wxSize screenSize(
+            spellcross_display::ToDevice(btn->x_pos + btn->x_size) - screenPos.x,
+            spellcross_display::ToDevice(btn->y_pos + btn->y_size) - screenPos.y);
+
         // try to find existing button
         int skip = false;
         for(auto& pan : hud_buttons)
         {
-            if(pan->GetPosition().x == btn->x_pos && pan->GetPosition().y == btn->y_pos)
+            if(pan->GetPosition() == screenPos)
             {
                 btn->wx_id = button_id++;
                 pan->SetId(btn->wx_id);
                 pan->SetClientData((void*)1);
+                if (pan->GetSize() != screenSize)
+                    pan->SetSize(screenSize);
                 pan->Refresh();
                 skip = true;
                 break;
@@ -5610,7 +5621,7 @@ void MainFrame::CreateHUDbuttons()
             continue;
         
         btn->wx_id = button_id++;
-        wxPanel *wx_btn = new wxPanel(canvas,btn->wx_id,wxPoint(btn->x_pos, btn->y_pos),wxSize(btn->x_size, btn->y_size));
+        wxPanel *wx_btn = new wxPanel(canvas, btn->wx_id, screenPos, screenSize);
         wx_btn->SetClientData((void*)1);
         wx_btn->SetWindowStyle(wxTRANSPARENT_WINDOW);       
         wx_btn->SetBackgroundStyle(wxBG_STYLE_PAINT);
@@ -5635,17 +5646,25 @@ void MainFrame::CreateHUDbuttons()
 }
 void MainFrame::OnPaintHUDbutton(wxPaintEvent& event)
 {
-    wxPanel* pan = (wxPanel*)event.GetEventObject();
-    auto* btn = spell_map->GetHUDbutton(pan->GetId());
-    if(btn)
-    {                
-        wxPaintDC pdc(pan);        
-        if(btn->is_press && !btn->is_disabled)
-            pdc.DrawBitmap(*btn->bmp_press,wxPoint(0,0));
-        else if(btn->is_hover && !btn->is_disabled)
-            pdc.DrawBitmap(*btn->bmp_hover,wxPoint(0,0));
-        else
-            pdc.DrawBitmap(*btn->bmp_idle,wxPoint(0,0));
+    wxPanel* pan = static_cast<wxPanel*>(event.GetEventObject());
+    auto* btn = spell_map ? spell_map->GetHUDbutton(pan->GetId()) : nullptr;
+    if (btn)
+    {
+        wxPaintDC dc(pan);
+        const wxBitmap* source = btn->bmp_idle;
+        if (btn->is_press && !btn->is_disabled)
+            source = btn->bmp_press;
+        else if (btn->is_hover && !btn->is_disabled)
+            source = btn->bmp_hover;
+        if (source && source->IsOk())
+        {
+            wxBitmap image = *source;
+            if (image.GetSize() != pan->GetClientSize())
+                image = wxBitmap(image.ConvertToImage().Scale(
+                    pan->GetClientSize().x, pan->GetClientSize().y,
+                    spellcross_display::ResizeQuality()));
+            dc.DrawBitmap(spellcross_display::AdjustBitmap(image), 0, 0, false);
+        }
     }
     event.Skip();
 }
@@ -6007,7 +6026,8 @@ void MainFrame::OnViewMiniMap(wxCommandEvent& event)
     spell_map->SetHUDstate(hud_state);
 
     // restore scroll surface to canvas size
-    scrl.SetSurface(canvas->GetClientSize().GetWidth(), canvas->GetClientSize().GetHeight());
+    const auto restored = TacticalMapSize(canvas->GetClientSize());
+    scrl.SetSurface(restored.x, restored.y);
 
     // create panel
     TMiniMap minimap = { buf, &spell_map->scroller, spell_map, x1, y1, x2 - x1, y2 - y1 };
@@ -6092,7 +6112,8 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
         return;
     }
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions() || !event.LeftDown()) return;
-    if (event.GetY() >= spell_map->GetHUDtop(event.GetX())) return;
+    if (spellcross_display::ToLogical(event.GetY()) >=
+        spell_map->GetHUDtop(spellcross_display::ToLogical(event.GetX()))) return;
     const auto point = TacticalMousePoint(event.GetPosition());
     spell_map->scroller.Move(point.x, point.y);
     if (m_deployment_active)
@@ -6191,7 +6212,8 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
     static bool last_in_hud = false;
-    if (event.GetY() >= spell_map->GetHUDtop(event.GetX()))
+    if (spellcross_display::ToLogical(event.GetY()) >=
+        spell_map->GetHUDtop(spellcross_display::ToLogical(event.GetX())))
     {
         spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
         if (!last_in_hud) spell_map->InvalidateHUDbuttons();
@@ -6244,7 +6266,8 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
     }
     if (inUnitOptions() || m_mission_end_flow ||
         event.GetWheelAxis() != wxMOUSE_WHEEL_VERTICAL ||
-        event.GetY() >= spell_map->GetHUDtop(event.GetX()))
+        spellcross_display::ToLogical(event.GetY()) >=
+        spell_map->GetHUDtop(spellcross_display::ToLogical(event.GetX())))
     {
         event.Skip();
         return;
@@ -6258,8 +6281,8 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
     const auto size = TacticalMapSize(canvas->GetClientSize());
     spell_map->scroller.SetSurface(size.x, size.y);
     spell_map->scroller.SetPos(
-        spellcross_tactical::AnchoredScroll(x, event.GetX(), previous, current),
-        spellcross_tactical::AnchoredScroll(y, event.GetY(), previous, current));
+        spellcross_tactical::AnchoredScroll(x, spellcross_display::ToLogical(event.GetX()), previous, current),
+        spellcross_tactical::AnchoredScroll(y, spellcross_display::ToLogical(event.GetY()), previous, current));
     spell_map->RenderPrepare();
     const auto point = TacticalMousePoint(event.GetPosition());
     spell_map->scroller.Move(point.x, point.y);

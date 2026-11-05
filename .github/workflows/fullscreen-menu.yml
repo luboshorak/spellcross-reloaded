@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - 'spellcross-map-edit-main/source/tactical_zoom.h'
+      - 'spellcross-map-edit-main/source/display_settings.h'
+      - 'spellcross-map-edit-main/tests/test_display_settings.cpp'
       - 'spellcross-map-edit-main/source/map.cpp'
       - 'spellcross-map-edit-main/source/map.h'
       - 'spellcross-map-edit-main/source/runtime_diagnostics.h'
@@ -37,6 +39,12 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_tactical_zoom.cpp -o /tmp/spellcross-zoom-test
           /tmp/spellcross-zoom-test
+      - name: Verify persisted DPI settings, palette LUT and scaled hitboxes
+        run: |
+          c++ -std=c++17 -Wall -Wextra -pedantic $(wx-config --cxxflags) \
+            spellcross-map-edit-main/tests/test_display_settings.cpp \
+            $(wx-config --libs) -o /tmp/spellcross-display-test
+          /tmp/spellcross-display-test
       - name: Build and exercise menu across three windows
         run: |
           c++ -std=c++17 -Wall -Wextra -pedantic $(wx-config --cxxflags) \

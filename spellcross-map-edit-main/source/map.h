@@ -516,6 +516,7 @@ public:
 		// last gamma
 		double last_gamma;
 		double gamma;
+        std::uint64_t last_display_revision = 0;
 
 		//static constexpr int MAP_BACK_COLOR = 230; // map background color index
 		static constexpr int MAP_BACK_COLOR = 254; // map background color index
@@ -981,7 +982,7 @@ public:
 		tuple<int,int> GetMapSurfaceSize();
 		int isRenderSurfModified();
 		int CommitRenderSurfModified();		
-		int Render(wxBitmap &bmp, TScroll* scroll=NULL,SpellTool* tool=NULL,std::function<void(void)> hud_buttons_cb=NULL,int zoom_percent=100);
+		int Render(wxBitmap &bmp, TScroll* scroll=NULL,SpellTool* tool=NULL,std::function<void(void)> hud_buttons_cb=NULL,int zoom_percent=100,int display_scale_percent=100);
 		int GetRender(uint8_t* buf, int x_size, int y_size, int x_pos, int y_pos);
 		void SetDefaultRenderFilter(uint8_t* filter);
 		void SetRenderFilter(uint8_t* filter);

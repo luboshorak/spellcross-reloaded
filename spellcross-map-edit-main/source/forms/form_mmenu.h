@@ -6,6 +6,7 @@
 #include <wx/gdicmn.h>
 
 #include <array>
+#include <cstdint>
 
 #include <functional>
 #include <vector>
@@ -65,7 +66,10 @@ private:
     std::array<wxBitmap, 4> m_scaled_tutorial_hover;
     // Full, already scaled background + panel. Rebuilt only on resize or tutorial toggle.
     wxBitmap m_menu_cache;
+    wxBitmap m_display_menu_cache;
+    std::uint64_t m_display_menu_cache_revision = 0;
     bool m_menu_cache_tutorial = false;
+    bool m_menu_cache_smoothed = false;
     wxBitmap m_tutorial_panel;
     wxPoint m_tutorial_panel_pos;
     bool m_tutorial_visible = false;
