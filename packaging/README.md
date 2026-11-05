@@ -83,7 +83,7 @@ LICENSE-Reloaded.txt
 LICENSE-Map-Editor.txt
 ```
 
-When SFX generation is enabled, `setup/` also contains the installer icon and branding. `BUILD-INFO.txt` records the source commit, release label, numeric version and executable SHA-256. The packager excludes personal settings, saves and imported retail archives.
+When SFX generation is enabled, `setup/` also contains the installer icon and branding. `BUILD-INFO.txt` records the source commit, release label, numeric version, executable SHA-256 and packaged PDB SHA-256. The package also contains `symbols/Spellcross.pdb` so an unexpected Windows crash can be recorded with a source-level call stack in `crash-last.txt`, alongside `crash-last.dmp` and `debug.log`. Including the PDB increases package size; players do not need to send the EXE to report a crash. The packager excludes personal settings, saves and imported retail archives.
 
 Game and editor keep separate configurations. The editor's `Editor/data/COMMON.fs` contains editor resources; it is distinct from the original game's `COMMON.FS`.
 
