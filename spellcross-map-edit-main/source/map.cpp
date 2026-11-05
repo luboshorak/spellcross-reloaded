@@ -6563,19 +6563,54 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     if (!data)
         return 1;
     wxNativePixelData::Iterator p(data);
-    for (int y = 0; y < physical_height; ++y)
+    if (display_scale_percent == 125 && spellcross_display::UseSmoothScaling())
     {
-        uint8_t* scan = p.m_ptr;
-        const int sourceY = (y * 100) / display_scale_percent;
-        const uint8_t* source = &screen_pixels[static_cast<size_t>(sourceY) * screen_width];
+        // Interpolate palette-corrected RGB, not indexed palette IDs. Keep
+        // exactly the same logical canvas and HUD geometry as the sharp mode.
+        // Sampling is centered so no extra blur is introduced at 100%.
+        std::vector<spellcross_display::LinearSample> horizontal;
+        horizontal.reserve(physical_width);
         for (int x = 0; x < physical_width; ++x)
+            horizontal.push_back(spellcross_display::BilinearSample(x, 125, screen_width));
+
+        for (int y = 0; y < physical_height; ++y)
         {
-            const auto* rgb = pal[source[(x * 100) / display_scale_percent]];
-            *scan++ = rgb[2];
-            *scan++ = rgb[1];
-            *scan++ = rgb[0];
+            uint8_t* scan = p.m_ptr;
+            const auto vertical = spellcross_display::BilinearSample(y, 125, screen_height);
+            const uint8_t* row0 = screen_pixels.data() + static_cast<size_t>(vertical.first) * screen_width;
+            const uint8_t* row1 = screen_pixels.data() + static_cast<size_t>(vertical.second) * screen_width;
+            for (int x = 0; x < physical_width; ++x)
+            {
+                const auto& sample = horizontal[x];
+                const auto* p00 = pal[row0[sample.first]];
+                const auto* p10 = pal[row0[sample.second]];
+                const auto* p01 = pal[row1[sample.first]];
+                const auto* p11 = pal[row1[sample.second]];
+                for (int channel = 2; channel >= 0; --channel)
+                    *scan++ = spellcross_display::BlendBilinear(
+                        p00[channel], p10[channel], p01[channel], p11[channel],
+                        sample.weight, vertical.weight);
+            }
+            p.OffsetY(data, 1);
         }
-        p.OffsetY(data, 1);
+    }
+    else
+    {
+        // Original 100% and sharp 125% output stay byte-for-byte unchanged.
+        for (int y = 0; y < physical_height; ++y)
+        {
+            uint8_t* scan = p.m_ptr;
+            const int sourceY = (y * 100) / display_scale_percent;
+            const uint8_t* source = &screen_pixels[static_cast<size_t>(sourceY) * screen_width];
+            for (int x = 0; x < physical_width; ++x)
+            {
+                const auto* rgb = pal[source[(x * 100) / display_scale_percent]];
+                *scan++ = rgb[2];
+                *scan++ = rgb[1];
+                *scan++ = rgb[0];
+            }
+            p.OffsetY(data, 1);
+        }
     }
 
 
