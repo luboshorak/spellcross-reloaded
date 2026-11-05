@@ -5350,7 +5350,13 @@ void StrategicLevelFrame::OnOriginalStrategicPaint(wxPaintEvent&)
         static_cast<double>(client.x) / StrategicOriginalRenderer::kScreenW,
         static_cast<double>(client.y) / StrategicOriginalRenderer::kScreenH);
     if (scale >= 1.0)
-        scale = std::max(1.0, std::floor(scale));
+    {
+        // Keep pixel-art nearest scaling while allowing 125% presentation
+        // throughout the game, including the strategic and main-menu screens.
+        const double integerBase = std::max(1.0, std::floor(scale));
+        scale = std::min(scale, integerBase *
+            (spellcross_display::Current().scale_percent / 100.0));
+    }
 
     const int drawW = std::max(1, static_cast<int>(std::lround(StrategicOriginalRenderer::kScreenW * scale)));
     const int drawH = std::max(1, static_cast<int>(std::lround(StrategicOriginalRenderer::kScreenH * scale)));
