@@ -8,6 +8,8 @@ on:
       - 'spellcross-map-edit-main/source/display_settings.h'
       - 'spellcross-map-edit-main/tests/test_display_settings.cpp'
       - 'spellcross-map-edit-main/source/tactical_box_selection.h'
+      - 'spellcross-map-edit-main/source/tactical_edge_scroll.h'
+      - 'spellcross-map-edit-main/tests/test_tactical_edge_scroll.cpp'
       - 'spellcross-map-edit-main/source/map.cpp'
       - 'spellcross-map-edit-main/source/map.h'
       - 'spellcross-map-edit-main/source/runtime_diagnostics.h'
@@ -52,6 +54,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_tactical_box_selection.cpp -o /tmp/spellcross-box-selection-test
           /tmp/spellcross-box-selection-test
+      - name: Verify original-style edge scroll limits and HUD/zoom behavior
+        run: |
+          c++ -std=c++17 -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_tactical_edge_scroll.cpp -o /tmp/spellcross-edge-scroll-test
+          /tmp/spellcross-edge-scroll-test
       - name: Build and exercise menu across three windows
         run: |
           c++ -std=c++17 -Wall -Wextra -pedantic $(wx-config --cxxflags) \
@@ -93,6 +100,7 @@ jobs:
           $binary = Join-Path $env:RUNNER_TEMP 'spellcross-menu-test.exe'
           $zoomTest = Join-Path $env:RUNNER_TEMP 'spellcross-zoom-test.exe'
           $boxSelectionTest = Join-Path $env:RUNNER_TEMP 'spellcross-box-selection-test.exe'
+          $edgeScrollTest = Join-Path $env:RUNNER_TEMP 'spellcross-edge-scroll-test.exe'
           & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_zoom.cpp "/Fe:$zoomTest"
           if ($LASTEXITCODE -ne 0) { throw 'Zoom test compilation failed' }
           & $zoomTest
@@ -106,6 +114,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Box-selection test compilation failed' }
           & $boxSelectionTest
           if ($LASTEXITCODE -ne 0) { throw 'Box-selection test failed' }
+          & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_edge_scroll.cpp "/Fe:$edgeScrollTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Edge-scroll test compilation failed' }
+          & $edgeScrollTest
+          if ($LASTEXITCODE -ne 0) { throw 'Edge-scroll test failed' }
           $source = Join-Path $PWD 'spellcross-map-edit-main/source'
           foreach ($file in @('main.cpp', 'map.cpp', 'forms/form_level.cpp', 'forms/form_mmenu.cpp')) {
             $object = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileName($file) + '.obj')

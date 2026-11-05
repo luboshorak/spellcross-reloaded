@@ -5065,20 +5065,66 @@ void MainFrame::OnStrategicCutsceneClosed(wxCloseEvent& ev)
 static std::string FindLevelDefContainingMission(const std::string& missionStem,
     const SpellData* spellData);
 
+// Retail-style edge scroll is based on the pointer's position, not on mouse
+// capture or an RMB latch. It works in fullscreen and windowed mode alike.
+void MainFrame::TickTacticalEdgeScroll()
+{
+    if (!IsShown() || !IsActive() || !canvas || !canvas->IsShownOnScreen() ||
+        !spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode() ||
+        inSubForm() || m_mission_end_flow || m_mission_result_visible ||
+        m_boxSelectPending)
+        return;
+
+    // Never pan under a click, marquee selection, HUD interaction or a modal.
+    const wxMouseState state = wxGetMouseState();
+    if (state.LeftIsDown() || state.RightIsDown() || state.MiddleIsDown())
+        return;
+    const wxSize size = canvas->GetClientSize();
+    const wxPoint cursor = canvas->ScreenToClient(wxGetMousePosition());
+    if (size.x <= 0 || size.y <= 0)
+        return;
+
+    // GetHUDtop follows the original irregular HUD silhouette. Translate its
+    // logical y back to native canvas coordinates, including 125% display.
+    const int hud_top = spellcross_display::ToDevice(
+        spell_map->GetHUDtop(spellcross_display::ToLogical(cursor.x)));
+    const auto direction = spellcross_tactical::EdgeScrollAt(
+        cursor.x, cursor.y, size.x, size.y, hud_top, FromDIP(24));
+    if (!direction.x && !direction.y)
+        return;
+
+    constexpr auto interval = std::chrono::milliseconds(25);
+    const auto now = std::chrono::steady_clock::now();
+    if (now - m_lastEdgeScroll < interval)
+        return;
+    m_lastEdgeScroll = now;
+
+    const int delta = spellcross_tactical::EdgeScrollStep(
+        TacticalZoomPercent(), spellcross_display::Current().scale_percent);
+    const auto [before_x, before_y] = spell_map->scroller.GetScroll();
+    spell_map->scroller.SetPos(before_x + direction.x * delta,
+        before_y + direction.y * delta);
+    const wxPoint logical_cursor = TacticalMousePoint(cursor);
+    spell_map->scroller.Move(logical_cursor.x, logical_cursor.y);
+    // The existing renderer owns camera bounds (and handles small maps).
+    // Reuse it instead of inventing new limits for zoomed viewports.
+    spell_map->RenderPrepare();
+    const auto [after_x, after_y] = spell_map->scroller.GetScroll();
+    if (after_x != before_x || after_y != before_y)
+        canvas->Refresh();
+}
+
 // map animation periodic refresh tick
 void MainFrame::OnTimer(wxTimerEvent& event)
 {
-    // Recover after a lost mouse-up in native fullscreen even if no new
-    // cursor event arrives. Thirty 10ms ticks avoid racing normal wx events.
-    if (m_boxSelectPending || m_rightPressActive)
+    // Only LMB marquee selection captures the mouse. Recover its rare lost
+    // release without reviving the removed right-button camera-drag mode.
+    if (m_boxSelectPending)
     {
-        const wxMouseState mouse = wxGetMouseState();
-        if (spellcross_tactical::HasOrphanedPointerGesture(
-            m_boxSelectPending, m_rightPressActive,
-            mouse.LeftIsDown(), mouse.RightIsDown()))
+        if (!wxGetMouseState().LeftIsDown())
         {
             if (++m_orphanedPointerTicks >= 30)
-                ResetTransientTacticalPointerState("missing-button-up-watchdog");
+                ResetTransientTacticalPointerState("missing-left-button-up-watchdog");
         }
         else
             m_orphanedPointerTicks = 0;
@@ -5098,15 +5144,14 @@ void MainFrame::OnTimer(wxTimerEvent& event)
             const auto mission = std::filesystem::path(spell_map->map_path).filename().string();
             spellcross_diag::Log(spellcross_diag::Level::Info, "HEARTBEAT",
                 "map=%s units=%llu enemy_phase=%d deployment=%d mission_end=%d"
-                " fullscreen=%d focus_canvas=%d mouse_capture=%d box_pending=%d right_drag=%d",
+                " fullscreen=%d focus_canvas=%d mouse_capture=%d box_pending=%d edge_scroll=1",
                 mission.c_str(), static_cast<unsigned long long>(spell_map->units.size()),
                 static_cast<int>(spell_map->IsEnemyTurnRunning()),
                 static_cast<int>(m_deployment_active), static_cast<int>(m_mission_end_flow),
                 static_cast<int>(IsFullScreen()),
                 static_cast<int>(canvas && wxWindow::FindFocus() == canvas),
                 static_cast<int>(canvas && canvas->HasCapture()),
-                static_cast<int>(m_boxSelectPending),
-                static_cast<int>(m_rightPressActive));
+                static_cast<int>(m_boxSelectPending));
         }
     }
     // The tactical controller stays alive under the independent main menu and
@@ -5115,6 +5160,8 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     // and could advance live tactical state while the player is elsewhere.
     if (!IsShown() || !spell_map || !spell_map->IsLoaded())
         return;
+
+    TickTacticalEdgeScroll();
 
     // Mission-end presentation must never be painted underneath a tactical
     // FormMsgBox/video.  Once that window is gone, reveal the native result
@@ -6183,25 +6230,19 @@ void MainFrame::OnViewMiniMap(wxCommandEvent& event)
 // --- scrolling control ---
 void MainFrame::ResetTransientTacticalPointerState(const char* reason)
 {
-    const bool box = m_boxSelectPending;
-    const bool right = m_rightPressActive;
-    if (!box && !right)
+    if (!m_boxSelectPending)
         return;
-    const bool capture = canvas && canvas->HasCapture();
+    const bool captured = canvas && canvas->HasCapture();
     spellcross_diag::Log(spellcross_diag::Level::Warning, "INPUT",
-        "Recovered stale pointer state reason=%s box_pending=%d right_pressed=%d"
-        " right_dragged=%d captured=%d fullscreen=%d",
-        reason ? reason : "unknown", static_cast<int>(box), static_cast<int>(right),
-        static_cast<int>(m_rightDragged), static_cast<int>(capture),
+        "Recovered interrupted left-button box selection reason=%s captured=%d fullscreen=%d",
+        reason ? reason : "unknown", static_cast<int>(captured),
         static_cast<int>(IsFullScreen()));
 
-    // Clear state before ReleaseMouse: native callbacks may re-enter.
+    // Drop our flags before releasing capture: Windows can re-enter callbacks.
     m_boxSelectPending = false;
     m_boxSelecting = false;
-    m_rightPressActive = false;
-    m_rightDragged = false;
     m_orphanedPointerTicks = 0;
-    if (box && capture)
+    if (captured)
         canvas->ReleaseMouse();
     if (spell_map && spell_map->IsLoaded())
         spell_map->scroller.Idle();
@@ -6211,48 +6252,23 @@ void MainFrame::ResetTransientTacticalPointerState(const char* reason)
 
 void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
 {
-	if (m_boxSelectPending)
-	{
-		ResetBoxSelectionGesture();
-		if (canvas) canvas->Refresh();
-	}
+    if (m_boxSelectPending)
+        ResetBoxSelectionGesture();
     if (m_tutorial_stage == 1 && m_tutorial_command == 4 && event.RightUp())
         m_tutorial_pressed_rmb = true;
-    if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
-    const auto point = TacticalMousePoint(event.GetPosition());
-    if (event.RightDown())
+    if (!event.RightUp() || !spell_map || !spell_map->IsLoaded() || inUnitOptions())
+        return;
+
+    // Original control: RMB only cancels a selected group. No more camera
+    // dragging or temporary movement overlay tied to mouse button state.
+    spell_map->scroller.Idle();
+    spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
+    if (spell_map->isGameMode() && spell_map->IsGroupMode())
     {
-        // A second press proves the first release event was lost.
-        if (m_rightPressActive)
-            ResetTransientTacticalPointerState("new-right-down-before-right-up");
-        m_rightPressActive = true;
-        m_rightDragged = false;
-        m_rightPressStart = event.GetPosition();
-        spell_map->scroller.SetRef(point.x, point.y);
+        spell_map->SetActiveGroup(0);
+        spellcross_diag::Log(spellcross_diag::Level::Info, "INPUT",
+            "Right-click cancelled tactical group; edge-scrolling remains available");
     }
-    else if (event.RightUp())
-    {
-        // TScroll::Move sets 'moved' for any cursor motion, even one pixel.
-        // A tiny hand jitter must not leave group mode active (which disables
-        // single-unit shooting). Only a real RMB drag should pan the map.
-        spell_map->scroller.Idle();
-        const bool is_click = m_rightPressActive &&
-            spellcross_tactical::IsGroupCancelRightClick(
-                m_rightPressStart.x, m_rightPressStart.y,
-                event.GetX(), event.GetY(), m_rightDragged, FromDIP(6));
-        m_rightPressActive = false;
-        m_rightDragged = false;
-        if (is_click && spell_map->isGameMode() && spell_map->IsGroupMode())
-        {
-            spell_map->SetActiveGroup(0);
-            if (canvas) canvas->Refresh();
-            return;
-        }
-    }
-    // During deployment RMB is only map scrolling, never a tactical
-    // move-range/attack command.
-    spell_map->SetUnitRangeViewMode((!m_deployment_active && event.RightIsDown())
-        ? SpellMap::UNIT_RANGE_MOVE : SpellMap::UNIT_RANGE_NONE);
     if (canvas) canvas->Refresh();
 }
 
@@ -6292,9 +6308,8 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     }
 	if (!event.LeftDown())
 		return;
-    if (m_boxSelectPending ||
-        (m_rightPressActive && !event.RightIsDown()))
-        ResetTransientTacticalPointerState("new-left-down-with-stale-gesture");
+    if (m_boxSelectPending)
+        ResetTransientTacticalPointerState("new-left-down-with-stale-selection");
 	const bool can_box_select = spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
 		spell_map->IsBoxSelectionEnabled() &&
 		!inSubForm() && !m_deployment_active && !m_inspectUnit &&
@@ -6505,16 +6520,8 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
-    // Do not cancel on the first motion with the button reported up:
-    // the matching wxEVT_*_UP may still be in flight (and a valid RMB
-    // click must be allowed to deselect a group). The timer watchdog or
-    // a subsequent new button-down detects a genuinely lost release.
-    if (m_rightPressActive && event.RightIsDown() && !m_rightDragged)
-    {
-        m_rightDragged = spellcross_tactical::IsSelectionDrag(
-            m_rightPressStart.x, m_rightPressStart.y,
-            event.GetX(), event.GetY(), FromDIP(6));
-    }
+    // Marquee selection remains controlled solely by the left mouse button.
+    // The pointer-edge camera does not change its capture or drag behavior.
 	if (m_boxSelectPending && event.LeftIsDown())
 	{
 		m_boxSelectCurrent = event.GetPosition();
@@ -6607,8 +6614,6 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
     spell_map->RenderPrepare();
     const auto point = TacticalMousePoint(event.GetPosition());
     spell_map->scroller.Move(point.x, point.y);
-    if (event.RightIsDown())
-        spell_map->scroller.SetRef(point.x, point.y);
     spell_map->InvalidateHUDbuttons();
     canvas->Refresh();
 }
