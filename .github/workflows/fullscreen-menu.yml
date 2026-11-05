@@ -16,6 +16,7 @@ on:
       - 'spellcross-map-edit-main/tests/test_tactical_box_selection.cpp'
       - 'spellcross-map-edit-main/source/game_menu_bar.h'
       - 'spellcross-map-edit-main/source/game_audio_settings.h'
+      - 'spellcross-map-edit-main/source/game_dialogs.h'
       - 'spellcross-map-edit-main/source/display_settings.h'
       - 'spellcross-map-edit-main/source/game_controls.h'
       - 'spellcross-map-edit-main/source/forms/form_about.cpp'
