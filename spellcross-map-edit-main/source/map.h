@@ -1030,6 +1030,16 @@ public:
 		bool IsBoxGroupMode() const { return box_group_active; }
 		bool IsUnitInActiveGroup(const MapUnit* u) const;
 		bool IsActiveGroupMoving() const { return group_move_active; }
+        // Read-only diagnostics: distinguish a stale group selection from an
+        // ongoing AI, morale or reaction-fire phase blocking player commands.
+        const char* GetTacticalInputBlockReason() const
+        {
+            if (enemy_turn_running) return "enemy_turn";
+            if (panic_turn_running) return "panic_turn";
+            if (reaction_fire_active) return "reaction_fire";
+            if (!reaction_fire_queue.empty()) return "reaction_queue";
+            return "none";
+        }
 		void CancelActiveGroupMovement();
 		void AddAllUnitsToActiveGroup();
 		MapUnit* GetGroupCursorUnit(bool air_only, TScroll* scroll = NULL);
