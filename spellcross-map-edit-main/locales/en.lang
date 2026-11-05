@@ -241,3 +241,12 @@ help.key.strategic_save=Ctrl+S / Ctrl+L
 help.action.strategic_save=Save or load a strategic game. On the opening screen, Continue resumes the last automatic exit save.
 help.close=Close
 menu.controls=&Controls
+
+# Display preferences (same dialog in main menu, tactical and strategic windows)
+screen.title=Screen
+screen.dpi=Game scale (DPI)
+screen.scale.original=100% – original pixels
+screen.scale.enlarged=125% – enlarged, sharp
+screen.brightness=Brightness (%)
+screen.gamma=Gamma (×100)
+screen.temperature=Color temperature (K)
