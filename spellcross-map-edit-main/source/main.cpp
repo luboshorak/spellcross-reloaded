@@ -3393,6 +3393,9 @@ void MainFrame::RequestApplicationExit(const char* source)
     }
 
     m_applicationExitInProgress = true;
+    // No tactical animation may advance during teardown, especially when
+    // user explicitly exits an unfinished combat/action without saving.
+    m_timer.Stop();
     spellcross_diag::Log(spellcross_diag::Level::Info, "SHUTDOWN",
         "Normal exit requested, Continue snapshot %s",
         quitWithoutSaving ? "intentionally skipped by user" : "completed");
