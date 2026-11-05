@@ -173,6 +173,11 @@ private:
     bool m_rangeAttackKeyDown = false;
 	bool m_boxSelectPending = false;
 	bool m_boxSelecting = false;
+    // Distinguish right-click group cancellation from an actual map drag.
+    // TScroll::Move sets its generic 'moved' flag even for tiny cursor jitter.
+    bool m_rightPressActive = false;
+    bool m_rightDragged = false;
+    wxPoint m_rightPressStart;
 	wxPoint m_boxSelectStart;
 	wxPoint m_boxSelectCurrent;
 

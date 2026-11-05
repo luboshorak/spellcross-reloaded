@@ -7587,8 +7587,26 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 // reset AP of all units
 
 // --- EN original group movement ---
+// The range cache can belong to a previous AI/group mover when a group is
+// cancelled. Refresh it before accepting the next individual player command.
+void SpellMap::RefreshIndividualUnitControls()
+{
+    if (!isGameMode())
+        return;
+    unit_selection_mod = true;
+    g_move_range_dirty_for = unit_selection;
+    g_attack_map_dirty_for = unit_selection;
+    InvalidateHUDbuttons();
+    spellcross_diag::Log(spellcross_diag::Level::Info, "CONTROL",
+        "Individual controls restored unit=%d ap=%d attacks=%d",
+        unit_selection ? unit_selection->id : -1,
+        unit_selection ? unit_selection->action_points : -1,
+        unit_selection ? unit_selection->GetFireCount() : -1);
+}
+
 void SpellMap::SetActiveGroup(int g)
 {
+    const bool was_group_mode = IsGroupMode();
 	if (g < 0 || g > 8)
 		g = 0;
 
@@ -7604,10 +7622,15 @@ void SpellMap::SetActiveGroup(int g)
 	box_group_active = false;
 	box_group_units.clear();
 	active_group = g;
+    if (was_group_mode && !IsGroupMode())
+        RefreshIndividualUnitControls();
+    spellcross_diag::Log(spellcross_diag::Level::Info, "CONTROL",
+        "Group selection now slot=%d box=%d", active_group, static_cast<int>(box_group_active));
 }
 
 void SpellMap::SetBoxSelectionEnabled(bool enabled)
 {
+    const bool was_group_mode = IsGroupMode();
 	if (box_selection_enabled == enabled)
 		return;
 
@@ -7619,6 +7642,8 @@ void SpellMap::SetBoxSelectionEnabled(bool enabled)
 		box_group_active = false;
 		box_group_units.clear();
 	}
+    if (was_group_mode && !IsGroupMode())
+        RefreshIndividualUnitControls();
 }
 
 const std::vector<int>* SpellMap::ActiveGroupUnits() const
@@ -7640,6 +7665,7 @@ bool SpellMap::IsUnitInActiveGroup(const MapUnit* u) const
 
 int SpellMap::SelectUnitsInScreenRect(const spellcross_tactical::SelectionRect& rect)
 {
+    const bool was_group_mode = IsGroupMode();
 	// Marquee selection is an experimental player command. Never let it take
 	// control away from another tactical state machine or an in-progress move.
 	if (!box_selection_enabled || !isGameMode() || deployment_mode || enemy_turn_running || panic_turn_running ||
@@ -7681,6 +7707,8 @@ int SpellMap::SelectUnitsInScreenRect(const spellcross_tactical::SelectionRect& 
 	std::sort(box_group_units.begin(), box_group_units.end());
 	box_group_units.erase(std::unique(box_group_units.begin(), box_group_units.end()), box_group_units.end());
 	box_group_active = !box_group_units.empty();
+    if (was_group_mode && !IsGroupMode())
+        RefreshIndividualUnitControls();
 	return static_cast<int>(box_group_units.size());
 }
 
@@ -7854,6 +7882,9 @@ bool SpellMap::StartNextGroupMove()
 		unit_selection_mod = true;
 		g_attack_map_dirty_for = u;
 		group_move_unit_id = u->id;
+        // First solo click after group exit must not use this unit's old
+        // range result (or the previous group member's range result).
+        g_move_range_dirty_for = u;
 		InvalidateHUDbuttons();
 		ReleaseMap();
 		return true;
@@ -7900,7 +7931,11 @@ void SpellMap::ToggleUnitInActiveGroup(MapUnit* u)
 	{
 		v.erase(it);
 		if (box_group_active && v.empty())
+        {
 			box_group_active = false;
+            if (!IsGroupMode())
+                RefreshIndividualUnitControls();
+        }
 		return;
 	}
 
