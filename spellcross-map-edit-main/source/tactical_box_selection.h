@@ -36,4 +36,21 @@ namespace spellcross_tactical
         return std::abs(x2 - x1) >= threshold || std::abs(y2 - y1) >= threshold;
     }
 
+    // Unlike TScroll::moved, this measures a real mouse gesture. Ignore
+    // single-pixel jitter on RMB release, while retaining a sticky drag flag
+    // if the player dragged and returned to the starting point.
+    inline bool IsGroupCancelRightClick(int x1, int y1, int x2, int y2,
+        bool dragged_during_press, int threshold)
+    {
+        return !dragged_during_press && !IsSelectionDrag(x1, y1, x2, y2, threshold);
+    }
+
+    // A missing mouse-up event can leave a fullscreen drag or selection
+    // latched even though the physical mouse button is no longer pressed.
+    inline bool HasOrphanedPointerGesture(bool box_pending, bool right_press_active,
+        bool left_button_down, bool right_button_down)
+    {
+        return (box_pending && !left_button_down) ||
+            (right_press_active && !right_button_down);
+    }
 }
