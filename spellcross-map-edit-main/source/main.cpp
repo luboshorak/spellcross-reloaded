@@ -2927,12 +2927,27 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     canvas->Bind(wxEVT_ENTER_WINDOW,&MainFrame::OnCanvasMouseEnter,this);
     canvas->Bind(wxEVT_MOUSEWHEEL,&MainFrame::OnCanvasMouseWheel,this);
 	canvas->Bind(wxEVT_MOUSE_CAPTURE_LOST,&MainFrame::OnCanvasMouseCaptureLost,this);
+    // Fullscreen/window transitions may drop mouse-up messages. Clean up
+    // transient gestures, not the player's selection or turn state.
+    canvas->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& event) {
+        ResetTransientTacticalPointerState("canvas-focus-lost");
+        event.Skip();
+    });
+    canvas->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+        ResetTransientTacticalPointerState("canvas-resized");
+        event.Skip();
+    });
     canvas->Bind(wxEVT_KEY_DOWN,&MainFrame::OnCanvasKeyDown,this);
     canvas->Bind(wxEVT_KEY_UP,&MainFrame::OnCanvasKeyUp,this);
     canvas->Bind(wxEVT_LEFT_DOWN,&MainFrame::OnCanvasLMouseDown,this);
 	canvas->Bind(wxEVT_LEFT_UP,&MainFrame::OnCanvasLMouseUp,this);
     //canvas->Bind(wxEVT_LEFT_DCLICK,&MainFrame::OnCanvasLMouseDown,this);
     canvas->Bind(wxEVT_THREAD,&MainFrame::OnThreadCanvas,this);
+    Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
+        if (!event.GetActive())
+            ResetTransientTacticalPointerState("frame-deactivated");
+        event.Skip();
+    });
     
 
     this->SetSizer(sizer);    
@@ -4995,6 +5010,24 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
 // map animation periodic refresh tick
 void MainFrame::OnTimer(wxTimerEvent& event)
 {
+    // Recover after a lost mouse-up in native fullscreen even if no new
+    // cursor event arrives. Thirty 10ms ticks avoid racing normal wx events.
+    if (m_boxSelectPending || m_rightPressActive)
+    {
+        const wxMouseState mouse = wxGetMouseState();
+        if (spellcross_tactical::HasOrphanedPointerGesture(
+            m_boxSelectPending, m_rightPressActive,
+            mouse.LeftIsDown(), mouse.RightIsDown()))
+        {
+            if (++m_orphanedPointerTicks >= 30)
+                ResetTransientTacticalPointerState("missing-button-up-watchdog");
+        }
+        else
+            m_orphanedPointerTicks = 0;
+    }
+    else
+        m_orphanedPointerTicks = 0;
+
     // One breadcrumb per minute, not one per 10ms timer/frame. This is also
     // a useful final marker when a player reports an intermittent hang.
     static auto next_heartbeat = std::chrono::steady_clock::now();
@@ -6084,6 +6117,34 @@ void MainFrame::OnViewMiniMap(wxCommandEvent& event)
 
 
 // --- scrolling control ---
+void MainFrame::ResetTransientTacticalPointerState(const char* reason)
+{
+    const bool box = m_boxSelectPending;
+    const bool right = m_rightPressActive;
+    if (!box && !right)
+        return;
+    const bool capture = canvas && canvas->HasCapture();
+    spellcross_diag::Log(spellcross_diag::Level::Warning, "INPUT",
+        "Recovered stale pointer state reason=%s box_pending=%d right_pressed=%d"
+        " right_dragged=%d captured=%d fullscreen=%d",
+        reason ? reason : "unknown", static_cast<int>(box), static_cast<int>(right),
+        static_cast<int>(m_rightDragged), static_cast<int>(capture),
+        static_cast<int>(IsFullScreen()));
+
+    // Clear state before ReleaseMouse: native callbacks may re-enter.
+    m_boxSelectPending = false;
+    m_boxSelecting = false;
+    m_rightPressActive = false;
+    m_rightDragged = false;
+    m_orphanedPointerTicks = 0;
+    if (box && capture)
+        canvas->ReleaseMouse();
+    if (spell_map && spell_map->IsLoaded())
+        spell_map->scroller.Idle();
+    if (canvas)
+        canvas->Refresh();
+}
+
 void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
 {
 	if (m_boxSelectPending)
@@ -6097,6 +6158,9 @@ void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
     const auto point = TacticalMousePoint(event.GetPosition());
     if (event.RightDown())
     {
+        // A second press proves the first release event was lost.
+        if (m_rightPressActive)
+            ResetTransientTacticalPointerState("new-right-down-before-right-up");
         m_rightPressActive = true;
         m_rightDragged = false;
         m_rightPressStart = event.GetPosition();
@@ -6164,6 +6228,9 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     }
 	if (!event.LeftDown())
 		return;
+    if (m_boxSelectPending ||
+        (m_rightPressActive && !event.RightIsDown()))
+        ResetTransientTacticalPointerState("new-left-down-with-stale-gesture");
 	const bool can_box_select = spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
 		spell_map->IsBoxSelectionEnabled() &&
 		!inSubForm() && !m_deployment_active && !m_inspectUnit &&
@@ -6351,11 +6418,9 @@ void MainFrame::OnCanvasMouseEnter(wxMouseEvent& event)
 
 void MainFrame::OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent&)
 {
-	m_boxSelectPending = false;
-	m_boxSelecting = false;
-    m_rightPressActive = false;
-    m_rightDragged = false;
-	if (canvas) canvas->Refresh();
+    ResetTransientTacticalPointerState("native-mouse-capture-lost");
+    if (spell_map && spell_map->IsLoaded())
+        spell_map->scroller.Idle();
 }
 // on canvas mouse leave
 void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
@@ -6374,6 +6439,10 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
+    if (spellcross_tactical::HasOrphanedPointerGesture(
+        m_boxSelectPending, m_rightPressActive,
+        event.LeftIsDown(), event.RightIsDown()))
+        ResetTransientTacticalPointerState("mouse-moved-after-missing-button-up");
     if (m_rightPressActive && event.RightIsDown() && !m_rightDragged)
     {
         m_rightDragged = spellcross_tactical::IsSelectionDrag(
