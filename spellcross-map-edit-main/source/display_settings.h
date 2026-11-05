@@ -17,7 +17,8 @@ namespace spellcross_display
 {
     struct Settings
     {
-        int scale_percent = 125;   // 100% original / 125% enlarged, nearest pixel
+        int scale_percent = 125;   // 100% original / 125% enlarged
+        bool smooth_scaling = false; // bilinear 125% mode, default stays sharp
         int brightness = 100;      // linear multiplier, 50..150 percent
         double gamma = 1.3;        // original Spellcross default, 0.5..2.0
         int temperature = 6500;    // neutral daylight, 3500..9500 kelvin
@@ -26,6 +27,9 @@ namespace spellcross_display
     inline Settings Normalize(Settings s)
     {
         s.scale_percent = (s.scale_percent == 100) ? 100 : 125;
+        // Native 100% output must never be filtered.
+        if (s.scale_percent == 100)
+            s.smooth_scaling = false;
         s.brightness = std::clamp(s.brightness, 50, 150);
         s.gamma = std::isfinite(s.gamma) ? std::clamp(s.gamma, 0.5, 2.0) : 1.3;
         s.temperature = std::clamp(s.temperature, 3500, 9500);
@@ -53,11 +57,58 @@ namespace spellcross_display
     {
         s = Normalize(s);
         auto& old = MutableSettings();
-        if (old.scale_percent == s.scale_percent && old.brightness == s.brightness &&
+        if (old.scale_percent == s.scale_percent &&
+            old.smooth_scaling == s.smooth_scaling && old.brightness == s.brightness &&
             old.gamma == s.gamma && old.temperature == s.temperature)
             return;
         old = s;
         ++MutableRevision();
+    }
+
+    inline bool UseSmoothScaling()
+    {
+        const auto& s = Current();
+        return s.scale_percent == 125 && s.smooth_scaling;
+    }
+
+    inline wxImageResizeQuality ResizeQuality()
+    {
+        return UseSmoothScaling() ? wxIMAGE_QUALITY_BILINEAR : wxIMAGE_QUALITY_NEAREST;
+    }
+
+    // Centered source sampling used by the 125% bilinear tactical conversion.
+    // Coordinates are clamped to prevent reading outside the logical surface.
+    struct LinearSample
+    {
+        int first;
+        int second;
+        int weight; // 0..256, fraction of second pixel
+    };
+
+    inline LinearSample BilinearSample(int target, int scale, int sourceSize)
+    {
+        if (sourceSize <= 1)
+            return {0, 0, 0};
+        const std::int64_t numerator =
+            (2LL * target + 1) * 100 - scale;
+        const std::int64_t denominator = 2LL * scale;
+        if (numerator <= 0)
+            return {0, 0, 0};
+        const std::int64_t fixed = (numerator * 256 + denominator / 2) / denominator;
+        if (fixed >= 256LL * (sourceSize - 1))
+            return {sourceSize - 1, sourceSize - 1, 0};
+        const int first = static_cast<int>(fixed / 256);
+        return {first, first + 1, static_cast<int>(fixed % 256)};
+    }
+
+    inline unsigned char BlendBilinear(unsigned char a, unsigned char b,
+                                      unsigned char c, unsigned char d,
+                                      int fx, int fy)
+    {
+        const int top = a * (256 - fx) + b * fx;
+        const int bottom = c * (256 - fx) + d * fx;
+        return static_cast<unsigned char>((top * (256 - fy) +
+            bottom * fy + 32768) / 65536);
     }
 
     inline void SetGamma(double gamma)
@@ -178,7 +229,8 @@ namespace spellcross_display
         auto* scale = new wxChoice(&dlg, wxID_ANY);
         scale->Append(spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"));
         scale->Append(spellcross_ui_locale::Tr("screen.scale.enlarged", "125% - enlarged / sharp"));
-        scale->SetSelection(original.scale_percent == 100 ? 0 : 1);
+        scale->Append(spellcross_ui_locale::Tr("screen.scale.smooth", "125% - enlarged / smoothed"));
+        scale->SetSelection(original.scale_percent == 100 ? 0 : (original.smooth_scaling ? 2 : 1));
         root->Add(scale, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
         addLabel(spellcross_ui_locale::Tr("screen.brightness", "Brightness (%)"));
@@ -203,6 +255,7 @@ namespace spellcross_display
         const auto apply = [&]() {
             Settings next;
             next.scale_percent = scale->GetSelection() == 0 ? 100 : 125;
+            next.smooth_scaling = scale->GetSelection() == 2;
             next.brightness = brightness->GetValue();
             next.gamma = gamma->GetValue() / 100.0;
             next.temperature = temp->GetValue();
