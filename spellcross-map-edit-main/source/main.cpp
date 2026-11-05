@@ -59,6 +59,7 @@
 #include "spellcross.h"
 #include "spell_ui_locale.h"
 #include "map.h"
+#include "runtime_diagnostics.h"
 
 #include "level.h"
 #include <wx/filedlg.h>
@@ -1893,6 +1894,10 @@ static wxString BuildSpellcrossWindowTitle(SpellMap* map);
 
 bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vector<LevelData::PlayerUnitAdd>& player_units)
 {
+    const auto map_name = std::filesystem::path(def_path).filename().string();
+    spellcross_diag::Log(spellcross_diag::Level::Info, "MAP",
+        "Loading mission=%s deployed_companies=%llu", map_name.c_str(),
+        static_cast<unsigned long long>(player_units.size()));
     if (!spell_map || !spell_data)
         return false;
 
@@ -1903,6 +1908,8 @@ bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vect
     wstring path = def_path;
     if (spell_map->Load(path, spell_data))
     {
+        spellcross_diag::Log(spellcross_diag::Level::Error, "MAP",
+            "Loading failed mission=%s reason=%s", map_name.c_str(), spell_map->GetLastError().c_str());
         wxMessageBox(string_format("Loading Spellcross map file failed with error:\n%s", spell_map->GetLastError().c_str()), "Error", wxOK | wxICON_ERROR, this);
         return false;
     }
@@ -2265,6 +2272,10 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
 void MainFrame::StartTacticalGame()
 {
     if (!spell_map || !spell_map->IsLoaded()) return;
+    const auto mission = std::filesystem::path(spell_map->map_path).filename().string();
+    spellcross_diag::Log(spellcross_diag::Level::Info, "TACTICAL",
+        "Mission start map=%s units=%llu", mission.c_str(),
+        static_cast<unsigned long long>(spell_map->units.size()));
     spell_map->SetGameMode(1);
     if (spell_map->saves) spell_map->saves->Clear(spell_map->GetTacticalSaveLimit());
     if (spell_map->events) spell_map->events->ResetEvents();
@@ -2599,6 +2610,9 @@ bool MyApp::OnInit()
         return false;
     }
 
+    spellcross_diag::Initialize(runtime_root, SPELLCROSS_VERSION_STRING);
+    spellcross_diag::Log(spellcross_diag::Level::Info, "STARTUP",
+        "Runtime initialized; working directory and game source resolver ready");
     config_path = FindConfigPath(executable_dir, runtime_root, startup_dir).wstring();
 
     // Empty/missing config.ini is valid for a fresh release. Load it when it
@@ -3220,8 +3234,15 @@ bool MainFrame::SaveContinueGame()
         : SaveTacticalGameWithCampaignContext(temporary.wstring());
     if (saved && MoveFileExW(temporary.c_str(), path.c_str(),
             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    {
+        spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE",
+            "Continue snapshot committed; mode=%s", strategic ? "strategic" : "tactical");
         return true;
+    }
 
+    spellcross_diag::Log(spellcross_diag::Level::Error, "SAVE",
+        "Could not commit Continue snapshot; mode=%s error=%lu",
+        strategic ? "strategic" : "tactical", static_cast<unsigned long>(GetLastError()));
     fs::remove(temporary, ec);
     return false;
 }
@@ -3229,6 +3250,7 @@ bool MainFrame::SaveContinueGame()
 bool MainFrame::LoadContinueGame()
 {
     const auto path = ContinueSavePath();
+    spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE", "Continue requested");
     std::ifstream input(path, std::ios::binary);
     std::string opening, format;
     if (!std::getline(input, opening) || !std::getline(input, format))
@@ -3236,10 +3258,20 @@ bool MainFrame::LoadContinueGame()
     input.close();
 
     if (format.find("spellcross_map_editor_save") == std::string::npos)
-        return OpenStrategicSaveGame(path);
+    {
+        const bool ok = OpenStrategicSaveGame(path);
+        spellcross_diag::Log(ok ? spellcross_diag::Level::Info : spellcross_diag::Level::Error,
+            "SAVE", "Continue strategic load success=%d", static_cast<int>(ok));
+        return ok;
+    }
     if (!LoadTacticalGameWithCampaignContext(path.wstring()))
+    {
+        spellcross_diag::Log(spellcross_diag::Level::Error, "SAVE",
+            "Continue tactical load failed");
         return false;
+    }
 
+    spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE", "Continue tactical load succeeded");
     ShowTacticalWindow();
     return true;
 }
@@ -3281,6 +3313,8 @@ void MainFrame::RequestApplicationExit()
     }
 
     m_applicationExitInProgress = true;
+    spellcross_diag::Log(spellcross_diag::Level::Info, "SHUTDOWN",
+        "Normal exit requested, Continue save completed");
     wxLogDebug("[SHUTDOWN] beginning application shutdown");
 
     // The restored main menu and strategic screen intentionally live as
@@ -3352,6 +3386,7 @@ void MainFrame::RequestApplicationExit()
     // The restoration uses several independently-owned top-level frames and a
     // deferred Destroy() can otherwise leave the GUI loop alive with no visible
     // window.  Explicitly end the loop after all teardown requests are queued.
+    spellcross_diag::CleanExit();
     if (wxTheApp)
         wxTheApp->ExitMainLoop();
 }
@@ -4935,6 +4970,23 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
 // map animation periodic refresh tick
 void MainFrame::OnTimer(wxTimerEvent& event)
 {
+    // One breadcrumb per minute, not one per 10ms timer/frame. This is also
+    // a useful final marker when a player reports an intermittent hang.
+    static auto next_heartbeat = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= next_heartbeat)
+    {
+        next_heartbeat = now + std::chrono::minutes(1);
+        if (spell_map && spell_map->IsLoaded() && IsShown())
+        {
+            const auto mission = std::filesystem::path(spell_map->map_path).filename().string();
+            spellcross_diag::Log(spellcross_diag::Level::Info, "HEARTBEAT",
+                "map=%s units=%llu enemy_phase=%d deployment=%d mission_end=%d",
+                mission.c_str(), static_cast<unsigned long long>(spell_map->units.size()),
+                static_cast<int>(spell_map->IsEnemyTurnRunning()),
+                static_cast<int>(m_deployment_active), static_cast<int>(m_mission_end_flow));
+        }
+    }
     // The tactical controller stays alive under the independent main menu and
     // strategic frame. Never tick the hidden battlefield: Tick() would start
     // its ambient loops (including the last_map restored on application startup)
@@ -4990,8 +5042,23 @@ void MainFrame::OnTimer(wxTimerEvent& event)
             return;
     }
 
-    if (spell_map->Tick())
-        canvas->Refresh();
+    try
+    {
+        if (spell_map->Tick())
+            canvas->Refresh();
+    }
+    catch (const std::exception& ex)
+    {
+        spellcross_diag::Log(spellcross_diag::Level::Error, "TACTICAL",
+            "Exception during tactical Tick: %s", ex.what());
+        throw;
+    }
+    catch (...)
+    {
+        spellcross_diag::Log(spellcross_diag::Level::Error, "TACTICAL",
+            "Unknown exception during tactical Tick");
+        throw;
+    }
 
     // Mission-end flow (po ticku)
     // Note: do NOT require isGameMode() here — game mode may already be off
@@ -5001,6 +5068,8 @@ void MainFrame::OnTimer(wxTimerEvent& event)
         SpellMap::MissionEndRequest req;
         if (spell_map->ConsumeMissionEndRequest(req))
         {
+            spellcross_diag::Log(spellcross_diag::Level::Info, "TACTICAL",
+                "Mission result latched; success=%d", static_cast<int>(req.success));
             m_mission_end_flow = true;
             m_mission_end_req = req;
 
