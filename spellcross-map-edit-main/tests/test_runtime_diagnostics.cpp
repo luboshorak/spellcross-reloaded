@@ -125,7 +125,7 @@ int main()
     const std::string completeLog((std::istreambuf_iterator<char>(updatedLog)),
         std::istreambuf_iterator<char>());
     if (completeLog.find("CRASH_STACK: #00") == std::string::npos ||
-        completeLog.find("BUILD: Commit=abcdef1234567890") == std::string::npos)
+        completeLog.find("CRASH: Version=diagnostic-test commit=abcdef1234567890") == std::string::npos)
         return fail(12, "fatal stack or build marker absent from debug.log");
     spellcross_diag::CleanExit();
     fs::remove_all(directory, ec);
