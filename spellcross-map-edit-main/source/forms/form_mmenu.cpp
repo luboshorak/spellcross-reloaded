@@ -819,7 +819,13 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
         static_cast<double>(client.x) / logicalW,
         static_cast<double>(client.y) / logicalH);
     if (scale >= 1.0)
-        scale = std::max(1.0, std::floor(scale));
+    {
+        // Keep pixel-art nearest scaling while allowing 125% presentation
+        // throughout the game, including the strategic and main-menu screens.
+        const double integerBase = std::max(1.0, std::floor(scale));
+        scale = std::min(scale, integerBase *
+            (spellcross_display::Current().scale_percent / 100.0));
+    }
 
     const int drawW = std::max(1, static_cast<int>(std::lround(logicalW * scale)));
     const int drawH = std::max(1, static_cast<int>(std::lround(logicalH * scale)));
