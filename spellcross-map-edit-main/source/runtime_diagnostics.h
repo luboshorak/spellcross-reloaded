@@ -162,13 +162,25 @@ inline LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* exception) noexcept
         exception->ExceptionRecord->ExceptionCode : 0u;
     const void* address = exception && exception->ExceptionRecord ?
         exception->ExceptionRecord->ExceptionAddress : nullptr;
+    HMODULE module = nullptr;
+    if (address)
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(address), &module);
+    const unsigned long long rva = module && address ?
+        static_cast<unsigned long long>(
+            reinterpret_cast<std::uintptr_t>(address) -
+            reinterpret_cast<std::uintptr_t>(module)) : 0ull;
 #ifdef _WIN64
     const unsigned long long ip = exception && exception->ContextRecord ?
-        static_cast<unsigned long long>(exception->ContextRecord->Rip) : 0u;
-    Emergency("CRASH", "Unhandled SEH code=0x%08X address=%p RIP=0x%llX",
-        code, address, ip);
+        static_cast<unsigned long long>(exception->ContextRecord->Rip) : 0ull;
+    Emergency("CRASH",
+        "Unhandled SEH code=0x%08X address=%p module_base=%p RVA=0x%llX RIP=0x%llX",
+        code, address, module, rva, ip);
 #else
-    Emergency("CRASH", "Unhandled SEH code=0x%08X address=%p", code, address);
+    Emergency("CRASH",
+        "Unhandled SEH code=0x%08X address=%p module_base=%p RVA=0x%llX",
+        code, address, module, rva);
 #endif
     // Let Windows Error Reporting produce the normal error report/dump.
     return EXCEPTION_CONTINUE_SEARCH;
