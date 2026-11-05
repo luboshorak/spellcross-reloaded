@@ -4,6 +4,7 @@
 #include "form_about.h"
 #include "app_identity.h"
 #include "../spell_ui_locale.h"
+#include "../display_settings.h"
 #include "../spell_units.h"
 
 #include <wx/wx.h>
@@ -868,6 +869,7 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
             drawOverlay(m_tutorial_panel, m_tutorial_panel_pos);
         layer.SelectObject(wxNullBitmap);
         m_menu_cache = composed;
+        m_display_menu_cache = wxBitmap();
         m_menu_cache_tutorial = m_tutorial_visible;
 
         for (size_t i = 0; i < m_native_hover.size(); ++i)
@@ -894,8 +896,18 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
         }
     }
 
+    // Apply temperature/brightness/gamma once per display revision, not on
+    // every hover animation.  Native main-menu pixels remain unchanged.
     if (m_menu_cache.IsOk())
-        dc.DrawBitmap(m_menu_cache, drawX, drawY, false);
+    {
+        if (!m_display_menu_cache.IsOk() ||
+            m_display_menu_cache_revision != spellcross_display::Revision())
+        {
+            m_display_menu_cache = spellcross_display::AdjustBitmap(m_menu_cache);
+            m_display_menu_cache_revision = spellcross_display::Revision();
+        }
+        dc.DrawBitmap(m_display_menu_cache, drawX, drawY, false);
+    }
 
     // Pixel-perfect row offsets determined from MAINM_BG and MAINM_0..6.
     // These are source-image positions, NOT synthetic highlight rectangles.
@@ -908,7 +920,7 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
         const int x = drawX + static_cast<int>(std::lround(m_panel_pos.x * scale));
         const int y = drawY + static_cast<int>(std::lround(
             (m_panel_pos.y + rowY[m_hover_index]) * scale));
-        dc.DrawBitmap(m_scaled_hover[(size_t)m_hover_index], x, y, true);
+        dc.DrawBitmap(spellcross_display::AdjustBitmap(m_scaled_hover[(size_t)m_hover_index]), x, y, true);
     }
     if (m_tutorial_visible && m_tutorial_panel.IsOk() &&
         m_hover_index >= 0 && m_hover_index < 4 &&
@@ -919,7 +931,7 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
             (m_tutorial_panel_pos.x + 19) * scale));
         const int y = drawY + static_cast<int>(std::lround(
             (m_tutorial_panel_pos.y + 69 + 31 * m_hover_index) * scale));
-        dc.DrawBitmap(m_scaled_tutorial_hover[(size_t)m_hover_index], x, y, true);
+        dc.DrawBitmap(spellcross_display::AdjustBitmap(m_scaled_tutorial_hover[(size_t)m_hover_index]), x, y, true);
     }
 }
 
@@ -1086,40 +1098,12 @@ void FormMainMenu::OnOptionsAudio(wxCommandEvent& ev)
 
 void FormMainMenu::OnOptionsScreen(wxCommandEvent& ev)
 {
-    const double oldGamma = m_spell_map ? m_spell_map->GetGamma() : 1.3;
-
-    wxDialog dlg(form, wxID_ANY, "Screen", wxDefaultPosition, wxDefaultSize,
-        wxDEFAULT_DIALOG_STYLE);
-
-    auto* sizerTop = new wxBoxSizer(wxVERTICAL);
-
-    auto* lblBrightness = new wxStaticText(&dlg, wxID_ANY, "Brightness");
-    auto* sldBrightness = new wxSlider(&dlg, wxID_ANY,
-        (int)std::lround(oldGamma * 1000.0), 500, 2000,
-        wxDefaultPosition, wxSize(300, -1),
-        wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-
-    sizerTop->Add(lblBrightness, 0, wxALL, 8);
-    sizerTop->Add(sldBrightness, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
-
-    auto* btns = dlg.CreateButtonSizer(wxOK | wxCANCEL);
-    sizerTop->Add(btns, 0, wxALL | wxEXPAND, 8);
-    dlg.SetSizerAndFit(sizerTop);
-
-    auto applyScreen = [&]() {
+    spellcross_display::ShowScreenDialog(form, [this]() {
         if (m_spell_map)
-            m_spell_map->SetGamma(sldBrightness->GetValue() * 0.001);
-    };
-
-    sldBrightness->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { applyScreen(); });
-
-    if (dlg.ShowModal() == wxID_OK)
-        applyScreen();
-    else
-    {
-        if (m_spell_map)
-            m_spell_map->SetGamma(oldGamma);
-    }
+            m_spell_map->SetGamma(spellcross_display::Current().gamma);
+        if (form)
+            form->Refresh(false);
+    });
 }
 
 void FormMainMenu::OnOpenEditor(wxCommandEvent&)
