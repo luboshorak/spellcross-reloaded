@@ -36,4 +36,12 @@ namespace spellcross_tactical
         return std::abs(x2 - x1) >= threshold || std::abs(y2 - y1) >= threshold;
     }
 
+    // A missing mouse-up event can leave a fullscreen drag or selection
+    // latched even though the physical mouse button is no longer pressed.
+    inline bool HasOrphanedPointerGesture(bool box_pending, bool right_press_active,
+        bool left_button_down, bool right_button_down)
+    {
+        return (box_pending && !left_button_down) ||
+            (right_press_active && !right_button_down);
+    }
 }
