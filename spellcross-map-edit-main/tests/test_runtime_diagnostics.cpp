@@ -81,6 +81,10 @@ int main()
         std::ofstream oldDump(directory / "crash-last.dmp", std::ios::binary);
         oldDump << "OLD_DUMP";
     }
+    auto fail = [](int code, const char* reason) {
+        std::cerr << "Runtime diagnostics test failed (" << code << "): " << reason << '\n';
+        return code;
+    };
     CONTEXT context{};
     RtlCaptureContext(&context);
     EXCEPTION_RECORD record{};
@@ -97,9 +101,9 @@ int main()
     pointers.ExceptionRecord = &record;
     pointers.ContextRecord = &context;
     if (spellcross_diag::OnUnhandledException(&pointers) != EXCEPTION_CONTINUE_SEARCH)
-        return 6;
+        return fail(6, "unexpected SEH disposition");
     const fs::path reportPath = directory / "crash-last.txt";
-    if (!fs::exists(reportPath)) return 7;
+    if (!fs::exists(reportPath)) return fail(7, "crash-last.txt missing");
     std::ifstream reportFile(reportPath, std::ios::binary);
     const std::string report((std::istreambuf_iterator<char>(reportFile)),
         std::istreambuf_iterator<char>());
@@ -108,21 +112,21 @@ int main()
         report.find("abcdef1234567890") == std::string::npos ||
         report.find("Stack (") == std::string::npos ||
         report.find("#00") == std::string::npos)
-        return 8;
+        { std::cerr << "Report contents: " << report << "\n"; return fail(8, "missing exception, stack, or build metadata"); }
     std::ifstream previous(directory / "crash-prev.txt");
     std::string previousLine;
     std::getline(previous, previousLine);
-    if (previousLine != "OLD_REPORT") return 9;
+    if (previousLine != "OLD_REPORT") return fail(9, "crash report rotation incorrect");
     if (!fs::exists(directory / "crash-last.dmp") ||
         fs::file_size(directory / "crash-last.dmp") < 1024)
-        return 10;
-    if (!fs::exists(directory / "crash-prev.dmp")) return 11;
+        return fail(10, "minidump missing or truncated");
+    if (!fs::exists(directory / "crash-prev.dmp")) return fail(11, "minidump rotation incorrect");
     std::ifstream updatedLog(active, std::ios::binary);
     const std::string completeLog((std::istreambuf_iterator<char>(updatedLog)),
         std::istreambuf_iterator<char>());
     if (completeLog.find("CRASH_STACK: #00") == std::string::npos ||
         completeLog.find("BUILD: Commit=abcdef1234567890") == std::string::npos)
-        return 12;
+        return fail(12, "fatal stack or build marker absent from debug.log");
     spellcross_diag::CleanExit();
     fs::remove_all(directory, ec);
     std::cout << "PASS: rotating diagnostics, build fingerprint, crash stack and minidump\n";
