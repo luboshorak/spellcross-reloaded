@@ -2643,6 +2643,7 @@ bool MyApp::OnInit()
     {
         spellcross_display::Settings settings;
         settings.scale_percent = static_cast<int>(ini.GetLongValue("STATE", "display_scale", 125));
+        settings.smooth_scaling = ini.GetBoolValue("STATE", "display_smoothing", false);
         settings.brightness = static_cast<int>(ini.GetLongValue("STATE", "display_brightness", 100));
         settings.gamma = ini.GetDoubleValue("STATE", "display_gamma", 1.3);
         settings.temperature = static_cast<int>(ini.GetLongValue("STATE", "display_temperature", 6500));
@@ -2765,6 +2766,7 @@ int MyApp::OnExit()
     // apply on every tactical map and strategic chapter.
     const auto& screen = spellcross_display::Current();
     ini.SetLongValue("STATE", "display_scale", screen.scale_percent);
+    ini.SetBoolValue("STATE", "display_smoothing", screen.smooth_scaling);
     ini.SetLongValue("STATE", "display_brightness", screen.brightness);
     ini.SetDoubleValue("STATE", "display_gamma", screen.gamma);
     ini.SetLongValue("STATE", "display_temperature", screen.temperature);
@@ -5590,7 +5592,8 @@ void MainFrame::OnPaintHUDbutton(wxPaintEvent& event)
             wxBitmap image = *source;
             if (image.GetSize() != pan->GetClientSize())
                 image = wxBitmap(image.ConvertToImage().Scale(
-                    pan->GetClientSize().x, pan->GetClientSize().y, wxIMAGE_QUALITY_NEAREST));
+                    pan->GetClientSize().x, pan->GetClientSize().y,
+                    spellcross_display::ResizeQuality()));
             dc.DrawBitmap(spellcross_display::AdjustBitmap(image), 0, 0, false);
         }
     }
