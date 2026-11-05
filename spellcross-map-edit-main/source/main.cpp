@@ -6095,11 +6095,26 @@ void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
         m_tutorial_pressed_rmb = true;
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
     const auto point = TacticalMousePoint(event.GetPosition());
-    if (event.RightDown()) spell_map->scroller.SetRef(point.x, point.y);
+    if (event.RightDown())
+    {
+        m_rightPressActive = true;
+        m_rightDragged = false;
+        m_rightPressStart = event.GetPosition();
+        spell_map->scroller.SetRef(point.x, point.y);
+    }
     else if (event.RightUp())
     {
-        const int moved = spell_map->scroller.Idle();
-        if (!moved && spell_map->isGameMode() && spell_map->IsGroupMode())
+        // TScroll::Move sets 'moved' for any cursor motion, even one pixel.
+        // A tiny hand jitter must not leave group mode active (which disables
+        // single-unit shooting). Only a real RMB drag should pan the map.
+        spell_map->scroller.Idle();
+        const bool is_click = m_rightPressActive &&
+            spellcross_tactical::IsGroupCancelRightClick(
+                m_rightPressStart.x, m_rightPressStart.y,
+                event.GetX(), event.GetY(), m_rightDragged, FromDIP(6));
+        m_rightPressActive = false;
+        m_rightDragged = false;
+        if (is_click && spell_map->isGameMode() && spell_map->IsGroupMode())
         {
             spell_map->SetActiveGroup(0);
             if (canvas) canvas->Refresh();
@@ -6309,6 +6324,8 @@ void MainFrame::OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent&)
 {
 	m_boxSelectPending = false;
 	m_boxSelecting = false;
+    m_rightPressActive = false;
+    m_rightDragged = false;
 	if (canvas) canvas->Refresh();
 }
 // on canvas mouse leave
@@ -6328,6 +6345,12 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
+    if (m_rightPressActive && event.RightIsDown() && !m_rightDragged)
+    {
+        m_rightDragged = spellcross_tactical::IsSelectionDrag(
+            m_rightPressStart.x, m_rightPressStart.y,
+            event.GetX(), event.GetY(), FromDIP(6));
+    }
 	if (m_boxSelectPending && event.LeftIsDown())
 	{
 		m_boxSelectCurrent = event.GetPosition();
