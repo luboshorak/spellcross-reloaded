@@ -5039,10 +5039,16 @@ void MainFrame::OnTimer(wxTimerEvent& event)
         {
             const auto mission = std::filesystem::path(spell_map->map_path).filename().string();
             spellcross_diag::Log(spellcross_diag::Level::Info, "HEARTBEAT",
-                "map=%s units=%llu enemy_phase=%d deployment=%d mission_end=%d",
+                "map=%s units=%llu enemy_phase=%d deployment=%d mission_end=%d"
+                " fullscreen=%d focus_canvas=%d mouse_capture=%d box_pending=%d right_drag=%d",
                 mission.c_str(), static_cast<unsigned long long>(spell_map->units.size()),
                 static_cast<int>(spell_map->IsEnemyTurnRunning()),
-                static_cast<int>(m_deployment_active), static_cast<int>(m_mission_end_flow));
+                static_cast<int>(m_deployment_active), static_cast<int>(m_mission_end_flow),
+                static_cast<int>(IsFullScreen()),
+                static_cast<int>(canvas && wxWindow::FindFocus() == canvas),
+                static_cast<int>(canvas && canvas->HasCapture()),
+                static_cast<int>(m_boxSelectPending),
+                static_cast<int>(m_rightPressActive));
         }
     }
     // The tactical controller stays alive under the independent main menu and
