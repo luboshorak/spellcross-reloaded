@@ -18,7 +18,7 @@ namespace spellcross_display
     struct Settings
     {
         int scale_percent = 125;   // 100% original / 125% enlarged
-        bool smooth_scaling = false; // bilinear 125% mode, default stays sharp
+        bool smooth_scaling = true;  // bilinear 125% mode is the default
         int brightness = 100;      // linear multiplier, 50..150 percent
         double gamma = 1.3;        // original Spellcross default, 0.5..2.0
         int temperature = 6500;    // neutral daylight, 3500..9500 kelvin
