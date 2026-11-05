@@ -11,6 +11,7 @@
 #define _HAS_STD_BYTE 0
 
 #include "spell_units.h"
+#include "unit_health_display.h"
 #include "spellcross.h"
 #include "spell_map_event.h"
 #include "map.h"
@@ -1634,23 +1635,8 @@ int MapUnit::Render(Terrain* data,uint8_t* buffer,uint8_t* buf_end,int buf_x_pos
 		hp_w = (commander_id || is_commander)?17:26;
 	int hp_h = 3;
 	
-	// hit points (in pixels)
-	int hp = 0;
-
-	// Original single-man units keep damage in thousandths rather than in the
-	// infantry wounded counter.
-	if (unit->isSingleMan())
-	{
-		const int hp_cur = (std::max)(0, 1000 - damage_remainder);
-		hp = (hp_w * hp_cur) / 1000;
-	}
-	else
-	{
-		hp = (hp_w * man) / unit->cnt;
-	}
-
-	// clamp (ochrana)
-	hp = (std::max)(0, (std::min)(hp_w, hp));
+	const int hp = spellcross_health::GetBars(unit->cnt, man, wounded,
+        damage_remainder, hp_w).active;
 
 	// action points (in pixels)
 	int ap = (std::min)((hp_w*action_points)/GetMaxAP(),hp_w);
@@ -1805,8 +1791,10 @@ int MapUnit::RenderPreview(uint8_t* buffer,uint8_t* buf_end,int buf_x_size)
 	// hp (pos = 52,23, size = 6,41)
 	int hp_color = (is_enemy)?253:235;
 	//int hp_txt_color = (is_enemy)?211:235;
-	RenderVertBar(buffer,buf_end,buf_x_size,52,23,6,41,(double)(man+wounded)/unit->cnt,216);
-	RenderVertBar(buffer,buf_end,buf_x_size,52,23, 6,41,(double)man/unit->cnt,hp_color);
+	RenderVertBar(buffer,buf_end,buf_x_size,52,23,6,41,
+        unit->isSingleMan() ? (man > 0 ? 1.0 : 0.0) : (double)(man+wounded)/unit->cnt,216);
+	RenderVertBar(buffer,buf_end,buf_x_size,52,23, 6,41,
+        unit->isSingleMan() ? spellcross_health::GetBars(1, man, wounded, damage_remainder, 1000).active / 1000.0 : (double)man/unit->cnt,hp_color);
 	// max man (pox = 60,50)
 	spell_data->font->Render(buffer,buf_end,buf_x_size,60,50,string_format("%02d",unit->cnt),216,254,SpellFont::FontShadow::RIGHT_DOWN);
 	// hp (pox = 60,36)
@@ -2448,3 +2436,4 @@ SpellMapEventRec* MapUnit::GetTrigEvent(std::vector<int> types)
 	}
 	return(NULL);
 }
+

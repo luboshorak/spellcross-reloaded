@@ -8,6 +8,7 @@
 //=============================================================================
 
 #include "map.h"
+#include "unit_health_display.h"
 #include "tactical_zoom.h"
 #include "spellcross.h"
 #include "fs_archive.h"
@@ -6587,6 +6588,20 @@ tuple<int, int> SpellMap::GetSurfPos(MapXY& pos)
 // Original manual: a unit on higher terrain gains one tile of firing
 // distance per full elevation level above its target. The UI must still show
 // base range (without the height bonus), so compute this only for a target.
+bool SpellMap::CanUnitFireFromTerrain(const MapUnit* shooter) const
+{
+    if (!shooter || !shooter->unit || shooter->isDead())
+        return false;
+    if (!(shooter->unit->fire_flags & SpellUnitRec::FIRE_NOT_SLOPES))
+        return true;
+    if (shooter->coor.x < 0 || shooter->coor.y < 0 ||
+        shooter->coor.x >= x_size || shooter->coor.y >= y_size)
+        return false;
+    const int index = shooter->coor.y * x_size + shooter->coor.x;
+    return index >= 0 && index < static_cast<int>(tiles.size()) &&
+        tiles[index].L1 && tiles[index].L1->GetSlope() == 'A';
+}
+
 int SpellMap::GetEffectiveFireRange(const MapUnit* shooter, MapXY target) const
 {
     if (!shooter || !shooter->unit)
@@ -7773,7 +7788,7 @@ bool SpellMap::StartMove_NoRangeCheck(MapUnit* unit, MapXY target)
 
 bool SpellMap::StartAttack_NoHUD(MapUnit* attacker, MapUnit* target)
 {
-    if (!attacker || !target)
+    if (!attacker || !target || !CanUnitFireFromTerrain(attacker))
         return(false);
 
     // has some attacks left?
@@ -9689,6 +9704,9 @@ int SpellMap::Attack(MapXY pos, int prefer_air)
 		return(1);
 
 
+    if (!CanUnitFireFromTerrain(unit))
+        return 1;
+
 	// indirect fire: enforce minimum range (>= 3 hexes) for ground targets
 	if (target && unit->unit && unit->unit->isIndirectFire() && target->unit && target->unit->isLand())
 	{
@@ -10073,49 +10091,10 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		int men_active = unit->man;
 		int men_wound = unit->wounded;
 
-		int health_pix = 0;
-		int wound_pix = 0;
-
-		// Single-man units: "wounded" is HP damage (0..GetHP), not "wounded men".
-		if (unit->unit->isSingleMan())
-		{
-			int hp_max = unit->unit->GetHP();
-			if (hp_max < 1) hp_max = 1;
-
-			int hp_wound = men_wound;
-			if (hp_wound < 0) hp_wound = 0;
-			if (hp_wound > hp_max) hp_wound = hp_max;
-
-			int hp_cur = hp_max - hp_wound;
-			if (hp_cur < 0) hp_cur = 0;
-
-			// show HP values in the 3 HUD numbers (max / current / wounded)
-			men_max = hp_max;
-			men_active = hp_cur;
-			men_wound = hp_wound;
-
-			// bar is always full length, only the green part shrinks with HP
-			wound_pix = 112;
-			health_pix = hp_cur * 112 / hp_max;
-		}
-		else
-		{
-			if (men_max < 1) men_max = 1;
-
-			int total = men_active + men_wound;
-			if (total < 0) total = 0;
-			if (total > men_max) total = men_max;
-
-			if (men_active < 0) men_active = 0;
-			if (men_active > men_max) men_active = men_max;
-
-			health_pix = men_active * 112 / men_max;
-			wound_pix = total * 112 / men_max;
-		}
-
-		// clamp to bar width (protect HUD memory)
-		health_pix = (std::max)(0, (std::min)(112, health_pix));
-		wound_pix = (std::max)(0, (std::min)(112, wound_pix));
+		const auto healthBars = spellcross_health::GetBars(men_max, men_active,
+            men_wound, unit->damage_remainder, 112);
+        const int health_pix = healthBars.active;
+        const int wound_pix = healthBars.present;
 
 		for (int y = 0; y < 7; y++)
 		{
@@ -11660,7 +11639,7 @@ void SpellMap::ViewRange::Worker()
 			is_radar = true;
 		}
 
-		if (is_fire && ref_slope != 'A' && target->unit->fire_flags & SpellUnitRec::FIRE_NOT_SLOPES)
+		if (is_fire && !map->CanUnitFireFromTerrain(target))
 		{
 			// cannot fire from slopes: finito
 			ResultLock(true);
@@ -12226,6 +12205,9 @@ int SpellMap::CanUnitAttack(MapUnit* target)
 	if (!attacker)
 		return(false);
 
+	if (!CanUnitFireFromTerrain(attacker))
+		return false;
+
 	// only opposite side targets
 	if (attacker->is_enemy == target->is_enemy)
 		return(false);
@@ -12306,6 +12288,9 @@ int SpellMap::CanUnitAttackObject(MapXY pos)
 	auto unit = GetSelectedUnit();
 	if (!unit)
 		return(false);
+
+    if (!CanUnitFireFromTerrain(unit))
+        return false;
 
 	// within range?
 	if (!unit_view->attack_map[pxy])
@@ -17680,3 +17665,4 @@ int SpellMap::EditClass(vector<MapXY>& selection, SpellTool* tool, std::function
 
 	return(0);
 }
+

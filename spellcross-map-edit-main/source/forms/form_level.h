@@ -460,6 +460,7 @@ public:
         uint32_t unitUid,
         const wxString& unitDisplay);
     void ClearOriginalHierarchyPoolSelection();
+    const char* GetUnitStatusIconAsset(size_t unitIndex) const;
     bool ApplyOriginalHierarchyPoolSelectionToSlot(const std::string& slotId);
     void TryAssignCommanderToUnitSlot(const std::string& unitSlotId);
     std::string GetCommanderSlotForUnitSlot(const std::string& unitSlotId) const;
@@ -978,6 +979,9 @@ public:
     {
         uint32_t uid = 0;              // matches roster uid
         int cooldown_turns = 0;        // turns until unit is ready (after recruit/upgrade)
+        // 0 unknown/legacy, 1 battle return, 2 recruitment, 3 upgrade/re-arm, 4 purchase.
+        // Separate from the deadline: a bare old cooldown cannot reveal its cause.
+        int cooldown_reason = 0;
         std::vector<int> upgrades;     // purchased upgrade IDs for this unit
         int experience = 0;            // unit experience (gained in combat)
         int level = 0;                 // unit level (derived from experience)
@@ -1053,3 +1057,4 @@ public:
 // void StrategicLevelFrame::TryLoadBackground()
 
 static std::filesystem::path GetStrategicStatePath(const LevelData& level);
+
