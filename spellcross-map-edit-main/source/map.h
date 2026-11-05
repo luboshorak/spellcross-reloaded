@@ -15,6 +15,7 @@
 #include <array>
 #include <queue>
 #include <thread>
+#include <atomic>
 #include <mutex>
 #include <memory>
 #include <list>
@@ -755,7 +756,7 @@ public:
 			SpellMap* map;
 
 			// worker thread
-			std::thread* thread;
+			std::thread* thread = nullptr;
 			std::mutex result_lock; // result access lock
 			std::mutex ctrl_lock; // worker control lock
 			std::mutex queue_lock; // task queue lock
@@ -768,9 +769,9 @@ public:
 				HALTED,
 				EXIT
 			};
-			volatile ThreadCtrl state; // worker state/control variable
-			bool is_halted;
-			int was_halted;
+			std::atomic<ThreadCtrl> state{ IDLE }; // worker state/control variable
+			std::atomic<bool> is_halted{ true };
+			int was_halted = 1;
 			
 
 			// Z-mask grid size
@@ -842,7 +843,7 @@ public:
 			};
 
 			// worker thread
-			std::thread* thread;
+			std::thread* thread = nullptr;
 			std::mutex result_lock; // result data lock
 			std::mutex ctrl_lock; // thread control lock
 			std::mutex queue_lock; // task queue lock
@@ -855,9 +856,9 @@ public:
 				HALTED,
 				EXIT
 			};
-			volatile ThreadCtrl state;
-			bool is_halted;
-			int was_halted;
+			std::atomic<ThreadCtrl> state{ IDLE };
+			std::atomic<bool> is_halted{ true };
+			int was_halted = 1;
 
 			void Worker();
 		};

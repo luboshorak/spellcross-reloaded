@@ -40,6 +40,7 @@
 #include "LZ_spell.h"
 #include "../strategic_original_renderer.h"
 #include "../spell_ui_locale.h"
+#include "../runtime_diagnostics.h"
 #include "../strategic_countdown_rules.h"
 #include "../strategic_mission_flow.h"
 #include "../strategic_unit_timer_rules.h"
@@ -7350,6 +7351,9 @@ bool StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& p
     g_unitStatePersistSave = prevU;
     g_researchPersistSave = prevR;
 
+    spellcross_diag::Log(saved ? spellcross_diag::Level::Info : spellcross_diag::Level::Error,
+        "SAVE", "Strategic save result=%d chapter_turn=%d selected=%d",
+        static_cast<int>(saved), m_turn, m_selectedTerritory);
     m_originalStrategicDirty = true;
     if (notify)
         wxMessageBox(saved ? "Game saved." : "Save game failed.", "Save game",
@@ -16276,6 +16280,10 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
         const auto& u = unitsForMission[i];
     }
 
+    spellcross_diag::Log(spellcross_diag::Level::Info, "STRATEGY",
+        "Mission launch territory=%d token=%s companies=%llu generated=%d",
+        terr_id, token.c_str(), static_cast<unsigned long long>(unitsForMission.size()),
+        static_cast<int>(generatedDtaBattle));
     bool ok = generatedDtaBattle
         ? m_main->LoadGeneratedStrategicBattleFromDtaPath(dtaPath, unitsForMission, generatedEnemyUnits,
             m_level.attack_flags.size() >= 4 ? m_level.attack_flags[2] : 1,
@@ -16295,6 +16303,8 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
             "Launch", wxOK | wxICON_ERROR, this);
         // No tactical mission was launched; do not leave a valid pending
         // result that could be applied to a later, unrelated map.
+        spellcross_diag::Log(spellcross_diag::Level::Error, "STRATEGY",
+            "Mission load failed territory=%d token=%s", terr_id, token.c_str());
         m_pendingMission = PendingMissionResult{};
         return;
     }
@@ -16425,6 +16435,9 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
     }
 
     m_turn += 1;
+    spellcross_diag::Log(spellcross_diag::Level::Info, "STRATEGY",
+        "Strategic turn advanced to %d; owned=%llu money=%d",
+        m_turn, static_cast<unsigned long long>(m_ownedTerritories.size()), m_money);
 
     // Check timeouts (auto-BAD for territories)
     CheckTimeouts();
@@ -17983,6 +17996,8 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
 
 bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path& path)
 {
+    spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE",
+        "Strategic state load requested file=%s", path.filename().string().c_str());
 
     int turn = 1, money = 0, research = 0, selected = -1;
     PlayerProgress player{};
@@ -20260,6 +20275,9 @@ void StrategicLevelFrame::RecordStandaloneMissionStatistics(const LossBlock& all
 
 void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, const std::string& mission_token)
 {
+    spellcross_diag::Log(spellcross_diag::Level::Info, "STRATEGY",
+        "Applying mission result territory=%d token=%s success=%d turn=%d",
+        territory_id, mission_token.c_str(), static_cast<int>(success), m_turn);
     // A resumed tactical save must resolve the exact strategic attack that
     // launched it. Never apply an orphaned defence result as an ordinary
     // conquest: that would grant unrelated EndOK rewards and change ownership.
@@ -20274,6 +20292,9 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
             });
         if (!matchingAttack)
         {
+            spellcross_diag::Log(spellcross_diag::Level::Error, "STRATEGY",
+                "Orphaned defence result territory=%d attack_id=%d",
+                territory_id, m_pendingMission.counter_attack_id);
             wxLogError("[STRATEGY] Orphaned defence result: territory %d, attack ID %d. Campaign left unchanged.",
                 territory_id, m_pendingMission.counter_attack_id);
             m_pendingMission.valid = false;

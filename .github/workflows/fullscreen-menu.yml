@@ -7,6 +7,8 @@ on:
       - 'spellcross-map-edit-main/source/tactical_zoom.h'
       - 'spellcross-map-edit-main/source/map.cpp'
       - 'spellcross-map-edit-main/source/map.h'
+      - 'spellcross-map-edit-main/source/runtime_diagnostics.h'
+      - 'spellcross-map-edit-main/tests/test_runtime_diagnostics.cpp'
       - 'spellcross-map-edit-main/tests/test_tactical_zoom.cpp'
       - 'spellcross-map-edit-main/source/game_menu_bar.h'
       - 'spellcross-map-edit-main/source/game_controls.h'
@@ -79,6 +81,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Zoom test compilation failed' }
           & $zoomTest
           if ($LASTEXITCODE -ne 0) { throw 'Zoom test failed' }
+          $diagTest = Join-Path $env:RUNNER_TEMP 'spellcross-diagnostics-test.exe'
+          & cl.exe /nologo /std:c++17 /EHsc /MD /D_UNICODE /DUNICODE /D_CRT_SECURE_NO_WARNINGS spellcross-map-edit-main/tests/test_runtime_diagnostics.cpp "/Fe:$diagTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime diagnostics test compilation failed' }
+          & $diagTest
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime diagnostics rotation/concurrency test failed' }
           $source = Join-Path $PWD 'spellcross-map-edit-main/source'
           foreach ($file in @('main.cpp', 'map.cpp', 'forms/form_level.cpp', 'forms/form_mmenu.cpp')) {
             $object = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileName($file) + '.obj')
