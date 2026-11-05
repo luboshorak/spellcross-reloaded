@@ -197,7 +197,9 @@ resume.save_failed=Could not save the current game. The game is still running.
 resume.load_failed=No saved game could be resumed.
 battle.unit_details=Level: %d |Ready: %d |Wounded: %d |Morale: %d%% |Action points: %d |Attack (light / heavy / air): %d / %d / %d |Defence: %d
 
-resume.battle_busy=Finish deployment, close the battle message or wait for the current action to finish before exiting.
+resume.battle_busy_confirm=The current battle action cannot be safely saved to Continue.\n\nYou can return to the game or exit without saving your current progress. Earlier saved games will remain intact.
+resume.quit_without_save=Exit without saving
+resume.return_to_game=Stay in game
 
 menu.fullscreen=&Fullscreen	Alt+Enter
 menu.back=Back
