@@ -33,6 +33,7 @@
 #include "game_menu_bar.h"
 #include "game_controls.h"
 #include "game_audio_settings.h"
+#include "game_dialogs.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
@@ -3325,13 +3326,12 @@ void MainFrame::RequestApplicationExit(const char* source)
             "Existing saved games will not be changed.");
         // Catalogs use literal backslash-n because .lang is line-oriented.
         question.Replace("\\n", "\n");
-        wxMessageDialog prompt(IsShown() ? static_cast<wxWindow*>(this) : nullptr,
-            question, "Spellcross", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
-        prompt.SetYesNoLabels(
+        m_exitDialogOpen = true;
+        const int choice = spellcross_dialog_ui::Confirm(
+            IsShown() ? static_cast<wxWindow*>(this) : nullptr,
+            "Spellcross", question,
             spellcross_ui_locale::Tr("resume.quit_without_save", "Exit without saving"),
             spellcross_ui_locale::Tr("resume.return_to_game", "Return to game"));
-        m_exitDialogOpen = true;
-        const int choice = prompt.ShowModal();
         m_exitDialogOpen = false;
         if (choice != wxID_YES)
         {
@@ -6723,11 +6723,11 @@ void MainFrame::OnCanvasKeyUp(wxKeyEvent& event)
 
 void MainFrame::OnMapConsoleCommand()
 {
-    wxTextEntryDialog dlg(this, "Enter command:", "Console", "");
-    if (dlg.ShowModal() != wxID_OK)
+    wxString commandInput;
+    if (!spellcross_dialog_ui::PromptText(this, "Console", "Enter command:", commandInput))
         return;
 
-    std::string cmd = dlg.GetValue().ToStdString();
+    std::string cmd = commandInput.ToStdString();
     while (!cmd.empty() && cmd.front() == ' ') cmd.erase(cmd.begin());
     while (!cmd.empty() && cmd.back() == ' ') cmd.pop_back();
     for (char& c : cmd) c = (char)std::toupper((unsigned char)c);
@@ -6792,7 +6792,7 @@ void MainFrame::OnMapConsoleCommand()
     }
     else if (!cmd.empty())
     {
-        wxMessageBox("Unknown command: " + dlg.GetValue(), "Console", wxOK | wxICON_WARNING, this);
+        wxMessageBox("Unknown command: " + commandInput, "Console", wxOK | wxICON_WARNING, this);
     }
 }
 
