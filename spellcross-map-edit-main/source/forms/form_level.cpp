@@ -631,6 +631,8 @@ namespace
         return image;
     }
 
+    constexpr int kOriginalHierarchyVisibleRows = 31;
+
     struct OriginalHierarchyHitSlot
     {
         wxRect rect;
@@ -3399,8 +3401,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 row.uid = m_unitStates[pIdx].uid;
             hierarchyFlatUnits.push_back(row);
         }
-        constexpr int maxUnitRows = 18;
-        const int hierarchyMaxScroll = std::max(0, static_cast<int>(hierarchyFlatUnits.size()) - maxUnitRows);
+        constexpr int maxUnitRows = kOriginalHierarchyVisibleRows;
+        const int hierarchyMaxScroll = std::max(0, static_cast<int>(hierarchyFlatUnits.size() + m_playerCommanders.size()) + 2 - maxUnitRows);
         m_originalHierarchyUnitScroll = std::clamp(m_originalHierarchyUnitScroll, 0, hierarchyMaxScroll);
         m_originalScrollbarValue = &m_originalHierarchyUnitScroll;
         m_originalScrollbarMax = hierarchyMaxScroll;
@@ -3409,48 +3411,47 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
         OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "OTHER", 26, spellcross_ui_locale::Tr("strategic.units", "Units")), 420, 12, heading, 132, true);
         const int unitTextH = std::max(1, font->GetHeight());
-        int unitRows = 0;
         for (int flat = m_originalHierarchyUnitScroll;
-             flat < static_cast<int>(hierarchyFlatUnits.size()) && unitRows < maxUnitRows; ++flat)
+             flat < static_cast<int>(hierarchyFlatUnits.size()) && flat < m_originalHierarchyUnitScroll + maxUnitRows; ++flat)
         {
             const auto& poolRow = hierarchyFlatUnits[static_cast<size_t>(flat)];
             const int pIdx = poolRow.playerIndex;
             if (pIdx < 0 || pIdx >= static_cast<int>(m_playerUnits.size()))
                 continue;
-            const int rowY = 27 + unitRows * 14;
+            const int rowY = 27 + (flat - m_originalHierarchyUnitScroll) * 14;
             const bool selectedPoolUnit =
                 m_originalHierarchyPoolSelectionKind == OriginalHierarchyPoolSelectionKind::Unit &&
                 poolRow.uid != 0 && poolRow.uid == m_originalHierarchySelectedUnitUid;
-            if (selectedPoolUnit)
-                OriginalFillRect(image, 421, rowY, 129, 13, wxColour(35, 84, 29));
+            const bool assigned = std::any_of(m_hierarchySlots.begin(), m_hierarchySlots.end(),
+                [&](const HierarchySlot& slot) { return slot.type == "unit" && slot.unit_uid == poolRow.uid; });
             OriginalDrawSpellTextClipped(image, font, GetUnitDisplayName(m_playerUnits[static_cast<size_t>(pIdx)].unit_id),
-                424, rowY + std::max(0, (14 - unitTextH) / 2), selectedPoolUnit ? colours.selected : text,
+                424, rowY + std::max(0, (14 - unitTextH) / 2), selectedPoolUnit ? colours.selected : assigned ? dim : text,
                 hierarchyListViewport, 126);
-            ++unitRows;
         }
         if (hierarchyFlatUnits.empty())
             OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("strategic.no_units", "-- no units --"), 421, 30, dim, 130, true);
 
-        OriginalDrawSpellText(image, font, RetailOriginalText(m_spellData, "OTHER", 27, spellcross_ui_locale::Tr("strategic.commanders", "Commanders")), 420, 292, heading, 132, true);
-        int cy = 309;
+        const int commanderHeadingRow = static_cast<int>(hierarchyFlatUnits.size()) + 1;
+        const int commanderHeadingY = 27 + (commanderHeadingRow - m_originalHierarchyUnitScroll) * 14;
+        if (commanderHeadingRow >= m_originalHierarchyUnitScroll &&
+            commanderHeadingRow < m_originalHierarchyUnitScroll + maxUnitRows)
+            OriginalDrawSpellTextClipped(image, font, RetailOriginalText(m_spellData, "OTHER", 27, spellcross_ui_locale::Tr("strategic.commanders", "Commanders")), 420, commanderHeadingY, heading, hierarchyListViewport, 132, true);
         int cmdRows = 0;
         for (const auto& commander : m_playerCommanders)
         {
-            if (cmdRows >= 8)
-                break;
+            const int flat = commanderHeadingRow + 1 + cmdRows++;
+            if (flat < m_originalHierarchyUnitScroll || flat >= m_originalHierarchyUnitScroll + maxUnitRows)
+                continue;
+            const int cy = 27 + (flat - m_originalHierarchyUnitScroll) * 14;
             const bool selectedPoolCommander =
                 m_originalHierarchyPoolSelectionKind == OriginalHierarchyPoolSelectionKind::Commander &&
                 commander.uid != 0 && commander.uid == m_originalHierarchySelectedCommanderUid;
-            if (selectedPoolCommander)
-                OriginalFillRect(image, 421, cy, 129, 13, wxColour(35, 84, 29));
+            const bool assigned = std::any_of(m_hierarchySlots.begin(), m_hierarchySlots.end(),
+                [&](const HierarchySlot& slot) { return slot.type == "commander" && slot.commander_uid == commander.uid; });
             const wxString label = GetRankAbbrev(commander.rank) + " " + wxString::FromUTF8(commander.name);
-            OriginalDrawSpellTextClipped(image, font, label, 424, cy, selectedPoolCommander ? colours.selected : text,
+            OriginalDrawSpellTextClipped(image, font, label, 424, cy, selectedPoolCommander ? colours.selected : assigned ? dim : text,
                 hierarchyListViewport, 126);
-            cy += 14;
-            ++cmdRows;
         }
-        if (cmdRows == 0)
-            OriginalDrawSpellText(image, font, spellcross_ui_locale::Tr("native.no_commanders", "-- no commanders --"), 421, 310, dim, 130, true);
 
         // Original active-formation overlays from COMMON.FS. These are not
         // hand-drawn approximations: UNT_ACT/PRP_ACT/PLK_ACT/BRG_ACT are the
@@ -5467,7 +5468,7 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
                 for (size_t i = 0; i < m_playerUnits.size(); ++i)
                     if (!IsTemporaryUnitIndex(i))
                         ++totalUnitRows;
-                const int maxScroll = std::max(0, totalUnitRows - 18);
+                const int maxScroll = std::max(0, totalUnitRows + static_cast<int>(m_playerCommanders.size()) + 2 - kOriginalHierarchyVisibleRows);
                 if (maxScroll > 0)
                 {
                     m_originalHierarchyUnitScroll = std::clamp(
@@ -5502,7 +5503,7 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
                 flatUnits.push_back(row);
             }
 
-            if (lx >= 420 && lx < 552 && ly >= 27 && ly < 27 + 18 * 14)
+            if (lx >= 420 && lx < 552 && ly >= 27 && ly < 27 + kOriginalHierarchyVisibleRows * 14)
             {
                 const int row = (ly - 27) / 14;
                 const int flat = m_originalHierarchyUnitScroll + row;
@@ -5528,15 +5529,10 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
                         refreshRestored();
                     }
                 }
-                return;
-            }
-
-            if (lx >= 420 && lx < 552 && ly >= 309 && ly < 309 + 8 * 14)
-            {
-                const int row = (ly - 309) / 14;
-                if (row >= 0 && row < static_cast<int>(m_playerCommanders.size()))
+                const int commanderRow = flat - static_cast<int>(flatUnits.size()) - 2;
+                if (commanderRow >= 0 && commanderRow < static_cast<int>(m_playerCommanders.size()))
                 {
-                    const auto& commander = m_playerCommanders[static_cast<size_t>(row)];
+                    const auto& commander = m_playerCommanders[static_cast<size_t>(commanderRow)];
                     const bool same =
                         m_originalHierarchyPoolSelectionKind == OriginalHierarchyPoolSelectionKind::Commander &&
                         commander.uid != 0 && commander.uid == m_originalHierarchySelectedCommanderUid;
@@ -6782,7 +6778,7 @@ void StrategicLevelFrame::OnOriginalStrategicMouseWheel(wxMouseEvent& ev)
         for (size_t i = 0; i < m_playerUnits.size(); ++i)
             if (!IsTemporaryUnitIndex(i))
                 ++totalRows;
-        const int maxScroll = std::max(0, totalRows - 18);
+        const int maxScroll = std::max(0, totalRows + static_cast<int>(m_playerCommanders.size()) + 2 - kOriginalHierarchyVisibleRows);
         if (maxScroll <= 0)
             return;
         m_originalHierarchyUnitScroll = std::clamp(
@@ -12145,25 +12141,9 @@ bool StrategicLevelFrame::AssignUnitToHierarchySlot(const std::string& unitSlotI
         return true;
     }
 
+    // Retail allows companies to be arranged before a commander is appointed.
+    // Membership alone grants no bonuses; activation still checks the host.
     const std::string commanderId = GetCommanderSlotForUnitSlot(unitSlotId);
-    bool commanderPresent = true;
-    if (!commanderId.empty())
-    {
-        auto itc = m_hierarchySlotIndex.find(commanderId);
-        if (itc != m_hierarchySlotIndex.end())
-        {
-            const HierarchySlot& cslot = m_hierarchySlots[itc->second];
-            if (cslot.label && cslot.label->GetLabel() == cslot.placeholder)
-                commanderPresent = false;
-        }
-    }
-    if (!commanderPresent)
-    {
-        wxMessageBox(
-            "Assign a commander first, then choose a unit for this commander.",
-            "Hierarchy", wxOK | wxICON_INFORMATION, this);
-        return false;
-    }
 
     // Only the numbered battalion unit slots are real placements. The
     // commander assignment slots reference one of those same units and may
@@ -12739,15 +12719,8 @@ void StrategicLevelFrame::TryAssignCommanderToUnitSlot(const std::string& unitSl
     if (cs.type != "commander" || !cs.label)
         return;
 
-    if (cs.label->GetLabel() == cs.placeholder)
-    {
-        wxMessageBox(
-            "Assign a commander first, then choose which unit under them is the assigned unit.",
-            "Hierarchy",
-            wxOK | wxICON_INFORMATION,
-            this);
+    if (cs.commander_uid == 0)
         return;
-    }
 
     // Commander is assigned to ONE of its units (4/8/16 under them). This does NOT move/remove the unit anywhere.
     cs.assigned_unit_uid = us.unit_uid;

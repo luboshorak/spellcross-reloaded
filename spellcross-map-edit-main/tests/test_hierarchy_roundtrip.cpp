@@ -63,9 +63,10 @@ int main(int argc, char** argv)
         for (int b = 1; b <= 8; ++b)
         {
             const auto prefix = "battalion_" + std::to_string(b);
-            commander(prefix + "_commander");
             for (int u = 1; u <= 3; ++u)
                 Check(strategy.AssignUnitToHierarchySlot(prefix + "_unit_" + std::to_string(u), (b - 1) * 3 + u, "Company"), "Company assignment");
+            Check(strategy.GetHierarchyBattleMeta((b - 1) * 3 + 1, participants).formation_level == 0, "Commander-free companies gained bonuses");
+            commander(prefix + "_commander");
             Check(strategy.AssignUnitToHierarchySlot(prefix + "_commander_unit", (b - 1) * 3 + 1, "Company"), "Battalion host");
         }
         for (int r = 1; r <= 4; ++r)
@@ -151,6 +152,20 @@ int main(int argc, char** argv)
             if (right) strategy.OnOriginalStrategicRightDown(e);
             else strategy.OnOriginalStrategicLeftDown(e);
         };
+        strategy.m_originalStrategicDrawRect = wxRect(11, 17, 640, 480);
+        wxMouseEvent wheel(wxEVT_MOUSEWHEEL);
+        wheel.SetPosition(wxPoint(441, 117));
+        wheel.m_wheelRotation = -360;
+        wheel.m_wheelDelta = 120;
+        strategy.OnOriginalStrategicMouseWheel(wheel);
+        Check(strategy.m_originalHierarchyUnitScroll == 9, "Unified roster did not scroll to final commander");
+        click(false, 430, 448, 1); // fourteenth commander, beyond former eight-row limit
+        Check(strategy.m_originalHierarchySelectedCommanderUid == commanderUid, "Scrolled commander hit test");
+        click(false, 330, 450, 1); // page 2
+        click(false, 270, 210, 1); // same brigade commander, preserve host
+        Check(strategy.GetHierarchyBattleMeta(13, participants).commander_host_mask == 7, "Page 2 commander reassignment detached host");
+        click(false, 330, 450, 1); // page 1
+        strategy.m_originalHierarchyUnitScroll = 0;
         click(true, 20, 30, 2);
         Check(strategy.GetHierarchyBattleMeta(1, participants).formation_id == 0, "RMB did not remove company");
         for (const auto& record : strategy.CaptureHierarchyAssignments())
@@ -166,6 +181,10 @@ int main(int argc, char** argv)
         click(true, 170, 55, 1); // remove commander, keep subordinate companies
         Check(strategy.m_hierarchySlots[strategy.m_hierarchySlotIndex.at("battalion_1_commander")].commander_uid == 0, "RMB did not remove commander");
         Check(strategy.GetHierarchyBattleMeta(1, participants).formation_id == 1, "Commander removal deleted company");
+        click(true, 20, 30, 1);
+        click(false, 430, 30, 1);
+        click(false, 20, 30, 1);
+        Check(strategy.GetHierarchyBattleMeta(1, participants).formation_id == 1, "LMB cannot arrange companies before commander");
         Check(strategy.SaveStrategicGameToPath(strategicSave, false) && strategy.LoadStrategicStateFromPath(strategicSave), "Edited hierarchy reload");
         checkMeta(1, 0, 0, 0);
         checkMeta(13, 3, 4, 3);
