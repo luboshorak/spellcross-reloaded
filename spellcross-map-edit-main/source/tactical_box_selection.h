@@ -35,4 +35,13 @@ namespace spellcross_tactical
         threshold = (std::max)(0, threshold);
         return std::abs(x2 - x1) >= threshold || std::abs(y2 - y1) >= threshold;
     }
+
+    // Unlike TScroll::moved, this measures a real mouse gesture. Ignore
+    // single-pixel jitter on RMB release, while retaining a sticky drag flag
+    // if the player dragged and returned to the starting point.
+    inline bool IsGroupCancelRightClick(int x1, int y1, int x2, int y2,
+        bool dragged_during_press, int threshold)
+    {
+        return !dragged_during_press && !IsSelectionDrag(x1, y1, x2, y2, threshold);
+    }
 }
