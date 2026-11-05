@@ -46,6 +46,18 @@ END
 
 #endif    // APSTUDIO_INVOKED
 
+// Match the standalone Spellcross Map Editor's Per-Monitor V2 DPI behavior.
+// Without this application manifest, Windows may bitmap-scale the complete
+// tactical canvas and HUD (e.g. by 125%), making the original pixels blurry.
+//
+// Include only the manifest, not wx/msw/wx.rc: the standard wx resources below
+// are already defined here and including wx.rc would duplicate them.
+#ifdef ISOLATION_AWARE_ENABLED
+ISOLATIONAWARE_MANIFEST_RESOURCE_ID RT_MANIFEST "wx/msw/wx_dpi_aware_pmv2.manifest"
+#else
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "wx/msw/wx_dpi_aware_pmv2.manifest"
+#endif
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
