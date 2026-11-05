@@ -8,6 +8,7 @@
 //=============================================================================
 
 #include "map.h"
+#include "runtime_diagnostics.h"
 #include "unit_health_display.h"
 #include "tactical_zoom.h"
 #include "spellcross.h"
@@ -975,6 +976,9 @@ bool SpellMap::CanSavePausedBattle() const
 
 int SpellMap::SaveGameStateToFile(const std::wstring& path)
 {
+	spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE",
+		"Tactical save requested; companies=%llu",
+		static_cast<unsigned long long>(units.size()));
 	if (!IsLoaded() || !saves)
 		return 1;
 
@@ -1335,6 +1339,7 @@ static bool ExtractQuotedField(const std::string& text, const char* key, std::st
 
 int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 {
+	spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE", "Loading tactical save");
 	// Loading a save from the main/strategic menu does not require a tactical
 	// map to be active. Load() below constructs the Saves object.
 	if (!spelldata)
@@ -6733,9 +6738,19 @@ void SpellMap::MoveRange::Halt(bool clear_tasks)
 	is_halted = true;
 	ctrl_lock.unlock();
 
-	// wait till thread halted
+	// A slow or stuck worker is recorded before the UI keeps waiting for safety.
+	const auto start = std::chrono::steady_clock::now();
+	bool warned = false;
 	while (state == ThreadCtrl::BUSY)
+	{
+		if (!warned && std::chrono::steady_clock::now() - start > std::chrono::seconds(5))
+		{
+			spellcross_diag::Log(spellcross_diag::Level::Warning, "WORKER",
+				"MoveRange::Halt waiting over 5s for busy worker");
+			warned = true;
+		}
 		std::this_thread::sleep_for(1ms);
+	}
 
 	if (clear_tasks)
 	{
@@ -6788,7 +6803,7 @@ void SpellMap::MoveRange::FindRange(MapUnit* unit)
 // wait until worker finishes all pending tasks
 void SpellMap::MoveRange::WaitIdle()
 {
-	int timeout = 5000; // 5 second max wait
+	int timeout = 5000; // preserve the original bounded caller wait
 	while (timeout > 0)
 	{
 		bool pending_work = false;
@@ -6801,6 +6816,9 @@ void SpellMap::MoveRange::WaitIdle()
 		std::this_thread::sleep_for(1ms);
 		timeout--;
 	}
+	if (timeout == 0)
+		spellcross_diag::Log(spellcross_diag::Level::Warning, "WORKER",
+			"MoveRange::WaitIdle timed out after 5s; movement preview may be stale");
 }
 
 // locks/unlocks data related to unit range
@@ -8959,6 +8977,9 @@ void SpellMap::StartEnemyTurn()
 {
     if (enemy_turn_running)
         return;
+    spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
+        "Enemy turn starting; total_units=%llu",
+        static_cast<unsigned long long>(units.size()));
 
     LockMap();
 
@@ -9018,6 +9039,10 @@ void SpellMap::StartEnemyTurn()
 
     enemy_turn_idx = 0;
     enemy_turn_running = true;
+    spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
+        "Enemy turn planned; enemy_companies=%llu tactical_groups=%llu",
+        static_cast<unsigned long long>(enemy_turn_list.size()),
+        static_cast<unsigned long long>(enemy_ai_groups.size()));
     unit_selection_mod = true;
 
     ReleaseMap();
@@ -9026,6 +9051,10 @@ void SpellMap::StartEnemyTurn()
 
 void SpellMap::EndEnemyTurn()
 {
+	spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
+		"Enemy turn completed; processed=%llu remaining_units=%llu",
+		static_cast<unsigned long long>(enemy_turn_idx),
+		static_cast<unsigned long long>(units.size()));
 	LockMap();
 
 	enemy_turn_running = false;
@@ -9444,6 +9473,9 @@ bool SpellMap::EnemyTurnStep()
         MapUnit* attack_target = SelectGroupAttackTarget(enemy, *group);
         if (attack_target && StartAttack_NoHUD(enemy, attack_target))
         {
+            spellcross_diag::Log(spellcross_diag::Level::Info, "COMBAT",
+                "AI attack attacker=%d target=%d at=(%d,%d)",
+                enemy->id, attack_target->id, enemy->coor.x, enemy->coor.y);
             ReleaseMap();
             return true;
         }
@@ -9509,6 +9541,9 @@ bool SpellMap::EnemyTurnStep()
 
         if (moved)
         {
+            spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
+                "AI move company=%d at=(%d,%d) group_order=%d",
+                enemy->id, enemy->coor.x, enemy->coor.y, static_cast<int>(group->order));
             // Keep the index: after movement (and any defensive fire interrupt)
             // this same company gets a chance to execute the remaining order/AP.
             ReleaseMap();
@@ -10849,8 +10884,19 @@ int SpellMap::ViewRange::WaitIdle()
 	if (is_halted)
 		return(1);
 
+	// Never silently proceed while a worker is still using map/unit memory.
+	// Report prolonged waits, without spamming a 10ms frame-by-frame log.
+	auto next_warning = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 	while (!isIdle())
+	{
+		if (std::chrono::steady_clock::now() >= next_warning)
+		{
+			spellcross_diag::Log(spellcross_diag::Level::Warning, "WORKER",
+				"ViewRange::WaitIdle waiting >5s (possible stalled visibility task)");
+			next_warning = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+		}
 		std::this_thread::sleep_for(1ms);
+	}
 	return(0);
 }
 // wait to finish tasks, then lock addition of new tasks
@@ -10873,12 +10919,19 @@ bool SpellMap::ViewRange::Halt(bool clear_tasks)
 	is_halted = true;
 	ctrl_lock.unlock();
 
-	// If a calculation is already running, let it finish.  The old code waited
-	// while the worker was IDLE, which was backwards: it introduced an exit race
-	// and could leave teardown waiting for a state transition that was irrelevant
-	// to map safety.  Once BUSY is gone, is_halted prevents a new task starting.
+	// Do not free map/unit data while a view worker is still reading it.
+	const auto start = std::chrono::steady_clock::now();
+	bool warned = false;
 	while (state == ThreadCtrl::BUSY)
+	{
+		if (!warned && std::chrono::steady_clock::now() - start > std::chrono::seconds(5))
+		{
+			spellcross_diag::Log(spellcross_diag::Level::Warning, "WORKER",
+				"ViewRange::Halt waiting over 5s for busy worker");
+			warned = true;
+		}
 		std::this_thread::sleep_for(1ms);
+	}
 
 	if (clear_tasks)
 		ClearTasks();
@@ -12658,6 +12711,10 @@ void SpellMap::CleanupDeadUnits()
 	}
 	for (auto* dead : dead_list)
 	{
+		spellcross_diag::Log(spellcross_diag::Level::Info, "COMBAT",
+			"Company destroyed id=%d enemy=%d at=(%d,%d) remaining=%llu",
+			dead->id, static_cast<int>(dead->is_enemy), dead->coor.x, dead->coor.y,
+			static_cast<unsigned long long>(units.size()));
 		RecordMissionLoss(dead);
 		ApplyCommanderDeathMorale(dead);
 		auto extracted = ExtractUnit(dead);
@@ -14478,6 +14535,9 @@ MapUnit* SpellMap::CreateUnit(MapUnit* parent, SpellUnitRec* new_type)
 		return(NULL);
 	}
 
+	spellcross_diag::Log(spellcross_diag::Level::Info, "UNIT",
+		"Spawn company=%d parent=%d at=(%d,%d)",
+		unit->id, parent ? parent->id : -1, unit->coor.x, unit->coor.y);
 	// make link between parent and child
 	if (parent)
 	{
