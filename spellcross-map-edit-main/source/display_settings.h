@@ -115,6 +115,32 @@ namespace spellcross_display
         return static_cast<unsigned char>(std::lround(std::clamp(corrected, 0.0, 255.0)));
     }
 
+    struct ColourTables
+    {
+        unsigned char tactical[3][256] = {};
+        unsigned char bitmap[3][256] = {};
+        std::uint64_t revision = 0;
+    };
+
+    inline const ColourTables& Tables()
+    {
+        static ColourTables tables;
+        if (tables.revision != Revision())
+        {
+            const auto& settings = Current();
+            for (int channel = 0; channel < 3; ++channel)
+                for (int v = 0; v < 256; ++v)
+                {
+                    tables.tactical[channel][v] = AdjustChannel(
+                        static_cast<unsigned char>(v), channel, settings, true);
+                    tables.bitmap[channel][v] = AdjustChannel(
+                        static_cast<unsigned char>(v), channel, settings, false);
+                }
+            tables.revision = Revision();
+        }
+        return tables;
+    }
+
     inline wxBitmap AdjustBitmap(const wxBitmap& bitmap)
     {
         if (!bitmap.IsOk())
@@ -127,10 +153,11 @@ namespace spellcross_display
         unsigned char* data = image.GetData();
         if (!data)
             return bitmap;
+        const auto& lut = Tables().bitmap;
         const std::size_t count = static_cast<std::size_t>(image.GetWidth()) * image.GetHeight();
         for (std::size_t i = 0; i < count; ++i)
             for (int channel = 0; channel < 3; ++channel)
-                data[3 * i + channel] = AdjustChannel(data[3 * i + channel], channel, settings, false);
+                data[3 * i + channel] = lut[channel][data[3 * i + channel]];
         return wxBitmap(image);
     }
 
