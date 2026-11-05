@@ -69,6 +69,7 @@ private:
     wxBitmap m_display_menu_cache;
     std::uint64_t m_display_menu_cache_revision = 0;
     bool m_menu_cache_tutorial = false;
+    bool m_menu_cache_smoothed = false;
     wxBitmap m_tutorial_panel;
     wxPoint m_tutorial_panel_pos;
     bool m_tutorial_visible = false;
