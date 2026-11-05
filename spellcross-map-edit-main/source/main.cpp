@@ -32,6 +32,7 @@
 #include "iso9660_import.h"
 #include "game_menu_bar.h"
 #include "game_controls.h"
+#include "game_audio_settings.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
@@ -3182,53 +3183,7 @@ void MainFrame::OnOptionsBoxSelection(wxCommandEvent& event)
 
 void MainFrame::OnOptionsAudio(wxCommandEvent& event)
 {
-    if (!spell_data || !spell_data->sounds || !spell_data->sounds->channels || !spell_data->midi)
-        return;
-
-    const double oldSfx = spell_data->sounds->channels->GetVolume();
-    const double oldMusic = spell_data->midi->GetVolume();
-
-    wxDialog dlg(this, wxID_ANY, "Audio", wxDefaultPosition, wxDefaultSize,
-        wxDEFAULT_DIALOG_STYLE);
-
-    auto* sizerTop = new wxBoxSizer(wxVERTICAL);
-
-    auto* lblMusic = new wxStaticText(&dlg, wxID_ANY, "Music volume");
-    auto* sldMusic = new wxSlider(&dlg, wxID_ANY,
-        (int)std::lround(oldMusic * 100.0), 0, 100,
-        wxDefaultPosition, wxSize(300, -1),
-        wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-
-    auto* lblSfx = new wxStaticText(&dlg, wxID_ANY, "Sound volume");
-    auto* sldSfx = new wxSlider(&dlg, wxID_ANY,
-        (int)std::lround(oldSfx * 100.0), 0, 100,
-        wxDefaultPosition, wxSize(300, -1),
-        wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-
-    sizerTop->Add(lblMusic, 0, wxALL, 8);
-    sizerTop->Add(sldMusic, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
-    sizerTop->Add(lblSfx, 0, wxALL, 8);
-    sizerTop->Add(sldSfx, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
-
-    auto* btns = dlg.CreateButtonSizer(wxOK | wxCANCEL);
-    sizerTop->Add(btns, 0, wxALL | wxEXPAND, 8);
-    dlg.SetSizerAndFit(sizerTop);
-
-    auto applyAudio = [&]() {
-        spell_data->midi->SetVolume(sldMusic->GetValue() / 100.0);
-        spell_data->sounds->channels->SetVolume(sldSfx->GetValue() / 100.0);
-    };
-
-    sldMusic->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { applyAudio(); });
-    sldSfx->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { applyAudio(); });
-
-    if (dlg.ShowModal() == wxID_OK)
-        applyAudio();
-    else
-    {
-        spell_data->midi->SetVolume(oldMusic);
-        spell_data->sounds->channels->SetVolume(oldSfx);
-    }
+    spellcross_audio_ui::ShowDialog(this, spell_data);
 }
 
 void MainFrame::OnOptionsScreen(wxCommandEvent& event)
