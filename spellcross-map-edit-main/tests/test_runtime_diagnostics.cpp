@@ -22,6 +22,12 @@ int main()
     fs::create_directories(directory, ec);
     if (ec) return 1;
 
+    // Packaged releases provide a build fingerprint even in a plain text log.
+    {
+        std::ofstream info(directory / "BUILD-INFO.txt");
+        info << "Git commit: abcdef1234567890\\n";
+        info << "Spellcross.exe SHA256: deadbeef01234567\\n";
+    }
     spellcross_diag::Initialize(directory, "diagnostic-test");
     std::vector<std::thread> writers;
     for (int t = 0; t < 4; ++t)
@@ -65,9 +71,61 @@ int main()
         return 4;
     if (total < spellcross_diag::kLogBytes)
         return 5; // The test did not exercise enough rotation.
+    // Simulate the Windows unhandled-exception callback without crashing the
+    // CI process. This tests the *actual* report and minidump writer.
+    {
+        std::ofstream oldReport(directory / "crash-last.txt");
+        oldReport << "OLD_REPORT";
+    }
+    {
+        std::ofstream oldDump(directory / "crash-last.dmp", std::ios::binary);
+        oldDump << "OLD_DUMP";
+    }
+    CONTEXT context{};
+    RtlCaptureContext(&context);
+    EXCEPTION_RECORD record{};
+    record.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
+#ifdef _WIN64
+    record.ExceptionAddress = reinterpret_cast<void*>(context.Rip);
+#else
+    record.ExceptionAddress = reinterpret_cast<void*>(context.Eip);
+#endif
+    record.NumberParameters = 2;
+    record.ExceptionInformation[0] = 0; // READ
+    record.ExceptionInformation[1] = 0xBAD0;
+    EXCEPTION_POINTERS pointers{};
+    pointers.ExceptionRecord = &record;
+    pointers.ContextRecord = &context;
+    if (spellcross_diag::OnUnhandledException(&pointers) != EXCEPTION_CONTINUE_SEARCH)
+        return 6;
+    const fs::path reportPath = directory / "crash-last.txt";
+    if (!fs::exists(reportPath)) return 7;
+    std::ifstream reportFile(reportPath, std::ios::binary);
+    const std::string report((std::istreambuf_iterator<char>(reportFile)),
+        std::istreambuf_iterator<char>());
+    if (report.find("0xC0000005") == std::string::npos ||
+        report.find("READ address=0xBAD0") == std::string::npos ||
+        report.find("abcdef1234567890") == std::string::npos ||
+        report.find("CRASH_STACK") == std::string::npos ||
+        report.find("#00") == std::string::npos)
+        return 8;
+    std::ifstream previous(directory / "crash-prev.txt");
+    std::string previousLine;
+    std::getline(previous, previousLine);
+    if (previousLine != "OLD_REPORT") return 9;
+    if (!fs::exists(directory / "crash-last.dmp") ||
+        fs::file_size(directory / "crash-last.dmp") < 1024)
+        return 10;
+    if (!fs::exists(directory / "crash-prev.dmp")) return 11;
+    std::ifstream updatedLog(active, std::ios::binary);
+    const std::string completeLog((std::istreambuf_iterator<char>(updatedLog)),
+        std::istreambuf_iterator<char>());
+    if (completeLog.find("CRASH_STACK: #00") == std::string::npos ||
+        completeLog.find("BUILD: Commit=abcdef1234567890") == std::string::npos)
+        return 12;
     spellcross_diag::CleanExit();
     fs::remove_all(directory, ec);
-    std::cout << "PASS: concurrent logging, final breadcrumb and bounded rotation\n";
+    std::cout << "PASS: rotating diagnostics, build fingerprint, crash stack and minidump\n";
     return 0;
 #endif
 }
