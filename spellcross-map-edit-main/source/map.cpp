@@ -6553,9 +6553,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         last_gamma = settings.gamma;
         last_display_revision = spellcross_display::Revision();
         std::memcpy(pal, terrain->pal, sizeof(pal));
+        const auto& lookup = spellcross_display::Tables().tactical;
         for (int k = 0; k < 256; ++k)
             for (int c = 0; c < 3; ++c)
-                pal[k][c] = spellcross_display::AdjustChannel(pal[k][c], c, settings);
+                pal[k][c] = lookup[c][pal[k][c]];
     }
 
     wxNativePixelData data(bmp);
