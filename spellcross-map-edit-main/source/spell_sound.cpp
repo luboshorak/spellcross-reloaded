@@ -154,6 +154,11 @@ double SoundChannels::GetVolume()
 
 
 
+double SoundChannels::GetPlaybackVolume(bool video_audio)
+{
+    return !video_audio && background_mutes.load() ? 0.0 : volume.load();
+}
+
 //=============================================================================
 // Common Spellcross sounds class.
 // Contains sound effect channels, samples and midi engine and files.
@@ -638,8 +643,9 @@ SpellSound::SpellSound(SoundChannels* channels,vector<SpellSample*> sounds)
     SpellSoundInit();
 }
 // define sound (or random set of sounds) for action
-SpellSound::SpellSound(SoundChannels* channels,SpellSample* sound)
+SpellSound::SpellSound(SoundChannels* channels,SpellSample* sound, bool video_audio)
 {
+    this->video_audio = video_audio;
     samples = {sound};
     mode = MODE_RAND;
     streams = channels;
@@ -658,6 +664,7 @@ SpellSound::~SpellSound()
 // copy
 SpellSound::SpellSound(SpellSound& ref)
 {
+    video_audio = ref.video_audio;
     samples = ref.samples;
     mode = ref.mode;
     streams = ref.streams;    
@@ -870,7 +877,7 @@ int16_t *SpellSound::cb_GetSmplData(int16_t* buffer, int count)
     auto *data = &smpl->data[smpl->channels*pos];
     pos += count;
 
-    double volume = streams->GetVolume();
+    double volume = streams->GetPlaybackVolume(video_audio);
     uint32_t g_vol = (uint32_t)(65534.0*volume);
     uint32_t left  = (g_vol*left_vol)>>16;
     uint32_t right  = (g_vol*right_vol)>>16;

@@ -56,7 +56,8 @@ private:
     std::vector<SpellSound*> channel_owners;
     std::vector<int> chn_index;
     int last_channel;
-    double volume;
+    std::atomic<double> volume;
+    std::atomic<unsigned int> background_mutes{0};
     std::vector<int> is_loop;
 public:
     SoundChannels(int count=4);
@@ -65,13 +66,27 @@ public:
     void CloseOwnedStream(SpellSound* owner, RtAudio* channel);
     void SetVolume(double vol);
     double GetVolume();
+    double GetPlaybackVolume(bool video_audio=false);
+
+    // Scoped, reference-counted suppression; never changes the player's volume.
+    class BackgroundMute
+    {
+        SoundChannels& channels;
+    public:
+        explicit BackgroundMute(SoundChannels& pool) : channels(pool) { ++channels.background_mutes; }
+        ~BackgroundMute() { --channels.background_mutes; }
+        BackgroundMute(const BackgroundMute&) = delete;
+        BackgroundMute& operator=(const BackgroundMute&) = delete;
+    };
     
     static constexpr double FAKE_STOP_TIME_MARK = 1e9;
 };
 
 class SpellSound
 {
+    friend struct SpellSoundPlaybackTestAccess;
 private:
+    bool video_audio = false;
     RtAudio* dac;
     vector<SpellSample*> samples;
     int sub_id;
@@ -110,7 +125,7 @@ public:
     SpellSound(SpellSound &ref);
     SpellSound(SoundChannels* channels,SpellSoundClassFile& move_class);
     SpellSound(SoundChannels* channels,vector<SpellSample*> sounds);
-    SpellSound(SoundChannels* channels,SpellSample* sound);
+    SpellSound(SoundChannels* channels,SpellSample* sound, bool video_audio=false);
     ~SpellSound();
 
     int SetPanning(double left_vol=1.0,double right_vol=1.0);
