@@ -2771,7 +2771,8 @@ int MyApp::OnExit()
     spell_map = nullptr;
     delete spell_data;
     spell_data = nullptr;
-
+    // Clean-exit marker belongs after teardown, not before wxApp::OnExit.
+    spellcross_diag::CleanExit();
     return(0);
 }
 
@@ -3386,7 +3387,6 @@ void MainFrame::RequestApplicationExit()
     // The restoration uses several independently-owned top-level frames and a
     // deferred Destroy() can otherwise leave the GUI loop alive with no visible
     // window.  Explicitly end the loop after all teardown requests are queued.
-    spellcross_diag::CleanExit();
     if (wxTheApp)
         wxTheApp->ExitMainLoop();
 }
