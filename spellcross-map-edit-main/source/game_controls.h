@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game_menu_bar.h"
+#include "strategic_ui_theme.h"
 #include <wx/display.h>
 #include <wx/scrolwin.h>
 #include <wx/stattext.h>
@@ -106,9 +107,8 @@ namespace spellcross_help
 
             scroll->SetSizer(sections);
             layout->Add(scroll, 1, wxEXPAND | wxALL, FromDIP(16));
-            auto* close = new wxButton(this, wxID_OK, spellcross_ui_locale::Tr("help.close", "Close"));
-            close->SetBackgroundColour(spellcross_menu::Highlight());
-            close->SetForegroundColour(spellcross_menu::Text());
+            auto* close = new spellcross_strategic_ui::Button(this, wxID_OK,
+                spellcross_ui_locale::Tr("help.close", "Close"));
             close->SetDefault();
             layout->Add(close, 0, wxALIGN_RIGHT | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(16));
             SetSizer(layout);
