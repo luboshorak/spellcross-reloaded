@@ -6278,6 +6278,34 @@ void MainFrame::HandleCanvasLeftClick(wxMouseEvent& event)
         unsigned int action_count = 0;
         for (unsigned int remaining = bits; remaining; remaining &= remaining - 1)
             ++action_count;
+        // When a player clicks but MOVE/ATTACK/SELECT options unexpectedly
+        // disappear, leave a *bounded* breadcrumb to distinguish stale ranges,
+        // depleted AP, active group mode and enemy-phase input locks.
+        // Only the first and every 10th consecutive rejected click are logged.
+        static unsigned int no_action_clicks = 0;
+        if (action_count == 0 && select_pos.IsSelected() && spell_map->isGameMode())
+        {
+            ++no_action_clicks;
+            if (no_action_clicks == 1 || no_action_clicks % 10 == 0)
+            {
+                MapUnit* selected = spell_map->GetSelectedUnit();
+                spellcross_diag::Log(spellcross_diag::Level::Warning, "CONTROL",
+                    "No individual action at=(%d,%d) selected=%d ap=%d shots=%d"
+                    " move_state=%d attack_state=%d group=%d box=%d group_moving=%d enemy_turn=%d"
+                    " consecutive_clicks=%u",
+                    select_pos.x, select_pos.y,
+                    selected ? selected->id : -1,
+                    selected ? selected->action_points : -1,
+                    selected ? selected->GetFireCount() : -1,
+                    selected ? static_cast<int>(selected->move_state) : -1,
+                    selected ? static_cast<int>(selected->attack_state) : -1,
+                    spell_map->GetActiveGroup(), static_cast<int>(spell_map->IsBoxGroupMode()),
+                    static_cast<int>(spell_map->IsActiveGroupMoving()),
+                    static_cast<int>(spell_map->IsEnemyTurnRunning()), no_action_clicks);
+            }
+        }
+        else if (action_count != 0)
+            no_action_clicks = 0;
         if (action_count == 1)
         {
             OnUnitClick_cb(options);
