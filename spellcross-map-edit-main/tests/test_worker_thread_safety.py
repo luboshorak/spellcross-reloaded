@@ -24,6 +24,10 @@ class WorkerSafetyContract(unittest.TestCase):
                     rf"is_halted\s*=\s*true;\s*was_halted\s*=\s*1;\s*"
                     rf"thread\s*=\s*new std::thread\(&SpellMap::{klass}::Worker", re.S))
 
+    def test_nested_halts_do_not_collapse_to_a_boolean(self):
+        self.assertNotIn("was_halted = is_halted;", CODE)
+        self.assertGreaterEqual(CODE.count("is_halted = was_halted > 0;"), 2)
+
     def test_queue_inspection_uses_control_lock(self):
         start = CODE.index("int SpellMap::ViewRange::isIdle()")
         end = CODE.index("int SpellMap::ViewRange::WaitIdle()", start)
