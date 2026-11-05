@@ -3303,27 +3303,79 @@ bool MainFrame::LoadContinueGame()
 }
 
 // on form close
-void MainFrame::RequestApplicationExit()
+void MainFrame::RequestApplicationExit(const char* source)
 {
-    if (m_applicationExitInProgress)
+    // Native close/menu callbacks may re-enter while a wx modal dialog is
+    // pumping messages. Do not stack identical dialogs or exit requests.
+    if (m_applicationExitInProgress || m_exitDialogOpen)
         return;
 
     const bool activeBattle = (IsShown() || m_mainMenuReturnToTactical) &&
         spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && !m_mission_end_flow;
-    if (activeBattle && (m_deployment_active || CheckMessageState() || !spell_map->CanSavePausedBattle()))
+    const bool placementBusy = activeBattle && m_deployment_active;
+    const bool messageBusy = activeBattle && CheckMessageState();
+    const bool simulationBusy = activeBattle && !spell_map->CanSavePausedBattle();
+    bool quitWithoutSaving = false;
+
+    if (placementBusy || messageBusy || simulationBusy)
     {
-        if (m_mainMenuReturnToTactical && !form_mmenu)
+        // Saving a running animation/AI/reaction queue into a paused-battle
+        // snapshot would be invalid. But an unending state must never trap
+        // the player in the game. Offer an EXPLICIT exit without saving.
+        int blocked_unit = -1;
+        int move_state = -1, attack_state = -1, action_state = -1;
+        if (spell_map)
         {
-            m_mainMenuReturnToTactical = false;
-            ShowTacticalWindow();
+            for (const auto* u : spell_map->units)
+            {
+                if (u && (u->move_state != MapUnit::MOVE_STATE::IDLE ||
+                    u->attack_state != MapUnit::ATTACK_STATE::IDLE ||
+                    u->action_state != MapUnit::ACTION_STATE::IDLE))
+                {
+                    blocked_unit = u->id;
+                    move_state = static_cast<int>(u->move_state);
+                    attack_state = static_cast<int>(u->attack_state);
+                    action_state = static_cast<int>(u->action_state);
+                    break;
+                }
+            }
         }
-        wxMessageBox(spellcross_ui_locale::Tr("resume.battle_busy",
-            "Finish deployment, close the battle message or wait for the current action to finish before exiting."),
-            "Spellcross", wxOK | wxICON_INFORMATION, IsShown() ? this : nullptr);
-        return;
+        spellcross_diag::Log(spellcross_diag::Level::Warning, "SHUTDOWN",
+            "Exit requires user choice source=%s deployment=%d message=%d simulation_busy=%d"
+            " phase=%s group_moving=%d blocked_unit=%d move=%d attack=%d action=%d",
+            source ? source : "unknown", static_cast<int>(placementBusy),
+            static_cast<int>(messageBusy), static_cast<int>(simulationBusy),
+            spell_map ? spell_map->GetTacticalInputBlockReason() : "none",
+            spell_map ? static_cast<int>(spell_map->IsActiveGroupMoving()) : 0,
+            blocked_unit, move_state, attack_state, action_state);
+
+        wxMessageDialog prompt(IsShown() ? static_cast<wxWindow*>(this) : nullptr,
+            spellcross_ui_locale::Tr("resume.battle_busy_confirm",
+                "The current battle action has not finished and a new Continue save cannot be made. "
+                "Return to the game, or exit without saving your current progress? "
+                "Existing saved games will not be changed."),
+            "Spellcross", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+        prompt.SetYesNoLabels(
+            spellcross_ui_locale::Tr("resume.quit_without_save", "Exit without saving"),
+            spellcross_ui_locale::Tr("resume.return_to_game", "Return to game"));
+        m_exitDialogOpen = true;
+        const int choice = prompt.ShowModal();
+        m_exitDialogOpen = false;
+        if (choice != wxID_YES)
+        {
+            if (m_mainMenuReturnToTactical && !form_mmenu)
+            {
+                m_mainMenuReturnToTactical = false;
+                ShowTacticalWindow();
+            }
+            return;
+        }
+        quitWithoutSaving = true;
+        spellcross_diag::Log(spellcross_diag::Level::Warning, "SHUTDOWN",
+            "User confirmed exit without a new Continue snapshot; previous saves preserved");
     }
 
-    if (!SaveContinueGame())
+    if (!quitWithoutSaving && !SaveContinueGame())
     {
         wxMessageBox(spellcross_ui_locale::Tr("resume.save_failed",
             "Could not save the current game. The game is still running."),
@@ -3340,7 +3392,8 @@ void MainFrame::RequestApplicationExit()
 
     m_applicationExitInProgress = true;
     spellcross_diag::Log(spellcross_diag::Level::Info, "SHUTDOWN",
-        "Normal exit requested, Continue save completed");
+        "Normal exit requested, Continue snapshot %s",
+        quitWithoutSaving ? "intentionally skipped by user" : "completed");
     wxLogDebug("[SHUTDOWN] beginning application shutdown");
 
     // The restored main menu and strategic screen intentionally live as
@@ -3418,7 +3471,7 @@ void MainFrame::RequestApplicationExit()
 
 void MainFrame::OnExit(wxCommandEvent& event)
 {
-    RequestApplicationExit();
+    RequestApplicationExit("menu-exit");
 }
 // about message
 void MainFrame::OnAbout(wxCommandEvent& event)
@@ -3524,7 +3577,7 @@ void MainFrame::OnClose(wxCloseEvent& ev)
         {
             // Closing the startup/strategic-return menu must never expose the
             // stale tactical map behind it. Treat the window close like Exit.
-            RequestApplicationExit();
+            RequestApplicationExit("main-menu-close");
         }
     }
     else
@@ -3550,7 +3603,7 @@ void MainFrame::OnClose(wxCloseEvent& ev)
         {
             if (ev.CanVeto())
                 ev.Veto();
-            CallAfter([this]() { RequestApplicationExit(); });
+            CallAfter([this]() { RequestApplicationExit("native-window-close"); });
         }
     }
 }
@@ -4184,7 +4237,7 @@ void MainFrame::OnOpenMapEditorFromBattle(wxCommandEvent&)
 
     // Only exit after the external editor process launched successfully.
     if (LaunchStandaloneMapEditor(originalMission))
-        RequestApplicationExit();
+        RequestApplicationExit("editor-launch");
 }
 
 // Launch the original English/Czech retail tutorial maps, not a fake
@@ -4527,7 +4580,7 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 break;
             }
             case FormMainMenuAction::Exit:
-                RequestApplicationExit();
+                RequestApplicationExit("main-menu-exit");
                 return;
             default:
                 break;
