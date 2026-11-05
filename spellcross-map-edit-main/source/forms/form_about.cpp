@@ -371,7 +371,7 @@ void FormAbout::OnOpenRelease(wxCommandEvent&)
 void FormAbout::OnCheckUpdates(wxCommandEvent&)
 {
     m_checkUpdates->Disable();
-    m_updateStatus->SetForegroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT));
+    m_updateStatus->SetForegroundColour(spellcross_menu::Text());
     m_updateStatus->SetLabel("Checking GitHub releases...");
     m_updateStatus->GetParent()->Layout();
     wxYieldIfNeeded();
@@ -383,7 +383,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
     std::string error;
     if (!FetchLatestReleaseTag(latestTag, error))
     {
-        m_updateStatus->SetForegroundColour(wxColour(170, 45, 45));
+        m_updateStatus->SetForegroundColour(wxColour(238, 108, 92));
         m_updateStatus->SetLabel("Update check failed: " + wxString::FromUTF8(error.c_str()));
         m_checkUpdates->Enable();
         m_updateStatus->GetParent()->Layout();
@@ -400,33 +400,33 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
 
     if (!comparable)
     {
-        m_updateStatus->SetForegroundColour(wxColour(100, 80, 20));
+        m_updateStatus->SetForegroundColour(spellcross_strategic_ui::Heading());
         m_updateStatus->SetLabel("Latest GitHub release: " + latest +
             ". The tag is not a standard numeric version, so it cannot be compared automatically.");
         m_openRelease->SetLabel("Open " + latest);
     }
     else if (cmp < 0)
     {
-        m_updateStatus->SetForegroundColour(wxColour(20, 105, 55));
+        m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
         m_updateStatus->SetLabel("A newer build is available: " + latest +
             " (installed: " + spellcross_app::VersionLabel() + ").");
         m_openRelease->SetLabel("Open " + latest + " on GitHub");
     }
     else if (cmp == 0)
     {
-        m_updateStatus->SetForegroundColour(wxColour(20, 105, 55));
+        m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
         m_updateStatus->SetLabel("You are up to date. Latest GitHub release: " + latest + ".");
         m_openRelease->SetLabel("Open " + latest + " on GitHub");
     }
     else
     {
-        m_updateStatus->SetForegroundColour(wxColour(55, 85, 125));
+        m_updateStatus->SetForegroundColour(wxColour(115, 200, 235));
         m_updateStatus->SetLabel("This build (" + spellcross_app::VersionLabel() +
             ") is newer than the latest public GitHub release (" + latest + ").");
         m_openRelease->SetLabel("Open latest public release");
     }
 #else
-    m_updateStatus->SetForegroundColour(wxColour(170, 45, 45));
+    m_updateStatus->SetForegroundColour(wxColour(238, 108, 92));
     m_updateStatus->SetLabel("Automatic update checking is currently available in Windows builds.");
 #endif
 
