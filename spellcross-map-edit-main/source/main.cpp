@@ -3349,12 +3349,14 @@ void MainFrame::RequestApplicationExit(const char* source)
             spell_map ? static_cast<int>(spell_map->IsActiveGroupMoving()) : 0,
             blocked_unit, move_state, attack_state, action_state);
 
+        wxString question = spellcross_ui_locale::Tr("resume.battle_busy_confirm",
+            "The current battle action has not finished and a new Continue save cannot be made. "
+            "Return to the game, or exit without saving your current progress? "
+            "Existing saved games will not be changed.");
+        // Catalogs use literal backslash-n because .lang is line-oriented.
+        question.Replace("\\n", "\n");
         wxMessageDialog prompt(IsShown() ? static_cast<wxWindow*>(this) : nullptr,
-            spellcross_ui_locale::Tr("resume.battle_busy_confirm",
-                "The current battle action has not finished and a new Continue save cannot be made. "
-                "Return to the game, or exit without saving your current progress? "
-                "Existing saved games will not be changed."),
-            "Spellcross", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+            question, "Spellcross", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
         prompt.SetYesNoLabels(
             spellcross_ui_locale::Tr("resume.quit_without_save", "Exit without saving"),
             spellcross_ui_locale::Tr("resume.return_to_game", "Return to game"));
