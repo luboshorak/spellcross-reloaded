@@ -333,6 +333,12 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     form->Bind(wxEVT_MOTION,&FormVideoBox::OnWinMouseMove,this,win_id);
     form->Bind(wxEVT_THREAD,&FormVideoBox::OnNewAudioFrame,this);
 
+    // Cover both native movies and MFPlay, including constructor failure.
+    // The guard restores mission audio without overwriting user preferences.
+    if (m_spelldata->sounds && m_spelldata->sounds->channels)
+        m_background_mute = std::make_unique<SoundChannels::BackgroundMute>(
+            *m_spelldata->sounds->channels);
+
 #ifdef _WIN32
     if (use_fallback)
     {
@@ -409,7 +415,7 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
 
     if (!use_fallback)
     {
-        m_sound = new SpellSound(m_spelldata->sounds->channels, m_video->GetSound());
+        m_sound = new SpellSound(m_spelldata->sounds->channels, m_video->GetSound(), true);
         // Audio must not retain a callback bound to this GUI object's lifetime.
         // Advance the image from the wxWidgets event loop using the sound
         // stream's playback clock instead.
@@ -522,6 +528,7 @@ void FormVideoBox::StopPlayback()
             delete m_sound;
     }
     m_sound = NULL;
+    m_background_mute.reset();
 }
 
 //// funkcni blok pro ukonceni formu (a posilani zpravy rodici)

@@ -8,6 +8,7 @@
 #include <wx/bitmap.h>
 #include <wx/timer.h>
 #include <string>
+#include <memory>
 
 #ifdef _WIN32
 struct IMFPMediaPlayer;
@@ -24,6 +25,7 @@ public:
 private:
     SpellData* m_spelldata;
     SpellSound* m_sound;
+    std::unique_ptr<SoundChannels::BackgroundMute> m_background_mute;
     // The legacy video image is advanced on the GUI thread; the audio thread
     // never captures FormVideoBox or dispatches wxWidgets events.
     wxTimer m_video_timer;
