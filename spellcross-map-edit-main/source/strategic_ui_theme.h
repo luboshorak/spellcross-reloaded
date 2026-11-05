@@ -3,6 +3,7 @@
 #include "game_menu_bar.h"
 #include <wx/listctrl.h>
 #include <wx/textctrl.h>
+#include <cmath>
 #ifdef __WXMSW__
 #include <commctrl.h>
 #endif
@@ -107,6 +108,129 @@ namespace spellcross_strategic_ui
             return true;
         }
 #endif
+    };
+
+    // A fully painted slider avoids the gray Win32 trackbar background which
+    // ignores SetBackgroundColour on Windows. Mouse, keyboard, focus and the
+    // usual wxEVT_SLIDER event remain available to audio/screen settings.
+    class Slider final : public wxControl
+    {
+        int m_min = 0;
+        int m_max = 100;
+        int m_value = 0;
+        bool m_dragging = false;
+
+        int TrackLeft() const { return FromDIP(14); }
+        int TrackRight() const { return (std::max)(TrackLeft() + 1, GetClientSize().x - FromDIP(58)); }
+        void SetFromPointer(int x)
+        {
+            const int left = TrackLeft();
+            const int right = TrackRight();
+            const double fraction = static_cast<double>((std::clamp)(x, left, right) - left) /
+                (std::max)(1, right - left);
+            SetFromInput(m_min + static_cast<int>(std::lround(fraction * (m_max - m_min))));
+        }
+        void SetFromInput(int value)
+        {
+            value = (std::clamp)(value, m_min, m_max);
+            if (value == m_value) return;
+            m_value = value;
+            Refresh(false);
+            wxCommandEvent change(wxEVT_SLIDER, GetId());
+            change.SetEventObject(this);
+            change.SetInt(m_value);
+            GetEventHandler()->ProcessEvent(change);
+        }
+        void OnPaint(wxPaintEvent&)
+        {
+            wxAutoBufferedPaintDC dc(this);
+            PaintGrid(dc, this);
+            const int left = TrackLeft();
+            const int right = TrackRight();
+            const int middle = GetClientSize().y / 2;
+            const int span = (std::max)(1, m_max - m_min);
+            const int thumb = left + static_cast<int>(
+                static_cast<double>(m_value - m_min) * (right - left) / span);
+
+            dc.SetPen(wxPen(Border(), FromDIP(3)));
+            dc.DrawLine(left, middle, right, middle);
+            dc.SetPen(wxPen(spellcross_menu::Accent(), FromDIP(3)));
+            dc.DrawLine(left, middle, thumb, middle);
+            dc.SetBrush(wxBrush(HasFocus() ? Heading() : spellcross_menu::Accent()));
+            dc.SetPen(wxPen(spellcross_menu::Background()));
+            dc.DrawRectangle(thumb - FromDIP(6), middle - FromDIP(10),
+                FromDIP(12), FromDIP(20));
+            if (HasFocus())
+            {
+                dc.SetPen(wxPen(Heading(), 1, wxPENSTYLE_DOT));
+                dc.SetBrush(*wxTRANSPARENT_BRUSH);
+                dc.DrawRectangle(GetClientRect().Deflate(FromDIP(2)));
+            }
+            dc.SetFont(GetFont());
+            dc.SetTextForeground(spellcross_menu::Text());
+            const wxRect valueRect(right + FromDIP(8), 0,
+                (std::max)(FromDIP(28), GetClientSize().x - right - FromDIP(10)),
+                GetClientSize().y);
+            dc.DrawLabel(wxString::Format("%d", m_value), valueRect,
+                wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
+        }
+
+    public:
+        Slider(wxWindow* parent, wxWindowID id, int value, int min_value,
+            int max_value, const wxSize& size = wxDefaultSize)
+            : wxControl(parent, id, wxDefaultPosition,
+                size == wxDefaultSize ? wxSize(340, 38) : size,
+                wxBORDER_NONE)
+        {
+            m_min = min_value;
+            m_max = (std::max)(min_value + 1, max_value);
+            m_value = (std::clamp)(value, m_min, m_max);
+            SetMinSize(wxSize(FromDIP(180), FromDIP(36)));
+            SetFont(spellcross_menu::MenuFont());
+            SetBackgroundColour(spellcross_menu::Background());
+            SetForegroundColour(spellcross_menu::Text());
+            SetBackgroundStyle(wxBG_STYLE_PAINT);
+            Bind(wxEVT_PAINT, &Slider::OnPaint, this);
+            Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
+                SetFocus();
+                m_dragging = true;
+                if (!HasCapture()) CaptureMouse();
+                SetFromPointer(e.GetX());
+            });
+            Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
+                if (m_dragging && e.LeftIsDown()) SetFromPointer(e.GetX());
+            });
+            Bind(wxEVT_LEFT_UP, [this](wxMouseEvent& e) {
+                if (m_dragging) SetFromPointer(e.GetX());
+                m_dragging = false;
+                if (HasCapture()) ReleaseMouse();
+            });
+            Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) {
+                m_dragging = false;
+            });
+            Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& e) {
+                int next = m_value;
+                switch (e.GetKeyCode())
+                {
+                case WXK_LEFT: case WXK_DOWN: --next; break;
+                case WXK_RIGHT: case WXK_UP: ++next; break;
+                case WXK_PAGEUP: next += (std::max)(1, (m_max - m_min) / 10); break;
+                case WXK_PAGEDOWN: next -= (std::max)(1, (m_max - m_min) / 10); break;
+                case WXK_HOME: next = m_min; break;
+                case WXK_END: next = m_max; break;
+                default: e.Skip(); return;
+                }
+                SetFromInput(next);
+            });
+            Bind(wxEVT_SET_FOCUS, [this](wxFocusEvent& e) { Refresh(false); e.Skip(); });
+            Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) { Refresh(false); e.Skip(); });
+        }
+        int GetValue() const { return m_value; }
+        void SetValue(int value)
+        {
+            m_value = (std::clamp)(value, m_min, m_max);
+            Refresh(false);
+        }
     };
 
     // The native Windows header accepts text attributes but still paints a
