@@ -23,7 +23,7 @@ This is the entry point for developers and researchers working on the **current 
 - [Commander casualty information](commander-death-notifications.md) — original language tokens, queueing and save behavior.
 - [Health indicators, unit activity icons and slope firing](restoration-health-status-terrain.md) — measured native geometry and original executable evidence.
 - [Runtime crash diagnostics](runtime-crash-diagnostics.md) — bounded rotating `debug.log` and incident collection.
-- [Historical strategic regression plans](../spellcross-map-edit-main/doc/) — issues #51–#54, #57 and hidden enemy movement. Some plans record the status of an **older branch**; they are evidence/checklists, not present-tense main-branch status.
+- [Historical strategic regression plans](archive/README.md) — issues #51–#54, #57 and hidden enemy movement. Some plans record the status of an **older branch**; they are evidence/checklists, not present-tense main-branch status.
 - [Game UI localization guide](../spellcross-map-edit-main/locales/README.md).
 - [Packaging and release guide](../packaging/README.md), [restoration principles](../packaging/restoration-development-principles.md), and [historical release notes](../packaging/releases/).
 

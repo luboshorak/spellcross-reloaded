@@ -27,7 +27,7 @@ Test coverage starts with `tests/test_campaign_unit_unlock.cpp`, `test_unit_heal
 
 `SpellMap::Load/SaveDTA` owns tactical map data; `SpellDEF` and `SpellMapEvents::AddMissionObjective/AddSpecialEvent` own scripted tactical directives; `LevelLoader::LoadLevelDef` in `source/level.cpp` owns strategic `LEVEL_XX.DEF`. Add parse support **and** a caller that consumes the new field. Check `LevelData::unknown_lines` after parsing new directives.
 
-For generated defensive/recapture battles `MainFrame::LoadGeneratedStrategicBattleFromDtaPath` differs from loading an authored DEF; it uses source DTA deployment data instead of resurrecting a story mission. Keep `tests/test_recapture_mission_lifecycle.cpp` and the existing `doc/STRATEGIC_ISSUE_57_DEFENCE_DEPLOYMENT.md` acceptance checklist applicable.
+For generated defensive/recapture battles `MainFrame::LoadGeneratedStrategicBattleFromDtaPath` differs from loading an authored DEF; it uses source DTA deployment data instead of resurrecting a story mission. Keep `tests/test_recapture_mission_lifecycle.cpp` and the existing `docs/archive/regressions/STRATEGIC_ISSUE_57_DEFENCE_DEPLOYMENT.md` acceptance checklist applicable.
 
 ## Add graphics or a restored strategic page
 

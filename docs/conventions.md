@@ -32,4 +32,4 @@ The repository's explicit restoration policy is [`packaging/restoration-developm
 
 ## Document status
 
-Many `packaging/*.md` and `spellcross-map-edit-main/doc/*.md` files are dated investigations, not universal design rules. Retain their observations; mark outdated branch/test statements as historical rather than silently rewriting evidence. New claims should cite a file/function and, for parity, original-game evidence. Unresolved cases belong in [verification.md](verification.md).
+Many `packaging/*.md` and `docs/archive/regressions/*.md` files are dated investigations, not universal design rules. Retain their observations; mark outdated branch/test statements as historical rather than silently rewriting evidence. New claims should cite a file/function and, for parity, original-game evidence. Unresolved cases belong in [verification.md](verification.md).

@@ -15,7 +15,7 @@ Always record the **source commit/release**, retail data edition (CZ or EN), mis
 | wx menu/display tests | `.github/workflows/fullscreen-menu.yml` | GUI and coordinate behavior with wx on Ubuntu; dedicated Windows C++ tests. |
 | Full Windows game/editor | `packaging/Build-CombinedRelease.ps1 -Rebuild` | Compiles both native projects and validates packaging requirements with the specified dependencies. |
 | Retail integration | `tests/test_hierarchy_roundtrip.cpp`, `test_recapture_mission_lifecycle.cpp`, `test_video_background_audio.cpp` | Requires appropriate native harness or legal retail fixtures; source files alone do not prove they ran. |
-| Manual campaign/ISO QA | `packaging/README.md`, `spellcross-map-edit-main/doc/STRATEGIC_ISSUES_51_54_REGRESSION.md` | End-to-end input, map, saving, video and strategic mission lifecycle. |
+| Manual campaign/ISO QA | `packaging/README.md`, `docs/archive/regressions/STRATEGIC_ISSUES_51_54_REGRESSION.md` | End-to-end input, map, saving, video and strategic mission lifecycle. |
 
 The automated tests have no single universal runner in the inspected files: check each test's arguments. For example, `test_hierarchy_roundtrip.cpp` expects four paths (retail DATA, auxiliary data, extracted COMMON, writable output directory) beyond the executable; `test_recapture_mission_lifecycle.cpp` expects DATA, auxiliary data and extracted COMMON.
 

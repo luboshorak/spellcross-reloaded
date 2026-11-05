@@ -14,7 +14,7 @@
 | `spellcross-map-edit-main/data/` | Source-bundled auxiliary assets, units metadata, menu images, fallback-video manifest | `SpellData` and `packaging/Build-CombinedRelease.ps1` |
 | `spellcross-map-edit-main/locales/` | Reloaded-authored UI translations only | `spellcross_ui_locale::Tr` in `source/spell_ui_locale.h` |
 | `spellcross-map-edit-main/tests/` | Python source-level checks and C++ isolated/integration tests | `.github/workflows/*.yml` |
-| `spellcross-map-edit-main/doc/` | Historical issue-specific tactical/strategic regression notes | Existing `*.md` files |
+| `docs/archive/regressions/` | Historical issue-specific tactical/strategic regression notes | Existing `*.md` files |
 | `external/map-editor/` | Independently built editor repository (Git submodule) | Editor `source/spellcross_map_editor.vcxproj` after submodule init |
 | `packaging/` | Release packaging, audit notes, versioned release notes | `Build-CombinedRelease.ps1` |
 | `spell_extractfs/` | Archive GUI, binary inspectors, map/asset analysis scripts and generated exports | `spell_fs_gui.py`, `spellcross_level_tool_v5.py` |
