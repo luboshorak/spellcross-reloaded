@@ -247,6 +247,7 @@ screen.title=Obrazovka
 screen.dpi=Měřítko hry (DPI)
 screen.scale.original=100 % – původní velikost
 screen.scale.enlarged=125 % – zvětšené, ostré
+screen.scale.smooth=125 % – zvětšené, vyhlazené
 screen.brightness=Jas (%)
 screen.gamma=Gama (×100)
 screen.temperature=Teplota barev (K)
