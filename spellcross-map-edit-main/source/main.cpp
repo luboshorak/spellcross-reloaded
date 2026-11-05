@@ -6427,6 +6427,8 @@ void MainFrame::OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent&)
     ResetTransientTacticalPointerState("native-mouse-capture-lost");
     if (spell_map && spell_map->IsLoaded())
         spell_map->scroller.Idle();
+    if (canvas)
+        canvas->Refresh();
 }
 // on canvas mouse leave
 void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
@@ -6445,10 +6447,10 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
-    if (spellcross_tactical::HasOrphanedPointerGesture(
-        m_boxSelectPending, m_rightPressActive,
-        event.LeftIsDown(), event.RightIsDown()))
-        ResetTransientTacticalPointerState("mouse-moved-after-missing-button-up");
+    // Do not cancel on the first motion with the button reported up:
+    // the matching wxEVT_*_UP may still be in flight (and a valid RMB
+    // click must be allowed to deselect a group). The timer watchdog or
+    // a subsequent new button-down detects a genuinely lost release.
     if (m_rightPressActive && event.RightIsDown() && !m_rightDragged)
     {
         m_rightDragged = spellcross_tactical::IsSelectionDrag(
