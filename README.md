@@ -10,6 +10,10 @@ Spellcross Reloaded is an open-source, fan-made restoration of **Spellcross: The
 
 **[Download the latest published release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** · [Report a bug](https://github.com/luboshorak/spellcross-reloaded/issues) · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor)
 
+## Developer documentation
+
+Start with the [developer documentation index](./docs/README.md) for architecture, coordinate systems, rendering, data formats, lifecycle, build instructions, extension patterns, diagnostics, code conventions, research utilities and the repository-layout audit. Source-level uncertainties are collected in [needs verification](./docs/verification.md).
+
 ## v0.9.4.2
 
 This maintenance release restores original hierarchy controls and unit indicators, and fixes combat and transition behaviour:
