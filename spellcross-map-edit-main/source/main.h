@@ -16,7 +16,6 @@
 #include "spellcross.h"
 #include "map.h"
 #include "tactical_zoom.h"
-#include "tactical_edge_scroll.h"
 #include "spell_hud_buttons.h"
 #include "spell_texts.h"
 #include "forms/form_loader.h"
@@ -30,7 +29,6 @@
 #include "forms/form_about.h"
 #include "forms/form_mmenu.h"
 #include "level.h"
-#include <chrono>
 #include <filesystem>
 #include <string>
 
@@ -176,12 +174,14 @@ private:
     bool m_rangeAttackKeyDown = false;
 	bool m_boxSelectPending = false;
 	bool m_boxSelecting = false;
-    // Only left-button marquee selection captures the mouse. Right-click
-    // cancels a group; edge scrolling no longer requires holding a button.
+    // Distinguish right-click group cancellation from an actual map drag.
+    // TScroll::Move sets its generic 'moved' flag even for tiny cursor jitter.
+    bool m_rightPressActive = false;
+    bool m_rightDragged = false;
+    // A few timer ticks of grace avoid cancelling a real release while
+    // Windows is still delivering the corresponding mouse-up event.
     unsigned int m_orphanedPointerTicks = 0;
-    std::chrono::steady_clock::time_point m_lastEdgeScroll{};
-    double m_edgeScrollRemainderX = 0.0;
-    double m_edgeScrollRemainderY = 0.0;
+    wxPoint m_rightPressStart;
 	wxPoint m_boxSelectStart;
 	wxPoint m_boxSelectCurrent;
 
@@ -236,7 +236,6 @@ private:
 	void HandleCanvasLeftClick(wxMouseEvent& event);
 	void ResetBoxSelectionGesture();
     void ResetTransientTacticalPointerState(const char* reason);
-    void TickTacticalEdgeScroll();
 	wxRect CurrentBoxSelectionRect() const;
     void OnUnitClick_cb(int action);
     
