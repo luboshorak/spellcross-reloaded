@@ -48,6 +48,7 @@ $editor = Join-Path $root 'external\map-editor'
 $gameProject = Join-Path $game 'source\spellcross_map_editor.vcxproj'
 $editorProject = Join-Path $editor 'source\spellcross_map_editor.vcxproj'
 $gameExe = Join-Path $game 'builds\x64\Release\Spellcross.exe'
+$gamePdb = Join-Path $game 'builds\x64\Release\Spellcross.pdb'
 $editorExe = Join-Path $editor 'builds\x64\Release\spellcross_map_editor.exe'
 
 function Assert-File([string]$Path) {
@@ -147,6 +148,9 @@ if (-not $SkipBuild) {
     }
 }
 Assert-File $gameExe
+# A matching full linker PDB enables automatic source file/line stack traces
+# in the shipped game (and removes the need to request the player's EXE).
+Assert-File $gamePdb
 Assert-File $editorExe
 # The package name and BUILD-INFO.txt must reflect the actual binary, not just
 # the current source header. This catches stale Release builds after a version
@@ -168,6 +172,9 @@ $gameData = Join-Path $stage 'data'
 $editorData = Join-Path $stageEditor 'data'
 New-Item -ItemType Directory -Path $gameData, $editorData -Force | Out-Null
 Copy-Required $gameExe (Join-Path $stage 'Spellcross.exe')
+$stageSymbols = Join-Path $stage 'symbols'
+New-Item -ItemType Directory -Path $stageSymbols -Force | Out-Null
+Copy-Required $gamePdb (Join-Path $stageSymbols 'Spellcross.pdb')
 Copy-Required $editorExe (Join-Path $stageEditor 'spellcross_map_editor.exe')
 
 # Trace exactly which Git checkout and executable produced this package. A
@@ -181,6 +188,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     if ($LASTEXITCODE -eq 0 -and $gitCommitCandidate) { $gitCommit = "$gitCommitCandidate".Trim() }
 }
 $gameHash = (Get-FileHash -LiteralPath (Join-Path $stage 'Spellcross.exe') -Algorithm SHA256).Hash
+$pdbHash = (Get-FileHash -LiteralPath (Join-Path $stageSymbols 'Spellcross.pdb') -Algorithm SHA256).Hash
 @"
 Git branch: $gitBranch
 Git commit: $gitCommit
@@ -189,9 +197,10 @@ Release label: $packageVersion
 Release tag: $releaseTag
 Built executable: $gameExe
 Spellcross.exe SHA256: $gameHash
+Spellcross.pdb SHA256: $pdbHash
 Build UTC: $((Get-Date).ToUniversalTime().ToString('o'))
 "@ | Set-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Encoding UTF8
-Write-Host "Package provenance: $gitBranch / $gitCommit / exe SHA256 $gameHash" -ForegroundColor Cyan
+Write-Host "Package provenance: $gitBranch / $gitCommit / exe SHA256 $gameHash / PDB SHA256 $pdbHash" -ForegroundColor Cyan
 
 # Whitelist project-authored support files. NEVER package retail DATA archives.
 $gameAssets = Join-Path $game 'data'
@@ -372,6 +381,11 @@ Editor\data\COMMON.fs with the original game's COMMON.FS archive.
 
 Requires Microsoft Visual C++ Redistributable x64 on systems without it:
 https://aka.ms/vc14/vc_redist.x64.exe
+
+Crash diagnostics: after a crash, send debug.log and crash-last.txt (plus
+crash-last.dmp if needed). The included symbols\\Spellcross.pdb allows the
+crash report to include source file/line information when available.
+Minidumps can contain private game/user data; review before sharing.
 
 Before publishing, verify the package on a clean Windows machine.
 '@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8

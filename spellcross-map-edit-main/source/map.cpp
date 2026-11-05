@@ -13935,8 +13935,22 @@ int SpellMap::Tick()
 			else
 			{
 				// for map tile target(s)
-				target_obj->hit_pnm_frame++;
-				if (target_obj->hit_pnm_frame >= target_obj->hit_pnm->frames.size())
+				// Two attacks may overlap on one tile: an earlier animation can
+				// clear hit_pnm while another attacker is still in HIT state.
+				// Match the unit-target branch: a missing/empty PNM is finished,
+				// not dereferenced. UPDATE still processes destructible events.
+				const AnimPNM* hit_pnm = target_obj->hit_pnm;
+				if (!hit_pnm || hit_pnm->frames.empty())
+				{
+					spellcross_diag::Log(spellcross_diag::Level::Warning, "COMBAT",
+						"Missing map hit animation attacker=%d tile=(%d,%d); resuming UPDATE",
+						unit->id, target_pos.x, target_pos.y);
+					unit->attack_state = MapUnit::ATTACK_STATE::UPDATE;
+					target_obj->hit_pnm = nullptr;
+					target_obj->hit_pnm_frame = 0;
+					target_obj->is_target = false;
+				}
+				else if (++target_obj->hit_pnm_frame >= static_cast<int>(hit_pnm->frames.size()))
 				{
 					// hit anim done:
 					unit->attack_state = MapUnit::ATTACK_STATE::UPDATE;
