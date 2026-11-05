@@ -197,7 +197,9 @@ resume.save_failed=Aktuální hru se nepodařilo uložit. Hra stále běží.
 resume.load_failed=Nepodařilo se pokračovat z uložené pozice.
 battle.unit_details=Úroveň: %d |Bojeschopní: %d |Zranění: %d |Morálka: %d%% |Akční body: %d |Útok (lehký / těžký / vzdušný cíl): %d / %d / %d |Obrana: %d
 
-resume.battle_busy=Dokonči rozmístění, zavři hlášení nebo počkej na konec probíhající akce. Potom můžeš hru bezpečně ukončit.
+resume.battle_busy_confirm=Probíhající akci nelze bezpečně uložit do pozice Pokračovat.\n\nMůžeš se vrátit do hry, nebo ji ukončit bez uložení aktuálního postupu. Dřívější uložené pozice zůstanou zachovány.
+resume.quit_without_save=Ukončit bez uložení
+resume.return_to_game=Zůstat ve hře
 
 menu.fullscreen=&Celá obrazovka	Alt+Enter
 menu.back=Zpět

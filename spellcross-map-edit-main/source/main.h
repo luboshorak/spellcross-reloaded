@@ -124,7 +124,7 @@ public:
     // One idempotent shutdown path for every UI layer.  Strategic/main-menu
     // frames are independent top-level windows, so closing only MainFrame can
     // otherwise leave the process alive with no visible window.
-    void RequestApplicationExit();
+    void RequestApplicationExit(const char* source = "unknown");
     bool SaveContinueGame();
     bool LoadContinueGame();
     bool IsApplicationExitInProgress() const { return m_applicationExitInProgress; }
@@ -160,6 +160,7 @@ private:
     bool IsDeploymentSquare(const MapXY& tile) const;
 
     bool m_applicationExitInProgress = false;
+    bool m_exitDialogOpen = false; // guard against re-entrant native close events
     int m_tutorial_stage = 0; // 0 = normal campaign, 1..4 = original tutorial missions
     // Retail TUT01.TUT lesson sequence (text and gated actions).
     int m_tutorial_command = 0;
