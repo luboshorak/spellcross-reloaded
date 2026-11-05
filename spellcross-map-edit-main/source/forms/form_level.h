@@ -317,6 +317,9 @@ public:
     // Events activated by RunEvents (id -> activation turn for Time-based events)
     std::unordered_map<int, int> m_activatedEvents;
     bool m_deferredChapterIntroEvents = false;
+    std::vector<wxString> m_pendingStrategicEventTexts;
+    bool m_strategicEventMessageActive = false;
+    void ShowPendingStrategicEventMessages();
     
     // Show briefing for territory before mission launch
     void ShowBriefing(int territory_id);

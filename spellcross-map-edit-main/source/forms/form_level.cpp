@@ -2636,6 +2636,11 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
     CheckTimeouts();
 
     Bind(wxEVT_ACTIVATE, &StrategicLevelFrame::OnActivate, this);
+    Bind(wxEVT_SHOW, [this](wxShowEvent& event) {
+        if (event.IsShown())
+            CallAfter(&StrategicLevelFrame::ShowPendingStrategicEventMessages);
+        event.Skip();
+    });
     // The tactical and main-menu consoles already use the ~ key.
     // Route that same shortcut from the strategic frame (including its
     // native CRT child panels) so CASHIUP works in Buy and Research.
@@ -2728,6 +2733,7 @@ void StrategicLevelFrame::OnConsoleCommand()
 
 void StrategicLevelFrame::StartFreshGameMode(const std::vector<LevelData::PlayerUnitAdd>& bonus_units)
 {
+    m_pendingStrategicEventTexts.clear();
     // Enable game mode
     m_gameModeEnabled = true;
     if (spellcross_menu::Model(this))
@@ -18047,6 +18053,7 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
             return false; // save belongs to a different strategic level
         }
 
+        m_pendingStrategicEventTexts.clear();
         m_turn = turn;
         m_money = money;
         m_research = research;
@@ -21282,7 +21289,8 @@ void StrategicLevelFrame::ProcessLevelEvents()
                 wxString msg = txt->text.empty()
                     ? wxString::FromUTF8(text_name)
                     : wxString(txt->text);
-                wxMessageBox(msg, "Event", wxOK | wxICON_INFORMATION, this);
+                m_pendingStrategicEventTexts.push_back(msg);
+                ShowPendingStrategicEventMessages();
             }
         }
 
@@ -21764,8 +21772,40 @@ int StrategicLevelFrame::GetTerritoryTimeoutRemaining(int territory_id) const
     return remaining > 0 ? remaining : 0;
 }
 
+void StrategicLevelFrame::ShowPendingStrategicEventMessages()
+{
+    // Event actions still run exactly once when due. Only their presentation
+    // waits for the strategic frame: mission results and StartFreshGameMode()
+    // can process EventText while the tactical window is still on screen.
+    auto ready = [this] {
+        return IsShownOnScreen() && !IsBeingDeleted() && !m_pendingMission.valid &&
+            (!m_main || !m_main->HasPendingStrategicCutscenes());
+    };
+    if (m_strategicEventMessageActive || !ready() || m_pendingStrategicEventTexts.empty())
+        return;
+    m_strategicEventMessageActive = true;
+    // Show events arrive before the first paint. Render the loaded strategic
+    // map before opening a modal message, rather than relying on a timed delay.
+    Refresh();
+    Update();
+    if (m_originalStrategicUi && m_originalStrategicPanel)
+        m_originalStrategicPanel->Update();
+    else if (m_mapCanvas)
+        m_mapCanvas->Update();
+    while (ready() && !m_pendingStrategicEventTexts.empty())
+    {
+        const wxString text = m_pendingStrategicEventTexts.front();
+        m_pendingStrategicEventTexts.erase(m_pendingStrategicEventTexts.begin());
+        wxMessageBox(text, "Event", wxOK | wxICON_INFORMATION, this);
+    }
+    m_strategicEventMessageActive = false;
+}
+
 void StrategicLevelFrame::RunDeferredChapterIntroEvents()
 {
+    // Also drain ordinary post-battle messages when a cutscene queue finishes
+    // without introducing a new chapter (Show() may be a no-op in this case).
+    CallAfter(&StrategicLevelFrame::ShowPendingStrategicEventMessages);
     if (!m_deferredChapterIntroEvents)
         return;
 
