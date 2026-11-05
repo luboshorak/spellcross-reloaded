@@ -33,4 +33,15 @@ int main()
     assert(!IsGroupCancelRightClick(100, 100, 100, 93, false, 6));
     // The user dragged beyond the threshold, then returned to press position.
     assert(!IsGroupCancelRightClick(100, 100, 100, 100, true, 6));
+
+    // Windows fullscreen/focus transitions can discard button-up. A stale
+    // capture or RMB map pan must no longer block subsequent tactical input.
+    assert(!HasOrphanedPointerGesture(false, false, false, false));
+    assert(!HasOrphanedPointerGesture(true, false, true, false));
+    assert(!HasOrphanedPointerGesture(false, true, false, true));
+    assert(!HasOrphanedPointerGesture(true, true, true, true));
+    assert(HasOrphanedPointerGesture(true, false, false, false));
+    assert(HasOrphanedPointerGesture(false, true, false, false));
+    assert(HasOrphanedPointerGesture(true, true, false, true));
+    assert(HasOrphanedPointerGesture(true, true, true, false));
 }
