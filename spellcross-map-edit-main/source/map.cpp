@@ -10,6 +10,7 @@
 #include "map.h"
 #include "unit_health_display.h"
 #include "tactical_zoom.h"
+#include "display_settings.h"
 #include "spellcross.h"
 #include "fs_archive.h"
 #include "fsu_archive.h"
@@ -5554,19 +5555,20 @@ void SpellMap::SetRender(bool wL1, bool wL2, bool wL3, bool wL4, bool wSTCI, boo
 }
 
 // set gamma correction for rendering
-void SpellMap::SetGamma(double gamma)
+void SpellMap::SetGamma(double value)
 {
-	this->gamma = gamma;
-	// forces recalculation of gamma table
-	last_gamma = 0.0;
+    gamma = std::clamp(value, 0.5, 2.0);
+    spellcross_display::SetGamma(gamma);
+    // Other in-game gamma controls share the same persisted display settings.
+    last_gamma = 0.0;
 }
 double SpellMap::GetGamma()
 {
-	return(gamma);
+    return spellcross_display::Current().gamma;
 }
 
 // render frame
-int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::function<void(void)> hud_buttons_cb, int zoom_percent)
+int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::function<void(void)> hud_buttons_cb, int zoom_percent, int display_scale_percent)
 {
 	if (!bmp.IsOk() || bmp.GetWidth() <= 0 || bmp.GetHeight() <= 0)
 		return 1;
@@ -5579,8 +5581,14 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 	// rescale scroller surface if needed
 	zoom_percent = std::clamp(zoom_percent, 50, 300);
-	const int screen_width = bmp.GetWidth();
-	const int screen_height = bmp.GetHeight();
+    // Render terrain + HUD to a logical (unscaled) indexed surface. Expand
+    // final RGB pixels by nearest-neighbour when writing the physical bitmap:
+    // no bilinear filtering and no change in authored tile/HUD coordinates.
+    display_scale_percent = display_scale_percent == 125 ? 125 : 100;
+    const int physical_width = bmp.GetWidth();
+    const int physical_height = bmp.GetHeight();
+    const int screen_width = (physical_width * 100 + display_scale_percent - 1) / display_scale_percent;
+    const int screen_height = (physical_height * 100 + display_scale_percent - 1) / display_scale_percent;
 	scroll->SetSurface(spellcross_tactical::MapExtent(screen_width, zoom_percent),
 		spellcross_tactical::MapExtent(screen_height, zoom_percent));
 
@@ -6537,41 +6545,38 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 	// --- translate indexed image buffer to RGB bitmap scanline by scanline:
 
-	// apply gamma correction to palette:
-	if (gamma != last_gamma)
-	{
-		// store last gamma to prevent recalculatiom in each frame
-		last_gamma = gamma;
+    // Rebuild the palette when gamma, brightness or color temperature changes.
+    // This modifies only presentation RGB, never the original indexed assets.
+    const auto& settings = spellcross_display::Current();
+    if (last_gamma != settings.gamma || last_display_revision != spellcross_display::Revision())
+    {
+        last_gamma = settings.gamma;
+        last_display_revision = spellcross_display::Revision();
+        std::memcpy(pal, terrain->pal, sizeof(pal));
+        for (int k = 0; k < 256; ++k)
+            for (int c = 0; c < 3; ++c)
+                pal[k][c] = spellcross_display::AdjustChannel(pal[k][c], c, settings);
+    }
 
-		// male local copy of palette	
-		std::memcpy((void*)pal, (void*)terrain->pal, 3 * 256);
+    wxNativePixelData data(bmp);
+    if (!data)
+        return 1;
+    wxNativePixelData::Iterator p(data);
+    for (int y = 0; y < physical_height; ++y)
+    {
+        uint8_t* scan = p.m_ptr;
+        const int sourceY = (y * 100) / display_scale_percent;
+        const uint8_t* source = &screen_pixels[static_cast<size_t>(sourceY) * screen_width];
+        for (int x = 0; x < physical_width; ++x)
+        {
+            const auto* rgb = pal[source[(x * 100) / display_scale_percent]];
+            *scan++ = rgb[2];
+            *scan++ = rgb[1];
+            *scan++ = rgb[0];
+        }
+        p.OffsetY(data, 1);
+    }
 
-		// apply gamma correction (this should be maybe optimized out of here?
-		for (int k = 0; k < 256; k++)
-			for (int c = 0; c < 3; c++)
-				pal[k][c] = (uint8_t)(pow((double)pal[k][c] / 255.0, 1.0 / gamma) * 255.0);
-	}
-
-
-
-	// render 24bit RGB data to raw bmp buffer
-	wxNativePixelData data(bmp);
-	if (!data)
-		return 1;
-	wxNativePixelData::Iterator p(data);
-	for (int y = 0; y < screen_height; ++y)
-	{
-		uint8_t* scan = p.m_ptr;
-		const uint8_t* src = &screen_pixels[static_cast<size_t>(y) * screen_width];
-		for (int x = 0; x < screen_width; x++)
-		{
-			*scan++ = pal[*src][2];
-			*scan++ = pal[*src][1];
-			*scan++ = pal[*src][0];
-			src++;
-		}
-		p.OffsetY(data, 1);
-	}
 
 	// render surface changes processed
 	CommitRenderSurfModified();
