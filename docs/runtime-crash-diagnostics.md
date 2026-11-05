@@ -1,4 +1,4 @@
-# Runtime crash diagnostics (volatile-threads branch)
+# Runtime crash diagnostics
 
 Spellcross Reloaded writes a **bounded** game-session log to **debug.log** in
 its runtime directory (normally the folder containing Spellcross.exe). It

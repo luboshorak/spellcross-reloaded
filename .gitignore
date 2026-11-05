@@ -55,3 +55,13 @@ spellcross-map-edit-main.7z
 /config.ini
 /spellcross-map-edit-main/config.ini
 /spellcross-map-edit-main/source/config.ini
+
+# Ephemeral editor files and Python bytecode (any nested directory)
+**/.idea/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller intermediates. Keep *.spec and deliberate tool executables.
+/spell_extractfs/build/
+/spell_extractfs/dist/
