@@ -6520,10 +6520,8 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
-    // Do not cancel on the first motion with the button reported up:
-    // the matching wxEVT_*_UP may still be in flight (and a valid RMB
-    // click must be allowed to deselect a group). The timer watchdog or
-    // a subsequent new button-down detects a genuinely lost release.
+    // Marquee selection remains controlled solely by the left mouse button.
+    // The pointer-edge camera does not change its capture or drag behavior.
 	if (m_boxSelectPending && event.LeftIsDown())
 	{
 		m_boxSelectCurrent = event.GetPosition();
