@@ -7395,6 +7395,9 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
         group_move_unit_id = -1;
         group_move_target = target;
         group_move_reserve_one_shot = reserve_one_shot;
+        spellcross_diag::Log(spellcross_diag::Level::Info, "PLAYER",
+            "Group move requested group=%d to=(%d,%d) reserve_shot=%d",
+            active_group, target.x, target.y, static_cast<int>(reserve_one_shot));
 
         return StartNextGroupMove() ? 0 : 1;
     }
@@ -7416,6 +7419,10 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
 	if (!CanUnitMove(target))
 		return(1);
 
+	spellcross_diag::Log(spellcross_diag::Level::Info, "PLAYER",
+		"Company move requested id=%d from=(%d,%d) to=(%d,%d) reserve_shot=%d",
+		unit->id, unit->coor.x, unit->coor.y, target.x, target.y,
+		static_cast<int>(reserve_one_shot));
 	// clear last move only after a legal destination is confirmed
 	LockMap();
 	unit->move_state = MapUnit::MOVE_STATE::IDLE;
@@ -9702,7 +9709,12 @@ bool SpellMap::ProcessReactionFire()
         g_move_range_dirty_for = entry.shooter;
 
         if (StartAttack_NoHUD(entry.shooter, entry.target))
+        {
+            spellcross_diag::Log(spellcross_diag::Level::Info, "COMBAT",
+                "Reaction fire shooter=%d target=%d",
+                entry.shooter->id, entry.target->id);
             return true;
+        }
     }
     return false;
 }
@@ -9760,6 +9772,10 @@ int SpellMap::Attack(MapXY pos, int prefer_air)
 		if (unit->coor.Distance(target->coor) <= 2)
 			return(1);
 	}
+
+	spellcross_diag::Log(spellcross_diag::Level::Info, "PLAYER",
+		"Attack requested attacker=%d target=%d tile=(%d,%d)",
+		unit->id, target ? target->id : -1, pos.x, pos.y);
 
 	// Being attacked is a real contact event.  Wake only the attacked unit's
 	// tactical group; do not broadcast remake-only radius aggro or omniscient
