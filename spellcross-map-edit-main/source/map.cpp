@@ -6773,14 +6773,13 @@ void SpellMap::MoveRange::Resume(bool resume)
 	}
 	else
 	{
-		was_halted--;
-		if (was_halted <= 0)
-		{
-			was_halted = 0;
-			is_halted = false;
-		}
+		// Halt() can be nested (e.g. unit deletion while another view task
+		// is paused). Do not collapse the nesting counter to a boolean:
+		// releasing one layer must not restart the worker prematurely.
+		if (was_halted > 0)
+			--was_halted;
+		is_halted = was_halted > 0;
 	}
-	was_halted = is_halted;
 	ctrl_lock.unlock();
 }
 
@@ -10965,14 +10964,13 @@ void SpellMap::ViewRange::Resume(bool resume)
 	}
 	else
 	{
-		was_halted--;
-		if (was_halted <= 0)
-		{
-			was_halted = 0;
-			is_halted = false;
-		}
+		// Halt() can be nested (e.g. unit deletion while another view task
+		// is paused). Do not collapse the nesting counter to a boolean:
+		// releasing one layer must not restart the worker prematurely.
+		if (was_halted > 0)
+			--was_halted;
+		is_halted = was_halted > 0;
 	}
-	was_halted = is_halted;
 	ctrl_lock.unlock();
 }
 
