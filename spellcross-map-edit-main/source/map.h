@@ -275,6 +275,12 @@ public:
 	// MissionStartText pending display (shown on first available Tick after video etc.)
 	bool m_start_text_pending = false;
 
+	// Transient information messages; commanders themselves remain in campaign context.
+	std::vector<std::unique_ptr<SpellTextRec>> m_commander_death_queue;
+	bool m_commander_death_active = false;
+	void QueueCommanderDeathNotification(const MapUnit* host);
+	void CheckCommanderDeathNotifications();
+
 	// Objective completion notification queue
 	std::vector<std::unique_ptr<SpellTextRec>> m_objective_notify_queue;
 	bool m_objective_notify_active = false; // a notification message is currently displayed
@@ -574,6 +580,8 @@ public:
 		typedef std::function<bool(void)> SpellMessagePollingFunPtr;
 		int ShowMessage(SpellTextRec *msg, bool is_yesno, std::function<void(bool)> callback);
 		void SetMessageInterface(SpellMessageCraeteFunPtr create_msg,SpellMessagePollingFunPtr msg_checker);
+		// Names are resolved from the live/restored strategic hierarchy by stable company UID.
+		std::function<std::vector<std::string>(uint32_t)> commander_death_names;
 		SpellMessageCraeteFunPtr m_msg_creator;
 		SpellMessagePollingFunPtr m_msg_checker;
 		

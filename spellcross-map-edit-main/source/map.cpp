@@ -1158,6 +1158,10 @@ void SpellMap::CheckAndTriggerMissionEnd()
 	if (m_msg_checker && m_msg_checker())
 		return;
 
+	// A result overlay must wait for every commander casualty message, including
+	// several officers hosted by the same destroyed company.
+	if (m_msg_creator && !m_commander_death_queue.empty()) return;
+
 	// --- success condition ---
 	// Check live positions even if an extraction unit spawned on a START tile,
 	// a save was loaded with the unit already there, or its movement finished
@@ -2124,6 +2128,8 @@ void SpellMap::Close()
 	m_mission_end_req = MissionEndRequest();
 	m_mission_end_fired = false;
 	m_mission_losses = MissionLossStats();
+	m_commander_death_queue.clear();
+	m_commander_death_active = false;
 	m_start_text_pending = false;
 
 	SetDefaultRenderFilter(NULL);
@@ -3724,6 +3730,7 @@ void SpellMap::RecordMissionLoss(const MapUnit* unit)
 	if (!unit || !unit->unit || !unit->isDead())
 		return;
 
+	QueueCommanderDeathNotification(unit);
 	const bool air = unit->unit->isAir() != 0;
 	const bool heavy = unit->unit->isArmored() != 0;
 	const int commanderLosses = MissionCommanderLossCount(unit);
@@ -12372,6 +12379,47 @@ int SpellMap::FinishUnits()
 	return(0);
 }
 
+void SpellMap::QueueCommanderDeathNotification(const MapUnit* host)
+{
+    if (!isGameMode() || !host || host->is_enemy || !spelldata)
+        return;
+    const unsigned int mask = static_cast<unsigned int>(host->formation_commander_mask) & 7u;
+    const int count = ((mask & 1u) != 0) + ((mask & 2u) != 0) + ((mask & 4u) != 0);
+    if (!count) return;
+    // OTHER: 40 = died, 41 = Commander (both CZ and EN retail tables).
+    const auto title = spelldata->GetOriginalText("OTHER", 41);
+    const auto died = spelldata->GetOriginalText("OTHER", 40);
+    if (title.empty() || died.empty()) return; // do not invent a replacement text
+    const auto names = commander_death_names ? commander_death_names(host->strategic_uid)
+                                            : std::vector<std::string>{};
+    for (int i = 0; i < count; ++i)
+    {
+        std::string text = title + " ";
+        if (static_cast<size_t>(i) < names.size() && !names[i].empty())
+            text += names[i] + " ";
+        text += died;
+        m_commander_death_queue.push_back(std::make_unique<SpellTextRec>(
+            text, spelldata->GetTextLanguage(), "COMMANDER_DIED"));
+    }
+}
+
+void SpellMap::CheckCommanderDeathNotifications()
+{
+    if (!isGameMode() || !m_msg_creator) return;
+    if (m_msg_checker && m_msg_checker()) return;
+    if (m_commander_death_active)
+    {
+        m_commander_death_active = false;
+        if (!m_commander_death_queue.empty())
+            m_commander_death_queue.erase(m_commander_death_queue.begin());
+    }
+    if (!m_commander_death_queue.empty())
+    {
+        m_commander_death_active = true;
+        m_msg_creator(m_commander_death_queue.front().get(), false, nullptr);
+    }
+}
+
 void SpellMap::ApplyCommanderDeathMorale(MapUnit* host)
 {
 	if (!host || host->is_enemy || host->formation_id < 1 || host->formation_id > 8)
@@ -12926,6 +12974,7 @@ int SpellMap::Tick()
 			}
 		}
 
+		CheckCommanderDeathNotifications();
 		ProcEventsList(event_list);
 		CheckObjectiveNotifications();
 		CheckAndTriggerMissionEnd();
@@ -14242,6 +14291,7 @@ int SpellMap::Tick()
 	}
 
 	// try process pending events
+	CheckCommanderDeathNotifications();
 	ProcEventsList(event_list);
 	CheckObjectiveNotifications();
 	CheckAndTriggerMissionEnd();

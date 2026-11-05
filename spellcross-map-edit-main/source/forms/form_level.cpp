@@ -13214,6 +13214,26 @@ void StrategicLevelFrame::ToggleCommanderFormationForMission(uint32_t commander_
         m_originalStrategicPanel->Refresh(false);
 }
 
+std::vector<std::string> StrategicLevelFrame::GetHostedCommanderNames(uint32_t company_uid) const
+{
+    std::vector<std::string> names;
+    if (!company_uid) return names;
+    std::unordered_set<uint32_t> seen;
+    for (const auto& slot : m_hierarchySlots)
+    {
+        if (slot.type != "commander" || !slot.commander_uid ||
+            slot.assigned_unit_uid != company_uid || !seen.insert(slot.commander_uid).second)
+            continue;
+        for (const auto& commander : m_playerCommanders)
+            if (commander.uid == slot.commander_uid)
+            {
+                names.push_back(wstring2stringCP895(wxString::FromUTF8(commander.name).ToStdWstring()));
+                break;
+            }
+    }
+    return names;
+}
+
 void StrategicLevelFrame::RemoveCommandersHostedByDeadUnits(
     const std::unordered_set<uint32_t>& dead_uids)
 {

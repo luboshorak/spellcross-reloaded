@@ -2941,6 +2941,11 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
 
     spell_map->SetMessageInterface(bind(&MainFrame::ShowMessage,this,placeholders::_1,placeholders::_2,placeholders::_3), bind(&MainFrame::CheckMessageState,this));    
     
+    spell_map->commander_death_names = [this](uint32_t uid) {
+        return m_strategicLevel ? m_strategicLevel->GetHostedCommanderNames(uid)
+                                : std::vector<std::string>{};
+    };
+
     // main sizer 
     /*auto sizer2 = new wxBoxSizer(wxVERTICAL);
 

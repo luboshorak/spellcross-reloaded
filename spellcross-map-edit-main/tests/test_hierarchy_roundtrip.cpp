@@ -7,6 +7,12 @@
 #include <iostream>
 #include <stdexcept>
 
+struct SpellMapRestorationTestAccess
+{
+    static void Pump(SpellMap& map) { map.CheckCommanderDeathNotifications(); }
+    static size_t Pending(SpellMap& map) { return map.m_commander_death_queue.size(); }
+};
+
 static void Check(bool ok, const char* message)
 {
     if (!ok) throw std::runtime_error(message);
@@ -55,7 +61,7 @@ int main(int argc, char** argv)
         uint32_t commanderUid = 100;
         auto commander = [&](const std::string& slot) {
             StrategicLevelFrame::CommanderRec c;
-            c.uid = ++commanderUid; c.rank = 6; c.name = "Test commander";
+            c.uid = ++commanderUid; c.rank = 6; c.name = "Test commander " + std::to_string(c.uid);
             strategy.m_playerCommanders.push_back(c);
             Check(strategy.AssignCommanderToHierarchySlot(slot, c.uid, c.rank, wxString::FromUTF8(c.name)), "Commander assignment");
             return c.uid;
@@ -142,6 +148,55 @@ int main(int argc, char** argv)
         checkBattle(5007, 2, 2, 1);
         checkBattle(5013, 3, 4, 3);
 
+        // Resolve all three real officers from campaign context after tactical reload.
+        const auto commanderNames = strategy.GetHostedCommanderNames(1);
+        Check(commanderNames.size() == 3, "Missing hosted commander identity");
+        map.commander_death_names = [&](uint32_t uid) { return strategy.GetHostedCommanderNames(uid); };
+        map.SetGameMode(true);
+        map.HaltUnitRanging(true);
+        bool messageBusy = true;
+        std::vector<std::string> casualtyMessages;
+        map.SetMessageInterface([&](SpellTextRec* text, bool yesno, std::function<void(bool)>) {
+            Check(!yesno && text->name == "COMMANDER_DIED", "Wrong information message");
+            casualtyMessages.push_back(text->raw_text);
+            messageBusy = true;
+        }, [&] { return messageBusy; });
+        map.CleanupDeadUnits();
+        Check(!map.GetUnit(5001), "Dead host not removed");
+        Check(SpellMapRestorationTestAccess::Pending(map) == 3, "Expected one message per hosted officer");
+        SpellMapRestorationTestAccess::Pump(map);
+        Check(casualtyMessages.empty(), "Overwrote an existing information window");
+        for (int i = 0; i < 3; ++i)
+        {
+            messageBusy = false;
+            SpellMapRestorationTestAccess::Pump(map);
+            Check(casualtyMessages.size() == static_cast<size_t>(i + 1), "Notification queue skipped an officer");
+            Check(casualtyMessages.back() == data.GetOriginalText("OTHER", 41) + " " +
+                commanderNames[i] + " " + data.GetOriginalText("OTHER", 40), "Non-retail casualty text or wrong name");
+            SpellMapRestorationTestAccess::Pump(map);
+            Check(casualtyMessages.size() == static_cast<size_t>(i + 1), "Repeated active notification");
+        }
+        messageBusy = false;
+        SpellMapRestorationTestAccess::Pump(map);
+        map.CleanupDeadUnits();
+        Check(!SpellMapRestorationTestAccess::Pending(map), "Repeated notification after cleanup");
+        map.GetUnit(5002)->man = 0; // ordinary company
+        map.GetUnit(5013)->is_enemy = true; // enemy host
+        map.GetUnit(5013)->man = 0;
+        map.CleanupDeadUnits();
+        Check(!SpellMapRestorationTestAccess::Pending(map), "Ordinary/enemy casualty announced as allied commander");
+        checkBattle(5004, 1, 1, 1);
+        checkBattle(5007, 2, 2, 1);
+        const auto casualtySave = output / "commander-loss.scsave";
+        Check(!map.SaveGameStateToFile(casualtySave.wstring()), "Post-casualty save");
+        Check(!map.LoadGameStateFromFile(casualtySave.wstring()), "Post-casualty reload");
+        map.HaltUnitRanging(true);
+        map.CleanupDeadUnits();
+        SpellMapRestorationTestAccess::Pump(map);
+        Check(casualtyMessages.size() == 3, "Replayed casualty after reload");
+        checkBattle(5007, 2, 2, 1);
+        map.SetMessageInterface({}, {});
+
         // Exercise real native mouse handlers at two different render scales.
         strategy.m_originalStrategicScreen = StrategicLevelFrame::OriginalStrategicScreen::Hierarchy;
         strategy.m_originalHierarchyPage = 1;
@@ -188,7 +243,7 @@ int main(int argc, char** argv)
         Check(strategy.SaveStrategicGameToPath(strategicSave, false) && strategy.LoadStrategicStateFromPath(strategicSave), "Edited hierarchy reload");
         checkMeta(1, 0, 0, 0);
         checkMeta(13, 3, 4, 3);
-        std::cout << "PASS: LMB/RMB, both pages, host cleanup, strategic/context/tactical reload, combat bonuses and loss downgrades\n";
+        std::cout << "PASS: LMB/RMB, both pages, host cleanup, strategic/context/tactical reload, combat bonuses, loss downgrades and queued named commander-death notifications/reload\n";
         return 0;
     }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
