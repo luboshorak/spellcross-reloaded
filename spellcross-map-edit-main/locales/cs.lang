@@ -241,3 +241,12 @@ help.key.strategic_save=Ctrl+S / Ctrl+L
 help.action.strategic_save=Uloží nebo načte strategickou hru. Na úvodní obrazovce Pokračovat obnoví poslední automatické uložení při ukončení hry.
 help.close=Zavřít
 menu.controls=&Ovládání
+
+# Display preferences (same dialog in main menu, tactical and strategic windows)
+screen.title=Obrazovka
+screen.dpi=Měřítko hry (DPI)
+screen.scale.original=100 % – původní velikost
+screen.scale.enlarged=125 % – zvětšené, ostré
+screen.brightness=Jas (%)
+screen.gamma=Gama (×100)
+screen.temperature=Teplota barev (K)
