@@ -6699,13 +6699,12 @@ SpellMap::MoveRange::MoveRange(SpellMap* map)
 	ap_left.assign(map->x_size * map->y_size, -1);
 	fire_left.assign(map->x_size * map->y_size, -1);
 
-	// make worker thread
+	// All control fields must be initialized BEFORE a worker can observe them.
+	// The former order started the thread while is_halted/was_halted were uninitialized.
 	state = IDLE;
-	thread = new std::thread(&SpellMap::MoveRange::Worker, this);
-
-	// ready to accept data
 	is_halted = true;
 	was_halted = 1;
+	thread = new std::thread(&SpellMap::MoveRange::Worker, this);
 }
 
 // cleanup move range finder
@@ -6790,9 +6789,15 @@ void SpellMap::MoveRange::FindRange(MapUnit* unit)
 void SpellMap::MoveRange::WaitIdle()
 {
 	int timeout = 5000; // 5 second max wait
-	while (timeout > 0 && (state == ThreadCtrl::BUSY ||
-		   (!is_halted && !pending.empty())))
+	while (timeout > 0)
 	{
+		bool pending_work = false;
+		{
+			std::lock_guard<std::mutex> guard(ctrl_lock);
+			pending_work = state == ThreadCtrl::BUSY || (!is_halted && !pending.empty());
+		}
+		if (!pending_work)
+			break;
 		std::this_thread::sleep_for(1ms);
 		timeout--;
 	}
@@ -10781,8 +10786,11 @@ SpellMap::ViewRange::ViewRange(SpellMap* map)
 
 	was_new_contact = false;
 
-	// make worker thread
+	// Publish initialized control fields before starting the view worker.
+	// The constructor immediately submits initial mask/visibility work.
 	state = ThreadCtrl::IDLE;
+	is_halted = true;
+	was_halted = 1;
 	thread = new std::thread(&SpellMap::ViewRange::Worker, this);
 
 	// make initial z-mask map
@@ -10829,7 +10837,10 @@ void SpellMap::ViewRange::ResultLock(bool lock)
 // is worker ready to process next command (IDLE?)
 int SpellMap::ViewRange::isIdle()
 {
-	return((state == ThreadCtrl::IDLE) && pending.empty());
+	// Worker publishes its state and deque under ctrl_lock; an atomic state
+	// alone does NOT make inspecting std::deque concurrently safe.
+	std::lock_guard<std::mutex> guard(ctrl_lock);
+	return state == ThreadCtrl::IDLE && pending.empty();
 }
 
 // wait to idle state (thread safe), optional stop, optional lock of new tasks
