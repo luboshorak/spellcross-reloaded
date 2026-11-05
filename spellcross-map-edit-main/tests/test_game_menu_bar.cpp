@@ -149,7 +149,9 @@ public:
                 list->InsertItem(0, "Infantry");
                 auto* info = new wxTextCtrl(panel, wxID_ANY, "Mission briefing",
                     wxDefaultPosition, wxSize(300, 60), wxTE_MULTILINE | wxTE_READONLY);
+                auto* slider = new spellcross_strategic_ui::Slider(panel, wxID_ANY, 55, 0, 100);
                 layout->Add(button, 0, wxALL | wxEXPAND, 8);
+                layout->Add(slider, 0, wxALL | wxEXPAND, 8);
                 layout->Add(list, 1, wxALL | wxEXPAND, 8);
                 layout->Add(info, 0, wxALL | wxEXPAND, 8);
                 panel->SetSizer(layout);
@@ -170,6 +172,21 @@ public:
                     "Strategic briefing lost readable text colour");
                 Check(button->GetFont().GetFaceName() == frames[0]->GetToolBar()->GetFont().GetFaceName(),
                     "Strategic font differs from menu font");
+                Check(slider->GetBackgroundColour() == spellcross_menu::Background(),
+                    "Themed volume slider retained native gray background");
+                int changed = 0;
+                slider->Bind(wxEVT_SLIDER, [&](wxCommandEvent& e) {
+                    ++changed;
+                    Check(e.GetInt() == slider->GetValue(), "Slider event value mismatch");
+                });
+                wxKeyEvent increase(wxEVT_KEY_DOWN);
+                increase.m_keyCode = WXK_RIGHT;
+                slider->GetEventHandler()->ProcessEvent(increase);
+                Check(slider->GetValue() == 56 && changed == 1,
+                    "Themed slider lost arrow-key control or volume event");
+                slider->SetValue(45);
+                Check(slider->GetValue() == 45 && changed == 1,
+                    "Programmatic slider updates must not emit input events");
 #ifdef __WXMSW__
                 // Check actual pixels: a native Windows button would be grey.
                 button->Update();
