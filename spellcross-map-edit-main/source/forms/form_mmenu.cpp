@@ -2,6 +2,7 @@
 #include "../game_menu_bar.h"
 #include "../game_controls.h"
 #include "../game_audio_settings.h"
+#include "../game_dialogs.h"
 #include "form_about.h"
 #include "app_identity.h"
 #include "../spell_ui_locale.h"
@@ -1037,11 +1038,11 @@ void FormMainMenu::OnKeyDown(wxKeyEvent& event)
 
 void FormMainMenu::OnConsoleCommand()
 {
-    wxTextEntryDialog dlg(form, "Enter command:", "Console", "");
-    if (dlg.ShowModal() != wxID_OK)
+    wxString commandInput;
+    if (!spellcross_dialog_ui::PromptText(form, "Console", "Enter command:", commandInput))
         return;
 
-    std::string cmd = dlg.GetValue().ToStdString();
+    std::string cmd = commandInput.ToStdString();
     // trim whitespace
     while (!cmd.empty() && cmd.front() == ' ') cmd.erase(cmd.begin());
     while (!cmd.empty() && cmd.back() == ' ') cmd.pop_back();
@@ -1050,7 +1051,7 @@ void FormMainMenu::OnConsoleCommand()
 
     if (!cmd.empty())
     {
-        wxMessageBox("Unknown command: " + dlg.GetValue(), "Console", wxOK | wxICON_WARNING, form);
+        wxMessageBox("Unknown command: " + commandInput, "Console", wxOK | wxICON_WARNING, form);
     }
 }
 
