@@ -1759,6 +1759,8 @@ int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 	// tactical unit objects.  Old saves simply start with group mode off.
 	StopGroupMoveCommand(false);
 	active_group = 0;
+	box_group_active = false;
+	box_group_units.clear();
 	for (auto& g : group_units)
 		g.clear();
 	if (ver >= 8)
@@ -1828,6 +1830,8 @@ int SpellMap::SetGameMode(int new_mode)
 	{
 		StopGroupMoveCommand(true);
 		active_group = 0;
+		box_group_active = false;
+		box_group_units.clear();
 		for (auto& g : group_units)
 			g.clear();
 	}
@@ -2068,10 +2072,12 @@ void SpellMap::Close()
 
 	// EN group state belongs to this tactical map only.
 	active_group = 0;
+	box_group_active = false;
+	box_group_units.clear();
 	for (auto& g : group_units)
 		g.clear();
 	group_move_active = false;
-	group_move_group = 0;
+	group_move_units.clear();
 	group_move_unit_id = -1;
 	group_move_target.Clear();
 	group_move_reserve_one_shot = false;
@@ -7359,7 +7365,8 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
     {
         if (!target.IsSelected())
             return(1);
-        if (active_group <= 0 || active_group > 8 || group_units[active_group].empty())
+        const auto* active_units = ActiveGroupUnits();
+        if (!active_units || active_units->empty())
             return(1);
 
         // A fresh click replaces a previous group order.  AP already spent is
@@ -7368,7 +7375,7 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
             StopGroupMoveCommand(true);
 
         group_move_active = true;
-        group_move_group = active_group;
+		group_move_units = *active_units;
         group_move_unit_id = -1;
         group_move_target = target;
         group_move_reserve_one_shot = reserve_one_shot;
@@ -7516,24 +7523,80 @@ void SpellMap::SetActiveGroup(int g)
 		g = 0;
 
 	// EN executable: pressing the currently selected number unselects that
-	// group.  Switching/unselecting also aborts an in-progress group command.
-	if (g != 0 && g == active_group)
+	// group. A number key replaces a transient box selection without changing
+	// any persistent memberships.
+	if (!box_group_active && g != 0 && g == active_group)
 		g = 0;
 
-	if (group_move_active && g != active_group)
-		StopGroupMoveCommand(true);
-	else if (group_move_active && g == 0)
+	if (group_move_active)
 		StopGroupMoveCommand(true);
 
+	box_group_active = false;
+	box_group_units.clear();
 	active_group = g;
+}
+
+const std::vector<int>* SpellMap::ActiveGroupUnits() const
+{
+	if (box_group_active)
+		return &box_group_units;
+	if (active_group >= 1 && active_group <= 8)
+		return &group_units[active_group];
+	return nullptr;
 }
 
 bool SpellMap::IsUnitInActiveGroup(const MapUnit* u) const
 {
-	if (!u || active_group == 0)
+	if (!u)
 		return false;
-	const auto& v = group_units[active_group];
-	return std::find(v.begin(), v.end(), u->id) != v.end();
+	const auto* active_units = ActiveGroupUnits();
+	return active_units && std::find(active_units->begin(), active_units->end(), u->id) != active_units->end();
+}
+
+int SpellMap::SelectUnitsInScreenRect(const spellcross_tactical::SelectionRect& rect)
+{
+	// Marquee selection is an experimental player command. Never let it take
+	// control away from another tactical state machine or an in-progress move.
+	if (!isGameMode() || deployment_mode || enemy_turn_running || panic_turn_running ||
+		reaction_fire_active || !reaction_fire_queue.empty() || group_move_active)
+		return -1;
+
+	active_group = 0;
+	box_group_units.clear();
+
+	for (auto* u : units)
+	{
+		if (!u || !u->unit || u->is_enemy || u->isDead() || !u->isActive() ||
+			u->hide || !u->coor.IsSelected())
+			continue;
+		if (!show_map_cheat && u->is_visible < 2)
+			continue;
+		if (u->coor.x < 0 || u->coor.x >= x_size || u->coor.y < 0 || u->coor.y >= y_size)
+			continue;
+
+		const int tile_index = ConvXY(u->coor);
+		if (tile_index < 0 || static_cast<size_t>(tile_index) >= tiles.size())
+			continue;
+
+		auto [tile_x, tile_y] = GetSurfPos(u->coor);
+		int anchor_x = tile_x + 40 - surf_x_origin;
+		int anchor_y = tile_y + 24 - surf_y_origin;
+		if (tiles[tile_index].L1)
+		{
+			const auto* terrain_sprite = tiles[tile_index].L1;
+			anchor_y = tile_y + terrain_sprite->y_ofs + terrain_sprite->y_size / 2 - surf_y_origin;
+		}
+		if (u->unit->isAir())
+			anchor_y -= SpellUnitRec::AIR_UNIT_FLY_HEIGHT;
+
+		if (rect.Contains(anchor_x, anchor_y))
+			box_group_units.push_back(u->id);
+	}
+
+	std::sort(box_group_units.begin(), box_group_units.end());
+	box_group_units.erase(std::unique(box_group_units.begin(), box_group_units.end()), box_group_units.end());
+	box_group_active = !box_group_units.empty();
+	return static_cast<int>(box_group_units.size());
 }
 
 void SpellMap::RemoveUnitFromAllGroups(int unit_id)
@@ -7543,6 +7606,10 @@ void SpellMap::RemoveUnitFromAllGroups(int unit_id)
 		auto& v = group_units[g];
 		v.erase(std::remove(v.begin(), v.end(), unit_id), v.end());
 	}
+	box_group_units.erase(std::remove(box_group_units.begin(), box_group_units.end(), unit_id), box_group_units.end());
+	if (box_group_units.empty())
+		box_group_active = false;
+	group_move_units.erase(std::remove(group_move_units.begin(), group_move_units.end(), unit_id), group_move_units.end());
 }
 
 void SpellMap::StopGroupMoveCommand(bool stop_current_unit)
@@ -7565,7 +7632,7 @@ void SpellMap::StopGroupMoveCommand(bool stop_current_unit)
 	}
 
 	group_move_active = false;
-	group_move_group = 0;
+	group_move_units.clear();
 	group_move_unit_id = -1;
 	group_move_target = MapXY();
 	group_move_reserve_one_shot = false;
@@ -7578,8 +7645,13 @@ void SpellMap::CancelActiveGroupMovement()
 
 bool SpellMap::StartNextGroupMove()
 {
-	if (!group_move_active || group_move_group <= 0 || group_move_group > 8)
+	if (!group_move_active)
 		return false;
+	if (group_move_units.empty())
+	{
+		StopGroupMoveCommand(false);
+		return false;
+	}
 
 	// A reaction shot, panic phase or Other Side turn owns the tactical state
 	// machine.  Keep the group command pending and resume it afterwards.
@@ -7598,8 +7670,8 @@ bool SpellMap::StartNextGroupMove()
 	}
 
 	std::vector<MapUnit*> members;
-	members.reserve(group_units[group_move_group].size());
-	for (int id : group_units[group_move_group])
+	members.reserve(group_move_units.size());
+	for (int id : group_move_units)
 	{
 		MapUnit* u = GetUnit(id);
 		if (!u || u->is_enemy || u->isDead())
@@ -7710,32 +7782,45 @@ bool SpellMap::StartNextGroupMove()
 
 void SpellMap::AddAllUnitsToActiveGroup()
 {
-	if (active_group == 0 || group_move_active)
+	if (!IsGroupMode() || group_move_active)
 		return;
+
+	if (box_group_active)
+		box_group_units.clear();
 
 	for (auto* u : units)
 	{
 		if (!u || u->is_enemy || u->isDead())
 			continue;
-		RemoveUnitFromAllGroups(u->id);
-		group_units[active_group].push_back(u->id);
+		if (box_group_active)
+			box_group_units.push_back(u->id);
+		else
+		{
+			RemoveUnitFromAllGroups(u->id);
+			group_units[active_group].push_back(u->id);
+		}
 	}
+	if (box_group_active)
+		box_group_active = !box_group_units.empty();
 }
 
 void SpellMap::ToggleUnitInActiveGroup(MapUnit* u)
 {
-	if (!u || active_group == 0 || group_move_active || u->is_enemy || u->isDead())
+	if (!u || !IsGroupMode() || group_move_active || u->is_enemy || u->isDead())
 		return;
 
-	auto& v = group_units[active_group];
+	auto& v = box_group_active ? box_group_units : group_units[active_group];
 	auto it = std::find(v.begin(), v.end(), u->id);
 	if (it != v.end())
 	{
 		v.erase(it);
+		if (box_group_active && v.empty())
+			box_group_active = false;
 		return;
 	}
 
-	RemoveUnitFromAllGroups(u->id);
+	if (!box_group_active)
+		RemoveUnitFromAllGroups(u->id);
 	v.push_back(u->id);
 }
 

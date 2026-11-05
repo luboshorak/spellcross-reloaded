@@ -171,6 +171,10 @@ private:
 
     bool m_rangeMoveKeyDown = false;
     bool m_rangeAttackKeyDown = false;
+	bool m_boxSelectPending = false;
+	bool m_boxSelecting = false;
+	wxPoint m_boxSelectStart;
+	wxPoint m_boxSelectCurrent;
 
     void OnMapConsoleCommand();
     void OnViewLayer(wxCommandEvent& event);
@@ -213,10 +217,15 @@ private:
     void OnCanvasMouseMove(wxMouseEvent& event);
     void OnCanvasMouseLeave(wxMouseEvent& event);
     void OnCanvasMouseEnter(wxMouseEvent& event);
+	void OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent& event);
     void OnCanvasMouseWheel(wxMouseEvent& event);
     void OnCanvasKeyDown(wxKeyEvent& event);
     void OnCanvasKeyUp(wxKeyEvent& event);
     void OnCanvasLMouseDown(wxMouseEvent& event);
+	void OnCanvasLMouseUp(wxMouseEvent& event);
+	void HandleCanvasLeftClick(wxMouseEvent& event);
+	void ResetBoxSelectionGesture();
+	wxRect CurrentBoxSelectionRect() const;
     void OnUnitClick_cb(int action);
     
     // map render buffer

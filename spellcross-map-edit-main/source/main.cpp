@@ -2880,9 +2880,11 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     canvas->Bind(wxEVT_LEAVE_WINDOW,&MainFrame::OnCanvasMouseLeave,this);
     canvas->Bind(wxEVT_ENTER_WINDOW,&MainFrame::OnCanvasMouseEnter,this);
     canvas->Bind(wxEVT_MOUSEWHEEL,&MainFrame::OnCanvasMouseWheel,this);
+	canvas->Bind(wxEVT_MOUSE_CAPTURE_LOST,&MainFrame::OnCanvasMouseCaptureLost,this);
     canvas->Bind(wxEVT_KEY_DOWN,&MainFrame::OnCanvasKeyDown,this);
     canvas->Bind(wxEVT_KEY_UP,&MainFrame::OnCanvasKeyUp,this);
     canvas->Bind(wxEVT_LEFT_DOWN,&MainFrame::OnCanvasLMouseDown,this);
+	canvas->Bind(wxEVT_LEFT_UP,&MainFrame::OnCanvasLMouseUp,this);
     //canvas->Bind(wxEVT_LEFT_DCLICK,&MainFrame::OnCanvasLMouseDown,this);
     canvas->Bind(wxEVT_THREAD,&MainFrame::OnThreadCanvas,this);
     
@@ -5499,6 +5501,13 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
         float time = 1e-6*std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
         SetStatusText(wxString::Format(wxT("%.0f fps"),frames/time),7);*/
         pdc.DrawBitmap(m_buffer,wxPoint(0,0));
+		if (m_boxSelecting)
+		{
+			const wxRect rect = CurrentBoxSelectionRect();
+			pdc.SetPen(wxPen(wxColour(227, 233, 24), FromDIP(1), wxPENSTYLE_SHORT_DASH));
+			pdc.SetBrush(*wxTRANSPARENT_BRUSH);
+			pdc.DrawRectangle(rect);
+		}
         if (m_mission_result_visible)
             DrawMissionResultOverlay(pdc);
     }
@@ -5966,6 +5975,11 @@ void MainFrame::OnViewMiniMap(wxCommandEvent& event)
 // --- scrolling control ---
 void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
 {
+	if (m_boxSelectPending)
+	{
+		ResetBoxSelectionGesture();
+		if (canvas) canvas->Refresh();
+	}
     if (m_tutorial_stage == 1 && m_tutorial_command == 4 && event.RightUp())
         m_tutorial_pressed_rmb = true;
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
@@ -6022,7 +6036,61 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
         if (m_mission_result_visible && event.LeftDown()) DismissMissionResultOverlay();
         return;
     }
-    if (!spell_map || !spell_map->IsLoaded() || inUnitOptions() || !event.LeftDown()) return;
+
+	const bool can_box_select = spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+		!inSubForm() && !m_deployment_active && !m_inspectUnit &&
+		!spell_map->IsEnemyTurnRunning() && !spell_map->IsActiveGroupMoving() &&
+		event.GetY() < spell_map->GetHUDtop(event.GetX());
+	if (can_box_select)
+	{
+		m_boxSelectPending = true;
+		m_boxSelecting = false;
+		m_boxSelectStart = event.GetPosition();
+		m_boxSelectCurrent = m_boxSelectStart;
+		if (canvas && !canvas->HasCapture())
+			canvas->CaptureMouse();
+		return;
+	}
+
+	HandleCanvasLeftClick(event);
+}
+
+void MainFrame::OnCanvasLMouseUp(wxMouseEvent& event)
+{
+	if (!m_boxSelectPending)
+		return;
+
+	m_boxSelectCurrent = event.GetPosition();
+	if (!m_boxSelecting)
+	{
+		const int threshold = FromDIP(6);
+		m_boxSelecting = spellcross_tactical::IsSelectionDrag(
+			m_boxSelectStart.x, m_boxSelectStart.y,
+			m_boxSelectCurrent.x, m_boxSelectCurrent.y, threshold);
+	}
+	const bool was_selecting = m_boxSelecting;
+	const wxPoint click_pos = m_boxSelectStart;
+	const wxPoint release_pos = m_boxSelectCurrent;
+	ResetBoxSelectionGesture();
+
+	if (was_selecting)
+	{
+		const wxPoint logical_start = TacticalMousePoint(click_pos);
+		const wxPoint logical_end = TacticalMousePoint(release_pos);
+		spell_map->SelectUnitsInScreenRect(spellcross_tactical::NormalizeSelectionRect(
+			logical_start.x, logical_start.y, logical_end.x, logical_end.y));
+		if (canvas) canvas->Refresh();
+		return;
+	}
+
+	wxMouseEvent click(event);
+	click.SetPosition(click_pos);
+	HandleCanvasLeftClick(click);
+}
+
+void MainFrame::HandleCanvasLeftClick(wxMouseEvent& event)
+{
+    if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
     if (event.GetY() >= spell_map->GetHUDtop(event.GetX())) return;
     const auto point = TacticalMousePoint(event.GetPosition());
     spell_map->scroller.Move(point.x, point.y);
@@ -6096,6 +6164,23 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     if (canvas) canvas->Refresh();
 }
 
+void MainFrame::ResetBoxSelectionGesture()
+{
+	m_boxSelectPending = false;
+	m_boxSelecting = false;
+	if (canvas && canvas->HasCapture())
+		canvas->ReleaseMouse();
+}
+
+wxRect MainFrame::CurrentBoxSelectionRect() const
+{
+	const auto rect = spellcross_tactical::NormalizeSelectionRect(
+		m_boxSelectStart.x, m_boxSelectStart.y, m_boxSelectCurrent.x, m_boxSelectCurrent.y);
+	return wxRect(rect.left, rect.top,
+		(std::max)(1, rect.right - rect.left),
+		(std::max)(1, rect.bottom - rect.top));
+}
+
 // on canvas mouse enter
 void MainFrame::OnCanvasMouseEnter(wxMouseEvent& event)
 {
@@ -6103,6 +6188,13 @@ void MainFrame::OnCanvasMouseEnter(wxMouseEvent& event)
         return;
 
     canvas->SetFocus();
+}
+
+void MainFrame::OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent&)
+{
+	m_boxSelectPending = false;
+	m_boxSelecting = false;
+	if (canvas) canvas->Refresh();
 }
 // on canvas mouse leave
 void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
@@ -6121,6 +6213,23 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
+	if (m_boxSelectPending && event.LeftIsDown())
+	{
+		m_boxSelectCurrent = event.GetPosition();
+		if (!m_boxSelecting)
+		{
+			const int threshold = FromDIP(6);
+			m_boxSelecting = spellcross_tactical::IsSelectionDrag(
+				m_boxSelectStart.x, m_boxSelectStart.y,
+				m_boxSelectCurrent.x, m_boxSelectCurrent.y, threshold);
+		}
+		if (m_boxSelecting)
+		{
+			SetCursor(*spell_data->gres.cur_pointer);
+			if (canvas) canvas->Refresh();
+			return;
+		}
+	}
     static bool last_in_hud = false;
     if (event.GetY() >= spell_map->GetHUDtop(event.GetX()))
     {

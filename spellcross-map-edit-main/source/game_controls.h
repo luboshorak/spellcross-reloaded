@@ -69,6 +69,8 @@ namespace spellcross_help
             heading("help.mouse", "Tactical map — mouse");
             row("help.key.left", "Left button", "help.action.left",
                 "Select a unit, move or attack according to the clicked location. Choose an action if several are available.");
+			row("help.key.box_select", "Hold left button", "help.action.box_select",
+				"Drag over allied units to create a temporary movement group. Numbered groups are not changed.");
             row("help.key.drag", "Hold right button", "help.action.drag",
                 "Drag the mouse to scroll the battlefield.");
             row("help.key.wheel", "Mouse wheel", "help.action.wheel",
