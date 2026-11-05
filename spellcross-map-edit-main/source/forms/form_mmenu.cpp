@@ -837,7 +837,8 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
     // Expensive scaling and alpha composition happen ONLY when the menu size
     // or tutorial mode changes, not during mouse movement across buttons.
     if (!m_menu_cache.IsOk() || m_menu_cache.GetSize() != wxSize(drawW, drawH) ||
-        m_menu_cache_tutorial != m_tutorial_visible)
+        m_menu_cache_tutorial != m_tutorial_visible ||
+        m_menu_cache_smoothed != spellcross_display::UseSmoothScaling())
     {
         wxBitmap composed(drawW, drawH);
         wxMemoryDC layer;
@@ -849,7 +850,7 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
         {
             wxBitmap bg = m_background;
             if (drawW != logicalW || drawH != logicalH)
-                bg = wxBitmap(bg.ConvertToImage().Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST));
+                bg = wxBitmap(bg.ConvertToImage().Scale(drawW, drawH, spellcross_display::ResizeQuality()));
             if (bg.IsOk())
                 layer.DrawBitmap(bg, 0, 0, false);
         }
@@ -866,7 +867,7 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
             const int h = std::max(1, static_cast<int>(std::lround(overlay.GetHeight() * scale)));
             wxBitmap picture = overlay;
             if (w != overlay.GetWidth() || h != overlay.GetHeight())
-                picture = wxBitmap(overlay.ConvertToImage().Scale(w, h, wxIMAGE_QUALITY_NEAREST));
+                picture = wxBitmap(overlay.ConvertToImage().Scale(w, h, spellcross_display::ResizeQuality()));
             if (picture.IsOk())
                 layer.DrawBitmap(picture, x, y, true);
         };
@@ -877,6 +878,7 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
         m_menu_cache = composed;
         m_display_menu_cache = wxBitmap();
         m_menu_cache_tutorial = m_tutorial_visible;
+        m_menu_cache_smoothed = spellcross_display::UseSmoothScaling();
 
         for (size_t i = 0; i < m_native_hover.size(); ++i)
         {
@@ -887,7 +889,7 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
             const int h = std::max(1, static_cast<int>(std::lround(62 * scale)));
             m_scaled_hover[i] = (w == 255 && h == 62)
                 ? m_native_hover[i]
-                : wxBitmap(m_native_hover[i].ConvertToImage().Scale(w, h, wxIMAGE_QUALITY_NEAREST));
+                : wxBitmap(m_native_hover[i].ConvertToImage().Scale(w, h, spellcross_display::ResizeQuality()));
         }
         for (size_t i = 0; i < m_native_tutorial_hover.size(); ++i)
         {
@@ -898,7 +900,7 @@ void FormMainMenu::OnPaint(wxPaintEvent& event)
             const int h = std::max(1, static_cast<int>(std::lround(31 * scale)));
             m_scaled_tutorial_hover[i] = (w == 200 && h == 31)
                 ? m_native_tutorial_hover[i]
-                : wxBitmap(m_native_tutorial_hover[i].ConvertToImage().Scale(w, h, wxIMAGE_QUALITY_NEAREST));
+                : wxBitmap(m_native_tutorial_hover[i].ConvertToImage().Scale(w, h, spellcross_display::ResizeQuality()));
         }
     }
 
