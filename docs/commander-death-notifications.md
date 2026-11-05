@@ -24,5 +24,6 @@ removed casualties do not produce another message on reload. Pending information
 windows themselves are not serialized.
 
 The retail hierarchy integration test covers three named officers on one host,
-busy-window queuing, sequential dismissal, repeated cleanup, ordinary/enemy
+busy-window queuing, sequential dismissal, loss of the final allied host,
+repeated cleanup, ordinary/enemy
 casualties, tactical reload before/after the loss, and surviving formation bonuses.

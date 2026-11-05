@@ -12887,6 +12887,9 @@ int SpellMap::Tick()
 			// stop any running enemy phase
 			if (enemy_turn_running)
 				EndEnemyTurn();
+			CheckCommanderDeathNotifications();
+			if (m_msg_creator && !m_commander_death_queue.empty())
+				return(true);
 			// Trigger mission end BEFORE disabling game mode
 			// (CheckAndTriggerMissionEnd requires game mode to be active)
 			CheckAndTriggerMissionEnd();

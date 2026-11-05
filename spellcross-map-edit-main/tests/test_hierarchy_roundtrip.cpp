@@ -195,6 +195,20 @@ int main(int argc, char** argv)
         SpellMapRestorationTestAccess::Pump(map);
         Check(casualtyMessages.size() == 3, "Replayed casualty after reload");
         checkBattle(5007, 2, 2, 1);
+        // The last allied host must still show its message before game mode ends.
+        for (auto* u : map.units) u->is_enemy = true;
+        auto* lastHost = map.GetUnit(5007);
+        lastHost->is_enemy = false;
+        lastHost->formation_commander_mask = 1;
+        lastHost->man = 0;
+        map.CleanupDeadUnits();
+        map.Tick();
+        Check(map.isGameMode() && casualtyMessages.size() == 4 && messageBusy,
+            "Last allied commander notification was skipped by game over");
+        messageBusy = false;
+        map.Tick();
+        Check(!map.isGameMode() && !SpellMapRestorationTestAccess::Pending(map),
+            "Game over did not resume after the last commander notification");
         map.SetMessageInterface({}, {});
 
         // Exercise real native mouse handlers at two different render scales.
