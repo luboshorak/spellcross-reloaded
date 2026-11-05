@@ -7594,14 +7594,18 @@ void SpellMap::RefreshIndividualUnitControls()
     if (!isGameMode())
         return;
     unit_selection_mod = true;
-    g_move_range_dirty_for = unit_selection;
-    g_attack_map_dirty_for = unit_selection;
+    MapUnit* live = unit_selection &&
+        std::find(units.begin(), units.end(), unit_selection) != units.end() &&
+        unit_selection->unit && !unit_selection->isDead() &&
+        !unit_selection->is_enemy ? unit_selection : nullptr;
+    g_move_range_dirty_for = live;
+    g_attack_map_dirty_for = live;
     InvalidateHUDbuttons();
     spellcross_diag::Log(spellcross_diag::Level::Info, "CONTROL",
         "Individual controls restored unit=%d ap=%d attacks=%d",
-        unit_selection ? unit_selection->id : -1,
-        unit_selection ? unit_selection->action_points : -1,
-        unit_selection ? unit_selection->GetFireCount() : -1);
+        live ? live->id : -1,
+        live ? live->action_points : -1,
+        live ? live->GetFireCount() : -1);
 }
 
 void SpellMap::SetActiveGroup(int g)
