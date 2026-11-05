@@ -5591,7 +5591,7 @@ void MainFrame::OnPaintHUDbutton(wxPaintEvent& event)
             if (image.GetSize() != pan->GetClientSize())
                 image = wxBitmap(image.ConvertToImage().Scale(
                     pan->GetClientSize().x, pan->GetClientSize().y, wxIMAGE_QUALITY_NEAREST));
-            dc.DrawBitmap(spellcross_display::AdjustBitmap(image), 0, 0, true);
+            dc.DrawBitmap(spellcross_display::AdjustBitmap(image), 0, 0, false);
         }
     }
     event.Skip();
