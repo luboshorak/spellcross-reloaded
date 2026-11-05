@@ -59,6 +59,6 @@ Source-verified example: `StrategicOriginalRenderer::BlitListChrome` composes `S
 - `SpellMap::Render` currently copies whole tile/animation vectors per paint for editor previews (`map.cpp`; source comment notes the inefficiency); changing this requires range-worker and preview safety tests.
 - Avoid an additional frame-local decompression/cache layer until measured: `FSarchive` already manages loaded bytes and `SpellData` has a disk cache.
 - Several draw elements depend on source edition (CZ/EN). Text/layout must be tested with both retail sets.
-- Any performance shortcut involving invisible enemies must preserve **each movement step's AP, triggers, collisions and reaction fire**. The historical plan in `spellcross-map-edit-main/doc/HIDDEN_ENEMY_SIMULATION_REGRESSION.md` documents the necessary scenarios, but its branch-status header is not a current build assertion.
+- Any performance shortcut involving invisible enemies must preserve **each movement step's AP, triggers, collisions and reaction fire**. The historical plan in `docs/archive/regressions/HIDDEN_ENEMY_SIMULATION_REGRESSION.md` documents the necessary scenarios, but its branch-status header is not a current build assertion.
 
 For uncertain pixel parity and full-screen behavior, see [verification](verification.md).

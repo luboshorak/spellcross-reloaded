@@ -6,7 +6,7 @@ This historically named directory contains the **Spellcross Reloaded game**, not
 - `data/` — auxiliary metadata, fonts/menu artwork and fallback movie manifest; original commercial archives are **not** distributed here.
 - `locales/` — authored UI translations; see [locale README](locales/README.md).
 - `tests/` — source-level Python and C++ regressions referenced by `../.github/workflows/`.
-- `doc/` — older issue-specific regression plans. Start with [historical note index](doc/README.md).
+- Historical issue notes and editor screenshots are preserved centrally in [docs/archive](../docs/archive/README.md); the old `doc/` is gone.
 - `tools/` — native-data inspection utilities.
 - `save/` — tracked example/fixture save data. Player runtime saves are distinct.
 

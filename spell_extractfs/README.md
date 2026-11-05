@@ -7,6 +7,6 @@ This directory is a **standalone toolbox**, not a dependency automatically built
 - `bin_inspector_ui.py` and variants — raw binary detectors/image inspectors; selected scripts use Pillow and openpyxl.
 - `bin_out/spell_ui_builder.py` — manually compose extracted layers and export PNG/SVG from a research JSON layout.
 - `data_sorter.py` — CLI directory organization after extraction.
-- `bin_out/`, `level_out/`, `build/` and `*.spec` — generated/reference outputs and packaging metadata intermixed with source.
+- `bin_out/` and `level_out/` — retained research/reference exports; `*.spec` — PyInstaller build recipes. Generated `build/` and `dist/` are ignored and no longer tracked.
 
 For all entry points, dependencies and caveats see [tools guide](../docs/tools.md). The game runtime uses its **own** `source/fs_archive.cpp` and `source/LZ_spell.cpp` under `../spellcross-map-edit-main/`. Do not remove packaged executables or reorganize adjacent-data assumptions until their tools are individually tested.
