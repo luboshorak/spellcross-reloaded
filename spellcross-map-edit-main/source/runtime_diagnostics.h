@@ -315,11 +315,32 @@ inline void CrashArtifacts(EXCEPTION_POINTERS* exception, const char* reason) no
     HANDLE report = CreateFileW(state.report_path, GENERIC_WRITE, FILE_SHARE_READ,
         nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     CrashLine(report, "CRASH", "Spellcross Reloaded crash report: %s", reason ? reason : "unknown");
+    SYSTEMTIME timestamp{};
+    GetLocalTime(&timestamp);
+    CrashLine(report, "CRASH", "Crash time=%04u-%02u-%02u %02u:%02u:%02u.%03u local",
+        timestamp.wYear, timestamp.wMonth, timestamp.wDay, timestamp.wHour,
+        timestamp.wMinute, timestamp.wSecond, timestamp.wMilliseconds);
     CrashLine(report, "CRASH", "Version=%s commit=%s exe_sha256=%s pid=%lu tid=%lu",
         state.version[0] ? state.version : "unknown",
         state.build_commit[0] ? state.build_commit : "not-packaged",
         state.executable_sha256[0] ? state.executable_sha256 : "not-packaged",
         GetCurrentProcessId(), GetCurrentThreadId());
+    // The loaded PE timestamp and image size identify un-packaged local builds
+    // without needing the original EXE to be sent with the report.
+    const HMODULE executable = GetModuleHandleW(nullptr);
+    if (executable)
+    {
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(executable);
+        if (dos->e_magic == IMAGE_DOS_SIGNATURE && dos->e_lfanew > 0 && dos->e_lfanew < 4096)
+        {
+            const auto* pe = reinterpret_cast<const IMAGE_NT_HEADERS*>(
+                reinterpret_cast<const unsigned char*>(executable) + dos->e_lfanew);
+            if (pe->Signature == IMAGE_NT_SIGNATURE)
+                CrashLine(report, "CRASH", "PE fingerprint: timestamp=0x%08lX image_size=0x%08lX",
+                    pe->FileHeader.TimeDateStamp,
+                    static_cast<unsigned long>(pe->OptionalHeader.SizeOfImage));
+        }
+    }
 
     CONTEXT fallback{};
     RtlCaptureContext(&fallback);
