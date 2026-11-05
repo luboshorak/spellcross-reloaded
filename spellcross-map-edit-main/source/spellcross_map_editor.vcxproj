@@ -111,6 +111,7 @@
     <ClInclude Include="game_menu_bar.h" />
     <ClInclude Include="game_controls.h" />
     <ClInclude Include="strategic_ui_theme.h" />
+    <ClInclude Include="tactical_box_selection.h" />
     <ClInclude Include="tactical_zoom.h" />
     <ClInclude Include="display_settings.h" />
     <ClInclude Include="spell_map_event.h" />

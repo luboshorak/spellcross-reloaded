@@ -28,6 +28,7 @@
 #include "map_types.h"
 #include "spell_hud_buttons.h"
 #include "spell_map_event.h"
+#include "tactical_box_selection.h"
 
 #include "wx/dcbuffer.h"
 
@@ -456,17 +457,21 @@ public:
 		// --- EN original group movement ---
 		int active_group = 0; // 0=off, 1..8 active slot
 		std::array<std::vector<int>, 9> group_units; // persistent membership by MapUnit::id
+		bool box_selection_enabled = spellcross_tactical::BOX_SELECTION_ENABLED_BY_DEFAULT;
+		bool box_group_active = false;
+		std::vector<int> box_group_units; // transient marquee selection; never serialized
 
 		// The EN executable advances a group sequentially: the nearest member is
 		// moved first, occupancy is updated, then the next member is planned.
-		// Keeping the command separate from active_group also makes cancellation
-		// and mid-command deaths deterministic.
+		// Snapshotting the command members also lets a transient box selection use
+		// the same mover without altering persistent number-group membership.
 		bool group_move_active = false;
-		int group_move_group = 0;
+		std::vector<int> group_move_units;
 		int group_move_unit_id = -1;
 		MapXY group_move_target;
 		bool group_move_reserve_one_shot = false;
 
+		const std::vector<int>* ActiveGroupUnits() const;
 		void RemoveUnitFromAllGroups(int unit_id);
 		void ToggleUnitInActiveGroup(MapUnit* u);
 		bool StartNextGroupMove();
@@ -1017,12 +1022,16 @@ public:
 		// --- EN original group movement ---
 		void SetActiveGroup(int g);   // 1..8 toggles that group, 0 explicitly leaves group mode
 		int  GetActiveGroup() const { return active_group; }
-		bool IsGroupMode() const { return active_group != 0; }
+		void SetBoxSelectionEnabled(bool enabled);
+		bool IsBoxSelectionEnabled() const { return box_selection_enabled; }
+		bool IsGroupMode() const { return active_group != 0 || box_group_active; }
+		bool IsBoxGroupMode() const { return box_group_active; }
 		bool IsUnitInActiveGroup(const MapUnit* u) const;
 		bool IsActiveGroupMoving() const { return group_move_active; }
 		void CancelActiveGroupMovement();
 		void AddAllUnitsToActiveGroup();
 		MapUnit* GetGroupCursorUnit(bool air_only, TScroll* scroll = NULL);
+		int SelectUnitsInScreenRect(const spellcross_tactical::SelectionRect& rect);
 
 
 		MapUnit* GetUnit(int id);		
