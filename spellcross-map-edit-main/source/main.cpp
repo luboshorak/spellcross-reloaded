@@ -5797,7 +5797,9 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
     }
        
 
-    event.Skip();
+    // The tactical canvas was fully painted above; do not pass wxEVT_PAINT
+    // to the default handler to erase/redraw it during continuous panning.
+    (void)event;
 }
 
 
