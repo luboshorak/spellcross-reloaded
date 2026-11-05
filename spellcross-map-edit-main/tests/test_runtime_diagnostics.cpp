@@ -25,8 +25,8 @@ int main()
     // Packaged releases provide a build fingerprint even in a plain text log.
     {
         std::ofstream info(directory / "BUILD-INFO.txt");
-        info << "Git commit: abcdef1234567890\\n";
-        info << "Spellcross.exe SHA256: deadbeef01234567\\n";
+        info << "Git commit: abcdef1234567890\n";
+        info << "Spellcross.exe SHA256: deadbeef01234567\n";
     }
     spellcross_diag::Initialize(directory, "diagnostic-test");
     std::vector<std::thread> writers;
@@ -106,7 +106,7 @@ int main()
     if (report.find("0xC0000005") == std::string::npos ||
         report.find("READ address=0xBAD0") == std::string::npos ||
         report.find("abcdef1234567890") == std::string::npos ||
-        report.find("CRASH_STACK") == std::string::npos ||
+        report.find("Stack (") == std::string::npos ||
         report.find("#00") == std::string::npos)
         return 8;
     std::ifstream previous(directory / "crash-prev.txt");
