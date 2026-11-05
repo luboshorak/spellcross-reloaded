@@ -247,6 +247,7 @@ screen.title=Screen
 screen.dpi=Game scale (DPI)
 screen.scale.original=100% – original pixels
 screen.scale.enlarged=125% – enlarged, sharp
+screen.scale.smooth=125% – enlarged, smoothed
 screen.brightness=Brightness (%)
 screen.gamma=Gamma (×100)
 screen.temperature=Color temperature (K)
