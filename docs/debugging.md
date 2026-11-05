@@ -4,7 +4,7 @@
 
 Always record the **source commit/release**, retail data edition (CZ or EN), mission and territory, current game layer, difficulty, and an exact save made before the failure. Attach the saved state and rotating log where appropriate. For gameplay regressions, compare a fixed scenario before and after a change; do not infer success from a non-crashing title screen.
 
-`MyApp::OnInit` starts `spellcross_diag::Initialize` in `source/main.cpp`. The actual diagnostic implementation is `source/runtime_diagnostics.h` and detailed player guidance is [runtime-crash-diagnostics.md](runtime-crash-diagnostics.md). The runtime writes `debug.log` plus `debug.1.log`–`debug.3.log` (512 KiB each); this is **not autosave**. It reports startup, loads, mission/turn transitions, saves, AI, worker stalls, exceptions and clean exit. A crash without a log record may require Windows Event Viewer or a dump.
+`MyApp::OnInit` starts `spellcross_diag::Initialize` in `source/main.cpp`. The actual diagnostic implementation is `source/runtime_diagnostics.h` and detailed player guidance is [runtime-crash-diagnostics.md](runtime-crash-diagnostics.md). The runtime writes `debug.log` plus `debug.1.log`–`debug.3.log` (512 KiB each); this is **not autosave**. It reports startup, build identity, loads, mission/turn transitions, saves, AI, worker stalls, exceptions and clean exit. On native fatal errors it now attempts to create `crash-last.txt` (stack with function/source line when the packaged PDB is present) and `crash-last.dmp`, keeping one prior crash as `crash-prev.*`. A crash without a log record may still require Windows Event Viewer or an externally captured dump.
 
 ## What can be tested on which host
 
