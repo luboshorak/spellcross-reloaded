@@ -1,4 +1,4 @@
-// Regression tests for display preferences and exact nearest-pixel geometry.
+// Regression tests for display defaults, filtering, and exact pixel geometry.
 #include "../source/display_settings.h"
 #include <cassert>
 #include <cmath>
@@ -8,9 +8,9 @@ int main()
     using namespace spellcross_display;
     const Settings defaults = Current();
     assert(defaults.scale_percent == 125);
-    assert(!defaults.smooth_scaling);
-    assert(!UseSmoothScaling());
-    assert(ResizeQuality() == wxIMAGE_QUALITY_NEAREST);
+    assert(defaults.smooth_scaling);
+    assert(UseSmoothScaling());
+    assert(ResizeQuality() == wxIMAGE_QUALITY_BILINEAR);
     assert(defaults.brightness == 100);
     assert(std::abs(defaults.gamma - 1.3) < 1e-9);
     assert(defaults.temperature == 6500);
@@ -45,16 +45,17 @@ int main()
     assert(BlendBilinear(0, 0, 255, 255, 0, 128) == 128);
     assert(BlendBilinear(42, 42, 42, 42, 128, 128) == 42);
 
-    Settings smooth = defaults;
-    smooth.smooth_scaling = true;
-    const auto beforeSmoothing = Revision();
-    Set(smooth);
-    assert(UseSmoothScaling());
-    assert(ResizeQuality() == wxIMAGE_QUALITY_BILINEAR);
-    assert(Revision() > beforeSmoothing);
-    Set(defaults);
+    // The sharp mode is still user-selectable and persists until changed.
+    Settings sharp = defaults;
+    sharp.smooth_scaling = false;
+    const auto beforeFilterChange = Revision();
+    Set(sharp);
     assert(!UseSmoothScaling());
     assert(ResizeQuality() == wxIMAGE_QUALITY_NEAREST);
+    assert(Revision() > beforeFilterChange);
+    Set(defaults);
+    assert(UseSmoothScaling());
+    assert(ResizeQuality() == wxIMAGE_QUALITY_BILINEAR);
 
     Settings oneToOne = defaults;
     oneToOne.scale_percent = 100;
