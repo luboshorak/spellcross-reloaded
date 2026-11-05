@@ -31,29 +31,32 @@ namespace spellcross_display
         return s;
     }
 
-    inline const Settings& Current()
+    inline Settings& MutableSettings()
     {
         static Settings s;
         return s;
     }
 
-    inline std::uint64_t Revision()
+    inline const Settings& Current() { return MutableSettings(); }
+
+    inline std::uint64_t& MutableRevision()
     {
         static std::uint64_t rev = 1;
         return rev;
     }
 
+    inline std::uint64_t Revision() { return MutableRevision(); }
+
     // Single-threaded wx main-loop controls these settings.
     inline void Set(Settings s)
     {
         s = Normalize(s);
-        auto& old = const_cast<Settings&>(Current());
+        auto& old = MutableSettings();
         if (old.scale_percent == s.scale_percent && old.brightness == s.brightness &&
             old.gamma == s.gamma && old.temperature == s.temperature)
             return;
         old = s;
-        auto& rev = const_cast<std::uint64_t&>(Revision());
-        ++rev;
+        ++MutableRevision();
     }
 
     inline void SetGamma(double gamma)
