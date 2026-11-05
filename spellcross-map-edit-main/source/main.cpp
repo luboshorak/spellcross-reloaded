@@ -5069,49 +5069,96 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
 // capture or an RMB latch. It works in fullscreen and windowed mode alike.
 void MainFrame::TickTacticalEdgeScroll()
 {
+    // Restore a clean clock when the mouse leaves the battlefield or a dialog
+    // appears. Otherwise a stale elapsed time makes the camera jump on return.
+    const auto stop = [this]() {
+        m_lastEdgeScroll = {};
+        m_edgeScrollRemainderX = 0.0;
+        m_edgeScrollRemainderY = 0.0;
+    };
     if (!IsShown() || !IsActive() || !canvas || !canvas->IsShownOnScreen() ||
         !spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode() ||
         inSubForm() || m_mission_end_flow || m_mission_result_visible ||
         m_boxSelectPending)
+    {
+        stop();
         return;
+    }
 
-    // Never pan under a click, marquee selection, HUD interaction or a modal.
-    const wxMouseState state = wxGetMouseState();
-    if (state.LeftIsDown() || state.RightIsDown() || state.MiddleIsDown())
+    // Edge scrolling never steals input while clicking, selecting a group or
+    // manipulating any of the original HUD controls.
+    const wxMouseState mouse = wxGetMouseState();
+    if (mouse.LeftIsDown() || mouse.RightIsDown() || mouse.MiddleIsDown())
+    {
+        stop();
         return;
+    }
     const wxSize size = canvas->GetClientSize();
-    const wxPoint cursor = canvas->ScreenToClient(wxGetMousePosition());
     if (size.x <= 0 || size.y <= 0)
+    {
+        stop();
         return;
+    }
+    const wxPoint raw = canvas->ScreenToClient(wxGetMousePosition());
 
-    // GetHUDtop follows the original irregular HUD silhouette. Translate its
-    // logical y back to native canvas coordinates, including 125% display.
+    // In native fullscreen a one-pixel border (or DPI rounding) can place
+    // the physical pointer just outside the wxPanel even at the game edge.
+    // Accept a tiny overshoot, but never react to the menu bar/windows.
+    const int tolerance = FromDIP(8);
+    if (raw.x < -tolerance || raw.y < -tolerance ||
+        raw.x >= size.x + tolerance || raw.y >= size.y + tolerance)
+    {
+        stop();
+        return;
+    }
+    const wxPoint cursor(
+        (std::clamp)(raw.x, 0, size.x - 1),
+        (std::clamp)(raw.y, 0, size.y - 1));
+
+    // The lower scroll band is the top of the irregular HUD, not the
+    // bottom of the full window. Each column has its own HUD silhouette.
     const int hud_top = spellcross_display::ToDevice(
         spell_map->GetHUDtop(spellcross_display::ToLogical(cursor.x)));
     const auto direction = spellcross_tactical::EdgeScrollAt(
-        cursor.x, cursor.y, size.x, size.y, hud_top, FromDIP(24));
+        cursor.x, cursor.y, size.x, size.y, hud_top, FromDIP(72));
     if (!direction.x && !direction.y)
+    {
+        stop();
         return;
+    }
 
-    constexpr auto interval = std::chrono::milliseconds(25);
+    // Use real time, rather than 'N pixels every N timer callbacks'.
+    // Paint cost varies dramatically with map geometry / fullscreen size.
+    // Accumulate fractions to keep motion fine-grained at high zoom.
     const auto now = std::chrono::steady_clock::now();
-    if (now - m_lastEdgeScroll < interval)
-        return;
+    const double dt = m_lastEdgeScroll.time_since_epoch().count() == 0
+        ? 1.0 / 60.0
+        : std::chrono::duration<double>(now - m_lastEdgeScroll).count();
     m_lastEdgeScroll = now;
 
-    const int delta = spellcross_tactical::EdgeScrollStep(
-        TacticalZoomPercent(), spellcross_display::Current().scale_percent);
+    if (!direction.x) m_edgeScrollRemainderX = 0.0;
+    if (!direction.y) m_edgeScrollRemainderY = 0.0;
+    const int map_dx = direction.x * spellcross_tactical::EdgeScrollStep(
+        dt, TacticalZoomPercent(), spellcross_display::Current().scale_percent,
+        m_edgeScrollRemainderX);
+    const int map_dy = direction.y * spellcross_tactical::EdgeScrollStep(
+        dt, TacticalZoomPercent(), spellcross_display::Current().scale_percent,
+        m_edgeScrollRemainderY);
+    if (!map_dx && !map_dy)
+        return;
+
     const auto [before_x, before_y] = spell_map->scroller.GetScroll();
-    spell_map->scroller.SetPos(before_x + direction.x * delta,
-        before_y + direction.y * delta);
+    spell_map->scroller.SetPos(before_x + map_dx, before_y + map_dy);
     const wxPoint logical_cursor = TacticalMousePoint(cursor);
     spell_map->scroller.Move(logical_cursor.x, logical_cursor.y);
-    // The existing renderer owns camera bounds (and handles small maps).
-    // Reuse it instead of inventing new limits for zoomed viewports.
-    spell_map->RenderPrepare();
+
+    // The existing camera bounds are the single source of truth for all
+    // display sizes; do not duplicate or overshoot map edge calculations.
+    if (spell_map->RenderPrepare())
+        return;
     const auto [after_x, after_y] = spell_map->scroller.GetScroll();
     if (after_x != before_x || after_y != before_y)
-        canvas->Refresh();
+        canvas->Refresh(false); // never erase the background between frames
 }
 
 // map animation periodic refresh tick
@@ -5750,7 +5797,9 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
     }
        
 
-    event.Skip();
+    // The tactical canvas was fully painted above; do not pass wxEVT_PAINT
+    // to the default handler to erase/redraw it during continuous panning.
+    (void)event;
 }
 
 

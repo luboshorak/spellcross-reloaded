@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 
 namespace spellcross_tactical
 {
@@ -45,13 +46,31 @@ namespace spellcross_tactical
         return result;
     }
 
-    // Keep edge scroll visually steady across tactical zoom and the optional
-    // 125% nearest-neighbour display scale (map units -> physical pixels).
-    inline int EdgeScrollStep(int zoom_percent, int display_scale_percent)
+    // The old fixed "7 pixels every 25 ms" implementation became slower
+    // whenever software rendering dropped frames. Integrate real wall time
+    // instead. This gives approximately 1300 PHYSICAL pixels per second at
+    // every tactical zoom/scale, independent of timer and paint cadence.
+    //
+    // fractional_pixels is per-axis state owned by the caller, preserving
+    // subpixel movement across frequent wx timer ticks and high zoom levels.
+    // A 250ms cap prevents a long breakpoint / background stall from moving
+    // the camera several screens in a single event.
+    inline int EdgeScrollStep(double elapsed_seconds, int zoom_percent,
+        int display_scale_percent, double& fractional_pixels)
     {
+        if (!std::isfinite(elapsed_seconds) || elapsed_seconds <= 0.0)
+            return 0;
+        elapsed_seconds = (std::clamp)(elapsed_seconds, 0.0, 0.25);
         zoom_percent = (std::clamp)(zoom_percent, 50, 300);
         display_scale_percent = display_scale_percent == 125 ? 125 : 100;
-        const int denominator = zoom_percent * display_scale_percent;
-        return (std::max)(1, (7 * 10000 + denominator / 2) / denominator);
+        constexpr double physical_pixels_per_second = 1300.0;
+        const double logical_pixels_per_second =
+            physical_pixels_per_second * 10000.0 /
+            (zoom_percent * display_scale_percent);
+        const double total = elapsed_seconds * logical_pixels_per_second +
+            fractional_pixels;
+        const int pixels = static_cast<int>(total);
+        fractional_pixels = total - pixels;
+        return pixels;
     }
 }

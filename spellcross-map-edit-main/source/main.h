@@ -180,6 +180,8 @@ private:
     // cancels a group; edge scrolling no longer requires holding a button.
     unsigned int m_orphanedPointerTicks = 0;
     std::chrono::steady_clock::time_point m_lastEdgeScroll{};
+    double m_edgeScrollRemainderX = 0.0;
+    double m_edgeScrollRemainderY = 0.0;
 	wxPoint m_boxSelectStart;
 	wxPoint m_boxSelectCurrent;
 
