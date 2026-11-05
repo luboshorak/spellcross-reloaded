@@ -235,6 +235,7 @@ typedef struct{
 // main spellcross map class
 class SpellMap
 {
+    friend struct SpellMapRestorationTestAccess;
 public:
 	enum class GameDifficulty : int
 	{
@@ -1060,6 +1061,7 @@ public:
 		// Original manual: each elevation level above the target increases
 		// effective firing distance; GetFireRange() remains the flat-terrain
 		// unit statistic shown in the info panel.
+		bool CanUnitFireFromTerrain(const MapUnit* shooter) const;
 		int GetEffectiveFireRange(const MapUnit* shooter, MapXY target) const;
 		int CanUnitAttack(MapUnit* target);
 		MapUnit* CanUnitAttackLand(MapXY pos);
@@ -1207,3 +1209,4 @@ public:
 };
 
 #endif // !_MAP_H_
+
