@@ -1,6 +1,6 @@
 # Spellcross Reloaded — developer documentation
 
-This is the entry point for developers and researchers working on the **current source tree**, not a substitute for the retail game manual. The source was surveyed on **2026-11-05** at `main` commit `d3f478ca`. Paths in these pages are relative to the repository root. For historical/original-game behavior, see [evidence and verification](verification.md) before treating a reconstruction as definitive.
+This is the entry point for developers and researchers working on the **current source tree**, not a substitute for the retail game manual. The source was surveyed on **2026-11-05** at `main` commit `d3f478ca`. Paths in these pages are relative to the repository root; for readability, references written as `source/...`, `forms/...` or `tests/...` **inside a game module discussion** abbreviate `spellcross-map-edit-main/source/...`, `spellcross-map-edit-main/source/forms/...` and `spellcross-map-edit-main/tests/...` respectively. For historical/original-game behavior, see [evidence and verification](verification.md) before treating a reconstruction as definitive.
 
 ## Recommended reading order
 
