@@ -2669,6 +2669,9 @@ bool MyApp::OnInit()
     // cleanly in the main menu instead of showing a bogus map-load error.
     wstring map_path = char2wstring(ini.GetValue("STATE","last_map",""));
     spell_map = new SpellMap();
+	spell_map->SetBoxSelectionEnabled(
+		ini.GetBoolValue("STATE", "experimental_box_selection",
+			spellcross_tactical::BOX_SELECTION_ENABLED_BY_DEFAULT));
     int startupDifficulty = std::clamp((int)ini.GetLongValue("STATE", "game_difficulty", 1), 0, 2);
     if (spell_data && spell_data->units && spell_data->units->IsEnglish() &&
         startupDifficulty == (int)SpellMap::GameDifficulty::EASY)
@@ -2740,6 +2743,7 @@ int MyApp::OnExit()
     {
         ini.SetValue("STATE","last_map",wstring2string(spell_map->GetTopPath()).c_str());
         ini.SetLongValue("STATE", "game_difficulty", (long)spell_map->GetGameDifficulty());
+		ini.SetBoolValue("STATE", "experimental_box_selection", spell_map->IsBoxSelectionEnabled());
     }
 
     // store sound/midi volumes
@@ -2834,6 +2838,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuDifficulty->AppendRadioItem(ID_OptionsDifficultyNormal, spellcross_ui_locale::Tr("menu.normal", "&Normal"));
     menuDifficulty->AppendRadioItem(ID_OptionsDifficultyHard, spellcross_ui_locale::Tr("menu.hard", "&Hard"));
     menuOptions->AppendSubMenu(menuDifficulty, spellcross_ui_locale::Tr("menu.difficulty", "Game &Difficulty"));
+	menuOptions->AppendCheckItem(ID_OptionsBoxSelection,
+		spellcross_ui_locale::Tr("menu.box_selection", "Drag-select unit &groups"),
+		spellcross_ui_locale::Tr("menu.box_selection_help", "Enable temporary unit groups selected by dragging the left mouse button"));
+	menuOptions->Check(ID_OptionsBoxSelection, spell_map && spell_map->IsBoxSelectionEnabled());
 
     spellcross_window::AddFullscreen(menuOptions);
 
@@ -2939,6 +2947,7 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnOptionsAudio,this,ID_OptionsAudio);
     Bind(wxEVT_MENU,&MainFrame::OnOptionsScreen,this,ID_OptionsScreen);
     Bind(wxEVT_MENU,&MainFrame::OnOptionsDifficulty,this,ID_OptionsDifficultyEasy,ID_OptionsDifficultyHard);
+	Bind(wxEVT_MENU,&MainFrame::OnOptionsBoxSelection,this,ID_OptionsBoxSelection);
     SyncDifficultyMenu();
 
     spell_map->SetMessageInterface(bind(&MainFrame::ShowMessage,this,placeholders::_1,placeholders::_2,placeholders::_3), bind(&MainFrame::CheckMessageState,this));    
@@ -3103,6 +3112,19 @@ void MainFrame::OnOptionsDifficulty(wxCommandEvent& event)
     if(event.GetId() == ID_OptionsDifficultyEasy) d = SpellMap::GameDifficulty::EASY;
     else if(event.GetId() == ID_OptionsDifficultyHard) d = SpellMap::GameDifficulty::HARD;
     SetGameDifficulty(d);
+}
+
+void MainFrame::OnOptionsBoxSelection(wxCommandEvent& event)
+{
+	if (!spell_map)
+		return;
+
+	spell_map->SetBoxSelectionEnabled(event.IsChecked());
+	ResetBoxSelectionGesture();
+	if (auto* menu = spellcross_menu::Model(this))
+		menu->Check(ID_OptionsBoxSelection, spell_map->IsBoxSelectionEnabled());
+	if (canvas)
+		canvas->Refresh();
 }
 
 void MainFrame::OnOptionsAudio(wxCommandEvent& event)
@@ -6038,6 +6060,7 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     }
 
 	const bool can_box_select = spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+		spell_map->IsBoxSelectionEnabled() &&
 		!inSubForm() && !m_deployment_active && !m_inspectUnit &&
 		!spell_map->IsEnemyTurnRunning() && !spell_map->IsActiveGroupMoving() &&
 		event.GetY() < spell_map->GetHUDtop(event.GetX());

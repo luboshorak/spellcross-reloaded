@@ -7536,6 +7536,21 @@ void SpellMap::SetActiveGroup(int g)
 	active_group = g;
 }
 
+void SpellMap::SetBoxSelectionEnabled(bool enabled)
+{
+	if (box_selection_enabled == enabled)
+		return;
+
+	box_selection_enabled = enabled;
+	if (!enabled)
+	{
+		if (box_group_active && group_move_active)
+			StopGroupMoveCommand(true);
+		box_group_active = false;
+		box_group_units.clear();
+	}
+}
+
 const std::vector<int>* SpellMap::ActiveGroupUnits() const
 {
 	if (box_group_active)
@@ -7557,7 +7572,7 @@ int SpellMap::SelectUnitsInScreenRect(const spellcross_tactical::SelectionRect& 
 {
 	// Marquee selection is an experimental player command. Never let it take
 	// control away from another tactical state machine or an in-progress move.
-	if (!isGameMode() || deployment_mode || enemy_turn_running || panic_turn_running ||
+	if (!box_selection_enabled || !isGameMode() || deployment_mode || enemy_turn_running || panic_turn_running ||
 		reaction_fire_active || !reaction_fire_queue.empty() || group_move_active)
 		return -1;
 

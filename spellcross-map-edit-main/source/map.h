@@ -456,6 +456,7 @@ public:
 		// --- EN original group movement ---
 		int active_group = 0; // 0=off, 1..8 active slot
 		std::array<std::vector<int>, 9> group_units; // persistent membership by MapUnit::id
+		bool box_selection_enabled = spellcross_tactical::BOX_SELECTION_ENABLED_BY_DEFAULT;
 		bool box_group_active = false;
 		std::vector<int> box_group_units; // transient marquee selection; never serialized
 
@@ -1019,6 +1020,8 @@ public:
 		// --- EN original group movement ---
 		void SetActiveGroup(int g);   // 1..8 toggles that group, 0 explicitly leaves group mode
 		int  GetActiveGroup() const { return active_group; }
+		void SetBoxSelectionEnabled(bool enabled);
+		bool IsBoxSelectionEnabled() const { return box_selection_enabled; }
 		bool IsGroupMode() const { return active_group != 0 || box_group_active; }
 		bool IsBoxGroupMode() const { return box_group_active; }
 		bool IsUnitInActiveGroup(const MapUnit* u) const;

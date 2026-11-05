@@ -197,6 +197,7 @@ private:
     void OnOptionsAudio(wxCommandEvent& event);
     void OnOptionsScreen(wxCommandEvent& event);
     void OnOptionsDifficulty(wxCommandEvent& event);
+	void OnOptionsBoxSelection(wxCommandEvent& event);
     void SyncDifficultyMenu();
 
     void OnResetUnitView(wxCommandEvent& event);
@@ -400,6 +401,7 @@ enum
     ID_OptionsDifficultyEasy,
     ID_OptionsDifficultyNormal,
     ID_OptionsDifficultyHard,
+	ID_OptionsBoxSelection,
     ID_mmOpenMapEditor
 };
 

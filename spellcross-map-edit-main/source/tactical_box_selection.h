@@ -5,6 +5,8 @@
 
 namespace spellcross_tactical
 {
+	inline constexpr bool BOX_SELECTION_ENABLED_BY_DEFAULT = false;
+
     struct SelectionRect
     {
         int left = 0;
