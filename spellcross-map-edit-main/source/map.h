@@ -476,6 +476,8 @@ public:
 		void ToggleUnitInActiveGroup(MapUnit* u);
 		bool StartNextGroupMove();
 		void StopGroupMoveCommand(bool stop_current_unit);
+		// Restore the selected unit's MOVE/ATTACK maps when group mode ends.
+		void RefreshIndividualUnitControls();
 
 
 		// sound selection
