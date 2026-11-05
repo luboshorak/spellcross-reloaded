@@ -4,6 +4,7 @@
 // enabled so Windows cannot bilinearly stretch the finished framebuffer.
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 
@@ -148,8 +149,8 @@ namespace spellcross_display
 
         addLabel(spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         auto* scale = new wxChoice(&dlg, wxID_ANY);
-        scale->Append("100% - original pixels");
-        scale->Append("125% - enlarged / sharp");
+        scale->Append(spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"));
+        scale->Append(spellcross_ui_locale::Tr("screen.scale.enlarged", "125% - enlarged / sharp"));
         scale->SetSelection(original.scale_percent == 100 ? 0 : 1);
         root->Add(scale, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
