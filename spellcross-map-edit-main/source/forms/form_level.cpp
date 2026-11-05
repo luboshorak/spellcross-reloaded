@@ -5366,7 +5366,8 @@ void StrategicLevelFrame::OnOriginalStrategicPaint(wxPaintEvent&)
 
     wxBitmap drawBmp = spellcross_display::AdjustBitmap(m_originalStrategicBitmap);
     if (drawW != StrategicOriginalRenderer::kScreenW || drawH != StrategicOriginalRenderer::kScreenH)
-        drawBmp = wxBitmap(m_originalStrategicBitmap.ConvertToImage().Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST));
+        drawBmp = wxBitmap(drawBmp.ConvertToImage().Scale(
+            drawW, drawH, spellcross_display::ResizeQuality()));
 
     if (drawBmp.IsOk())
         dc.DrawBitmap(drawBmp, drawX, drawY, false);
