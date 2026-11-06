@@ -109,15 +109,15 @@ private:
     // previous/next unit, next picture, rename, goto, info text, exit.
     // First eight keys sit on INFOLSTA; the final narrow key is IEXIT__N.
     static constexpr Button kButtons[] = {
-        {"TEXTUP",   "IINFO_LN", 220, 558, 42},
-        {"TEXTDOWN", "IINFO__N", 267, 558, 42},
-        {"INFOPREV", "IINFO__N", 314, 558, 42},
-        {"INFONEXT", "IINFO__N", 361, 558, 42},
-        {"INFOPICT", "IINFO__N", 408, 558, 42},
-        {"INFOPREM", "IINFO__N", 455, 558, 42},
-        {"INFOGOTO", "IINFO__N", 502, 558, 42},
-        {"INFOTEXT", "IINFO_RN", 549, 558, 42},
-        {"INFOEXIT", "IEXIT__N", 602, 558, 22}
+        {"TEXTUP",   "IINFO_LN", 222, 557, 42},
+        {"TEXTDOWN", "IINFO__N", 269, 557, 42},
+        {"INFOPREV", "IINFO__N", 316, 557, 42},
+        {"INFONEXT", "IINFO__N", 363, 557, 42},
+        {"INFOPICT", "IINFO__N", 410, 557, 42},
+        {"INFOPREM", "IINFO__N", 457, 557, 42},
+        {"INFOGOTO", "IINFO__N", 504, 557, 42},
+        {"INFOTEXT", "IINFO_RN", 551, 557, 42},
+        {"INFOEXIT", "IEXIT__N", 604, 557, 22}
     };
 
     MapUnit* Current() const
@@ -352,7 +352,7 @@ private:
         };
         const int xpDefence = bonuses ? bonuses->defence : 0;
         const int xpAttack = bonuses ? bonuses->attack : 0;
-        add((czech ? L"Obrana: " : L"Defence: ") +
+        add(wxString(czech ? L"Obrana: " : L"Defence: ") +
             withBonuses(unit->GetDefence(), xpDefence,
                 unit->formation_defence_bonus, unit->upgrade_defence_bonus));
         add(czech ? L"Útok:" : L"Attack:");
@@ -364,10 +364,10 @@ private:
                 total ? unit->formation_attack_bonus : 0,
                 total ? unit->upgrade_attack_bonus : 0);
         };
-        add((czech ? L"   Lehké j.: " : L"   Light: ") + attack(MapUnit::TARGET_TYPE::LIGHT));
-        add((czech ? L"   Těžké j.: " : L"   Armor: ") + attack(MapUnit::TARGET_TYPE::ARMOR));
-        add((czech ? L"   Vzdušné j.: " : L"   Air: ") + attack(MapUnit::TARGET_TYPE::AIR));
-        add((czech ? L"   Zdi a objekty: " : L"   Objects: ") +
+        add(wxString(czech ? L"   Lehké j.: " : L"   Light: ") + attack(MapUnit::TARGET_TYPE::LIGHT));
+        add(wxString(czech ? L"   Těžké j.: " : L"   Armor: ") + attack(MapUnit::TARGET_TYPE::ARMOR));
+        add(wxString(czech ? L"   Vzdušné j.: " : L"   Air: ") + attack(MapUnit::TARGET_TYPE::AIR));
+        add(wxString(czech ? L"   Zdi a objekty: " : L"   Objects: ") +
             attack(MapUnit::TARGET_TYPE::OBJECT));
         add(czech ? L"Velitelé:" : L"Commanders:");
         if (unit->is_commander)
@@ -392,11 +392,13 @@ private:
     void DrawButton(wxDC& dc, const Button& button)
     {
         DrawInfoGraphic(dc, button.face, button.x, button.y);
+        // IEXIT__N is the original self-contained 22x26 exit key with its
+        // three dark bars. INFOEXIT.ICO is not layered on that narrow key.
+        if (button.width == 22) return;
         SpellGraphicItem* glyph = m_data ? m_data->gres.GetResource(button.glyph) : nullptr;
         if (glyph)
             DrawInfoGraphic(dc, button.glyph,
-                button.x + (button.width == 22 ? std::max(0, (22 - glyph->x_size) / 2) : glyph->x_ofs),
-                button.y + glyph->y_ofs);
+                button.x + glyph->x_ofs, button.y + glyph->y_ofs);
     }
 
     bool DrawOriginalFont(wxDC& dc, const wxString& text,
@@ -458,7 +460,7 @@ private:
         if (m_panel.IsOk())
             dc.DrawBitmap(m_panel, 194, 144, true);
         if (m_footer.IsOk())
-            dc.DrawBitmap(m_footer, 204, 543, true);
+            dc.DrawBitmap(m_footer, 210, 554, true);
 
         const MapUnit* unit = Current();
         if (unit && unit->unit)
