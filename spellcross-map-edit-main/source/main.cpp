@@ -5094,34 +5094,48 @@ void MainFrame::UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now)
         m_edgePan.Reset();
         return;
     }
-    const wxPoint pointer = canvas->ScreenToClient(wxGetMousePosition());
-    const wxSize size = canvas->GetClientSize();
-    if (size.x <= 0 || size.y <= 0)
+    // Keep input bounds aligned with ClipCursor(): on Windows both the
+    // pointer and frame rect use native screen pixels. This includes native
+    // decorations/menu above the canvas and the full HUD at the bottom.
+    int mouseX = 0, mouseY = 0, left = 0, top = 0, width = 0, height = 0;
+#ifdef _WIN32
+    POINT mouse{};
+    RECT frame{};
+    if (!::GetCursorPos(&mouse) ||
+        !::GetWindowRect(static_cast<HWND>(GetHandle()), &frame))
+    {
+        m_edgePan.Reset();
+        return;
+    }
+    mouseX = mouse.x;
+    mouseY = mouse.y;
+    left = frame.left;
+    top = frame.top;
+    width = frame.right - frame.left;
+    height = frame.bottom - frame.top;
+#else
+    const wxPoint mouse = wxGetMousePosition();
+    const wxRect frame = GetScreenRect();
+    mouseX = mouse.x;
+    mouseY = mouse.y;
+    left = frame.GetLeft();
+    top = frame.GetTop();
+    width = frame.GetWidth();
+    height = frame.GetHeight();
+#endif
+    if (width <= 0 || height <= 0)
     {
         m_edgePan.Reset();
         return;
     }
 
-    // HUD height is not necessarily constant across the horizontal axis.
-    // GetHUDtop uses unzoomed logical coordinates, just like the hover code.
+    const int zone = FromDIP(40);
+    const auto direction = spellcross_tactical::EdgePanAtScreen(
+        mouseX, mouseY, left, top, width, height, zone);
     const int displayScale = spellcross_display::Current().scale_percent;
-    // Native decorated windows may place the pointer a few pixels into
-    // the outer frame. Continue to scroll at the left/right border rather
-    // than stopping just short of the physical window edge.
-    const int borderMargin = canvas->FromDIP(12);
-    if (pointer.x < -borderMargin || pointer.x >= size.x + borderMargin)
-    {
-        m_edgePan.Reset();
-        return;
-    }
-    const int edgeX = (std::clamp)(pointer.x, 0, size.x - 1);
-    const int hudLogicalY = spell_map->GetHUDtop(spellcross_display::ToLogical(edgeX));
-    const int battlefieldBottom = (std::clamp)(
-        (hudLogicalY * displayScale + 99) / 100, 0, size.y);
-    const int zone = canvas->FromDIP(28);
-    const auto direction = spellcross_tactical::EdgePanAt(
-        edgeX, pointer.y, size.x, battlefieldBottom, zone);
-    // Keep the *visible* speed independent of logical map zoom and scaling.
+    // Faster than the first experimental version (1400 instead of 480
+    // screen px/s at the edge). Preserve the same perceived speed at all
+    // supported tactical zoom and display scaling settings.
     const double mapPixelsPerScreenPixel = 10000.0 /
         (static_cast<double>(displayScale) * TacticalZoomPercent());
     const auto [stepX, stepY] = m_edgePan.Advance(

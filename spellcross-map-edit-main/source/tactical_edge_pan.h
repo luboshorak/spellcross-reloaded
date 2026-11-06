@@ -28,25 +28,35 @@ namespace spellcross_tactical
         if (fromNear < active)
         {
             const double t = static_cast<double>(active - fromNear) / active;
-            return -t * t;
+            return -t * (2.0 - t);
         }
         const int fromFar = end - position - 1;
         if (fromFar < active)
         {
             const double t = static_cast<double>(active - fromFar) / active;
-            return t * t;
+            return t * (2.0 - t);
         }
         return 0.0;
     }
 
-    // battlefieldBottom is the *actual* top of the HUD at the cursor's x.
-    // A cursor over the HUD never pans, including near the left/right edges.
-    inline EdgePanDirection EdgePanAt(int x, int y, int width, int battlefieldBottom, int zone)
+    // Edge detection uses the *whole native window*, not the map canvas.
+    // This deliberately includes the top menu/title area and the HUD below
+    // the battlefield. Actual menu interactions are gated by the caller.
+    inline EdgePanDirection EdgePanAt(int x, int y, int width, int height, int zone)
     {
-        if (x < 0 || x >= width || y < 0 || y >= battlefieldBottom)
+        if (x < 0 || x >= width || y < 0 || y >= height)
             return {};
         return { EdgePanAxis(x, 0, width, zone),
-            EdgePanAxis(y, 0, battlefieldBottom, zone) };
+            EdgePanAxis(y, 0, height, zone) };
+    }
+
+    // Accept global screen coordinates, including monitors left/up from (0,0).
+    // The cursor and frame bounds must use the same coordinate system.
+    inline EdgePanDirection EdgePanAtScreen(int mouseX, int mouseY,
+        int windowLeft, int windowTop, int windowWidth, int windowHeight, int zone)
+    {
+        return EdgePanAt(mouseX - windowLeft, mouseY - windowTop,
+            windowWidth, windowHeight, zone);
     }
 
     class EdgePanAccumulator
@@ -80,7 +90,7 @@ namespace spellcross_tactical
         void Reset() { m_xFraction = m_yFraction = 0.0; }
 
         std::pair<int, int> Advance(EdgePanDirection direction, double elapsedSeconds,
-            double logicalPixelsPerScreenPixel, double maxScreenPixelsPerSecond = 480.0)
+            double logicalPixelsPerScreenPixel, double maxScreenPixelsPerSecond = 1400.0)
         {
             // Do not catch up several seconds after a breakpoint, modal dialog,
             // window drag, or unexpectedly slow paint.
