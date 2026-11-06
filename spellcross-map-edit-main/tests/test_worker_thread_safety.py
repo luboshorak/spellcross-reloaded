@@ -37,6 +37,30 @@ class WorkerSafetyContract(unittest.TestCase):
         end = CODE.index("void SpellMap::MoveRange::ResultLock(", start)
         self.assertIn("std::lock_guard<std::mutex> guard(ctrl_lock)", CODE[start:end])
 
+    def test_tactical_save_restoration_does_not_recursively_lock_map(self):
+        restore = CODE.split("int SpellMap::Saves::Load(", 1)[1].split(
+            "// save initial state", 1
+        )[0]
+        self.assertLess(restore.index("map->HaltUnitRanging(true);"),
+                        restore.index("map->LockMap();"))
+        self.assertNotIn("map->AddUnit(copy);", restore)
+        self.assertIn("map->units.push_back(copy);", restore)
+        self.assertLess(restore.index("map->ReleaseMap();"),
+                        restore.index("map->ResumeUnitRanging(false);"))
+        self.assertIn("map->RecalculateTacticalFormations();", restore)
+
+    def test_tactical_load_logs_stage_boundaries(self):
+        body = CODE.split("int SpellMap::LoadGameStateFromFile(", 1)[1].split(
+            "SpellMap::~SpellMap()", 1
+        )[0]
+        for stage in (
+            "Tactical load stage: reloading base map",
+            "Tactical load stage: base map loaded",
+            "Tactical load stage: restoring units=%llu",
+            "Tactical load stage: restored state applied",
+        ):
+            self.assertIn(stage, body)
+
 
 if __name__ == "__main__":
     unittest.main()
