@@ -1428,12 +1428,16 @@ int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 			}
 		}
 	}
+	spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE",
+		"Tactical load stage: reloading base map");
 	if (Load(map_path_w, spelldata))
 	{
 		const std::string mapError = last_error;
 		last_error = "Failed to load base map for tactical save: " + mapError;
 		return 4;
 	}
+	spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE",
+		"Tactical load stage: base map loaded");
 
 	if (payload.empty())
 	{
@@ -1724,12 +1728,17 @@ int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 	}
 
 	// apply saved state into current map
+	spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE",
+		"Tactical load stage: restoring units=%llu",
+		static_cast<unsigned long long>(tmp.units.size()));
 	int r = saves->Load(&tmp);
 	if (r)
 	{
 		last_error = "Failed to apply loaded state.";
 		return 20;
 	}
+	spellcross_diag::Log(spellcross_diag::Level::Info, "SAVE",
+		"Tactical load stage: restored state applied");
 	if(ver < 6)
 		ApplyDifficultyEnemyExperience();
 
@@ -15970,6 +15979,10 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 			return(1);
 	}
 
+	// The saved position replaces tiles, units and event objects. Stop both
+	// worker threads BEFORE acquiring the map mutex: they may still refer to
+	// the old unit/event pointers. HaltUnitRanging waits for in-flight tasks.
+	map->HaltUnitRanging(true);
 	map->LockMap();
 
 	// discard stale runtime queues tied to previous event instances
@@ -15989,7 +16002,10 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 	for (auto& unit : save->units)
 	{
 		MapUnit* copy = new MapUnit(*unit, false);
-		map->AddUnit(copy);
+		// AddUnit() acquires map_lock again. This restore already holds it,
+		// and a Windows SRW-backed std::mutex is not recursive. Populate the
+		// roster directly, then rebuild the derived formation state once.
+		map->units.push_back(copy);
 		if (unit == save->sel_unit)
 			map->SelectUnit(copy);
 	}
@@ -16054,7 +16070,14 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 		map->next_enemy_ai_group_id = 1;
 	}
 
+	// AddUnit() normally recalculates formations in game mode. After bulk
+	// restore, do that once, only when the complete roster has been relinked.
+	if (map->isGameMode())
+		map->RecalculateTacticalFormations();
+
 	map->ReleaseMap();
+	// Finish the scoped worker pause after the map state is fully committed.
+	map->ResumeUnitRanging(false);
 
 	return(0);
 }
