@@ -941,7 +941,7 @@ public:
 		~SpellMap();
 		int SetGameMode(int new_mode);
 		int isGameMode();
-        bool IsTacticalMovementTile(MapXY tile) const;
+        bool IsTacticalMovementTile(MapXY tile, bool enforce_combat_bounds = false) const;
 		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
 		bool CanSavePausedBattle() const;
 		void SetGameDifficulty(GameDifficulty difficulty);
@@ -1069,7 +1069,7 @@ public:
 		int RemoveAllUnits();		
 		int AddUnit(MapUnit* unit);		
 		MapUnit* CreateUnit(MapUnit* parent=NULL,SpellUnitRec* new_type=NULL);
-		int PlaceUnit(MapUnit* unit);
+		int PlaceUnit(MapUnit* unit, bool require_tactical_tile = false);
 		int AssignUnitID(MapUnit* unit);
 		int SortUnitIDs();
 		void SortUnits();

@@ -6820,11 +6820,14 @@ int SpellMap::ScrollToUnit(MapUnit* unit, TScroll* scroll)
 
 // Pathfinding and movement preview must use the SAME playable boundary.
 // Renderer and camera still display the full map (no invisible companies).
-bool SpellMap::IsTacticalMovementTile(MapXY tile) const
+bool SpellMap::IsTacticalMovementTile(MapXY tile, bool enforce_combat_bounds) const
 {
     if (tile.x < 0 || tile.y < 0 || tile.x >= x_size || tile.y >= y_size)
         return false;
-    if (!game_mode || spellcross_tactical::IsWithinRetailNavigationEnvelope(
+    // Generated battles seed companies BEFORE SetGameMode(1). Callers can
+    // enforce the same retail navigation envelope during initial placement.
+    if ((!game_mode && !enforce_combat_bounds) ||
+        spellcross_tactical::IsWithinRetailNavigationEnvelope(
             tile.x, tile.y, x_size, y_size, m_retail_nav_padding))
         return true;
 
@@ -15209,7 +15212,7 @@ int SpellMap::AddUnit(MapUnit* unit)
 }
 
 // try to place new unit to map (looks for nearest suitable place)
-int SpellMap::PlaceUnit(MapUnit* unit)
+int SpellMap::PlaceUnit(MapUnit* unit, bool require_tactical_tile)
 {
 	// Event and summoned units can originate near an edge. The breadth-first
 	// search below indexes map-sized vectors, so reject invalid seed positions
@@ -15230,6 +15233,11 @@ int SpellMap::PlaceUnit(MapUnit* unit)
 		{
 			auto pos_mxy = ConvXY(cand);
 			if (pos_mxy < 0)
+				continue;
+			// On generated battles, both the initial seed and every fallback tile
+			// must satisfy the tactical pathfinder's navigation boundary.
+			// Authored DEF/event placements retain their existing behavior.
+			if (require_tactical_tile && !IsTacticalMovementTile(cand, true))
 				continue;
 			// mark as tested position
 			used[pos_mxy] = 1;
