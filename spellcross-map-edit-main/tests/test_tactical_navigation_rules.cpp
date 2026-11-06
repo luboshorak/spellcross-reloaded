@@ -3,6 +3,16 @@
 int main()
 {
     using namespace spellcross_tactical;
+    // Original identity must not depend on percentage of grey PLA00 tiles.
+    assert(IsOriginalMissionMapStem("M06_06"));
+    assert(IsOriginalMissionMapStem("M06_12"));
+    assert(IsOriginalMissionMapStem("M06_13"));
+    assert(IsOriginalMissionMapStem("M09_13"));
+    assert(IsOriginalMissionMapStem("M10_03X"));
+    assert(IsOriginalMissionMapStem("m04_03"));
+    assert(!IsOriginalMissionMapStem("SNOW"));
+    assert(!IsOriginalMissionMapStem("M00_00"));
+    assert(!IsOriginalMissionMapStem("MY_CUSTOM"));
     // Confirmed original LE traversal mask at 0x74852, repeated by class.
     assert(!IsWithinRetailNavigationEnvelope(1,78,56,104,true));
     assert(IsWithinRetailNavigationEnvelope(2,78,56,104,true));

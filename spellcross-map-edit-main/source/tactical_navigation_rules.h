@@ -1,4 +1,6 @@
 #pragma once
+#include <string>
+#include <cctype>
 
 // The DTA grid extends beyond the authored combat area. Original retail
 // mission coordinates were audited across 79 English maps. The original
@@ -12,6 +14,29 @@
 // Render and editor access must continue to cover the full DTA grid.
 namespace spellcross_tactical
 {
+    // All 75 classic EN tactical DTAs use MNN_NN or MNN_NNX names.
+    // In particular, M06_06, M06_12, M06_13 and M09_13 have LESS THAN
+    // 80% PLA00 tiles on their boundary rows. A grey-tile quota is not a
+    // reliable way to identify original maps: apply recovered DOS limits
+    // by original mission map identity, and leave DLC names (SNOW, etc.)
+    // unrestricted by default.
+    inline bool IsOriginalMissionMapStem(const std::string& stem)
+    {
+        if (stem.size() != 6 && stem.size() != 7) return false;
+        auto asciiUpper = [](unsigned char c) {
+            return static_cast<char>(std::toupper(c));
+        };
+        if (asciiUpper(stem[0]) != 'M' ||
+            !std::isdigit(static_cast<unsigned char>(stem[1])) ||
+            !std::isdigit(static_cast<unsigned char>(stem[2])) ||
+            stem[3] != '_' ||
+            !std::isdigit(static_cast<unsigned char>(stem[4])) ||
+            !std::isdigit(static_cast<unsigned char>(stem[5])))
+            return false;
+        if (stem[1] == '0' && stem[2] == '0') return false; // DLC level 00
+        return stem.size() == 6 || asciiUpper(stem[6]) == 'X';
+    }
+
     inline bool IsWithinRetailNavigationEnvelope(int x, int y,
         int width, int height, bool hasRetailPadding)
     {

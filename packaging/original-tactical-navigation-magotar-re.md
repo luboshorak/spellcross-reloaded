@@ -32,6 +32,13 @@ The game uses Watcom x86 and original `JEDNOTKY.DEF` records of 207 bytes.
   original `8/14` margins.
   Further investigation should trace the movement-mask tile class and
   neighbor expansion, especially on northern/southern grey `PLA00_*` rows.
+- The original loader marks these outer rows even when the L1 tiles have
+  **non-PLA00 scenery**. I verified all 75 original English DTA map filenames:
+  four of them (M06_06, M06_12, M06_13, M09_13) have under 80% PLA00
+  filler on top/bottom. The PR's former grey-tile-ratio detection failed
+  for those real maps. Original-map navigation now uses the canonical
+  `MNN_NN` / `MNN_NNX` naming convention; custom DLC/editor maps
+  (including `M00_00`) retain full-grid movement by default.
 - Retail scenario scripts can place START and objective markers on otherwise
   restricted border columns. Those positions should not automatically turn
   the entire surrounding border into a walkable bypass. Keep rendering all

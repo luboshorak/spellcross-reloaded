@@ -2494,20 +2494,13 @@ int SpellMap::Load(wstring& path, SpellData* spelldata)
 	// get tile flags from context data
 	SyncL1flags();
 
-    // Original retail DTA files use nearly all PLA00 filler sprites along
-    // the first and last rows. Avoid applying their inset to new editor maps.
-    if (x_size >= 10 && y_size >= 25)
-    {
-        int filler = 0;
-        for (int x = 0; x < x_size; ++x)
-            for (int y : {0, y_size - 1})
-            {
-                const auto* spr = tiles[static_cast<size_t>(y) * x_size + x].L1;
-                if (spr && spr->name.compare(0, 6, "PLA00_") == 0)
-                    ++filler;
-            }
-        m_retail_nav_padding = filler * 10 >= x_size * 16;
-    }
+    // The original DOS map loader marks outer rows non-traversable even
+    // when they contain real scenery instead of PLA00 filler tiles. Do not
+    // infer retail identity from the percentage of grey cells: four of the
+    // 75 original English DTAs fail that check. Custom DLC/editor map names
+    // remain exempt unless their scenario opts into original MNN_NN format.
+    m_retail_nav_padding = spellcross_tactical::IsOriginalMissionMapStem(
+        std::filesystem::path(map_path).stem().string());
 
 	//////////////
 	///// L2 /////
