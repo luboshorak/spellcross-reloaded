@@ -6940,6 +6940,7 @@ void SpellMap::MoveRange::FindRange(MapUnit* unit)
 	// make new job
 	//queue_lock.lock();
 	ctrl_lock.lock();
+	requested_range_unit = unit;
 	pending.emplace_back(unit);
 	ctrl_lock.unlock();
 	//queue_lock.unlock();
@@ -6990,6 +6991,13 @@ bool SpellMap::MoveRange::HasCachedMoveRange(const MapUnit* unit)
 {
     std::lock_guard<std::mutex> guard(result_lock);
     return unit && completed_range_unit == unit;
+}
+
+bool SpellMap::MoveRange::IsRangePending(const MapUnit* unit)
+{
+    std::lock_guard<std::mutex> guard(ctrl_lock);
+    return unit && !is_halted && requested_range_unit == unit &&
+        (state == ThreadCtrl::BUSY || !pending.empty());
 }
 
 
@@ -7661,20 +7669,24 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 		return select_pos.IsSelected() ? UNIT_OPT_MOVE : 0;
 	}
 
-	// A user may click immediately after switching between a ground and an
-	// aircraft on one tile. The shared worker can also have published an AI,
-	// panic or reaction unit after the player selection was restored. Refresh
-	// the selected company's range once before computing MOVE/ATTACK choices;
-	// otherwise CanUnitMove() correctly rejects the foreign cache but the
-	// original DOJAZD.CUR boot disappears from every reachable square.
-	if (unit_selection &&
-		(g_move_range_dirty_for == unit_selection ||
-		 !unit_range->HasCachedMoveRange(unit_selection)))
+	// A selection change must invalidate the old movement preview once.
+	// Otherwise, the shared worker may have published the range of an AI,
+	// panic or reaction unit, hiding the original DOJAZD.CUR boot.
+	if (unit_selection && g_move_range_dirty_for == unit_selection)
+	{
+		unit_range->FindRange(unit_selection);
+		g_move_range_dirty_for = nullptr;
+		unit_range->WaitIdle();
+	}
+	// Tick() normally starts a fresh range asynchronously after movement.
+	// Do not cancel and restart that SAME calculation on each mouse move:
+	// it will publish the selected unit's range when it finishes.
+	else if (unit_selection &&
+		!unit_range->HasCachedMoveRange(unit_selection) &&
+		!unit_range->IsRangePending(unit_selection))
 	{
 		unit_range->FindRange(unit_selection);
 		unit_range->WaitIdle();
-		if (unit_range->HasCachedMoveRange(unit_selection))
-			g_move_range_dirty_for = nullptr;
 	}
 	if (unit_selection && g_attack_map_dirty_for == unit_selection)
 	{
