@@ -32,6 +32,25 @@ class OriginalTacticalNavigationWiring(unittest.TestCase):
         for name in ("start", "escape", "target"):
             self.assertIn("explicitSquare(" + name + ")", boundary)
 
+    def test_generated_battle_seeds_and_fallbacks_remain_pathfindable(self):
+        main = (BASE / "source/main.cpp").read_text(encoding="utf-8")
+        create = main.split("bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(", 1)[1].split(
+            "void MainFrame::StartTacticalGame()", 1
+        )[0]
+        # Spawning happens before SetGameMode(1): always request the full
+        # combat boundary even though the editor/map loader is still active.
+        self.assertIn("IsTacticalMovementTile(MapXY(x, y), true)", create)
+        self.assertIn("spell_map->PlaceUnit(unit, true)", create)
+        place = CPP.split("int SpellMap::PlaceUnit(", 1)[1].split(
+            "// store new unit", 1
+        )[0]
+        self.assertIn("require_tactical_tile && !IsTacticalMovementTile(cand, true)", place)
+        mask = CPP.split("bool SpellMap::IsTacticalMovementTile(", 1)[1].split(
+            "// init move range finder", 1
+        )[0]
+        self.assertIn("!game_mode && !enforce_combat_bounds", mask)
+        self.assertIn("IsWithinRetailNavigationEnvelope(", mask)
+
     def test_dos_top_bottom_and_left_right_mask(self):
         self.assertIn("x >= 2 && x < width - 3", HEADER)
         self.assertIn("y >= 8 && y < height - 14", HEADER)
