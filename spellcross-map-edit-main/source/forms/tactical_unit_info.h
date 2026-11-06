@@ -1,6 +1,7 @@
-// Original Spellcross tactical unit information screen.
-// All unit illustrations, palettes, descriptions and button artwork are loaded
-// from the player's own original INFO.FS / COMMON.FS.
+// Original Spellcross tactical unit information screen (1024x768).
+// The complete chrome is decoded from the player's retail INFO.FS:
+// IBG_768.LZ, INFOPAN.LZ, INFOLSTA.LZ and PALETA.NRM.
+// No re-created textures, arbitrary wxWidgets borders or 640x480 scaling.
 #pragma once
 
 #include "../spellcross.h"
@@ -13,6 +14,7 @@
 #include <wx/dcbuffer.h>
 #include <wx/tokenzr.h>
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -26,71 +28,96 @@ public:
         MapUnit* selected, std::function<bool(MapUnit*)> hasResearch)
         : wxDialog(parent, wxID_ANY, "Spellcross - Unit info",
             wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxSTAY_ON_TOP),
-          m_map(map), m_data(data), m_hasResearch(std::move(hasResearch))
+          m_data(data), m_hasResearch(std::move(hasResearch))
     {
-        // A borderless, centred 4:3 game page, never an OS message box. Keep
-        // the original 640x480 coordinate system while fitting fullscreen.
         SetBackgroundStyle(wxBG_STYLE_PAINT);
-        SetMinClientSize(wxSize(640, 480));
-        const wxSize available = parent ? parent->GetClientSize() : wxSize(640, 480);
-        const double scale = std::max(1.0, std::min(
-            static_cast<double>(available.x) / 640.0,
-            static_cast<double>(available.y) / 480.0));
-        SetClientSize(static_cast<int>(640 * scale),
-            static_cast<int>(480 * scale));
-        for (MapUnit* unit : map->units)
+        // Cover the entire tactical window, not just a 4:3 rectangle which
+        // leaks the map/menu around a borderless modal dialog.
+        if (parent)
+            SetSize(parent->GetScreenRect());
+        else
+            SetClientSize(kW, kH);
+
+        if (map)
         {
-            if (!unit || !unit->unit || unit->hide || unit->isDead() ||
-                (unit->is_enemy && unit->is_visible != 2))
-                continue;
-            if (unit == selected)
-                m_index = m_units.size();
-            m_units.push_back(unit);
+            for (MapUnit* unit : map->units)
+            {
+                if (!unit || !unit->unit || unit->hide || unit->isDead() ||
+                    (unit->is_enemy && unit->is_visible != 2))
+                    continue;
+                if (unit == selected)
+                    m_index = m_units.size();
+                m_units.push_back(unit);
+            }
         }
         if (m_units.empty() && selected)
         {
             m_units.push_back(selected);
             m_index = 0;
         }
+
+        LoadChrome();
+        Rebuild();
         Bind(wxEVT_PAINT, &TacticalUnitInfoDialog::OnPaint, this);
         Bind(wxEVT_LEFT_UP, &TacticalUnitInfoDialog::OnClick, this);
         Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) { EndModal(wxID_CANCEL); });
         Bind(wxEVT_CHAR_HOOK, &TacticalUnitInfoDialog::OnKey, this);
         Bind(wxEVT_MOUSEWHEEL, &TacticalUnitInfoDialog::OnWheel, this);
-        Rebuild();
-        CentreOnParent();
     }
 
     MapUnit* SelectedForBattle() const { return m_goTo; }
 
 private:
-    static constexpr int kW = 640;
-    static constexpr int kH = 480;
+    // Retail screen uses 1024x768: source illustrations are 437x390 pixels,
+    // and original layout bitmaps are 1024x768 / 640x480 / 433x63.
+    static constexpr int kW = 1024;
+    static constexpr int kH = 768;
     static constexpr int kArtW = 437;
     static constexpr int kArtH = 390;
-    SpellMap* m_map = nullptr;
+    static constexpr int kTextX = 663;
+    static constexpr int kTextY = 168;
+    static constexpr int kTextW = 164;
+    static constexpr int kTextRows = 36;
+    static constexpr int kTextStep = 12;
+
     SpellData* m_data = nullptr;
     std::function<bool(MapUnit*)> m_hasResearch;
     std::vector<MapUnit*> m_units;
     size_t m_index = 0;
     MapUnit* m_goTo = nullptr;
+    wxBitmap m_background;
+    wxBitmap m_panel;
+    wxBitmap m_footer;
+    std::vector<uint8_t> m_infoPalette;
     std::vector<std::string> m_pictures;
     size_t m_pictureIndex = 0;
     wxBitmap m_picture;
-    std::vector<wxString> m_lines;
+    std::vector<wxString> m_statsLines;
+    std::vector<wxString> m_descriptionLines;
+    bool m_showDescription = false;
     int m_lineOffset = 0;
 
     struct Button
     {
         const char* glyph;
-        int x, y;
+        const char* face;
+        int x;
+        int y;
+        int width;
     };
-    // Coordinates in the original 640 x 480 tactical information screen.
+    // Exact button sequence according to the retail manual: scroll up/down,
+    // previous/next unit, next picture, rename, goto, info text, exit.
+    // First eight keys sit on INFOLSTA; the final narrow key is IEXIT__N.
     static constexpr Button kButtons[] = {
-        {"INFOPREV", 14, 407}, {"INFONEXT", 64, 407},
-        {"INFOPICT", 114, 407}, {"INFOPREM", 164, 407},
-        {"INFOGOTO", 214, 407}, {"INFOEXIT", 264, 407},
-        {"TEXTUP", 490, 427}, {"TEXTDOWN", 547, 427}
+        {"TEXTUP",   "IINFO_LN", 220, 558, 42},
+        {"TEXTDOWN", "IINFO__N", 267, 558, 42},
+        {"INFOPREV", "IINFO__N", 314, 558, 42},
+        {"INFONEXT", "IINFO__N", 361, 558, 42},
+        {"INFOPICT", "IINFO__N", 408, 558, 42},
+        {"INFOPREM", "IINFO__N", 455, 558, 42},
+        {"INFOGOTO", "IINFO__N", 502, 558, 42},
+        {"INFOTEXT", "IINFO_RN", 549, 558, 42},
+        {"INFOEXIT", "IEXIT__N", 602, 558, 22}
     };
 
     MapUnit* Current() const
@@ -98,21 +125,62 @@ private:
         return m_index < m_units.size() ? m_units[m_index] : nullptr;
     }
 
-    static wxString DecodeText(const std::string& s)
+    static wxString DecodeText(const std::string& input)
     {
-        return wxString(char2wstringCP895(s.c_str()));
+        return wxString(char2wstringCP895(input.c_str()));
     }
 
-    bool ReadFile(const std::string& file, std::vector<uint8_t>& out) const
+    bool ReadFile(const std::string& name, std::vector<uint8_t>& out) const
     {
         if (!m_data || !m_data->info) return false;
-        uint8_t* src = nullptr;
-        int length = 0;
-        if (m_data->info->GetFile(file.c_str(), &src, &length) != 0 ||
-            !src || length <= 0)
+        uint8_t* raw = nullptr;
+        int size = 0;
+        if (m_data->info->GetFile(name.c_str(), &raw, &size) != 0 ||
+            !raw || size <= 0)
             return false;
-        out.assign(src, src + length);
+        out.assign(raw, raw + size);
         return true;
+    }
+
+    wxBitmap MakeInfoBitmap(const char* name, int width, int height,
+        bool transparent)
+    {
+        if (m_infoPalette.size() < 256 * 3) return wxBitmap();
+        std::vector<uint8_t> input;
+        if (!ReadFile(name, input)) return wxBitmap();
+        try
+        {
+            LZWexpand decoder(width * height + 8);
+            const std::vector<uint8_t>& pixels =
+                decoder.Decode(input.data(), input.data() + input.size());
+            // Retail LZW files can carry one or two final flush bytes.
+            if (pixels.size() < static_cast<size_t>(width * height))
+                return wxBitmap();
+            wxImage image(width, height, false);
+            if (transparent) image.InitAlpha();
+            unsigned char* rgb = image.GetData();
+            unsigned char* alpha = transparent ? image.GetAlpha() : nullptr;
+            for (int i = 0; i < width * height; ++i)
+            {
+                const size_t index = static_cast<size_t>(pixels[i]) * 3;
+                rgb[i * 3] = m_infoPalette[index];
+                rgb[i * 3 + 1] = m_infoPalette[index + 1];
+                rgb[i * 3 + 2] = m_infoPalette[index + 2];
+                if (alpha) alpha[i] = pixels[i] ? 255 : 0;
+            }
+            return wxBitmap(image);
+        }
+        catch (...) { return wxBitmap(); }
+    }
+
+    void LoadChrome()
+    {
+        if (!ReadFile("PALETA.NRM", m_infoPalette) ||
+            m_infoPalette.size() < 256 * 3)
+            return;
+        m_background = MakeInfoBitmap("IBG_768.LZ", 1024, 768, false);
+        m_panel = MakeInfoBitmap("INFOPAN.LZ", 640, 480, true);
+        m_footer = MakeInfoBitmap("INFOLSTA.LZ", 433, 63, true);
     }
 
     void LoadPicture()
@@ -126,62 +194,57 @@ private:
             return;
         try
         {
-            LZWexpand decoder(kArtW * kArtH);
-            std::vector<uint8_t> pixels =
+            LZWexpand decoder(kArtW * kArtH + 8);
+            const std::vector<uint8_t>& pixels =
                 decoder.Decode(compressed.data(), compressed.data() + compressed.size());
-            if (pixels.size() != static_cast<size_t>(kArtW * kArtH))
+            if (pixels.size() < static_cast<size_t>(kArtW * kArtH))
                 return;
             wxImage img(kArtW, kArtH, false);
             unsigned char* rgb = img.GetData();
-            for (size_t i = 0; i < pixels.size(); ++i)
+            for (size_t i = 0; i < static_cast<size_t>(kArtW * kArtH); ++i)
             {
-                const unsigned idx = pixels[i];
-                const size_t off = idx < 192 ? idx * 3 : 0;
-                rgb[3 * i] = pal[off];
-                rgb[3 * i + 1] = pal[off + 1];
-                rgb[3 * i + 2] = pal[off + 2];
+                const unsigned index = pixels[i];
+                const size_t offset = index < 192 ? static_cast<size_t>(index) * 3 : 0;
+                rgb[3 * i] = pal[offset];
+                rgb[3 * i + 1] = pal[offset + 1];
+                rgb[3 * i + 2] = pal[offset + 2];
             }
             m_picture = wxBitmap(img);
         }
-        catch (...) { /* Missing/damaged art must not crash the tactical map. */ }
+        catch (...) { /* Corrupt/missing optional picture does not crash the battle. */ }
     }
 
-    void AppendWrapped(const wxString& paragraph)
+    int TextWidth(const wxString& value) const
+    {
+        if (m_data && m_data->font)
+        {
+            std::string encoded = wstring2stringCP895(value.ToStdWstring());
+            return m_data->font->GetTextWidth(encoded);
+        }
+        return static_cast<int>(value.length()) * 8;
+    }
+
+    void AppendWrapped(std::vector<wxString>& output, const wxString& paragraph)
     {
         if (paragraph.empty())
         {
-            m_lines.emplace_back();
+            output.emplace_back();
             return;
         }
-        wxClientDC measure(this);
-        measure.SetFont(wxFont(wxFontInfo(10).Family(wxFONTFAMILY_TELETYPE)));
         wxString line;
         wxStringTokenizer words(paragraph, " \t", wxTOKEN_STRTOK);
         while (words.HasMoreTokens())
         {
-            const wxString next = words.GetNextToken();
-            const wxString candidate = line.empty() ? next : line + " " + next;
-            if (!line.empty() && measure.GetTextExtent(candidate).GetWidth() > 180)
+            const wxString word = words.GetNextToken();
+            const wxString next = line.empty() ? word : line + " " + word;
+            if (!line.empty() && TextWidth(next) > kTextW)
             {
-                m_lines.push_back(line);
-                line = next;
+                output.push_back(line);
+                line = word;
             }
-            else line = candidate;
+            else line = next;
         }
-        if (!line.empty()) m_lines.push_back(line);
-    }
-
-    void AppendText(const wxString& text)
-    {
-        // Preserve the original Czech/English CP895 text after conversion to
-        // Unicode; routing it through the Windows ANSI codepage loses accents.
-        wxStringTokenizer paragraphs(text, "\n", wxTOKEN_RET_EMPTY_ALL);
-        while (paragraphs.HasMoreTokens())
-        {
-            wxString line = paragraphs.GetNextToken();
-            line.Replace("\r", "");
-            AppendWrapped(line);
-        }
+        if (!line.empty()) output.push_back(line);
     }
 
     void Rebuild()
@@ -189,132 +252,151 @@ private:
         m_pictures.clear();
         m_pictureIndex = 0;
         m_lineOffset = 0;
-        m_lines.clear();
-        MapUnit* u = Current();
-        if (!u || !u->unit) return;
+        m_statsLines.clear();
+        m_descriptionLines.clear();
+        MapUnit* unit = Current();
+        if (!unit || !unit->unit) return;
 
-        const std::string root = u->unit->info;
-        // The first image is named in JEDNOTKY.DEF; additional views are
-        // enumerated by the original INFO.FS <stem>.LST, not invented.
+        const std::string root = unit->unit->info;
         if (!root.empty()) m_pictures.push_back(root);
         std::vector<uint8_t> lst;
-        if (ReadFile(root + ".LST", lst))
+        if (!root.empty() && ReadFile(root + ".LST", lst))
         {
-            std::istringstream names(std::string(lst.begin(), lst.end()));
+            std::istringstream input(std::string(lst.begin(), lst.end()));
             std::string name;
-            while (std::getline(names, name))
+            while (std::getline(input, name))
             {
                 if (!name.empty() && name.back() == '\r') name.pop_back();
-                if (name.empty() || name.find_first_not_of(" \t") == std::string::npos)
+                if (name.find_first_not_of(" \t") == std::string::npos)
                     continue;
-                std::vector<uint8_t> dummy;
-                if (ReadFile(name + ".LZ", dummy) &&
+                std::vector<uint8_t> exists;
+                if (ReadFile(name + ".LZ", exists) &&
                     std::find(m_pictures.begin(), m_pictures.end(), name) == m_pictures.end())
                     m_pictures.push_back(name);
             }
         }
         LoadPicture();
 
+        // Manual p.9: unresearched enemy units reveal no encyclopedia text.
+        const bool descriptionAllowed =
+            !unit->is_enemy || (m_hasResearch && m_hasResearch(unit));
         std::vector<uint8_t> description;
-        const bool known = !u->is_enemy || (m_hasResearch && m_hasResearch(u));
-        if (!known)
-            AppendWrapped("Unknown hostile unit. Research required.");
-        else if (ReadFile(root + SpellLanguageExtension(m_data->GetTextLanguage()), description) ||
-                 ReadFile(root + ".ENG", description))
+        if (descriptionAllowed && !root.empty() &&
+            (ReadFile(root + SpellLanguageExtension(m_data->GetTextLanguage()), description) ||
+             ReadFile(root + ".ENG", description)))
         {
-            // Original unit description, retained in the source edition's
-            // CP895 encoding rather than replacing it with generated prose.
-            AppendText(DecodeText(std::string(description.begin(), description.end())));
+            const wxString source = DecodeText(std::string(description.begin(), description.end()));
+            wxStringTokenizer paras(source, "\n", wxTOKEN_RET_EMPTY_ALL);
+            while (paras.HasMoreTokens())
+            {
+                wxString para = paras.GetNextToken();
+                para.Replace("\r", "");
+                AppendWrapped(m_descriptionLines, para);
+            }
         }
+
+        const bool czech =
+            std::string(SpellLanguageExtension(m_data->GetTextLanguage())) == ".CZ";
+        const auto add = [this](const wxString& value) { m_statsLines.push_back(value); };
+        const int kind = unit->unit->utype & SpellUnitRec::UTYPE_TYPE_MASK;
+        if (czech)
+            add(kind == SpellUnitRec::UTYPE_TYPE_ARMORED ? L"Těžká jednotka" :
+                kind == SpellUnitRec::UTYPE_TYPE_LIGHT ? L"Lehká jednotka" : L"Vzdušná jednotka");
         else
-            AppendWrapped("No original unit description available.");
+            add(kind == SpellUnitRec::UTYPE_TYPE_ARMORED ? L"Heavy unit" :
+                kind == SpellUnitRec::UTYPE_TYPE_LIGHT ? L"Light unit" : L"Air unit");
+        add(DecodeText(unit->unit->name));
+        add(czech
+            ? (unit->is_enemy ? L"Nepřátelská jednotka" :
+                unit->spec_type == MapUnitType::ArmyUnit ? L"Jednotka stálá" : L"Jednotka dočasná")
+            : (unit->is_enemy ? L"Enemy unit" :
+                unit->spec_type == MapUnitType::ArmyUnit ? L"Permanent unit" : L"Temporary unit"));
 
-        // The long form includes live tactical data; never show enemy combat
-        // statistics which the original research system has not revealed.
-        if (!known) return;
-        m_lines.emplace_back();
-        AppendWrapped("---- Combat information ----");
-        AppendWrapped(wxString::Format("Strength %d / %d", u->man, u->unit->cnt));
-        AppendWrapped(wxString::Format("Wounded %d  Dead %d", u->wounded,
-            std::max(0, u->unit->cnt - u->man - u->wounded)));
-        AppendWrapped(wxString::Format("Morale %d%%", static_cast<int>(u->morale)));
-        AppendWrapped(wxString::Format("AP %d / %d  Fire %d  Walk %d",
-            u->action_points, u->GetMaxAP(), u->GetAPperFire(), u->GetWalkAP()));
-        AppendWrapped(wxString::Format("Experience lvl %d  XP %d",
-            u->experience_level, u->experience));
-        AppendWrapped(wxString::Format("Next level %d",
-            u->unit->GetNextExperiencePts(u->experience_level)));
-        AppendWrapped(wxString::Format("Sight %d  Range %d",
-            u->unit->sdir, u->GetFireRange()));
-        AppendWrapped(wxString::Format("Fortify %d  Defence %d",
-            u->dig_level, u->GetDefence()));
-        AppendWrapped(wxString::Format("Attacks light/heavy/air %d/%d/%d",
-            u->GetAttack(MapUnit::TARGET_TYPE::LIGHT),
-            u->GetAttack(MapUnit::TARGET_TYPE::ARMOR),
-            u->GetAttack(MapUnit::TARGET_TYPE::AIR)));
-        AppendWrapped(wxString::Format("Attack objects %d  Shots %d",
-            u->unit->attack_objects, u->GetMaxFireCount()));
-        if (u->formation_id > 0)
-            AppendWrapped(wxString::Format("Formation %d", u->formation_id));
-        if (u->is_commander)
-            AppendWrapped("Commander present");
+        add(czech ? L"Stav:" : L"Strength:");
+        add(wxString::Format(czech ? L"   Aktuální: %d" : L"   Current: %d", unit->man));
+        add(wxString::Format(czech ? L"   Maximální: %d" : L"   Maximum: %d", unit->unit->cnt));
+        add(wxString::Format(czech ? L"   Zranění: %d" : L"   Wounded: %d", unit->wounded));
+        add(wxString::Format(czech ? L"   Mrtví: %d" : L"   Dead: %d",
+            std::max(0, unit->unit->cnt - unit->man - unit->wounded)));
+
+        add(czech ? L"Akční body:" : L"Action points:");
+        add(wxString::Format(czech ? L"   Aktuální: %d" : L"   Current: %d", unit->action_points));
+        add(wxString::Format(czech ? L"   Maximální: %d" : L"   Maximum: %d", unit->GetMaxAP()));
+        add(wxString::Format(czech ? L"   Na útok: %d" : L"   Per attack: %d", unit->GetAPperFire()));
+        add(wxString::Format(czech ? L"   Na pohyb: %d" : L"   Per move: %d", unit->GetWalkAP()));
+        add(wxString::Format(czech ? L"Úroveň: %d" : L"Level: %d", unit->experience_level));
+        add(wxString::Format(czech ? L"Zkušenost: %d" : L"Experience: %d", unit->experience));
+        if (unit->experience_level >= 12)
+            add(czech ? L"Další úroveň: -" : L"Next level: -");
+        else
+            add(wxString::Format(czech ? L"Další úroveň: %d" : L"Next level: %d",
+                unit->unit->GetNextExperiencePts(unit->experience_level)));
+        add(wxString::Format(czech ? L"Morálka: %d" : L"Morale: %d",
+            static_cast<int>(unit->morale)));
+        add(wxString::Format(czech ? L"Dohled: %d" : L"Sight: %d", unit->unit->sdir));
+        add(wxString::Format(czech ? L"Dostřel: %d" : L"Range: %d", unit->GetFireRange()));
+        add(wxString::Format(czech ? L"Zakopání: %d" : L"Entrenchment: %d", unit->dig_level));
+
+        const auto* bonuses = unit->unit->bonuses
+            ? unit->unit->bonuses->GetBonus(unit->experience_level) : nullptr;
+        const auto withBonuses = [](int total, int xp, int formation, int upgrade)
+        {
+            wxString result = wxString::Format(L"%d", total);
+            if (!xp && !formation && !upgrade) return result;
+            result += L" (";
+            if (xp) result += wxString::Format(L"+%d", xp);
+            if (formation) result += wxString::Format(L"+%d", formation);
+            if (upgrade) result += wxString::Format(L"+%d", upgrade);
+            result += L")";
+            return result;
+        };
+        const int xpDefence = bonuses ? bonuses->defence : 0;
+        const int xpAttack = bonuses ? bonuses->attack : 0;
+        add((czech ? L"Obrana: " : L"Defence: ") +
+            withBonuses(unit->GetDefence(), xpDefence,
+                unit->formation_defence_bonus, unit->upgrade_defence_bonus));
+        add(czech ? L"Útok:" : L"Attack:");
+        const auto attack = [&](MapUnit::TARGET_TYPE type)
+        {
+            const int total = unit->GetAttack(type);
+            return withBonuses(total,
+                total ? xpAttack : 0,
+                total ? unit->formation_attack_bonus : 0,
+                total ? unit->upgrade_attack_bonus : 0);
+        };
+        add((czech ? L"   Lehké j.: " : L"   Light: ") + attack(MapUnit::TARGET_TYPE::LIGHT));
+        add((czech ? L"   Těžké j.: " : L"   Armor: ") + attack(MapUnit::TARGET_TYPE::ARMOR));
+        add((czech ? L"   Vzdušné j.: " : L"   Air: ") + attack(MapUnit::TARGET_TYPE::AIR));
+        add((czech ? L"   Zdi a objekty: " : L"   Objects: ") +
+            attack(MapUnit::TARGET_TYPE::OBJECT));
+        add(czech ? L"Velitelé:" : L"Commanders:");
+        if (unit->is_commander)
+            add(czech ? L"   Přítomen" : L"   Present");
     }
 
-    static void DrawNative(wxDC& dc, SpellGraphicItem* resource, int x, int y)
+    // COMMON.FS .ICO/.BTN graphics are used by several UIs with different
+    // palettes. The tactical INFO palette is PALETA.NRM from INFO.FS; using
+    // map_pal here turns original grey buttons neon green/magenta.
+    void DrawInfoGraphic(wxDC& dc, const char* name, int x, int y)
     {
+        if (!m_data || m_infoPalette.size() < 256 * 3) return;
+        SpellGraphicItem* resource = m_data->gres.GetResource(name);
         if (!resource) return;
-        std::unique_ptr<wxBitmap> bitmap(resource->Render(true));
-        if (bitmap && bitmap->IsOk()) dc.DrawBitmap(*bitmap, x, y, true);
+        SpellGraphicItem local = *resource;
+        local.pal = reinterpret_cast<uint8_t (*)[3]>(m_infoPalette.data());
+        std::unique_ptr<wxBitmap> bitmap(local.Render(true));
+        if (bitmap && bitmap->IsOk())
+            dc.DrawBitmap(*bitmap, x, y, true);
     }
 
-    // The retail tactical archives supply 76x10, 10x69 and 10x10 stone
-    // border pieces. Tile those native pixel graphics instead of painting a
-    // custom approximated frame around the unit dossier.
-    void DrawOriginalFrame(wxDC& dc, const wxRect& rect)
+    void DrawButton(wxDC& dc, const Button& button)
     {
-        auto* hres = m_data->gres.wm_frame_horz;
-        auto* vres = m_data->gres.wm_frame_vert;
-        auto* corner = m_data->gres.wm_frame_corner;
-        if (!hres || !vres || !corner) return;
-        std::unique_ptr<wxBitmap> h(hres->Render(true));
-        std::unique_ptr<wxBitmap> v(vres->Render(true));
-        if (!h || !v || !h->IsOk() || !v->IsOk()) return;
-
-        const int inset = 10;
-        const int width = rect.width - 2 * inset;
-        const int height = rect.height - 2 * inset;
-        for (int pos = 0; pos < width; pos += h->GetWidth())
-        {
-            const int copy = std::min(h->GetWidth(), width - pos);
-            const wxBitmap tile = h->GetSubBitmap(
-                wxRect(0, 0, copy, h->GetHeight()));
-            dc.DrawBitmap(tile, rect.x + inset + pos, rect.y, true);
-            dc.DrawBitmap(tile, rect.x + inset + pos,
-                rect.y + rect.height - h->GetHeight(), true);
-        }
-        for (int pos = 0; pos < height; pos += v->GetHeight())
-        {
-            const int copy = std::min(v->GetHeight(), height - pos);
-            const wxBitmap tile = v->GetSubBitmap(
-                wxRect(0, 0, v->GetWidth(), copy));
-            dc.DrawBitmap(tile, rect.x, rect.y + inset + pos, true);
-            dc.DrawBitmap(tile,
-                rect.x + rect.width - v->GetWidth(), rect.y + inset + pos, true);
-        }
-        DrawNative(dc, corner, rect.x, rect.y);
-        DrawNative(dc, corner, rect.x + rect.width - inset, rect.y);
-        DrawNative(dc, corner, rect.x, rect.y + rect.height - inset);
-        DrawNative(dc, corner, rect.x + rect.width - inset,
-            rect.y + rect.height - inset);
-    }
-
-    void DrawButton(wxDC& dc, const Button& b)
-    {
-        DrawNative(dc, m_data->gres.GetResource("IINFO__N"), b.x, b.y);
-        SpellGraphicItem* icon = m_data->gres.GetResource(b.glyph);
-        if (icon)
-            DrawNative(dc, icon, b.x + (42 - icon->x_size) / 2,
-                b.y + (26 - icon->y_size) / 2);
+        DrawInfoGraphic(dc, button.face, button.x, button.y);
+        SpellGraphicItem* glyph = m_data ? m_data->gres.GetResource(button.glyph) : nullptr;
+        if (glyph)
+            DrawInfoGraphic(dc, button.glyph,
+                button.x + (button.width == 22 ? std::max(0, (22 - glyph->x_size) / 2) : glyph->x_ofs),
+                button.y + glyph->y_ofs);
     }
 
     bool DrawOriginalFont(wxDC& dc, const wxString& text,
@@ -323,7 +405,7 @@ private:
         SpellFont* font = m_data ? m_data->font : nullptr;
         if (!font || text.empty()) return false;
         std::string original = wstring2stringCP895(text.ToStdWstring());
-        const int width = std::clamp(font->GetTextWidth(original) + 5, 8, 188);
+        const int width = std::clamp(font->GetTextWidth(original) + 5, 8, 768);
         const int height = std::max(font->GetHeight() + 4, 16);
         std::vector<uint8_t> pixels(static_cast<size_t>(width) * height, 0);
         font->Render(pixels.data(), pixels.data() + pixels.size(), width,
@@ -343,51 +425,72 @@ private:
         return true;
     }
 
+    struct View
+    {
+        double scale;
+        double x;
+        double y;
+    };
+    View GetView() const
+    {
+        const wxSize client = GetClientSize();
+        const double scale = std::max(0.01, std::min(
+            static_cast<double>(client.x) / kW,
+            static_cast<double>(client.y) / kH));
+        return { scale, (client.x - kW * scale) * 0.5,
+            (client.y - kH * scale) * 0.5 };
+    }
+
     void OnPaint(wxPaintEvent&)
     {
         wxAutoBufferedPaintDC dc(this);
-        const wxSize client = GetClientSize();
-        dc.SetUserScale(static_cast<double>(client.x) / kW,
-            static_cast<double>(client.y) / kH);
-        dc.SetBackground(wxBrush(wxColour(7, 14, 12)));
+        dc.SetBackground(*wxBLACK_BRUSH);
         dc.Clear();
+        const View view = GetView();
+        dc.SetDeviceOrigin(static_cast<int>(std::round(view.x)),
+            static_cast<int>(std::round(view.y)));
+        dc.SetUserScale(view.scale, view.scale);
 
-        if (m_picture.IsOk()) dc.DrawBitmap(m_picture, 0, 0, false);
-        DrawOriginalFrame(dc, wxRect(kArtW, 0, kW - kArtW, kH));
-        DrawOriginalFrame(dc, wxRect(0, kArtH, kArtW, 66));
-        dc.SetPen(wxPen(wxColour(47, 64, 44)));
-        dc.DrawLine(444, 31, 633, 31);
+        if (m_background.IsOk())
+            dc.DrawBitmap(m_background, 0, 0, false);
+        if (m_picture.IsOk())
+            dc.DrawBitmap(m_picture, 204, 154, false);
+        if (m_panel.IsOk())
+            dc.DrawBitmap(m_panel, 194, 144, true);
+        if (m_footer.IsOk())
+            dc.DrawBitmap(m_footer, 204, 543, true);
 
-        const MapUnit* u = Current();
-        if (u && u->unit)
+        const MapUnit* unit = Current();
+        if (unit && unit->unit)
         {
-            const std::string name = u->name.empty() ? std::string(u->unit->name) : u->name;
-            if (!DrawOriginalFont(dc, DecodeText(name), 444, 9,
-                wxColour(234, 89, 64)))
+            const std::string name = unit->name.empty()
+                ? std::string(unit->unit->name) : unit->name;
+            if (!DrawOriginalFont(dc, DecodeText(name), 724, 153,
+                wxColour(235, 66, 45)))
             {
                 dc.SetFont(wxFont(wxFontInfo(11).Family(wxFONTFAMILY_TELETYPE).Bold()));
-                dc.SetTextForeground(wxColour(234, 89, 64));
-                dc.DrawText(DecodeText(name), 444, 9);
+                dc.SetTextForeground(wxColour(235, 66, 45));
+                dc.DrawText(DecodeText(name), 724, 153);
             }
         }
 
-        dc.SetFont(wxFont(wxFontInfo(10).Family(wxFONTFAMILY_TELETYPE)));
-        dc.SetTextForeground(wxColour(151, 197, 135));
-        constexpr int kRows = 22;
-        for (int i = 0; i < kRows; ++i)
-        {
-            const size_t idx = static_cast<size_t>(m_lineOffset + i);
-            if (idx >= m_lines.size()) break;
-            if (!DrawOriginalFont(dc, m_lines[idx], 445, 38 + i * 17,
-                wxColour(151, 197, 135)))
-                dc.DrawText(m_lines[idx], 445, 38 + i * 17);
-        }
-        for (const auto& button : kButtons) DrawButton(dc, button);
+        const auto& lines = m_showDescription ? m_descriptionLines : m_statsLines;
+        dc.SetClippingRegion(kTextX, kTextY, kTextW, kTextRows * kTextStep);
         dc.SetFont(wxFont(wxFontInfo(9).Family(wxFONTFAMILY_TELETYPE)));
-        dc.SetTextForeground(wxColour(153, 164, 126));
-        dc.DrawText(wxString::Format("%zu/%zu", m_pictureIndex + 1,
-            std::max<size_t>(1, m_pictures.size())), 362, 415);
-        dc.DrawText("Esc / RMB", 309, 449);
+        dc.SetTextForeground(wxColour(146, 194, 140));
+        for (int row = 0; row < kTextRows; ++row)
+        {
+            const size_t at = static_cast<size_t>(m_lineOffset + row);
+            if (at >= lines.size()) break;
+            const int y = kTextY + row * kTextStep;
+            if (!DrawOriginalFont(dc, lines[at], kTextX, y,
+                wxColour(146, 194, 140)))
+                dc.DrawText(lines[at], kTextX, y);
+        }
+        dc.DestroyClippingRegion();
+
+        for (const Button& button : kButtons)
+            DrawButton(dc, button);
     }
 
     void ChangeUnit(int delta)
@@ -401,23 +504,23 @@ private:
 
     void ScrollText(int delta)
     {
-        const int maxOffset = std::max(0, static_cast<int>(m_lines.size()) - 22);
+        const auto& lines = m_showDescription ? m_descriptionLines : m_statsLines;
+        const int maxOffset = std::max(0, static_cast<int>(lines.size()) - kTextRows);
         m_lineOffset = std::clamp(m_lineOffset + delta, 0, maxOffset);
         Refresh(false);
     }
 
     void Rename()
     {
-        MapUnit* u = Current();
-        if (!u || u->is_enemy || u->spec_type == MapUnitType::SpecUnit) return;
-        wxString updated = DecodeText(u->name.empty()
-            ? std::string(u->unit->name) : u->name);
+        MapUnit* unit = Current();
+        if (!unit || unit->is_enemy || unit->spec_type == MapUnitType::SpecUnit) return;
+        wxString updated = DecodeText(unit->name.empty()
+            ? std::string(unit->unit->name) : unit->name);
         if (!spellcross_dialog_ui::PromptText(this, "Unit name", "Enter unit's name", updated))
             return;
         updated.Trim(true).Trim(false);
         if (updated.size() > 27) updated.Truncate(27);
-        // An empty name restores the unit type's original name.
-        u->name = updated.empty() ? std::string() :
+        unit->name = updated.empty() ? std::string() :
             wstring2stringCP895(updated.ToStdWstring());
         Refresh(false);
     }
@@ -426,9 +529,11 @@ private:
     {
         switch (index)
         {
-        case 0: ChangeUnit(-1); break;
-        case 1: ChangeUnit(1); break;
-        case 2:
+        case 0: ScrollText(-1); break;
+        case 1: ScrollText(1); break;
+        case 2: ChangeUnit(-1); break;
+        case 3: ChangeUnit(1); break;
+        case 4:
             if (m_pictures.size() > 1)
             {
                 m_pictureIndex = (m_pictureIndex + 1) % m_pictures.size();
@@ -436,30 +541,32 @@ private:
                 Refresh(false);
             }
             break;
-        case 3: Rename(); break;
-        case 4:
+        case 5: Rename(); break;
+        case 6:
             if (Current() && !Current()->is_enemy)
             {
                 m_goTo = Current();
                 EndModal(wxID_OK);
             }
             break;
-        case 5: EndModal(wxID_CANCEL); break;
-        case 6: ScrollText(-1); break;
-        case 7: ScrollText(1); break;
+        case 7:
+            m_showDescription = !m_showDescription;
+            m_lineOffset = 0;
+            Refresh(false);
+            break;
+        case 8: EndModal(wxID_CANCEL); break;
         }
     }
 
     void OnClick(wxMouseEvent& ev)
     {
-        const wxSize client = GetClientSize();
-        if (client.x <= 0 || client.y <= 0) return;
-        const int x = ev.GetX() * kW / client.x;
-        const int y = ev.GetY() * kH / client.y;
+        const View view = GetView();
+        const int x = static_cast<int>((ev.GetX() - view.x) / view.scale);
+        const int y = static_cast<int>((ev.GetY() - view.y) / view.scale);
         for (size_t i = 0; i < sizeof(kButtons) / sizeof(kButtons[0]); ++i)
         {
             const Button& button = kButtons[i];
-            if (x >= button.x && x < button.x + 42 &&
+            if (x >= button.x && x < button.x + button.width &&
                 y >= button.y && y < button.y + 26)
             {
                 Activate(static_cast<int>(i));
@@ -484,7 +591,7 @@ private:
         case WXK_PAGEDOWN: ScrollText(12); break;
         case WXK_LEFT: ChangeUnit(-1); break;
         case WXK_RIGHT: ChangeUnit(1); break;
-        case WXK_RETURN: case WXK_NUMPAD_ENTER: Activate(4); break;
+        case WXK_RETURN: case WXK_NUMPAD_ENTER: Activate(6); break;
         default: ev.Skip(); break;
         }
     }
