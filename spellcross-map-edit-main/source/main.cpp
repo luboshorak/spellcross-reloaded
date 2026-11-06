@@ -3807,6 +3807,9 @@ void MainFrame::ShowTacticalWindow()
 
 void MainFrame::HideTacticalWindow()
 {
+    // Dispose the canvas overlay before any navigation to strategy, cutscenes
+    // or the separate menu window, so it cannot retain old MapUnit pointers.
+    CloseTacticalUnitInfo();
     // Hiding wxFrame does not stop MainFrame\'s timer or the asynchronous
     // RtAudio streams. Silence map ambience before showing menu/strategy.
     // The map and its sound/volume data remain loaded for a paused battle.
