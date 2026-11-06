@@ -10,6 +10,7 @@
 #include "../LZ_spell.h"
 #include "../other.h"
 #include "../game_dialogs.h"
+#include "../display_settings.h"
 
 #include <wx/dcbuffer.h>
 #include <wx/dcmemory.h>
@@ -23,21 +24,23 @@
 #include <string>
 #include <vector>
 
-class TacticalUnitInfoDialog final : public wxDialog
+class TacticalUnitInfoDialog final : public wxPanel
 {
 public:
     TacticalUnitInfoDialog(wxWindow* parent, SpellMap* map, SpellData* data,
-        MapUnit* selected, std::function<bool(MapUnit*)> hasResearch)
-        : wxDialog(parent, wxID_ANY, "Spellcross - Unit info",
-            wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxSTAY_ON_TOP),
-          m_data(data), m_hasResearch(std::move(hasResearch))
+        MapUnit* selected, std::function<bool(MapUnit*)> hasResearch,
+        std::function<void(MapUnit*)> onClose)
+        : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+            wxBORDER_NONE | wxWANTS_CHARS),
+          m_data(data), m_hasResearch(std::move(hasResearch)),
+          m_onClose(std::move(onClose))
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         SetDoubleBuffered(true);
         // The dialog is parented to the tactical canvas, not the wxFrame.
         // Confine it to that canvas so the custom menu toolbar stays visible.
         if (parent)
-            SetSize(parent->GetScreenRect());
+            SetSize(parent->GetClientRect());
         else
             SetClientSize(kW, kH);
 
@@ -65,13 +68,23 @@ public:
         // Act on mouse-down, not mouse-up: Windows can hand the latter to a
         // different HWND if the game had mouse capture while opening the modal.
         Bind(wxEVT_LEFT_DOWN, &TacticalUnitInfoDialog::OnClick, this);
-        Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) { EndModal(wxID_CANCEL); });
+        Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) { Dismiss(); });
         Bind(wxEVT_CHAR_HOOK, &TacticalUnitInfoDialog::OnKey, this);
         Bind(wxEVT_MOUSEWHEEL, &TacticalUnitInfoDialog::OnWheel, this);
         UpdateComposite();
     }
 
-    MapUnit* SelectedForBattle() const { return m_goTo; }
+    // A child overlay has no modal event loop and does not disable the wxFrame
+    // or the game's custom menu toolbar. The callback completes the action.
+    void Dismiss(bool goTo = false)
+    {
+        const auto callback = std::move(m_onClose);
+        m_onClose = nullptr;
+        MapUnit* chosen = goTo ? Current() : nullptr;
+        Hide();
+        if (callback) callback(chosen);
+        Destroy();
+    }
 
 private:
     // Retail screen uses 1024x768: source illustrations are 437x390 pixels,
@@ -93,15 +106,17 @@ private:
 
     SpellData* m_data = nullptr;
     std::function<bool(MapUnit*)> m_hasResearch;
+    std::function<void(MapUnit*)> m_onClose;
     std::vector<MapUnit*> m_units;
     size_t m_index = 0;
-    MapUnit* m_goTo = nullptr;
     wxBitmap m_background;
     wxBitmap m_panel;
     wxBitmap m_footer;
     // Composite the expensive original bitmaps and bitmap font off-screen.
     // The paint handler then performs only one blit, eliminating scroll flicker.
     wxBitmap m_composite;
+    wxBitmap m_scaledComposite;
+    wxImageResizeQuality m_cachedQuality = wxIMAGE_QUALITY_NEAREST;
     std::vector<uint8_t> m_infoPalette;
     std::vector<std::string> m_pictures;
     size_t m_pictureIndex = 0;
@@ -472,6 +487,8 @@ private:
         dc.SelectObject(m_composite);
         DrawScene(dc);
         dc.SelectObject(wxNullBitmap);
+        // Rebuild the display-sized frame only after source content changes.
+        m_scaledComposite = wxBitmap();
         Refresh(false);
     }
 
@@ -551,12 +568,32 @@ private:
         wxAutoBufferedPaintDC dc(this);
         dc.SetBackground(*wxBLACK_BRUSH);
         dc.Clear();
+        if (!m_composite.IsOk()) return;
         const View view = GetView();
-        dc.SetDeviceOrigin(static_cast<int>(std::round(view.x)),
-            static_cast<int>(std::round(view.y)));
-        dc.SetUserScale(view.scale, view.scale);
-        if (m_composite.IsOk())
-            dc.DrawBitmap(m_composite, 0, 0, false);
+        const int x = static_cast<int>(std::lround(view.x));
+        const int y = static_cast<int>(std::lround(view.y));
+        const int width = std::max(1, static_cast<int>(std::lround(kW * view.scale)));
+        const int height = std::max(1, static_cast<int>(std::lround(kH * view.scale)));
+        // wxDC::SetUserScale() leaves bitmap-font pixels hard-edged under
+        // fractional DPI scaling. Resample the *whole original frame* once,
+        // using the same nearest/bilinear preference as the tactical renderer.
+        if (width == kW && height == kH)
+        {
+            dc.DrawBitmap(m_composite, x, y, false);
+            return;
+        }
+        const wxImageResizeQuality quality = spellcross_display::ResizeQuality();
+        if (!m_scaledComposite.IsOk() ||
+            m_scaledComposite.GetWidth() != width ||
+            m_scaledComposite.GetHeight() != height ||
+            m_cachedQuality != quality)
+        {
+            const wxImage source = m_composite.ConvertToImage();
+            m_scaledComposite = wxBitmap(source.Scale(width, height, quality));
+            m_cachedQuality = quality;
+        }
+        if (m_scaledComposite.IsOk())
+            dc.DrawBitmap(m_scaledComposite, x, y, false);
     }
 
     void ChangeUnit(int delta)
@@ -619,8 +656,7 @@ private:
         case 6:
             if (Current() && !Current()->is_enemy)
             {
-                m_goTo = Current();
-                EndModal(wxID_OK);
+                Dismiss(true);
             }
             break;
         case 7:
@@ -628,7 +664,7 @@ private:
             m_lineOffset = 0;
             UpdateComposite();
             break;
-        case 8: EndModal(wxID_CANCEL); break;
+        case 8: Dismiss(); break;
         }
     }
 
@@ -660,7 +696,7 @@ private:
     {
         switch (ev.GetKeyCode())
         {
-        case WXK_ESCAPE: EndModal(wxID_CANCEL); break;
+        case WXK_ESCAPE: Dismiss(); break;
         case WXK_UP: ScrollText(-1); break;
         case WXK_DOWN: ScrollText(1); break;
         case WXK_PAGEUP: ScrollText(-12); break;
