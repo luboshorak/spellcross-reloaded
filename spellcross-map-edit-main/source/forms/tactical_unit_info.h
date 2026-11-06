@@ -12,6 +12,7 @@
 #include "../game_dialogs.h"
 
 #include <wx/dcbuffer.h>
+#include <wx/dcmemory.h>
 #include <wx/tokenzr.h>
 #include <algorithm>
 #include <cmath>
@@ -32,8 +33,9 @@ public:
           m_data(data), m_hasResearch(std::move(hasResearch))
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
-        // Cover the entire tactical window, not just a 4:3 rectangle which
-        // leaks the map/menu around a borderless modal dialog.
+        SetDoubleBuffered(true);
+        // The dialog is parented to the tactical canvas, not the wxFrame.
+        // Confine it to that canvas so the custom menu toolbar stays visible.
         if (parent)
             SetSize(parent->GetScreenRect());
         else
