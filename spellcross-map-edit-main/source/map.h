@@ -493,6 +493,7 @@ public:
 		// unit range map		
 		int unit_range_view_mode;
 		int unit_range_view_mode_lock;
+		bool m_render_move_range_current = false; // valid only while Render holds range result lock
 		// Original temporary range modes (M/A): preserve the SPACE-selected mode
 		// while a temporary key is being held.
 		int unit_range_temp_active = 0;
@@ -829,6 +830,7 @@ public:
             // asynchronous vector without synchronization.
             int GetCachedMoveAP(const MapUnit* unit, int mapIndex);
 			bool HasCachedMoveRange(const MapUnit* unit);
+			bool HasCachedMoveRangeLocked(const MapUnit* unit) const; // caller holds result_lock
 			bool IsRangePending(const MapUnit* unit);
 			vector<AStarNode> FindPath(MapUnit* unit,MapXY target);
 			// EN group move: route may extend beyond current AP; if the exact target is
@@ -864,6 +866,8 @@ public:
 			std::thread* thread = nullptr;
 			std::mutex result_lock; // result data lock
             MapUnit* completed_range_unit = nullptr; // protected by result_lock
+			MapXY completed_range_pos; // protected by result_lock
+			int completed_range_ap = -1; // protected by result_lock
 			MapUnit* requested_range_unit = nullptr; // protected by ctrl_lock
 			std::mutex ctrl_lock; // thread control lock
 			std::mutex queue_lock; // task queue lock
@@ -1095,6 +1099,7 @@ public:
 		int SetUnitRangeViewMode(int mode);
 		int BeginTemporaryUnitRangeViewMode(int mode);
 		int EndTemporaryUnitRangeViewMode();
+		bool RefreshSelectedMovePreview();
 		int CanUnitMove(MapXY target);
 		int MoveUnit(MapXY target, bool reserve_one_shot = false);
 		int ResetUnitsAP();
