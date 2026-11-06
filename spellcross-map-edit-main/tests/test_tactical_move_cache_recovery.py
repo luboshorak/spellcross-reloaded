@@ -24,6 +24,48 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         self.assertIn("std::lock_guard<std::mutex> guard(result_lock)", cache)
         self.assertIn("completed_range_unit != unit", cache)
 
+    def test_action_points_and_position_invalidate_previous_move_range(self):
+        worker = MAP.split("void SpellMap::MoveRange::Worker()", 1)[1].split(
+            "// set default", 1
+        )[0]
+        self.assertIn("const int range_ap = unit->action_points;", worker)
+        self.assertIn("const MapXY range_pos = unit->coor;", worker)
+        self.assertEqual(worker.count("completed_range_ap = range_ap;"), 2)
+        self.assertEqual(worker.count("completed_range_pos = range_pos;"), 2)
+        self.assertIn("completed_range_ap == unit->action_points", MAP)
+        self.assertIn("completed_range_pos.x == unit->coor.x", MAP)
+        self.assertIn("completed_range_pos.y == unit->coor.y", MAP)
+        self.assertIn("return HasCachedMoveRangeLocked(unit);", MAP)
+
+    def test_rmb_and_space_rebuild_stale_range_for_visual_preview(self):
+        temporary = MAP.split("int SpellMap::BeginTemporaryUnitRangeViewMode(", 1)[1].split(
+            "int SpellMap::EndTemporaryUnitRangeViewMode(", 1
+        )[0]
+        self.assertIn("if (mode == UNIT_RANGE_MOVE)", temporary)
+        self.assertIn("RefreshSelectedMovePreview();", temporary)
+        persistent = MAP.split("int SpellMap::SetUnitRangeViewMode(", 1)[1].split(
+            "int SpellMap::BeginTemporaryUnitRangeViewMode(", 1
+        )[0]
+        self.assertIn("unit_range_view_mode == UNIT_RANGE_MOVE", persistent)
+        self.assertIn("RefreshSelectedMovePreview();", persistent)
+        refresh = MAP.split("bool SpellMap::RefreshSelectedMovePreview(", 1)[1].split(
+            "// check if unit can move", 1
+        )[0]
+        self.assertIn("!unit_range->HasCachedMoveRange(selected)", refresh)
+        self.assertIn("!unit_range->IsRangePending(selected)", refresh)
+        self.assertIn("unit_range->WaitIdle();", refresh)
+        self.assertIn("bool RefreshSelectedMovePreview();", HEADER)
+
+    def test_move_overlay_does_not_show_other_unit_range(self):
+        render = MAP.split("int SpellMap::Render(", 1)[1].split(
+            "// render unit", 1
+        )[0]
+        self.assertIn("m_render_move_range_current = unit_range->HasCachedMoveRangeLocked(unit_selection)", render)
+        palette = MAP.split("uint8_t* SpellMap::GetUnitRangeFilter(", 1)[1].split(
+            "// set map view mode", 1
+        )[0]
+        self.assertIn("viewingUnitMoveRange() && m_render_move_range_current", palette)
+
     def test_preview_cursor_requires_current_range_owner(self):
         body = MAP.split("int SpellMap::CanUnitMove(", 1)[1].split(
             "// move unit (in game mode)", 1

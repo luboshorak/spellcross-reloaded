@@ -5695,6 +5695,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 	LockMap();
 	unit_range->ResultLock(true);
 	unit_view->ResultLock(true);
+	// The shared worker can last have published an AI or reaction unit. Only
+	// colour MOVE tiles when the completed range still matches this unit's AP
+	// and position. Both results are protected by the range result lock here.
+	m_render_move_range_current = unit_range->HasCachedMoveRangeLocked(unit_selection);
 
     // Tactical rendering does not edit the map. Avoid copying entire terrain,
     // object and marker layers on every camera frame. Only the map editor
@@ -6990,16 +6994,26 @@ void SpellMap::MoveRange::ResultLock(bool state)
 int SpellMap::MoveRange::GetCachedMoveAP(const MapUnit* unit, int mapIndex)
 {
     std::lock_guard<std::mutex> guard(result_lock);
-    if (completed_range_unit != unit || mapIndex < 0 ||
-        static_cast<size_t>(mapIndex) >= ap_left.size())
+    if (completed_range_unit != unit || !HasCachedMoveRangeLocked(unit) ||
+        mapIndex < 0 || static_cast<size_t>(mapIndex) >= ap_left.size())
         return -1;
     return ap_left[mapIndex];
+}
+
+bool SpellMap::MoveRange::HasCachedMoveRangeLocked(const MapUnit* unit) const
+{
+    // Never inspect a cache belonging to another unit or computed with its
+    // previous action points/position. Render already owns result_lock.
+    return unit && completed_range_unit == unit &&
+        completed_range_ap == unit->action_points &&
+        completed_range_pos.x == unit->coor.x &&
+        completed_range_pos.y == unit->coor.y;
 }
 
 bool SpellMap::MoveRange::HasCachedMoveRange(const MapUnit* unit)
 {
     std::lock_guard<std::mutex> guard(result_lock);
-    return unit && completed_range_unit == unit;
+    return HasCachedMoveRangeLocked(unit);
 }
 
 bool SpellMap::MoveRange::IsRangePending(const MapUnit* unit)
@@ -7071,6 +7085,11 @@ void SpellMap::MoveRange::Worker()
 			continue;
 		}
 
+		// Snapshot the exact movement state used to compute this range. Firing,
+		// moving and turn changes can alter AP without switching selected unit.
+		const MapXY range_pos = unit->coor;
+		const int range_ap = unit->action_points;
+
 		// processed tiles flags
 		vector<int> done(map->x_size * map->y_size, false);
 
@@ -7087,6 +7106,8 @@ void SpellMap::MoveRange::Worker()
 			ap_left = unit_ap_left;
 			fire_left = unit_fire_left;
             completed_range_unit = unit;
+			completed_range_pos = range_pos;
+			completed_range_ap = range_ap;
 			ResultLock(false);
 			continue;
 		}
@@ -7122,6 +7143,8 @@ void SpellMap::MoveRange::Worker()
 					ap_left = unit_ap_left;
 					fire_left = unit_fire_left;
                     completed_range_unit = unit;
+			completed_range_pos = range_pos;
+			completed_range_ap = range_ap;
 					ResultLock(false);
 					break;
 				}
@@ -7431,9 +7454,9 @@ uint8_t* SpellMap::GetUnitRangeFilter(int x, int y)
 	int mxy = ConvXY(x, y);
 	if (render_filter)
 		return(render_filter);
-	if (viewingUnitMoveRange() && unit_range->fire_left[mxy] > 0)
+	if (viewingUnitMoveRange() && m_render_move_range_current && unit_range->fire_left[mxy] > 0)
 		return(terrain->filter.bluepal);
-	if (viewingUnitMoveRange() && unit_range->ap_left[mxy] >= 0)
+	if (viewingUnitMoveRange() && m_render_move_range_current && unit_range->ap_left[mxy] >= 0)
 		return(terrain->filter.dbluepal);
 	if (viewingUnitAttackRange() && unit_view->attack_map[mxy] > 0)
 		return(terrain->filter.redpal);
@@ -7466,6 +7489,11 @@ int SpellMap::SetUnitRangeViewMode(int mode)
 		unit_range_view_mode = mode;
 	}
 
+	// SPACE can enter persistent MOVE mode without a subsequent mouse event.
+	// Refresh the selected unit's movement cache on that explicit request.
+	if (old_state != unit_range_view_mode && unit_range_view_mode == UNIT_RANGE_MOVE)
+		RefreshSelectedMovePreview();
+
 	return(old_state);
 }
 
@@ -7485,6 +7513,9 @@ int SpellMap::BeginTemporaryUnitRangeViewMode(int mode)
 	}
 
 	unit_range_view_mode = mode;
+	// RMB and M both request an immediate original movement-range overlay.
+	if (mode == UNIT_RANGE_MOVE)
+		RefreshSelectedMovePreview();
 	return(old_state);
 }
 
@@ -7498,6 +7529,27 @@ int SpellMap::EndTemporaryUnitRangeViewMode()
 		unit_range_temp_active = 0;
 	}
 	return(old_state);
+}
+
+bool SpellMap::RefreshSelectedMovePreview()
+{
+	MapUnit* selected = GetSelectedUnit();
+	if (!isGameMode() || !unit_range || !selected || !selected->unit ||
+		selected->is_enemy || selected->isDead())
+		return false;
+
+	const bool invalidated = g_move_range_dirty_for == selected;
+	if (invalidated || !unit_range->HasCachedMoveRange(selected))
+	{
+		// When Tick() is already refreshing this unit, wait for that job rather
+		// than cancelling/restarting it on every overlay or cursor request.
+		if (invalidated || !unit_range->IsRangePending(selected))
+			unit_range->FindRange(selected);
+		if (invalidated)
+			g_move_range_dirty_for = nullptr;
+		unit_range->WaitIdle();
+	}
+	return unit_range->HasCachedMoveRange(selected);
 }
 
 // check if unit can move to target position
