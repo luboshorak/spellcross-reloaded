@@ -195,6 +195,7 @@ private:
     bool m_savedCursorClipValid = false;
     bool m_nativeMenuOpen = false;
     wxRect m_savedCursorClip;
+    wxRect m_currentCursorClip;
     wxPoint m_rightPressStart;
 	wxPoint m_boxSelectStart;
 	wxPoint m_boxSelectCurrent;

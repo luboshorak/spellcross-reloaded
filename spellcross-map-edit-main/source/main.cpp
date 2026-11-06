@@ -2968,6 +2968,7 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
             ResetTransientTacticalPointerState("frame-deactivated");
             ReleaseTacticalCursorClip();
             m_edgePan.Reset();
+            m_lastEdgePanTick = {};
         }
         event.Skip();
     });
@@ -3844,6 +3845,7 @@ void MainFrame::HideTacticalWindow()
 {
     ReleaseTacticalCursorClip();
     m_edgePan.Reset();
+    m_lastEdgePanTick = {};
     // Dispose the canvas overlay before any navigation to strategy, cutscenes
     // or the separate menu window, so it cannot retain old MapUnit pointers.
     CloseTacticalUnitInfo();
@@ -5103,12 +5105,22 @@ void MainFrame::UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now)
     // HUD height is not necessarily constant across the horizontal axis.
     // GetHUDtop uses unzoomed logical coordinates, just like the hover code.
     const int displayScale = spellcross_display::Current().scale_percent;
-    const int hudLogicalY = spell_map->GetHUDtop(spellcross_display::ToLogical(pointer.x));
+    // Native decorated windows may place the pointer a few pixels into
+    // the outer frame. Continue to scroll at the left/right border rather
+    // than stopping just short of the physical window edge.
+    const int borderMargin = canvas->FromDIP(12);
+    if (pointer.x < -borderMargin || pointer.x >= size.x + borderMargin)
+    {
+        m_edgePan.Reset();
+        return;
+    }
+    const int edgeX = (std::clamp)(pointer.x, 0, size.x - 1);
+    const int hudLogicalY = spell_map->GetHUDtop(spellcross_display::ToLogical(edgeX));
     const int battlefieldBottom = (std::clamp)(
         (hudLogicalY * displayScale + 99) / 100, 0, size.y);
     const int zone = canvas->FromDIP(28);
     const auto direction = spellcross_tactical::EdgePanAt(
-        pointer.x, pointer.y, size.x, battlefieldBottom, zone);
+        edgeX, pointer.y, size.x, battlefieldBottom, zone);
     // Keep the *visible* speed independent of logical map zoom and scaling.
     const double mapPixelsPerScreenPixel = 10000.0 /
         (static_cast<double>(displayScale) * TacticalZoomPercent());
@@ -5142,6 +5154,7 @@ void MainFrame::ReleaseTacticalCursorClip()
         ::ClipCursor(nullptr);
     m_tacticalCursorClipped = false;
     m_savedCursorClipValid = false;
+    m_currentCursorClip = wxRect();
 #endif
 }
 
@@ -5169,6 +5182,13 @@ void MainFrame::UpdateTacticalCursorClip()
         ReleaseTacticalCursorClip();
         return;
     }
+    const wxRect targetClip(windowRect.left, windowRect.top,
+        windowRect.right - windowRect.left,
+        windowRect.bottom - windowRect.top);
+    // ClipCursor is system-wide and may synthesize cursor events. Do not
+    // reapply an identical rectangle on every 10 ms gameplay tick.
+    if (m_tacticalCursorClipped && targetClip == m_currentCursorClip)
+        return;
     if (!m_tacticalCursorClipped)
     {
         RECT previous{};
@@ -5178,7 +5198,10 @@ void MainFrame::UpdateTacticalCursorClip()
                 previous.right - previous.left, previous.bottom - previous.top);
     }
     if (::ClipCursor(&windowRect))
+    {
         m_tacticalCursorClipped = true;
+        m_currentCursorClip = targetClip;
+    }
 #endif
 }
 

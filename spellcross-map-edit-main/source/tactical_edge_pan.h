@@ -68,7 +68,10 @@ namespace spellcross_tactical
                 fraction = 0.0;
             const double distance = fraction + direction * seconds *
                 logicalPixelsPerScreenPixel * screenPixelsPerSecond;
-            const int whole = static_cast<int>(std::trunc(distance));
+            // Avoid a lost pixel at exact integer boundaries caused by
+            // binary floating-point rounding (e.g. 0.48 * 100).
+            const double rounding = distance >= 0.0 ? 1e-9 : -1e-9;
+            const int whole = static_cast<int>(std::trunc(distance + rounding));
             fraction = distance - whole;
             return whole;
         }
