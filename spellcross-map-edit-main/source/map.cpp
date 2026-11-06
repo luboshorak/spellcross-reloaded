@@ -2211,7 +2211,11 @@ int SpellMap::Create(SpellData* spelldata, const char* terr_name, int x, int y)
 	// prefetch pointers to common stuff needed fast when rendering
 	start_sprite = terrain->GetSprite("START");
 	escape_sprite = terrain->GetSprite("CIEL");
-	target_sprite = terrain->GetSprite("TARGET"); //### to be sourced from aux data (not in all terrains!)
+    // Original T11/PUST/DEVAST archives have CIEL.DTA but no TARGET.DTA.
+    // Both goal command types need the same authored red-cross glyph.
+    target_sprite = terrain->GetSprite("TARGET");
+    if (!target_sprite)
+        target_sprite = escape_sprite;
 
 	// reset scroller
 	scroller.Reset();
@@ -3091,7 +3095,9 @@ if (!mission_data || !mission_data->Size())
 	// prefetch pointers to common stuff needed fast when rendering
 	start_sprite = terrain->GetSprite("START");
 	escape_sprite = terrain->GetSprite("CIEL");
-	target_sprite = terrain->GetSprite("TARGET");
+    target_sprite = terrain->GetSprite("TARGET");
+    if (!target_sprite)
+        target_sprite = escape_sprite;
 
 	// map should be valid from this point
 	is_valid = true;
@@ -5862,14 +5868,19 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 					continue;
 				int mxy = ConvXY(pos->x, pos->y);
 
-				// game mode view range
-				uint8_t* fil = GetUnitRangeFilter(pos->x, pos->y);
-				if (deployment_tile_hidden(mxy))
-					continue;
-				if (use_view_mask && unit_view->view[mxy] == 0)
-					continue;
-				else if (use_view_mask && unit_view->view[mxy] == 1)
-					fil = terrain->filter.darkpal;
+                // Retail goal squares are objectives, NOT fog-of-war
+                // discoveries: display the red cross even before terrain is
+                // explored. This also feeds the full-map minimap renderer.
+                // START markers and all terrain/unit fog rules stay intact.
+                uint8_t* fil = GetUnitRangeFilter(pos->x, pos->y);
+                if (deployment_tile_hidden(mxy))
+                    continue;
+                if (use_view_mask && sid == 0 && unit_view->view[mxy] == 0)
+                    continue;
+                if (use_view_mask && sid != 0)
+                    fil = default_filter;
+                else if (use_view_mask && unit_view->view[mxy] == 1)
+                    fil = terrain->filter.darkpal;
 
 				// L1 elevation
 				int y_elev = tiles[mxy].elev;
