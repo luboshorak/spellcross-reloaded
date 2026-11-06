@@ -26,6 +26,7 @@
 #include <wx/choicdlg.h>
 #include <wx/progdlg.h>
 #ifdef _WIN32
+#include <windows.h>
 #include <wininet.h>
 #pragma comment(lib, "wininet.lib")
 #endif
@@ -2827,6 +2828,11 @@ static wxString BuildSpellcrossWindowTitle(SpellMap* map)
     return title;
 }
 
+MainFrame::~MainFrame()
+{
+    ReleaseTacticalCursorClip();
+}
+
 // Main panel init
 MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY, "Spellcross", wxDefaultPosition, wxSize(1600,1000))
 {
@@ -2885,6 +2891,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
 		spellcross_ui_locale::Tr("menu.box_selection", "Drag-select unit &groups"),
 		spellcross_ui_locale::Tr("menu.box_selection_help", "Enable temporary unit groups selected by dragging the left mouse button"));
 	menuOptions->Check(ID_OptionsBoxSelection, spell_map && spell_map->IsBoxSelectionEnabled());
+    menuOptions->AppendCheckItem(ID_OptionsConfineCursor,
+        spellcross_ui_locale::Tr("menu.confine_cursor", "Keep cursor inside game window"),
+        spellcross_ui_locale::Tr("menu.confine_cursor_help", "Restrict the pointer to the active tactical game window; Alt+Tab releases it"));
+    menuOptions->Check(ID_OptionsConfineCursor, m_confineTacticalCursor);
 
     spellcross_window::AddFullscreen(menuOptions);
 
@@ -2954,7 +2964,22 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     canvas->Bind(wxEVT_THREAD,&MainFrame::OnThreadCanvas,this);
     Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
         if (!event.GetActive())
+        {
             ResetTransientTacticalPointerState("frame-deactivated");
+            ReleaseTacticalCursorClip();
+            m_edgePan.Reset();
+        }
+        event.Skip();
+    });
+    // A native drop-down may extend beyond the frame, so temporarily
+    // relinquish the system cursor clip while the menu is visible.
+    Bind(wxEVT_MENU_OPEN, [this](wxMenuEvent& event) {
+        m_nativeMenuOpen = true;
+        ReleaseTacticalCursorClip();
+        event.Skip();
+    });
+    Bind(wxEVT_MENU_CLOSE, [this](wxMenuEvent& event) {
+        m_nativeMenuOpen = false;
         event.Skip();
     });
     
@@ -2967,6 +2992,11 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     
     Bind(wxEVT_MENU,&MainFrame::OnLoadCustomMap,this,ID_LoadCustomMap);
     Bind(wxEVT_MENU,&MainFrame::OnOpenMainMenu,this,ID_MainMenu);
+    Bind(wxEVT_MENU, [this](wxCommandEvent& event) {
+        m_confineTacticalCursor = event.IsChecked();
+        if (!m_confineTacticalCursor)
+            ReleaseTacticalCursorClip();
+    }, ID_OptionsConfineCursor);
 
 // Load a remake strategic JSON save or an original BIG_MAP.SAV.
 // JSON identifies its DEF; BIG_MAP.SAV carries the original level number.
@@ -3287,6 +3317,7 @@ bool MainFrame::LoadContinueGame()
 // on form close
 void MainFrame::RequestApplicationExit(const char* source)
 {
+    ReleaseTacticalCursorClip();
     // Native close/menu callbacks may re-enter while a wx modal dialog is
     // pumping messages. Do not stack identical dialogs or exit requests.
     if (m_applicationExitInProgress || m_exitDialogOpen)
@@ -3811,6 +3842,8 @@ void MainFrame::ShowTacticalWindow()
 
 void MainFrame::HideTacticalWindow()
 {
+    ReleaseTacticalCursorClip();
+    m_edgePan.Reset();
     // Dispose the canvas overlay before any navigation to strategy, cutscenes
     // or the separate menu window, so it cannot retain old MapUnit pointers.
     CloseTacticalUnitInfo();
@@ -5036,6 +5069,119 @@ void MainFrame::OnStrategicCutsceneClosed(wxCloseEvent& ev)
 static std::string FindLevelDefContainingMission(const std::string& missionStem,
     const SpellData* spellData);
 
+// --- tactical camera edge-pan and Win32 cursor confinement ---
+void MainFrame::UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now)
+{
+    double seconds = 0.0;
+    if (m_lastEdgePanTick != std::chrono::steady_clock::time_point{})
+        seconds = std::chrono::duration<double>(now - m_lastEdgePanTick).count();
+    m_lastEdgePanTick = now;
+
+    if (!canvas || !spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode() ||
+        !IsShownOnScreen() || !IsActive() || m_nativeMenuOpen || inSubForm() ||
+        m_mission_end_flow || m_mission_result_visible || m_boxSelectPending ||
+        m_rightPressActive || m_inspectUnit)
+    {
+        m_edgePan.Reset();
+        return;
+    }
+
+    const wxMouseState buttons = wxGetMouseState();
+    if (buttons.LeftIsDown() || buttons.RightIsDown())
+    {
+        m_edgePan.Reset();
+        return;
+    }
+    const wxPoint pointer = canvas->ScreenToClient(wxGetMousePosition());
+    const wxSize size = canvas->GetClientSize();
+    if (size.x <= 0 || size.y <= 0)
+    {
+        m_edgePan.Reset();
+        return;
+    }
+
+    // HUD height is not necessarily constant across the horizontal axis.
+    // GetHUDtop uses unzoomed logical coordinates, just like the hover code.
+    const int displayScale = spellcross_display::Current().scale_percent;
+    const int hudLogicalY = spell_map->GetHUDtop(spellcross_display::ToLogical(pointer.x));
+    const int battlefieldBottom = (std::clamp)(
+        (hudLogicalY * displayScale + 99) / 100, 0, size.y);
+    const int zone = canvas->FromDIP(28);
+    const auto direction = spellcross_tactical::EdgePanAt(
+        pointer.x, pointer.y, size.x, battlefieldBottom, zone);
+    // Keep the *visible* speed independent of logical map zoom and scaling.
+    const double mapPixelsPerScreenPixel = 10000.0 /
+        (static_cast<double>(displayScale) * TacticalZoomPercent());
+    const auto [stepX, stepY] = m_edgePan.Advance(
+        direction, seconds, mapPixelsPerScreenPixel);
+    if (stepX == 0 && stepY == 0)
+        return;
+
+    const auto before = spell_map->scroller.GetScroll();
+    spell_map->scroller.PanBy(stepX, stepY);
+    // Clamp using precisely the same limits as Render(). Never queue paints
+    // forever against the border of the DTA map.
+    spell_map->RenderPrepare(&spell_map->scroller);
+    if (spell_map->scroller.GetScroll() != before)
+        canvas->Refresh(false);
+}
+
+void MainFrame::ReleaseTacticalCursorClip()
+{
+#ifdef _WIN32
+    if (!m_tacticalCursorClipped)
+        return;
+    if (m_savedCursorClipValid)
+    {
+        const RECT previous = {
+            m_savedCursorClip.GetLeft(), m_savedCursorClip.GetTop(),
+            m_savedCursorClip.GetRight() + 1, m_savedCursorClip.GetBottom() + 1 };
+        ::ClipCursor(&previous);
+    }
+    else
+        ::ClipCursor(nullptr);
+    m_tacticalCursorClipped = false;
+    m_savedCursorClipValid = false;
+#endif
+}
+
+void MainFrame::UpdateTacticalCursorClip()
+{
+#ifdef _WIN32
+    const bool active = m_confineTacticalCursor && !m_applicationExitInProgress &&
+        canvas && canvas->IsShownOnScreen() && IsShownOnScreen() && IsActive() &&
+        !IsIconized() && !m_nativeMenuOpen && spell_map && spell_map->IsLoaded() &&
+        spell_map->isGameMode() && !m_mission_end_flow && !m_mission_result_visible &&
+        !inSubForm();
+    if (!active)
+    {
+        ReleaseTacticalCursorClip();
+        return;
+    }
+
+    // Native Win32 screen coordinates, so multi-monitor DPI conversion does
+    // not interfere with ClipCursor. Include the title/menu area; a canvas-
+    // only clip would make the restored top menu impossible to reach.
+    RECT windowRect{};
+    if (!::GetWindowRect(static_cast<HWND>(GetHandle()), &windowRect) ||
+        windowRect.right <= windowRect.left || windowRect.bottom <= windowRect.top)
+    {
+        ReleaseTacticalCursorClip();
+        return;
+    }
+    if (!m_tacticalCursorClipped)
+    {
+        RECT previous{};
+        m_savedCursorClipValid = ::GetClipCursor(&previous) != 0;
+        if (m_savedCursorClipValid)
+            m_savedCursorClip = wxRect(previous.left, previous.top,
+                previous.right - previous.left, previous.bottom - previous.top);
+    }
+    if (::ClipCursor(&windowRect))
+        m_tacticalCursorClipped = true;
+#endif
+}
+
 // map animation periodic refresh tick
 void MainFrame::OnTimer(wxTimerEvent& event)
 {
@@ -5061,6 +5207,7 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     // a useful final marker when a player reports an intermittent hang.
     static auto next_heartbeat = std::chrono::steady_clock::now();
     const auto now = std::chrono::steady_clock::now();
+    UpdateTacticalCursorClip();
     if (now >= next_heartbeat)
     {
         next_heartbeat = now + std::chrono::minutes(1);
@@ -5117,6 +5264,10 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     // scripted events while the player browses original unit information.
     if (m_unitInfoDialogOpen)
         return;
+
+    // Run after input/overlay guards but before deployment returns. The
+    // battlefield scrolls even if the pointer is held stationary at an edge.
+    UpdateTacticalEdgePan(now);
 
     if (m_deployment_active)
     {
@@ -6509,8 +6660,9 @@ void MainFrame::OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent&)
 void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 {
     SetCursor(*wxSTANDARD_CURSOR);
+    m_edgePan.Reset();
 
-    if(!spell_map->IsLoaded())
+    if(!spell_map || !spell_map->IsLoaded())
         return;
     if(inUnitOptions())
         return;

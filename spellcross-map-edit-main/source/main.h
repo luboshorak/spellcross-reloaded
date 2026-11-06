@@ -16,6 +16,7 @@
 #include "spellcross.h"
 #include "map.h"
 #include "tactical_zoom.h"
+#include "tactical_edge_pan.h"
 #include "spell_hud_buttons.h"
 #include "spell_texts.h"
 #include "forms/form_loader.h"
@@ -31,6 +32,7 @@
 #include "level.h"
 #include <filesystem>
 #include <string>
+#include <chrono>
 
 
 
@@ -56,7 +58,8 @@ class TacticalUnitInfoDialog;
 class MainFrame : public wxFrame
 {
 public:
-    MainFrame(SpellMap* map,SpellData* spelldata);      
+    MainFrame(SpellMap* map,SpellData* spelldata);
+    ~MainFrame() override;      
     void StatusStringCallback(std::string info);
     void CreateHUDbuttons();
     bool LoadMapFromDefPath(const std::wstring& def_path, const std::vector<LevelData::PlayerUnitAdd>& player_units);
@@ -184,6 +187,14 @@ private:
     // A few timer ticks of grace avoid cancelling a real release while
     // Windows is still delivering the corresponding mouse-up event.
     unsigned int m_orphanedPointerTicks = 0;
+    // Edge-pan is independent from RMB drag, selection and hover hit-testing.
+    spellcross_tactical::EdgePanAccumulator m_edgePan;
+    std::chrono::steady_clock::time_point m_lastEdgePanTick{};
+    bool m_confineTacticalCursor = true;
+    bool m_tacticalCursorClipped = false;
+    bool m_savedCursorClipValid = false;
+    bool m_nativeMenuOpen = false;
+    wxRect m_savedCursorClip;
     wxPoint m_rightPressStart;
 	wxPoint m_boxSelectStart;
 	wxPoint m_boxSelectCurrent;
@@ -219,6 +230,9 @@ private:
     void OnResize(wxSizeEvent& event);
 
     void OnTimer(wxTimerEvent& event);
+    void UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now);
+    void UpdateTacticalCursorClip();
+    void ReleaseTacticalCursorClip();
 
     void OnViewMiniMap(wxCommandEvent& event);
 
@@ -420,6 +434,7 @@ enum
     ID_OptionsDifficultyNormal,
     ID_OptionsDifficultyHard,
 	ID_OptionsBoxSelection,
+    ID_OptionsConfineCursor,
     ID_mmOpenMapEditor
 };
 

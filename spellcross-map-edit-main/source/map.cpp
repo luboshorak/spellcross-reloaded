@@ -504,6 +504,16 @@ void TScroll::SetPos(int x, int y)
 	state = 0;
 	modified = true;
 }
+// Scroll the camera without replacing the cursor position. Edge scrolling
+// runs while the physical pointer is stationary, so SetPos() is not suitable.
+void TScroll::PanBy(int offset_x, int offset_y)
+{
+	if (!offset_x && !offset_y)
+		return;
+	dx += offset_x;
+	dy += offset_y;
+	modified = true;
+}
 // set cursor ref. position (callwed on mouse down event)
 void TScroll::SetRef(int x, int y)
 {
