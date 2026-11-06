@@ -2053,6 +2053,31 @@ void SpellMap::Close()
 	LockMap();
 	is_valid = false;
 
+    // Close() is also the first step of Load() when switching tactical
+    // missions. A previous battle may have been interrupted in an enemy
+    // phase; carrying its queue or game-mode flag into the next map makes
+    // the new deployment show LISTA_1 ("enemy turn") and skip the normal
+    // SetGameMode(1) initialization. In that state the player cannot finish
+    // deployment, and scripted MissionStart convoy units never appear.
+    game_mode = false;
+    enemy_turn_running = false;
+    enemy_turn_list.clear();
+    enemy_turn_idx = 0;
+    enemy_turn_prev_selection = nullptr;
+    enemy_turn_prev_sel_mod = false;
+    panic_turn_running = false;
+    panic_turn_list.clear();
+    panic_turn_idx = 0;
+    panic_turn_restore_selection = nullptr;
+    reaction_fire_active = false;
+    reaction_fire_queue.clear();
+    reaction_fire_restore_selection = nullptr;
+    unit_range_view_mode = UNIT_RANGE_NONE;
+    unit_range_view_mode_lock = false;
+    unit_range_temp_active = 0;
+    unit_range_temp_saved_mode = UNIT_RANGE_NONE;
+    unit_range_temp_saved_lock = false;
+
 	// these must go before touching anything else as they are async!
 	if (unit_view)
 		delete unit_view;
@@ -2072,9 +2097,11 @@ void SpellMap::Close()
 	enemy_ai_groups.clear();
 	next_enemy_ai_group_id = 1;
 	enemy_ai_groups_initialized = false;
-	// loose start/ciel
+	// START/ESCAPE/TARGET all belong to the loaded mission, not the map
+    // object's lifetime. TARGET was previously left behind across reloads.
 	start.clear();
 	escape.clear();
+    target.clear();
 	// Queued company previews are owned by MainFrame, not this map.
 	deployment_mode = false;
 	deployment_preview_unit = nullptr;
@@ -2152,6 +2179,8 @@ void SpellMap::Close()
 	m_mission_losses = MissionLossStats();
 	m_commander_death_queue.clear();
 	m_commander_death_active = false;
+    m_objective_notify_queue.clear();
+    m_objective_notify_active = false;
 	m_start_text_pending = false;
 
 	SetDefaultRenderFilter(NULL);
@@ -10273,7 +10302,9 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 
 	// Render the original enemy-turn HUD (LISTA_1) while AI owns the turn.
 	// The DOS game deliberately hid all unit/AP/action details during this phase.
-	const bool enemy_turn_hud = isGameMode() && enemy_turn_running;
+	// Placement always owns the HUD until the player confirms all START
+    // squares. Never replace its finish button with the AI-only LISTA_1.
+    const bool enemy_turn_hud = isGameMode() && enemy_turn_running && !deployment_mode;
 	img = (enemy_turn_hud && gres.wm_hud_enemy) ? gres.wm_hud_enemy : gres.wm_hud;
 	x_ofs = surf_x_origin + (std::max)(0, (surf_x - img->x_size) / 2);
 	y_ofs = surf_y_origin + (std::max)(0, surf_y - img->y_size);
@@ -15105,8 +15136,20 @@ int SpellMap::MissionStartEvent()
 
 	// get list of events
 	auto list = events->GetMissionStartEvent(true);
+    const size_t eventCount = list.size();
+    size_t expectedUnits = 0;
+    size_t placedUnits = 0;
+    size_t failedUnits = 0;
 	if (list.empty())
+    {
+        spellcross_diag::Log(spellcross_diag::Level::Info, "MISSION",
+            "MissionStart: no start events; map=%s objectives=%llu escape=%llu target=%llu",
+            std::filesystem::path(map_path).filename().string().c_str(),
+            static_cast<unsigned long long>(events->GetEvents().size()),
+            static_cast<unsigned long long>(escape.size()),
+            static_cast<unsigned long long>(target.size()));
 		return(0);
+    }
 
 	// Preserve a friendly unit already selected by the strategic launcher.
 	// Older code always selected the first MissionStart event unit, which could
@@ -15121,14 +15164,24 @@ int SpellMap::MissionStartEvent()
 		// for each unit to place:
 		for (auto& unit : evt->units)
 		{
+            ++expectedUnits;
 			// make new unit
 			MapUnit* new_unit = new MapUnit(*unit.unit, true);
 			if (PlaceUnit(new_unit))
 			{
-				// failed
+                ++failedUnits;
+                // Previously this failure was silent, including for convoy
+                // SpecUnit1/SpecUnit2 (IDs 48/49) needed by TransportUnit.
+                spellcross_diag::Log(spellcross_diag::Level::Error, "MISSION",
+                    "MissionStart spawn FAILED map=%s unit_id=%d type=%d pos=(%d,%d) enemy=%d",
+                    std::filesystem::path(map_path).filename().string().c_str(),
+                    new_unit->id, new_unit->unit ? new_unit->unit->type_id : -1,
+                    new_unit->coor.x, new_unit->coor.y,
+                    static_cast<int>(new_unit->is_enemy));
 				delete new_unit;
 				continue;
 			}
+            ++placedUnits;
 			AdjustEnemyExperienceForDifficulty(new_unit);
 			unit.is_placed = true;
 			spawned_units = true;
@@ -15149,6 +15202,18 @@ int SpellMap::MissionStartEvent()
 	// Bind by ID again after playable copies are inserted into map->units.
 	if (spawned_units)
 		events->RelinkUnits();
+
+    spellcross_diag::Log(
+        failedUnits ? spellcross_diag::Level::Error : spellcross_diag::Level::Info,
+        "MISSION",
+        "MissionStart map=%s events=%llu expected_units=%llu placed_units=%llu failed_units=%llu escape=%llu target=%llu",
+        std::filesystem::path(map_path).filename().string().c_str(),
+        static_cast<unsigned long long>(eventCount),
+        static_cast<unsigned long long>(expectedUnits),
+        static_cast<unsigned long long>(placedUnits),
+        static_cast<unsigned long long>(failedUnits),
+        static_cast<unsigned long long>(escape.size()),
+        static_cast<unsigned long long>(target.size()));
 
 	// Queue MissionStartText to be shown on first available Tick (after video etc.)
 	if (!params.start_text.empty())
