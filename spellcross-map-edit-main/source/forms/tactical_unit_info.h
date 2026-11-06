@@ -212,7 +212,7 @@ private:
         const bool known = !u->is_enemy || (m_hasResearch && m_hasResearch(u));
         if (!known)
             AppendWrapped("Unknown hostile unit. Research required.");
-        else if (ReadFile(root + (m_data->GetTextLanguage() == SpellLang::CZE ? ".CZ" : ".ENG"), description) ||
+        else if (ReadFile(root + SpellLanguageExtension(m_data->GetTextLanguage()), description) ||
                  ReadFile(root + ".ENG", description))
         {
             // Original unit description, retained in the source edition's
