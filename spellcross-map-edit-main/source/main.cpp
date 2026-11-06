@@ -3206,6 +3206,10 @@ void MainFrame::OnOptionsScreen(wxCommandEvent& event)
                 spell_map->scroller.SetSurface(size.x, size.y);
             canvas->Refresh();
         }
+        // The Info overlay caches its resized frame. Repaint it when the
+        // player switches between the sharp and smoothed scaling presets.
+        if (m_unitInfoDialog)
+            m_unitInfoDialog->Refresh(false);
         if (m_strategicLevel)
             m_strategicLevel->Refresh();
     });
