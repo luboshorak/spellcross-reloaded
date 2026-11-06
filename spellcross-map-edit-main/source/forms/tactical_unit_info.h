@@ -267,6 +267,47 @@ private:
         if (bitmap && bitmap->IsOk()) dc.DrawBitmap(*bitmap, x, y, true);
     }
 
+    // The retail tactical archives supply 76x10, 10x69 and 10x10 stone
+    // border pieces. Tile those native pixel graphics instead of painting a
+    // custom approximated frame around the unit dossier.
+    void DrawOriginalFrame(wxDC& dc, const wxRect& rect)
+    {
+        auto* hres = m_data->gres.wm_frame_horz;
+        auto* vres = m_data->gres.wm_frame_vert;
+        auto* corner = m_data->gres.wm_frame_corner;
+        if (!hres || !vres || !corner) return;
+        std::unique_ptr<wxBitmap> h(hres->Render(true));
+        std::unique_ptr<wxBitmap> v(vres->Render(true));
+        if (!h || !v || !h->IsOk() || !v->IsOk()) return;
+
+        const int inset = 10;
+        const int width = rect.width - 2 * inset;
+        const int height = rect.height - 2 * inset;
+        for (int pos = 0; pos < width; pos += h->GetWidth())
+        {
+            const int copy = std::min(h->GetWidth(), width - pos);
+            const wxBitmap tile = h->GetSubBitmap(
+                wxRect(0, 0, copy, h->GetHeight()));
+            dc.DrawBitmap(tile, rect.x + inset + pos, rect.y, true);
+            dc.DrawBitmap(tile, rect.x + inset + pos,
+                rect.y + rect.height - h->GetHeight(), true);
+        }
+        for (int pos = 0; pos < height; pos += v->GetHeight())
+        {
+            const int copy = std::min(v->GetHeight(), height - pos);
+            const wxBitmap tile = v->GetSubBitmap(
+                wxRect(0, 0, v->GetWidth(), copy));
+            dc.DrawBitmap(tile, rect.x, rect.y + inset + pos, true);
+            dc.DrawBitmap(tile,
+                rect.x + rect.width - v->GetWidth(), rect.y + inset + pos, true);
+        }
+        DrawNative(dc, corner, rect.x, rect.y);
+        DrawNative(dc, corner, rect.x + rect.width - inset, rect.y);
+        DrawNative(dc, corner, rect.x, rect.y + rect.height - inset);
+        DrawNative(dc, corner, rect.x + rect.width - inset,
+            rect.y + rect.height - inset);
+    }
+
     void DrawButton(wxDC& dc, const Button& b)
     {
         DrawNative(dc, m_data->gres.GetResource("IINFO__N"), b.x, b.y);
@@ -312,14 +353,8 @@ private:
         dc.Clear();
 
         if (m_picture.IsOk()) dc.DrawBitmap(m_picture, 0, 0, false);
-        // The original art, bitmap font and buttons are native. These plain
-        // separators are the remaining non-native chrome pending exact retail
-        // screen-coordinate and frame-asset extraction.
-        dc.SetPen(wxPen(wxColour(104, 96, 73), 2));
-        dc.SetBrush(*wxTRANSPARENT_BRUSH);
-        dc.DrawRectangle(0, 0, kArtW, kArtH);
-        dc.DrawRectangle(kArtW, 0, kW - kArtW, 480);
-        dc.DrawRectangle(0, kArtH, kArtW, 66);
+        DrawOriginalFrame(dc, wxRect(kArtW, 0, kW - kArtW, kH));
+        DrawOriginalFrame(dc, wxRect(0, kArtH, kArtW, 66));
         dc.SetPen(wxPen(wxColour(47, 64, 44)));
         dc.DrawLine(444, 31, 633, 31);
 
