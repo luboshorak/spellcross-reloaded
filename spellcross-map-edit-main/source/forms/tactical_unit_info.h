@@ -25,12 +25,19 @@ public:
     TacticalUnitInfoDialog(wxWindow* parent, SpellMap* map, SpellData* data,
         MapUnit* selected, std::function<bool(MapUnit*)> hasResearch)
         : wxDialog(parent, wxID_ANY, "Spellcross - Unit info",
-            wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+            wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxSTAY_ON_TOP),
           m_map(map), m_data(data), m_hasResearch(std::move(hasResearch))
     {
+        // A borderless, centred 4:3 game page, never an OS message box. Keep
+        // the original 640x480 coordinate system while fitting fullscreen.
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         SetMinClientSize(wxSize(640, 480));
-        SetClientSize(640, 480);
+        const wxSize available = parent ? parent->GetClientSize() : wxSize(640, 480);
+        const double scale = std::max(1.0, std::min(
+            static_cast<double>(available.x) / 640.0,
+            static_cast<double>(available.y) / 480.0));
+        SetClientSize(static_cast<int>(640 * scale),
+            static_cast<int>(480 * scale));
         for (MapUnit* unit : map->units)
         {
             if (!unit || !unit->unit || unit->hide || unit->isDead() ||
