@@ -15,6 +15,7 @@
 #include <wx/tokenzr.h>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -59,10 +60,13 @@ public:
         LoadChrome();
         Rebuild();
         Bind(wxEVT_PAINT, &TacticalUnitInfoDialog::OnPaint, this);
-        Bind(wxEVT_LEFT_UP, &TacticalUnitInfoDialog::OnClick, this);
+        // Act on mouse-down, not mouse-up: Windows can hand the latter to a
+        // different HWND if the game had mouse capture while opening the modal.
+        Bind(wxEVT_LEFT_DOWN, &TacticalUnitInfoDialog::OnClick, this);
         Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) { EndModal(wxID_CANCEL); });
         Bind(wxEVT_CHAR_HOOK, &TacticalUnitInfoDialog::OnKey, this);
         Bind(wxEVT_MOUSEWHEEL, &TacticalUnitInfoDialog::OnWheel, this);
+        UpdateComposite();
     }
 
     MapUnit* SelectedForBattle() const { return m_goTo; }
@@ -79,6 +83,11 @@ private:
     static constexpr int kTextW = 164;
     static constexpr int kTextRows = 36;
     static constexpr int kTextStep = 12;
+    static constexpr int kDescriptionX = 236;
+    static constexpr int kDescriptionY = 171;
+    static constexpr int kDescriptionW = 382;
+    static constexpr int kDescriptionRows = 21;
+    static constexpr int kDescriptionStep = 18;
 
     SpellData* m_data = nullptr;
     std::function<bool(MapUnit*)> m_hasResearch;
@@ -88,6 +97,9 @@ private:
     wxBitmap m_background;
     wxBitmap m_panel;
     wxBitmap m_footer;
+    // Composite the expensive original bitmaps and bitmap font off-screen.
+    // The paint handler then performs only one blit, eliminating scroll flicker.
+    wxBitmap m_composite;
     std::vector<uint8_t> m_infoPalette;
     std::vector<std::string> m_pictures;
     size_t m_pictureIndex = 0;
@@ -224,7 +236,7 @@ private:
         return static_cast<int>(value.length()) * 8;
     }
 
-    void AppendWrapped(std::vector<wxString>& output, const wxString& paragraph)
+    void AppendWrapped(std::vector<wxString>& output, const wxString& paragraph, int maxWidth)
     {
         if (paragraph.empty())
         {
@@ -237,7 +249,7 @@ private:
         {
             const wxString word = words.GetNextToken();
             const wxString next = line.empty() ? word : line + " " + word;
-            if (!line.empty() && TextWidth(next) > kTextW)
+            if (!line.empty() && TextWidth(next) > maxWidth)
             {
                 output.push_back(line);
                 line = word;
@@ -291,7 +303,7 @@ private:
             {
                 wxString para = paras.GetNextToken();
                 para.Replace("\r", "");
-                AppendWrapped(m_descriptionLines, para);
+                AppendWrapped(m_descriptionLines, para, kDescriptionW);
             }
         }
 
@@ -395,9 +407,13 @@ private:
         // IEXIT__N is the original self-contained 22x26 exit key with its
         // three dark bars. INFOEXIT.ICO is not layered on that narrow key.
         if (button.width == 22) return;
-        SpellGraphicItem* glyph = m_data ? m_data->gres.GetResource(button.glyph) : nullptr;
+        // In text mode the same button offers to return to the unit picture.
+        const char* iconName = (m_showDescription &&
+            std::strcmp(button.glyph, "INFOTEXT") == 0)
+            ? "INFOPICT" : button.glyph;
+        SpellGraphicItem* glyph = m_data ? m_data->gres.GetResource(iconName) : nullptr;
         if (glyph)
-            DrawInfoGraphic(dc, button.glyph,
+            DrawInfoGraphic(dc, iconName,
                 button.x + glyph->x_ofs, button.y + glyph->y_ofs);
     }
 
@@ -443,15 +459,24 @@ private:
             (client.y - kH * scale) * 0.5 };
     }
 
-    void OnPaint(wxPaintEvent&)
+    // Render a complete 1024x768 frame to an off-screen bitmap. Rebuild on
+    // unit/picture/text changes, never during the native Windows WM_PAINT.
+    void UpdateComposite()
     {
-        wxAutoBufferedPaintDC dc(this);
+        if (!m_composite.IsOk())
+            m_composite = wxBitmap(kW, kH, 24);
+        if (!m_composite.IsOk()) return;
+        wxMemoryDC dc;
+        dc.SelectObject(m_composite);
+        DrawScene(dc);
+        dc.SelectObject(wxNullBitmap);
+        Refresh(false);
+    }
+
+    void DrawScene(wxDC& dc)
+    {
         dc.SetBackground(*wxBLACK_BRUSH);
         dc.Clear();
-        const View view = GetView();
-        dc.SetDeviceOrigin(static_cast<int>(std::round(view.x)),
-            static_cast<int>(std::round(view.y)));
-        dc.SetUserScale(view.scale, view.scale);
 
         if (m_background.IsOk())
             dc.DrawBitmap(m_background, 0, 0, false);
@@ -476,40 +501,85 @@ private:
             }
         }
 
-        const auto& lines = m_showDescription ? m_descriptionLines : m_statsLines;
+        // The right-hand column ALWAYS contains tactical statistics.
         dc.SetClippingRegion(kTextX, kTextY, kTextW, kTextRows * kTextStep);
         dc.SetFont(wxFont(wxFontInfo(9).Family(wxFONTFAMILY_TELETYPE)));
         dc.SetTextForeground(wxColour(146, 194, 140));
         for (int row = 0; row < kTextRows; ++row)
         {
-            const size_t at = static_cast<size_t>(m_lineOffset + row);
-            if (at >= lines.size()) break;
+            const size_t at = static_cast<size_t>(row);
+            if (at >= m_statsLines.size()) break;
             const int y = kTextY + row * kTextStep;
-            if (!DrawOriginalFont(dc, lines[at], kTextX, y,
+            if (!DrawOriginalFont(dc, m_statsLines[at], kTextX, y,
                 wxColour(146, 194, 140)))
-                dc.DrawText(lines[at], kTextX, y);
+                dc.DrawText(m_statsLines[at], kTextX, y);
         }
         dc.DestroyClippingRegion();
+
+        // In original Spellcross the Info/Text button replaces the main
+        // illustration area with the historical dossier, NOT the right-hand
+        // statistics. The picture stays beneath the green lettering, as in
+        // the user's DOSBox comparison.
+        if (m_showDescription)
+        {
+            dc.SetClippingRegion(kDescriptionX, kDescriptionY,
+                kDescriptionW, kDescriptionRows * kDescriptionStep);
+            dc.SetFont(wxFont(wxFontInfo(9).Family(wxFONTFAMILY_TELETYPE)));
+            for (int row = 0; row < kDescriptionRows; ++row)
+            {
+                const size_t at = static_cast<size_t>(m_lineOffset + row);
+                if (at >= m_descriptionLines.size()) break;
+                const int y = kDescriptionY + row * kDescriptionStep;
+                if (!DrawOriginalFont(dc, m_descriptionLines[at], kDescriptionX, y,
+                    wxColour(174, 197, 164)))
+                {
+                    dc.SetTextForeground(wxColour(174, 197, 164));
+                    dc.DrawText(m_descriptionLines[at], kDescriptionX, y);
+                }
+            }
+            dc.DestroyClippingRegion();
+        }
 
         for (const Button& button : kButtons)
             DrawButton(dc, button);
     }
 
+    void OnPaint(wxPaintEvent&)
+    {
+        wxAutoBufferedPaintDC dc(this);
+        dc.SetBackground(*wxBLACK_BRUSH);
+        dc.Clear();
+        const View view = GetView();
+        dc.SetDeviceOrigin(static_cast<int>(std::round(view.x)),
+            static_cast<int>(std::round(view.y)));
+        dc.SetUserScale(view.scale, view.scale);
+        if (m_composite.IsOk())
+            dc.DrawBitmap(m_composite, 0, 0, false);
+    }
+
     void ChangeUnit(int delta)
     {
-        if (m_units.empty()) return;
+        if (m_units.size() < 2) return;
         const int count = static_cast<int>(m_units.size());
-        m_index = static_cast<size_t>((static_cast<int>(m_index) + delta + count) % count);
+        // The dossier cycles through the actual tactical-map units, not the
+        // unit-type encyclopedia. Do not reset the selected index in Rebuild.
+        m_index = static_cast<size_t>(
+            (static_cast<int>(m_index) + (delta > 0 ? 1 : -1) + count) % count);
         Rebuild();
-        Refresh(false);
+        UpdateComposite();
     }
 
     void ScrollText(int delta)
     {
-        const auto& lines = m_showDescription ? m_descriptionLines : m_statsLines;
-        const int maxOffset = std::max(0, static_cast<int>(lines.size()) - kTextRows);
-        m_lineOffset = std::clamp(m_lineOffset + delta, 0, maxOffset);
-        Refresh(false);
+        // Only the large text pane scrolls. Statistics are a separate
+        // stationary column, exactly as on the DOSBox reference.
+        if (!m_showDescription) return;
+        const int maxOffset = std::max(
+            0, static_cast<int>(m_descriptionLines.size()) - kDescriptionRows);
+        const int next = std::clamp(m_lineOffset + delta, 0, maxOffset);
+        if (next == m_lineOffset) return;
+        m_lineOffset = next;
+        UpdateComposite();
     }
 
     void Rename()
@@ -524,7 +594,7 @@ private:
         if (updated.size() > 27) updated.Truncate(27);
         unit->name = updated.empty() ? std::string() :
             wstring2stringCP895(updated.ToStdWstring());
-        Refresh(false);
+        UpdateComposite();
     }
 
     void Activate(int index)
@@ -540,7 +610,7 @@ private:
             {
                 m_pictureIndex = (m_pictureIndex + 1) % m_pictures.size();
                 LoadPicture();
-                Refresh(false);
+                UpdateComposite();
             }
             break;
         case 5: Rename(); break;
@@ -554,7 +624,7 @@ private:
         case 7:
             m_showDescription = !m_showDescription;
             m_lineOffset = 0;
-            Refresh(false);
+            UpdateComposite();
             break;
         case 8: EndModal(wxID_CANCEL); break;
         }
@@ -568,8 +638,10 @@ private:
         for (size_t i = 0; i < sizeof(kButtons) / sizeof(kButtons[0]); ++i)
         {
             const Button& button = kButtons[i];
-            if (x >= button.x && x < button.x + button.width &&
-                y >= button.y && y < button.y + 26)
+            // Hitboxes follow the visible retail keys; a few pixels of
+            // padding prevent clicks on the bevel from being lost.
+            if (x >= button.x - 3 && x < button.x + button.width + 3 &&
+                y >= button.y - 3 && y < button.y + 29)
             {
                 Activate(static_cast<int>(i));
                 return;
