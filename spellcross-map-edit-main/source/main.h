@@ -49,6 +49,9 @@ public:
 
 
 
+// Tactical Info is a modeless child overlay of the map canvas.
+class TacticalUnitInfoDialog;
+
 // Main application frame
 class MainFrame : public wxFrame
 {
@@ -235,6 +238,7 @@ private:
 	void OnCanvasLMouseUp(wxMouseEvent& event);
 	void HandleCanvasLeftClick(wxMouseEvent& event);
     void OpenTacticalUnitInfo(MapUnit* unit);
+    void CloseTacticalUnitInfo();
 	void ResetBoxSelectionGesture();
     void ResetTransientTacticalPointerState(const char* reason);
 	wxRect CurrentBoxSelectionRect() const;
@@ -291,6 +295,7 @@ private:
     bool m_mainMenuReturnToTactical = false;
     bool m_inspectUnit = false;
     bool m_unitInfoDialogOpen = false;
+    TacticalUnitInfoDialog* m_unitInfoDialog = nullptr;
     
     // spellcross HUD interface stuff
     void OnPaintHUDbutton(wxPaintEvent& event);
