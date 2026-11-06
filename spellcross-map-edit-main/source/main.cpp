@@ -1898,6 +1898,7 @@ static wxString BuildSpellcrossWindowTitle(SpellMap* map);
 
 bool MainFrame::LoadMapFromDefPath(const std::wstring& def_path, const std::vector<LevelData::PlayerUnitAdd>& player_units)
 {
+    CloseTacticalUnitInfo();
     const auto map_name = std::filesystem::path(def_path).filename().string();
     spellcross_diag::Log(spellcross_diag::Level::Info, "MAP",
         "Loading mission=%s deployed_companies=%llu", map_name.c_str(),
@@ -2023,6 +2024,7 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
     const std::vector<LevelData::PlayerUnitAdd>& player_units,
     const std::vector<int>& enemy_unit_ids, int enemy_level_min, int enemy_level_max)
 {
+    CloseTacticalUnitInfo();
     if (!spell_map || !spell_data || dta_path.empty())
         return false;
 
@@ -2938,6 +2940,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     });
     canvas->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
         ResetTransientTacticalPointerState("canvas-resized");
+        // This Info page is a child of the map canvas, not a modal frame.
+        // Follow fullscreen/window changes without covering the menu toolbar.
+        if (m_unitInfoDialog)
+            m_unitInfoDialog->SetSize(canvas->GetClientRect());
         event.Skip();
     });
     canvas->Bind(wxEVT_KEY_DOWN,&MainFrame::OnCanvasKeyDown,this);
@@ -3818,6 +3824,7 @@ void MainFrame::ShowMainMenuWindow()
 
 void MainFrame::OnOpenMainMenu(wxCommandEvent& event)
 {
+    CloseTacticalUnitInfo();
     if(form_mmenu)
         return;
 
@@ -3947,6 +3954,7 @@ bool MainFrame::SaveTacticalGameWithCampaignContext(const std::wstring& path)
 
 bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
 {
+    CloseTacticalUnitInfo();
     if (!spell_map || !spell_data)
         return false;
 
@@ -6310,21 +6318,25 @@ void MainFrame::OnCanvasLMouseUp(wxMouseEvent& event)
 	HandleCanvasLeftClick(click);
 }
 
+void MainFrame::CloseTacticalUnitInfo()
+{
+    if (m_unitInfoDialog)
+        m_unitInfoDialog->Dismiss();
+}
+
 void MainFrame::OpenTacticalUnitInfo(MapUnit* unit)
 {
-    if (!spell_map || !spell_data || !unit || !unit->unit ||
+    if (!spell_map || !spell_data || !canvas || !unit || !unit->unit ||
         unit->hide || (unit->is_enemy && unit->is_visible != 2) ||
         m_unitInfoDialogOpen)
         return;
 
     m_inspectUnit = false;
     SetCursor(*spell_data->gres.cur_pointer);
+    // A child panel overlays only the game canvas. Unlike wxDialog::ShowModal,
+    // it never disables the frame's custom wxToolBar menu.
     m_unitInfoDialogOpen = true;
-    // Parent the borderless dossier to the map canvas, NOT the outer frame.
-    // game_menu_bar.h installs a wxToolBar above the canvas; covering the
-    // frame's screen rectangle would obscure that original green top menu.
-    TacticalUnitInfoDialog dialog(canvas ? static_cast<wxWindow*>(canvas)
-        : static_cast<wxWindow*>(this), spell_map, spell_data, unit,
+    m_unitInfoDialog = new TacticalUnitInfoDialog(canvas, spell_map, spell_data, unit,
         [this](MapUnit* inspected) -> bool
         {
             if (!inspected || !inspected->unit) return false;
@@ -6332,18 +6344,23 @@ void MainFrame::OpenTacticalUnitInfo(MapUnit* unit)
             return m_strategicLevel &&
                 m_strategicLevel->IsTacticalEnemyDescriptionAvailable(
                     inspected->unit->type_id);
+        },
+        [this](MapUnit* chosen)
+        {
+            // Dismiss clears the pointer before destroying the panel.
+            m_unitInfoDialog = nullptr;
+            m_unitInfoDialogOpen = false;
+            if (chosen && spell_map && !chosen->is_enemy)
+                spell_map->SelectUnit(chosen, true);
+            if (canvas)
+            {
+                canvas->SetFocus();
+                canvas->Refresh();
+            }
         });
-    const int result = dialog.ShowModal();
-    MapUnit* selected = result == wxID_OK ? dialog.SelectedForBattle() : nullptr;
-    m_unitInfoDialogOpen = false;
-
-    if (selected && !selected->is_enemy)
-        spell_map->SelectUnit(selected, true);
-    if (canvas)
-    {
-        canvas->SetFocus();
-        canvas->Refresh();
-    }
+    m_unitInfoDialog->Show();
+    m_unitInfoDialog->Raise();
+    m_unitInfoDialog->SetFocus();
 }
 
 // Original tactical Info button and Shift+RMB lead to this same dossier.
