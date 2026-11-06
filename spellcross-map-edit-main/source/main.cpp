@@ -6681,6 +6681,25 @@ void MainFrame::HandleCanvasLeftClick(wxMouseEvent& event)
         }
         else if (action_count != 0)
             no_action_clicks = 0;
+        // A stale or unfinished asynchronous MOVE preview must not
+        // permanently lock the player out. If no cursor action is offered,
+        // try one authoritative synchronous path calculation on the CLICK,
+        // never on every mouse-motion event. MoveUnit itself checks AP,
+        // tactical input locks, occupancy and valid terrain before moving.
+        if (action_count == 0 && select_pos.IsSelected() &&
+            spell_map->isGameMode() &&
+            std::string(spell_map->GetTacticalInputBlockReason()) == "none")
+        {
+            MapUnit* current = spell_map->GetSelectedUnit();
+            if (current && !current->is_enemy && current->unit &&
+                select_pos != current->coor &&
+                spell_map->MoveUnit(select_pos, event.AltDown()) == 0)
+            {
+                no_action_clicks = 0;
+                if (canvas) canvas->Refresh();
+                return;
+            }
+        }
         if (action_count == 1)
         {
             OnUnitClick_cb(options);

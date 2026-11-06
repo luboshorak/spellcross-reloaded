@@ -6931,6 +6931,12 @@ void SpellMap::MoveRange::FindRange(MapUnit* unit)
 	// terminate current operation
 	Halt(true);
 
+    // Do not expose the previous company's movement overlay as if it were
+    // computed for the new selection while this task is still pending.
+    ResultLock(true);
+    completed_range_unit = nullptr;
+    ResultLock(false);
+
 	// make new job
 	//queue_lock.lock();
 	ctrl_lock.lock();
@@ -6971,6 +6977,14 @@ void SpellMap::MoveRange::ResultLock(bool state)
 		result_lock.unlock();
 }
 
+int SpellMap::MoveRange::GetCachedMoveAP(const MapUnit* unit, int mapIndex)
+{
+    std::lock_guard<std::mutex> guard(result_lock);
+    if (completed_range_unit != unit || mapIndex < 0 ||
+        static_cast<size_t>(mapIndex) >= ap_left.size())
+        return -1;
+    return ap_left[mapIndex];
+}
 
 
 AStarNode::AStarNode()
@@ -7049,6 +7063,7 @@ void SpellMap::MoveRange::Worker()
 			ResultLock(true);
 			ap_left = unit_ap_left;
 			fire_left = unit_fire_left;
+            completed_range_unit = unit;
 			ResultLock(false);
 			continue;
 		}
@@ -7083,6 +7098,7 @@ void SpellMap::MoveRange::Worker()
 					ResultLock(true);
 					ap_left = unit_ap_left;
 					fire_left = unit_fire_left;
+                    completed_range_unit = unit;
 					ResultLock(false);
 					break;
 				}
@@ -7466,7 +7482,8 @@ int SpellMap::CanUnitMove(MapXY target)
 {
 	if (isGameMode() && (enemy_turn_running || panic_turn_running || reaction_fire_active || !reaction_fire_queue.empty()))
 		return(false);
-	if (!target.IsSelected())
+	if (!target.IsSelected() || target.x >= x_size || target.y >= y_size ||
+        !IsTacticalMovementTile(target))
 		return(false);
 	int npos = ConvXY(target);
 
@@ -7489,8 +7506,12 @@ int SpellMap::CanUnitMove(MapXY target)
 	if (unit->radar_up)
 		return(false);
 
-	// check calculated move range
-	if (unit_range->ap_left[npos] < 0)
+	// The worker also computes range for enemy reactions and panic.  Only
+    // trust a completed preview belonging to the CURRENT selected company,
+    // with the vector and its owner checked under the same result lock.
+    // If this preview is absent/stale, click handling can still verify the
+    // route synchronously without changing the interactive cursor semantics.
+    if (!unit_range || unit_range->GetCachedMoveAP(unit, npos) < 0)
 		return(false);
 
 	// Match the A* pathfinder's layer collision rule exactly. An air and
@@ -7550,49 +7571,66 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
 	if (!unit)
 		return(1);
 
-	if (unit->radar_up)
-		return(1);
-	if (unit->paralyze_turns > 0 || unit->freeze_turns > 0)
-		return(1);
+    // Preview results are asynchronous and may belong to a previous unit
+    // (e.g. after a reaction volley). An ACTUAL player command must be
+    // validated against the current unit and current terrain/occupancy using
+    // the synchronous A* pathfinder, never against stale cached ap_left.
+    if (!unit->unit || !unit->isActive() || unit->is_enemy ||
+        unit->radar_up || unit->paralyze_turns > 0 || unit->freeze_turns > 0 ||
+        unit->GetWalkAP() <= 0 || unit->action_points <= 0 ||
+        !target.IsSelected() || !unit->coor.IsSelected() ||
+        target == unit->coor || !IsTacticalMovementTile(target) || !unit_range)
+        return(1);
 
-	// Reject blocked destinations before interrupting an existing command.
-	// Opposite-layer units do not block movement: an aircraft can fly over
-	// ground troops, including enemies, but never through another aircraft.
-	if (!CanUnitMove(target))
-		return(1);
+    const int targetIndex = ConvXY(target);
+    for (auto* occupant = Lunit[targetIndex]; occupant; occupant = occupant->next)
+        if (occupant != unit && occupant->unit &&
+            occupant->unit->isAir() == unit->unit->isAir())
+            return(1);
 
-	spellcross_diag::Log(spellcross_diag::Level::Info, "PLAYER",
-		"Company move requested id=%d from=(%d,%d) to=(%d,%d) reserve_shot=%d",
-		unit->id, unit->coor.x, unit->coor.y, target.x, target.y,
-		static_cast<int>(reserve_one_shot));
-	// clear last move only after a legal destination is confirmed
-	LockMap();
-	unit->move_state = MapUnit::MOVE_STATE::IDLE;
-	unit->move_nodes.clear();
-	ReleaseMap();
+    // FindPath is synchronous and bounded by the unit's CURRENT action points.
+    // Do this BEFORE cancelling an existing move: an unreachable command
+    // must never silently stop a currently moving unit.
+    auto path = unit_range->FindPath(unit, target);
+    if (path.size() < 2 || path.back().pos != target ||
+        path.back().g_cost > unit->action_points)
+    {
+        spellcross_diag::Log(spellcross_diag::Level::Warning, "CONTROL",
+            "Move path unavailable id=%d from=(%d,%d) to=(%d,%d) ap=%d "
+            "path_nodes=%llu cached_ap=%d input_lock=%s",
+            unit->id, unit->coor.x, unit->coor.y, target.x, target.y,
+            unit->action_points, static_cast<unsigned long long>(path.size()),
+            unit_range->GetCachedMoveAP(unit, targetIndex),
+            GetTacticalInputBlockReason());
+        return(1);
+    }
 
-	// find path
-	auto path = unit_range->FindPath(unit, target);
+    const int cachedAP = unit_range->GetCachedMoveAP(unit, targetIndex);
+    if (cachedAP < 0)
+        spellcross_diag::Log(spellcross_diag::Level::Warning, "CONTROL",
+            "Recovered stale MOVE preview id=%d from=(%d,%d) to=(%d,%d) "
+            "ap=%d path_ap=%d",
+            unit->id, unit->coor.x, unit->coor.y, target.x, target.y,
+            unit->action_points, path.back().g_cost);
 
-	LockMap();
+    spellcross_diag::Log(spellcross_diag::Level::Info, "PLAYER",
+        "Company move requested id=%d from=(%d,%d) to=(%d,%d) reserve_shot=%d",
+        unit->id, unit->coor.x, unit->coor.y, target.x, target.y,
+        static_cast<int>(reserve_one_shot));
 
-	// build path
-	for (int nid = 1; nid < path.size(); nid++)
-		unit->move_nodes.push_back(path[nid]);
+    LockMap();
+    unit->move_state = MapUnit::MOVE_STATE::IDLE;
+    unit->move_nodes.clear();
+    for (size_t nid = 1; nid < path.size(); ++nid)
+        unit->move_nodes.push_back(path[nid]);
 
-	// init path move
-	if (!unit->move_nodes.empty())
-	{
-		unit->move_state = MapUnit::MOVE_STATE::TURRET;
-		unit->move_step = 0;
+    unit->move_state = MapUnit::MOVE_STATE::TURRET;
+    unit->move_step = 0;
+    unit->ClearDigLevel();
+    unit->ResetTurnsCounter();
+    ReleaseMap();
 
-		unit->ClearDigLevel();
-		unit->ResetTurnsCounter();
-	}
-
-	ReleaseMap();
-
-	return(0);
+    return(0);
 }
 
 // get unit action options for cursor position (game mode)

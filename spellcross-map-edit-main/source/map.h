@@ -824,6 +824,10 @@ public:
 			void FindRange(MapUnit* unit);
 			void WaitIdle();
 			void ResultLock(bool state);
+            // The shared worker may last have calculated a DIFFERENT unit.
+            // Answer ownership + AP under one lock instead of reading an
+            // asynchronous vector without synchronization.
+            int GetCachedMoveAP(const MapUnit* unit, int mapIndex);
 			vector<AStarNode> FindPath(MapUnit* unit,MapXY target);
 			// EN group move: route may extend beyond current AP; if the exact target is
 			// blocked/unreachable, returns a route to the reachable tile closest to it.
@@ -857,6 +861,7 @@ public:
 			// worker thread
 			std::thread* thread = nullptr;
 			std::mutex result_lock; // result data lock
+            MapUnit* completed_range_unit = nullptr; // protected by result_lock
 			std::mutex ctrl_lock; // thread control lock
 			std::mutex queue_lock; // task queue lock
 			std::deque<Task> pending; // tasks queue
