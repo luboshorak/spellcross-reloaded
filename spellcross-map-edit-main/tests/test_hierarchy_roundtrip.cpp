@@ -151,6 +151,19 @@ int main(int argc, char** argv)
         // Resolve all three real officers from campaign context after tactical reload.
         const auto commanderNames = strategy.GetHostedCommanderNames(1);
         Check(commanderNames.size() == 3, "Missing hosted commander identity");
+        // Tactical Info must show the actual three campaign officers with
+        // localized HODNOSTI rank prefixes; the casualty notices above must
+        // still use the names without rank prefixes.
+        const auto commanderLabels = strategy.GetHostedCommanderLabels(1);
+        Check(commanderLabels.size() == commanderNames.size(),
+            "Tactical Info lost hosted officers after campaign/tactical reload");
+        const std::string expectedRank =
+            wstring2stringCP895(strategy.GetRankAbbrev(6).ToStdWstring());
+        for (size_t i = 0; i < commanderNames.size(); ++i)
+            Check(commanderLabels[i] == expectedRank + " " + commanderNames[i],
+                "Tactical Info displayed the wrong commander rank or identity");
+        Check(strategy.GetHostedCommanderLabels(2).empty(),
+            "Unit without a hosted officer gained a phantom commander");
         map.commander_death_names = [&](uint32_t uid) { return strategy.GetHostedCommanderNames(uid); };
         map.SetGameMode(true);
         map.HaltUnitRanging(true);
