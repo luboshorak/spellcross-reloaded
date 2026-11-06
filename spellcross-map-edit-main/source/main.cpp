@@ -5098,6 +5098,11 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     if (m_mission_end_flow)
         return;
 
+    // The dossier is modal: do not advance combat, enemy AI, objectives or
+    // scripted events while the player browses original unit information.
+    if (m_unitInfoDialogOpen)
+        return;
+
     if (m_deployment_active)
     {
         // The retail placement icon flashes; the AI and mission events must
