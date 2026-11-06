@@ -322,7 +322,7 @@ private:
     {
         SpellFont* font = m_data ? m_data->font : nullptr;
         if (!font || text.empty()) return false;
-        const std::string original = wstring2stringCP895(text.ToStdWstring());
+        std::string original = wstring2stringCP895(text.ToStdWstring());
         const int width = std::clamp(font->GetTextWidth(original) + 5, 8, 188);
         const int height = std::max(font->GetHeight() + 4, 16);
         std::vector<uint8_t> pixels(static_cast<size_t>(width) * height, 0);
