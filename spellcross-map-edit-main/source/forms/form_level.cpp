@@ -13379,6 +13379,22 @@ void StrategicLevelFrame::UpdateCommanderRosterSelectionVisuals()
     m_cmdRoster->Refresh();
 }
 
+bool StrategicLevelFrame::IsTacticalEnemyDescriptionAvailable(int unitType)
+{
+    EnsureResearchLoaded();
+    // RESEARCH.DEF Races / UnitType entries use Data(unit type ID).
+    // Unknown hostile units have no dossier text until this exact research
+    // project is completed; never expose all enemy text merely on sight.
+    for (const ResearchItem& item : m_researchDb)
+    {
+        if (item.group != "Races" || item.data != unitType ||
+            (item.flags != "UnitType" && item.flags != "NewUnit"))
+            continue;
+        return !item.researchable || m_researchCompleted.count(item.id) != 0;
+    }
+    return false;
+}
+
 void StrategicLevelFrame::RestoreTacticalCompanyIdentities(SpellMap& map) const
 {
     // Old tactical saves lost the support flag/name at deployment. Recover
@@ -20673,6 +20689,15 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
         }
 
         matchedSurvivors.insert(survivor);
+
+        // The tactical Info dialog renames this concrete company in CP895.
+        // Synchronize by its roster identity, so the new name survives the
+        // mission debrief, later chapter transitions and strategic JSON saves.
+        pu.extra = survivor->name.empty() ? "-" : survivor->name;
+        if (rosterIdx < m_unitStates.size())
+            m_unitStates[rosterIdx].custom_name = survivor->name.empty()
+                ? std::string()
+                : spellcross_company::OriginalNameToUtf8(survivor->name);
 
         // Convert tactical manpower back to the strategic strength percentage.
         const int maxMan = survivor->unit ? survivor->unit->cnt : 0;
