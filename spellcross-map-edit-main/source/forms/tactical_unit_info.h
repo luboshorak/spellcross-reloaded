@@ -68,6 +68,9 @@ public:
         // Act on mouse-down, not mouse-up: Windows can hand the latter to a
         // different HWND if the game had mouse capture while opening the modal.
         Bind(wxEVT_LEFT_DOWN, &TacticalUnitInfoDialog::OnClick, this);
+        Bind(wxEVT_LEFT_UP, &TacticalUnitInfoDialog::OnButtonRelease, this);
+        Bind(wxEVT_MOTION, &TacticalUnitInfoDialog::OnPointerMove, this);
+        Bind(wxEVT_LEAVE_WINDOW, &TacticalUnitInfoDialog::OnPointerLeave, this);
         Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) { Dismiss(); });
         Bind(wxEVT_CHAR_HOOK, &TacticalUnitInfoDialog::OnKey, this);
         Bind(wxEVT_MOUSEWHEEL, &TacticalUnitInfoDialog::OnWheel, this);
@@ -125,6 +128,8 @@ private:
     std::vector<wxString> m_descriptionLines;
     bool m_showDescription = false;
     int m_lineOffset = 0;
+    int m_hoverButton = -1;
+    int m_pressedButton = -1;
 
     struct Button
     {
@@ -418,13 +423,26 @@ private:
             dc.DrawBitmap(*bitmap, x, y, true);
     }
 
-    void DrawButton(wxDC& dc, const Button& button)
+    void DrawButton(wxDC& dc, const Button& button, int index)
     {
-        DrawInfoGraphic(dc, button.face, button.x, button.y);
-        // IEXIT__N is the original self-contained 22x26 exit key with its
-        // three dark bars. INFOEXIT.ICO is not layered on that narrow key.
+        // These are the retail COMMON.FS button states, not artificially
+        // tinted images: _N normal, _A active/hover and _P pressed.
+        // The end caps only ship _N and _D; use the original illuminated
+        // middle key for their transient active/pressed frames.
+        const bool pressed = index == m_pressedButton;
+        const bool hovered = index == m_hoverButton;
+        const char* face = button.face;
+        if (button.width == 22)
+            face = pressed ? "IEXIT__P" : "IEXIT__N";
+        else if (pressed)
+            face = "IINFO__P";
+        else if (hovered)
+            face = "IINFO__A";
+        DrawInfoGraphic(dc, face, button.x, button.y);
+
+        // IEXIT__N/P already contain the exit bars.
         if (button.width == 22) return;
-        // In text mode the same button offers to return to the unit picture.
+        // Text button flips into the original image glyph, and back.
         const char* iconName = (m_showDescription &&
             std::strcmp(button.glyph, "INFOTEXT") == 0)
             ? "INFOPICT" : button.glyph;
@@ -511,13 +529,18 @@ private:
         {
             const std::string name = unit->name.empty()
                 ? std::string(unit->unit->name) : unit->name;
-            if (!DrawOriginalFont(dc, DecodeText(name), 724, 153,
+            // Retail name starts on the SAME left edge as unit statistics.
+            // The old hard-coded x=724 shifted it 61 logical pixels right
+            // and caused long names to spill out of the metal side panel.
+            dc.SetClippingRegion(kTextX, kTextY - 16, kTextW, 16);
+            if (!DrawOriginalFont(dc, DecodeText(name), kTextX, kTextY - 15,
                 wxColour(235, 66, 45)))
             {
                 dc.SetFont(wxFont(wxFontInfo(11).Family(wxFONTFAMILY_TELETYPE).Bold()));
                 dc.SetTextForeground(wxColour(235, 66, 45));
-                dc.DrawText(DecodeText(name), 724, 153);
+                dc.DrawText(DecodeText(name), kTextX, kTextY - 15);
             }
+            dc.DestroyClippingRegion();
         }
 
         // The right-hand column ALWAYS contains tactical statistics.
@@ -559,8 +582,8 @@ private:
             dc.DestroyClippingRegion();
         }
 
-        for (const Button& button : kButtons)
-            DrawButton(dc, button);
+        for (int index = 0; index < static_cast<int>(sizeof(kButtons) / sizeof(kButtons[0])); ++index)
+            DrawButton(dc, kButtons[index], index);
     }
 
     void OnPaint(wxPaintEvent&)
@@ -668,22 +691,64 @@ private:
         }
     }
 
-    void OnClick(wxMouseEvent& ev)
+    int ButtonAt(const wxPoint& point) const
     {
         const View view = GetView();
-        const int x = static_cast<int>((ev.GetX() - view.x) / view.scale);
-        const int y = static_cast<int>((ev.GetY() - view.y) / view.scale);
+        const int x = static_cast<int>((point.x - view.x) / view.scale);
+        const int y = static_cast<int>((point.y - view.y) / view.scale);
         for (size_t i = 0; i < sizeof(kButtons) / sizeof(kButtons[0]); ++i)
         {
             const Button& button = kButtons[i];
-            // Hitboxes follow the visible retail keys; a few pixels of
-            // padding prevent clicks on the bevel from being lost.
             if (x >= button.x - 3 && x < button.x + button.width + 3 &&
                 y >= button.y - 3 && y < button.y + 29)
-            {
-                Activate(static_cast<int>(i));
-                return;
-            }
+                return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    void OnClick(wxMouseEvent& ev)
+    {
+        const int index = ButtonAt(ev.GetPosition());
+        if (index < 0) return;
+        // Preserve the verified mouse-down action semantics. The button stays
+        // visibly pressed until mouse-up; actions that close Info still work
+        // immediately instead of depending on window/mouse capture.
+        m_hoverButton = index;
+        m_pressedButton = index;
+        UpdateComposite();
+        Activate(index);
+    }
+
+    void OnButtonRelease(wxMouseEvent& ev)
+    {
+        const int next = ButtonAt(ev.GetPosition());
+        if (m_pressedButton != -1 || m_hoverButton != next)
+        {
+            m_pressedButton = -1;
+            m_hoverButton = next;
+            UpdateComposite();
+        }
+    }
+
+    void OnPointerMove(wxMouseEvent& ev)
+    {
+        const int next = ButtonAt(ev.GetPosition());
+        const int pressed = ev.LeftIsDown() ? m_pressedButton : -1;
+        if (m_hoverButton != next || m_pressedButton != pressed)
+        {
+            m_hoverButton = next;
+            m_pressedButton = pressed;
+            UpdateComposite();
+        }
+    }
+
+    void OnPointerLeave(wxMouseEvent&)
+    {
+        if (m_hoverButton != -1 || m_pressedButton != -1)
+        {
+            m_hoverButton = -1;
+            m_pressedButton = -1;
+            UpdateComposite();
         }
     }
 
