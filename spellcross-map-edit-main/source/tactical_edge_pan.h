@@ -90,7 +90,7 @@ namespace spellcross_tactical
         void Reset() { m_xFraction = m_yFraction = 0.0; }
 
         std::pair<int, int> Advance(EdgePanDirection direction, double elapsedSeconds,
-            double logicalPixelsPerScreenPixel, double maxScreenPixelsPerSecond = 1400.0)
+            double logicalPixelsPerScreenPixel, double maxScreenPixelsPerSecond = 1600.0)
         {
             // Do not catch up several seconds after a breakpoint, modal dialog,
             // window drag, or unexpectedly slow paint.

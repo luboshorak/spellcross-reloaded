@@ -183,6 +183,7 @@ private:
     // Distinguish right-click group cancellation from an actual map drag.
     // TScroll::Move sets its generic 'moved' flag even for tiny cursor jitter.
     bool m_rightPressActive = false;
+    bool m_rightRangeActive = false; // retail hold-RMB movement preview
     bool m_rightDragged = false;
     // A few timer ticks of grace avoid cancelling a real release while
     // Windows is still delivering the corresponding mouse-up event.
@@ -256,6 +257,7 @@ private:
     void CloseTacticalUnitInfo();
 	void ResetBoxSelectionGesture();
     void ResetTransientTacticalPointerState(const char* reason);
+    void SyncTemporaryRangeViewMode();
 	wxRect CurrentBoxSelectionRect() const;
     void OnUnitClick_cb(int action);
     

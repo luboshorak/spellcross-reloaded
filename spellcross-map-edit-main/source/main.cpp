@@ -56,6 +56,7 @@
 #include "resource.h"
 #include "app_identity.h"
 #include "main.h"
+#include "tactical_range_input.h"
 #include "campaign_company_identity.h"
 #include "other.h"
 #include "simpleini.h"
@@ -5082,14 +5083,14 @@ void MainFrame::UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now)
     if (!canvas || !spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode() ||
         !IsShownOnScreen() || !IsActive() || m_nativeMenuOpen || inSubForm() ||
         m_mission_end_flow || m_mission_result_visible || m_boxSelectPending ||
-        m_rightPressActive || m_inspectUnit)
+        (m_rightPressActive && !m_rightRangeActive) || m_inspectUnit)
     {
         m_edgePan.Reset();
         return;
     }
 
     const wxMouseState buttons = wxGetMouseState();
-    if (buttons.LeftIsDown() || buttons.RightIsDown())
+    if (buttons.LeftIsDown() || (buttons.RightIsDown() && !m_rightRangeActive))
     {
         m_edgePan.Reset();
         return;
@@ -5145,9 +5146,13 @@ void MainFrame::UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now)
 
     const auto before = spell_map->scroller.GetScroll();
     spell_map->scroller.PanBy(stepX, stepY);
-    // Clamp using precisely the same limits as Render(). Never queue paints
-    // forever against the border of the DTA map.
-    spell_map->RenderPrepare(&spell_map->scroller);
+    // Use the prepared surface for clamping rather than repeating all the
+    // RenderPrepare calculations on each 10ms timer tick.
+    const auto [mapWidth, mapHeight] = spell_map->GetMapSurfaceSize();
+    const auto [viewWidth, viewHeight] = spell_map->scroller.GetSurface();
+    spell_map->scroller.CheckScroll(0, 0,
+        (std::max)(0, mapWidth - viewWidth),
+        (std::max)(0, mapHeight - viewHeight));
     if (spell_map->scroller.GetScroll() != before)
         canvas->Refresh(false);
 }
@@ -6363,8 +6368,11 @@ void MainFrame::ResetTransientTacticalPointerState(const char* reason)
     m_boxSelectPending = false;
     m_boxSelecting = false;
     m_rightPressActive = false;
+    m_rightRangeActive = false;
     m_rightDragged = false;
     m_orphanedPointerTicks = 0;
+    if (right)
+        SyncTemporaryRangeViewMode();
     if (box && capture)
         canvas->ReleaseMouse();
     if (spell_map && spell_map->IsLoaded())
@@ -6373,41 +6381,74 @@ void MainFrame::ResetTransientTacticalPointerState(const char* reason)
         canvas->Refresh();
 }
 
+void MainFrame::SyncTemporaryRangeViewMode()
+{
+    if (!spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode())
+        return;
+
+    using spellcross_tactical::TemporaryRangeMode;
+    const auto mode = spellcross_tactical::RequestedRangeMode(
+        m_rightRangeActive, m_rangeMoveKeyDown, m_rangeAttackKeyDown,
+        spell_map->IsGroupMode() || m_deployment_active ||
+        m_mission_end_flow || m_mission_result_visible);
+    switch (mode)
+    {
+        case TemporaryRangeMode::Move:
+            spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_MOVE);
+            break;
+        case TemporaryRangeMode::Attack:
+            spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_ATTACK);
+            break;
+        default:
+            spell_map->EndTemporaryUnitRangeViewMode();
+            break;
+    }
+}
+
 void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
 {
-	if (m_boxSelectPending)
-	{
-		ResetBoxSelectionGesture();
-		if (canvas) canvas->Refresh();
-	}
+    if (m_boxSelectPending)
+    {
+        ResetBoxSelectionGesture();
+        if (canvas) canvas->Refresh();
+    }
     if (m_tutorial_stage == 1 && m_tutorial_command == 4 && event.RightUp())
         m_tutorial_pressed_rmb = true;
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
+
     const auto point = TacticalMousePoint(event.GetPosition());
     if (event.RightDown())
     {
-        // A second press proves the first release event was lost.
         if (m_rightPressActive)
             ResetTransientTacticalPointerState("new-right-down-before-right-up");
         m_rightPressActive = true;
         m_rightDragged = false;
         m_rightPressStart = event.GetPosition();
-        spell_map->scroller.SetRef(point.x, point.y);
+        if (spell_map->isGameMode())
+        {
+            // Retail: hold RMB to show movement reach, never drag the camera.
+            // Keep Shift+RMB to inspect a unit without changing the overlay.
+            spell_map->scroller.Idle();
+            m_rightRangeActive = !event.ShiftDown() && !m_deployment_active &&
+                !inSubForm() && !spell_map->IsGroupMode() && !m_inspectUnit &&
+                !m_mission_end_flow && !m_mission_result_visible;
+            SyncTemporaryRangeViewMode();
+        }
+        else
+            spell_map->scroller.SetRef(point.x, point.y); // editor behavior
     }
     else if (event.RightUp())
     {
-        // TScroll::Move sets 'moved' for any cursor motion, even one pixel.
-        // A tiny hand jitter must not leave group mode active (which disables
-        // single-unit shooting). Only a real RMB drag should pan the map.
         const bool openInfo = event.ShiftDown() && !m_rightDragged &&
             !m_deployment_active && !inSubForm();
-        if (openInfo) spell_map->scroller.Move(point.x, point.y);
+        if (openInfo)
+            spell_map->scroller.Move(point.x, point.y);
         MapUnit* inspected = openInfo ? spell_map->GetCursorUnit() : nullptr;
         spell_map->scroller.Idle();
-        // Normal RMB continues to pan the map; Shift+RMB opens native
-        // dossier, as documented in the original Spellcross manual.
         m_rightPressActive = false;
+        m_rightRangeActive = false;
         m_rightDragged = false;
+        SyncTemporaryRangeViewMode();
         if (inspected && inspected->unit && !inspected->hide &&
             (!inspected->is_enemy || inspected->is_visible == 2))
         {
@@ -6415,14 +6456,11 @@ void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
             return;
         }
     }
-    // Camera dragging must not change the tactical range-view mode; SPACE
-    // and M/A remain its explicit controls. This also prevents a stuck
-    // MOVEMENT MODE overlay if Windows loses an RMB-up event.
     if (canvas) canvas->Refresh();
 }
 
 
-// select all tiles
+// select all tiles// select all tiles
 
 // deselect all tiles
 
@@ -6704,7 +6742,8 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
     if(inUnitOptions())
         return;
 
-    spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
+    if (!m_rightRangeActive && !m_rangeMoveKeyDown && !m_rangeAttackKeyDown)
+        spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
     spell_map->scroller.Idle();
 }
 // on canvas mouse move
@@ -6713,7 +6752,7 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
     // Let the matching wxEVT_*_UP finish before the watchdog treats
     // a released right button as an orphaned camera drag.
-    if (m_rightPressActive && event.RightIsDown() && !m_rightDragged)
+    if (m_rightPressActive && !m_rightRangeActive && event.RightIsDown() && !m_rightDragged)
     {
         m_rightDragged = spellcross_tactical::IsSelectionDrag(
             m_rightPressStart.x, m_rightPressStart.y,
@@ -6740,7 +6779,8 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
     if (spellcross_display::ToLogical(event.GetY()) >=
         spell_map->GetHUDtop(spellcross_display::ToLogical(event.GetX())))
     {
-        spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
+        if (!m_rightRangeActive && !m_rangeMoveKeyDown && !m_rangeAttackKeyDown)
+            spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
         if (!last_in_hud) spell_map->InvalidateHUDbuttons();
         spell_map->scroller.Idle();
         last_in_hud = true;
@@ -6811,8 +6851,7 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
     spell_map->RenderPrepare();
     const auto point = TacticalMousePoint(event.GetPosition());
     spell_map->scroller.Move(point.x, point.y);
-    if (event.RightIsDown())
-        spell_map->scroller.SetRef(point.x, point.y);
+    // Zoom must not reactivate camera dragging during a held RMB preview.
     spell_map->InvalidateHUDbuttons();
     canvas->Refresh();
 }
@@ -6920,7 +6959,7 @@ void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
             if(!m_rangeMoveKeyDown)
             {
                 m_rangeMoveKeyDown = true;
-                spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_MOVE);
+                SyncTemporaryRangeViewMode();
             }
             if(canvas) canvas->Refresh();
             return;
@@ -6931,7 +6970,7 @@ void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
             if(!m_rangeAttackKeyDown)
             {
                 m_rangeAttackKeyDown = true;
-                spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_ATTACK);
+                SyncTemporaryRangeViewMode();
             }
             if(canvas) canvas->Refresh();
             return;
@@ -6970,13 +7009,8 @@ void MainFrame::OnCanvasKeyUp(wxKeyEvent& event)
         return;
     }
 
-    // If the other temporary key is still held, keep its mode active.
-    if(m_rangeAttackKeyDown)
-        spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_ATTACK);
-    else if(m_rangeMoveKeyDown)
-        spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_MOVE);
-    else
-        spell_map->EndTemporaryUnitRangeViewMode();
+    // Restore the still-held input or the saved SPACE selection.
+    SyncTemporaryRangeViewMode();
 
     if(canvas) canvas->Refresh();
 }

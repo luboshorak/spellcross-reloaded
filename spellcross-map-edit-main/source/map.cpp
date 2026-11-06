@@ -5643,17 +5643,33 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 	unit_range->ResultLock(true);
 	unit_view->ResultLock(true);
 
-	// make local copies of layers so tools and clipboard can override'em (not very effective solution)
-	std::vector<MapSprite> tiles = this->tiles;
-	std::vector<MapLayer3> L3 = this->L3;
-	std::vector<MapLayer4> L4 = this->L4;
-	std::vector<MapXY> start = this->start;
-	std::vector<MapXY> escape = this->escape;
-	std::vector<MapXY> targets = this->target;
+    // Tactical rendering does not edit the map. Avoid copying entire terrain,
+    // object and marker layers on every camera frame. Only the map editor
+    // needs copies for its mutable clipboard preview, under the same lock.
+    const bool editorPreview = !isGameMode();
+    std::vector<MapSprite> previewTiles;
+    std::vector<MapLayer3> previewL3;
+    std::vector<MapLayer4> previewL4;
+    std::vector<MapXY> previewStart;
+    std::vector<MapXY> previewEscape;
+    std::vector<MapXY> previewTargets;
+    if (editorPreview)
+    {
+        previewTiles = this->tiles;
+        previewL3 = this->L3;
+        previewL4 = this->L4;
+        previewStart = this->start;
+        previewEscape = this->escape;
+        previewTargets = this->target;
+    }
+    auto& tiles = editorPreview ? previewTiles : this->tiles;
+    auto& L3 = editorPreview ? previewL3 : this->L3;
+    auto& L4 = editorPreview ? previewL4 : this->L4;
+    auto& start = editorPreview ? previewStart : this->start;
+    auto& escape = editorPreview ? previewEscape : this->escape;
+    auto& targets = editorPreview ? previewTargets : this->target;
 
-
-
-	// edit tool pre-processing:
+	// edit tool pre-processing:	// edit tool pre-processing:
 	/*if(msel.size() && tool && tool->isObject())
 	{
 		// object tool selected (house, etc.)
@@ -5669,9 +5685,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 	}*/
 
 	// clipboard layers override:
-	if (msel.size())
+	if (editorPreview && msel.size())
 	{
-		// override layers by clipboard buffer
+		// Apply paste previews only to editor-owned copies, never live game data.
 		PasteBuffer(tiles, L3, L4, start, escape, targets, msel[0]);
 	}
 

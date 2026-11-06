@@ -44,16 +44,16 @@ int main()
     int total = 0;
     for (int i = 0; i < 100; ++i)
         total += pan.Advance({1.0, 0.0}, 0.001, 1.0).first;
-    assert(total == 140);
+    assert(total == 160);
     pan.Reset();
     total = 0;
     for (int i = 0; i < 100; ++i)
         total += pan.Advance({1.0, 0.0}, 0.001, 0.5).first;
-    assert(total == 70);
+    assert(total == 80);
 
     pan.Reset();
     // One delayed event cannot teleport the camera across the map.
-    assert(pan.Advance({1.0, 0.0}, 10.0, 1.0).first == 70);
+    assert(pan.Advance({1.0, 0.0}, 10.0, 1.0).first == 80);
     pan.Reset();
     pan.Advance({0.01, 0.0}, 0.01, 1.0);
     assert(pan.Advance({0.0, 0.0}, 0.01, 1.0).first == 0);
