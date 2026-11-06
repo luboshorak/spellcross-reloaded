@@ -69,6 +69,7 @@
 #include <wx/msgdlg.h>
 #include <wx/busyinfo.h>
 #include "forms/form_level.h"
+#include "forms/tactical_unit_info.h"
 
 #include <cctype>
 #include <filesystem>
@@ -6190,11 +6191,21 @@ void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
         // TScroll::Move sets 'moved' for any cursor motion, even one pixel.
         // A tiny hand jitter must not leave group mode active (which disables
         // single-unit shooting). Only a real RMB drag should pan the map.
+        const bool openInfo = event.ShiftDown() && !m_rightDragged &&
+            !m_deployment_active && !inSubForm();
+        if (openInfo) spell_map->scroller.Move(point.x, point.y);
+        MapUnit* inspected = openInfo ? spell_map->GetCursorUnit() : nullptr;
         spell_map->scroller.Idle();
-        // RMB is reserved for camera panning. Group cancellation is handled
-        // exclusively by Escape in OnCanvasKeyDown.
+        // Normal RMB continues to pan the map; Shift+RMB opens native
+        // dossier, as documented in the original Spellcross manual.
         m_rightPressActive = false;
         m_rightDragged = false;
+        if (inspected && inspected->unit && !inspected->hide &&
+            (!inspected->is_enemy || inspected->is_visible == 2))
+        {
+            OpenTacticalUnitInfo(inspected);
+            return;
+        }
     }
     // Camera dragging must not change the tactical range-view mode; SPACE
     // and M/A remain its explicit controls. This also prevents a stuck
@@ -6294,6 +6305,39 @@ void MainFrame::OnCanvasLMouseUp(wxMouseEvent& event)
 	HandleCanvasLeftClick(click);
 }
 
+void MainFrame::OpenTacticalUnitInfo(MapUnit* unit)
+{
+    if (!spell_map || !spell_data || !unit || !unit->unit ||
+        unit->hide || (unit->is_enemy && unit->is_visible != 2) ||
+        m_unitInfoDialogOpen)
+        return;
+
+    m_inspectUnit = false;
+    SetCursor(*spell_data->gres.cur_pointer);
+    m_unitInfoDialogOpen = true;
+    TacticalUnitInfoDialog dialog(this, spell_map, spell_data, unit,
+        [this](MapUnit* inspected) -> bool
+        {
+            if (!inspected || !inspected->unit) return false;
+            if (!inspected->is_enemy) return true;
+            return m_strategicLevel &&
+                m_strategicLevel->IsTacticalEnemyDescriptionAvailable(
+                    inspected->unit->type_id);
+        });
+    const int result = dialog.ShowModal();
+    MapUnit* selected = result == wxID_OK ? dialog.SelectedForBattle() : nullptr;
+    m_unitInfoDialogOpen = false;
+
+    if (selected && !selected->is_enemy)
+        spell_map->SelectUnit(selected, true);
+    if (canvas)
+    {
+        canvas->SetFocus();
+        canvas->Refresh();
+    }
+}
+
+// Original tactical Info button and Shift+RMB lead to this same dossier.
 void MainFrame::HandleCanvasLeftClick(wxMouseEvent& event)
 {
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
@@ -6310,22 +6354,10 @@ void MainFrame::HandleCanvasLeftClick(wxMouseEvent& event)
         wxQueueEvent(form_minimap->form, new wxCloseEvent(wxEVT_CLOSE_WINDOW, ID_MINIMAP_WIN));
     if (m_inspectUnit)
     {
-        auto* unit = spell_map->GetCursorUnit();
-        if (unit && unit->unit && !unit->hide && (!unit->is_enemy || unit->is_visible == 2))
-        {
-            m_inspectUnit = false;
-            SetCursor(*spell_data->gres.cur_pointer);
-            const wxString name = wxString(char2wstringCP895(unit->unit->name));
-            wxString format = spellcross_ui_locale::Tr("battle.unit_details",
-                "Level: %d |Ready: %d |Wounded: %d |Morale: %d%% |Action points: %d |Attack (light / heavy / air): %d / %d / %d |Defence: %d");
-            format.Replace(" |", "\n");
-            const wxString details = wxString::Format(format,
-                unit->experience_level, unit->man, unit->wounded, static_cast<int>(unit->morale),
-                unit->action_points, unit->GetAttack(MapUnit::TARGET_TYPE::LIGHT),
-                unit->GetAttack(MapUnit::TARGET_TYPE::ARMOR), unit->GetAttack(MapUnit::TARGET_TYPE::AIR),
-                unit->GetDefence());
-            wxMessageBox(details, name, wxOK | wxICON_INFORMATION, this);
-        }
+        MapUnit* unit = spell_map->GetCursorUnit();
+        if (unit && unit->unit && !unit->hide &&
+            (!unit->is_enemy || unit->is_visible == 2))
+            OpenTacticalUnitInfo(unit);
         return;
     }
     select_pos = spell_map->GetSelection(nullptr);
