@@ -828,6 +828,7 @@ public:
             // Answer ownership + AP under one lock instead of reading an
             // asynchronous vector without synchronization.
             int GetCachedMoveAP(const MapUnit* unit, int mapIndex);
+			bool HasCachedMoveRange(const MapUnit* unit);
 			vector<AStarNode> FindPath(MapUnit* unit,MapXY target);
 			// EN group move: route may extend beyond current AP; if the exact target is
 			// blocked/unreachable, returns a route to the reachable tile closest to it.
