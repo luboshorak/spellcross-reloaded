@@ -11197,6 +11197,12 @@ wxString StrategicLevelFrame::GetUnitCategoryName(int unitId) const
 
 bool StrategicLevelFrame::CanUpgradeUnitTo(int fromUnitId, int toUnitId) const
 {
+    // Tactical-only transforms (including Fortress Destructor 73) must not
+    // become persistent re-arm targets. Still allow a previously saved
+    // transformed source unit to be rearmed back to a normal type.
+    if (!spellcross_strategy::IsStrategicPurchasableUnitType(toUnitId))
+        return false;
+
     // Check if units are in the same category
     wxString fromCat = GetUnitCategoryName(fromUnitId);
     wxString toCat = GetUnitCategoryName(toUnitId);
@@ -11268,7 +11274,8 @@ std::vector<int> StrategicLevelFrame::GetAvailableUnitTypesForUpgrade(int unitId
 
     for (int i = 0; i < m_spellData->units->Count(); ++i)
     {
-        if (i == unitId || rearmGroup(i) != group)
+        if (i == unitId || rearmGroup(i) != group ||
+            !spellcross_strategy::IsStrategicPurchasableUnitType(i))
             continue;
 
         // Target must still be a normal strategic Alliance unit and must be

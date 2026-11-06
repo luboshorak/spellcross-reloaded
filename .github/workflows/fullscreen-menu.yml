@@ -7,6 +7,9 @@ on:
       - 'spellcross-map-edit-main/source/tactical_zoom.h'
       - 'spellcross-map-edit-main/source/tactical_edge_pan.h'
       - 'spellcross-map-edit-main/source/tactical_range_input.h'
+      - 'spellcross-map-edit-main/source/strategic_buy_variant_rules.h'
+      - 'spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp'
+      - 'spellcross-map-edit-main/tests/test_divac_buy_and_goals.py'
       - 'spellcross-map-edit-main/tests/test_tactical_range_input.cpp'
       - 'spellcross-map-edit-main/tests/test_tactical_edge_pan.cpp'
       - 'spellcross-map-edit-main/source/display_settings.h'
@@ -59,6 +62,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_tactical_range_input.cpp -o /tmp/spellcross-range-input-test
           /tmp/spellcross-range-input-test
+      - name: Verify original strategic purchasable unit types
+        run: |
+          c++ -std=c++17 -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp -o /tmp/spellcross-buy-variants-test
+          /tmp/spellcross-buy-variants-test
       - name: Verify persisted DPI settings, palette LUT and scaled hitboxes
         run: |
           c++ -std=c++17 -Wall -Wextra -pedantic $(wx-config --cxxflags) \
@@ -121,6 +129,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'RMB preview test compilation failed' }
           & $rangeInputTest
           if ($LASTEXITCODE -ne 0) { throw 'RMB preview test failed' }
+          $buyVariantsTest = Join-Path $env:RUNNER_TEMP 'spellcross-buy-variants-test.exe'
+          & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp "/Fe:$buyVariantsTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Strategic unit variant test compilation failed' }
+          & $buyVariantsTest
+          if ($LASTEXITCODE -ne 0) { throw 'Strategic unit variant test failed' }
           & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_zoom.cpp "/Fe:$zoomTest"
           if ($LASTEXITCODE -ne 0) { throw 'Zoom test compilation failed' }
           & $zoomTest

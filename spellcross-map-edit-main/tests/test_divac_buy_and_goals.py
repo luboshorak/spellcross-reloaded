@@ -13,9 +13,21 @@ MAP = (ROOT / "source/map.cpp").read_text(encoding="utf-8")
 RULES = (ROOT / "source/strategic_buy_variant_rules.h").read_text(encoding="utf-8")
 
 class DivacBuyAndGoalRegressions(unittest.TestCase):
-    def test_folded_udes_only_is_excluded(self):
+    def test_all_tactical_transformations_excluded_from_buy_rule(self):
+        self.assertRegex(RULES, r"unitId\s*<=\s*36")
+        self.assertRegex(RULES, r"unitId\s*!=\s*8")
         self.assertRegex(RULES, r"unitId\s*!=\s*35")
-        self.assertNotRegex(RULES, r"unitId\s*!=\s*36")
+        # The extra Destructor 73 and enemy Magotar 48 are excluded by
+        # the original Alliance type boundary, not by deleting game data.
+
+    def test_rearming_must_not_offer_tactical_only_forms(self):
+        rearm = STRATEGY.split(
+            "std::vector<int> StrategicLevelFrame::GetAvailableUnitTypesForUpgrade", 1
+        )[1].split("void StrategicLevelFrame::BuildHierarchyPage", 1)[0]
+        self.assertIn("IsStrategicPurchasableUnitType(i)", rearm)
+        can_upgrade = STRATEGY.split("bool StrategicLevelFrame::CanUpgradeUnitTo", 1)[1]
+        can_upgrade = can_upgrade.split("std::vector<int> StrategicLevelFrame::GetAvailableUpgradesForUnit", 1)[0]
+        self.assertIn("IsStrategicPurchasableUnitType(toUnitId)", can_upgrade)
 
     def test_native_and_legacy_buy_list_and_purchase_guards(self):
         self.assertGreaterEqual(
