@@ -19,10 +19,17 @@ The game uses Watcom x86 and original `JEDNOTKY.DEF` records of 207 bytes.
 - The check is repeated at `0x74911`, `0x74A1E`, `0x74B20` and `0x74C22`
   for other movement classes. The routine also checks tile terrain/occupancy
   bits, e.g. `[tile+0x0F] & 0x80`, and categorical terrain values.
-- The routine iterates `y` over the entire DTA height; it does **not** prove
-  a generic `y=5..height-15` limit. **The PR has removed that guessed
-  restriction**. Vertical navigability now follows the existing terrain
-  and occupancy rules.
+- The movement-mask routine iterates over the entire DTA height, but the
+  original **map initialization** explicitly marks top and bottom margins
+  with the per-tile flag `0x80`. The loop at `0x169a3` covers
+  `y=0..7`; `0x169ef` ORs `0x80` into `tile+0x0f`. At
+  `0x16a02` it computes `mapHeight-14`, and `0x16a70..0x16a7f`
+  marks every cell from that row through the bottom. The movement-mask
+  routine at `0x74880` rejects those flagged tiles (writes `0xffff`).
+  Therefore **the actual vertical movement limits are**
+  `8 <= y < mapHeight - 14`. This is a recovered DOS rule, not the
+  draft's earlier guessed `5..height-15` inset. The PR now uses the
+  original `8/14` margins.
   Further investigation should trace the movement-mask tile class and
   neighbor expansion, especially on northern/southern grey `PLA00_*` rows.
 - Retail scenario scripts can place START and objective markers on otherwise
@@ -74,8 +81,10 @@ The game uses Watcom x86 and original `JEDNOTKY.DEF` records of 207 bytes.
 
 ## Outstanding validation
 
-1. The original `0x746FF` mask loops all y rows; inspect per-tile
-   map classes and neighbor transitions in EN and CZ originals.
+1. The original `0x746FF` movement mask and the separate `0x169a3` /
+   `0x16a02` map-edge flagging routines establish both X and Y limits.
+   Verify exact parity against CZ original and per-tile classes near the
+   scripted exceptions.
 2. The `0x9c867` result comparison and zero-random `0x7c9b8`
    hit-projection curve are now ported; reproduce the remaining dynamic
    AP/experience/terrain/difficulty adjustments of `0x9b6c1` and original

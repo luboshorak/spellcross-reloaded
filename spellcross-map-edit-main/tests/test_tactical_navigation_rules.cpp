@@ -9,11 +9,13 @@ int main()
     assert(IsWithinRetailNavigationEnvelope(52,85,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(53,78,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(0,78,56,104,true));
-    // NO original vertical inset: original loops span whole map height.
-    assert(IsWithinRetailNavigationEnvelope(20,0,56,104,true));
-    assert(IsWithinRetailNavigationEnvelope(20,103,56,104,true));
-    assert(IsWithinRetailNavigationEnvelope(20,90,56,104,true));
-    assert(IsWithinRetailNavigationEnvelope(20,5,56,104,true));
+    // Original tile flags mark first 8 and last 14 rows as forbidden.
+    assert(!IsWithinRetailNavigationEnvelope(20,0,56,104,true));
+    assert(!IsWithinRetailNavigationEnvelope(20,7,56,104,true));
+    assert(IsWithinRetailNavigationEnvelope(20,8,56,104,true));
+    assert(IsWithinRetailNavigationEnvelope(20,89,56,104,true));
+    assert(!IsWithinRetailNavigationEnvelope(20,90,56,104,true));
+    assert(!IsWithinRetailNavigationEnvelope(20,103,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(20,104,56,104,true));
     // Authored START/ESCAPE sites on x=1 or near right edge are handled
     // by SpellMap's explicit scenario overrides; new maps are unrestricted.

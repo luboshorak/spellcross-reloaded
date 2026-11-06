@@ -4,9 +4,11 @@
 // mission coordinates were audited across 79 English maps. The original
 // SPELCROS.EXE EN (SHA-256 ff6b6554...) routine 0x746FF excludes
 // x < 2 and x >= mapWidth - 3 by writing 0xFFFF into its traversal mask.
-// The loop spans ALL y rows. There is NO fixed vertical margin in this
-// function: traversability depends on the per-tile terrain mask instead.
-// A separate true game-mode check keeps the map editor fully navigable.
+// Separately, the original map initialization routine 0x169a3..0x169ef
+// sets bit 0x80 in the per-tile flags for y < 8, and at 0x16a02..0x16a7f
+// for y >= height - 14. The movement mask rejects this bit at 0x74880.
+// These are the ORIGINAL non-playable margins, not guesses from scenarios.
+// A separate game-mode check keeps the map editor fully navigable.
 // Render and editor access must continue to cover the full DTA grid.
 namespace spellcross_tactical
 {
@@ -15,7 +17,8 @@ namespace spellcross_tactical
     {
         if (x < 0 || y < 0 || x >= width || y >= height) return false;
         if (!hasRetailPadding || width < 10 || height < 25) return true;
-        return x >= 2 && x < width - 3;
+        return x >= 2 && x < width - 3 &&
+               y >= 8 && y < height - 14;
     }
 
     // SPELCROS.EXE 0x9c867 compares the ratios of expected attack strength
