@@ -6986,6 +6986,12 @@ int SpellMap::MoveRange::GetCachedMoveAP(const MapUnit* unit, int mapIndex)
     return ap_left[mapIndex];
 }
 
+bool SpellMap::MoveRange::HasCachedMoveRange(const MapUnit* unit)
+{
+    std::lock_guard<std::mutex> guard(result_lock);
+    return unit && completed_range_unit == unit;
+}
+
 
 AStarNode::AStarNode()
 {
@@ -7656,13 +7662,19 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 	}
 
 	// A user may click immediately after switching between a ground and an
-	// aircraft on one tile. Flush the pending movement range before computing
-	// MOVE/ATTACK choices: the old range may belong to the other layer.
-	if (unit_selection && g_move_range_dirty_for == unit_selection)
+	// aircraft on one tile. The shared worker can also have published an AI,
+	// panic or reaction unit after the player selection was restored. Refresh
+	// the selected company's range once before computing MOVE/ATTACK choices;
+	// otherwise CanUnitMove() correctly rejects the foreign cache but the
+	// original DOJAZD.CUR boot disappears from every reachable square.
+	if (unit_selection &&
+		(g_move_range_dirty_for == unit_selection ||
+		 !unit_range->HasCachedMoveRange(unit_selection)))
 	{
 		unit_range->FindRange(unit_selection);
 		unit_range->WaitIdle();
-		g_move_range_dirty_for = nullptr;
+		if (unit_range->HasCachedMoveRange(unit_selection))
+			g_move_range_dirty_for = nullptr;
 	}
 	if (unit_selection && g_attack_map_dirty_for == unit_selection)
 	{

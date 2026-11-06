@@ -8,6 +8,7 @@ SOURCE = Path(__file__).resolve().parents[1] / "source"
 MAP = (SOURCE / "map.cpp").read_text(encoding="utf-8")
 HEADER = (SOURCE / "map.h").read_text(encoding="utf-8")
 MAIN = (SOURCE / "main.cpp").read_text(encoding="utf-8")
+GRAPHICS = (SOURCE / "spellcross.cpp").read_text(encoding="utf-8")
 
 
 class TacticalMoveCacheRecovery(unittest.TestCase):
@@ -29,6 +30,25 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         )[0]
         self.assertIn("unit_range->GetCachedMoveAP(unit, npos)", body)
         self.assertNotIn("unit_range->ap_left[npos]", body)
+
+    def test_preview_refreshes_after_background_range_replaces_player_cache(self):
+        options = MAP.split("int SpellMap::GetUnitOptions(", 1)[1].split(
+            "// reset AP of all units", 1
+        )[0]
+        self.assertIn("!unit_range->HasCachedMoveRange(unit_selection)", options)
+        self.assertLess(options.index("unit_range->FindRange(unit_selection);"),
+                        options.index("CanUnitMove(select_pos)"))
+        self.assertIn("unit_range->WaitIdle();", options)
+
+    def test_native_movement_boot_cursor_remains_wired_to_move_option(self):
+        self.assertIn('gres.cur_move = gres.RenderCUR("DOJAZD.CUR");', GRAPHICS)
+        mouse_move = MAIN.split("void MainFrame::OnCanvasMouseMove(", 1)[1].split(
+            "// on canvas wheel", 1
+        )[0]
+        self.assertIn(
+            "else if (options == SpellMap::UNIT_OPT_MOVE) cur = spell_data->gres.cur_move;",
+            mouse_move,
+        )
 
     def test_real_command_checks_path_before_clearing_current_move(self):
         body = MAP.split("int SpellMap::MoveUnit(", 1)[1].split(
