@@ -29,10 +29,12 @@ class TacticalUnitInfoDialog final : public wxPanel
 public:
     TacticalUnitInfoDialog(wxWindow* parent, SpellMap* map, SpellData* data,
         MapUnit* selected, std::function<bool(MapUnit*)> hasResearch,
+        std::function<std::vector<std::string>(MapUnit*)> hostedCommanders,
         std::function<void(MapUnit*)> onClose)
         : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
             wxBORDER_NONE | wxWANTS_CHARS),
           m_data(data), m_hasResearch(std::move(hasResearch)),
+          m_hostedCommanders(std::move(hostedCommanders)),
           m_onClose(std::move(onClose))
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
@@ -109,6 +111,7 @@ private:
 
     SpellData* m_data = nullptr;
     std::function<bool(MapUnit*)> m_hasResearch;
+    std::function<std::vector<std::string>(MapUnit*)> m_hostedCommanders;
     std::function<void(MapUnit*)> m_onClose;
     std::vector<MapUnit*> m_units;
     size_t m_index = 0;
@@ -404,8 +407,12 @@ private:
         add(wxString(czech ? L"   Zdi a objekty: " : L"   Objects: ") +
             attack(MapUnit::TARGET_TYPE::OBJECT));
         add(czech ? L"Velitelé:" : L"Commanders:");
-        if (unit->is_commander)
-            add(czech ? L"   Přítomen" : L"   Present");
+        // Original dossier lists each hosted officer's actual rank and name.
+        // Fetch the identities from the current strategic hierarchy rather
+        // than inventing a generic 'Present' label for a commander marker.
+        if (m_hostedCommanders && !unit->is_enemy)
+            for (const auto& label : m_hostedCommanders(unit))
+                AppendWrapped(m_statsLines, wxString(L"   ") + DecodeText(label), kTextW);
     }
 
     // COMMON.FS .ICO/.BTN graphics are used by several UIs with different
