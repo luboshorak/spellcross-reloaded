@@ -1,5 +1,6 @@
 #include "../source/strategic_buy_variant_rules.h"
 #include <cassert>
+#include <initializer_list>
 
 int main()
 {
