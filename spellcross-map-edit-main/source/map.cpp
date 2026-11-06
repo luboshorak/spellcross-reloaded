@@ -11,6 +11,7 @@
 #include "runtime_diagnostics.h"
 #include "unit_health_display.h"
 #include "tactical_zoom.h"
+#include "tactical_navigation_rules.h"
 #include "display_settings.h"
 #include "spellcross.h"
 #include "fs_archive.h"
@@ -2089,6 +2090,7 @@ void SpellMap::Close()
 	SetUnitRangeViewMode(UNIT_RANGE_NONE);
 
 	// loose layer data
+    m_retail_nav_padding = false;
 	tiles.clear();
 	L3.clear();
 	L4.clear();
@@ -2492,6 +2494,20 @@ int SpellMap::Load(wstring& path, SpellData* spelldata)
 	// get tile flags from context data
 	SyncL1flags();
 
+    // Original retail DTA files use nearly all PLA00 filler sprites along
+    // the first and last rows. Avoid applying their inset to new editor maps.
+    if (x_size >= 10 && y_size >= 25)
+    {
+        int filler = 0;
+        for (int x = 0; x < x_size; ++x)
+            for (int y : {0, y_size - 1})
+            {
+                const auto* spr = tiles[static_cast<size_t>(y) * x_size + x].L1;
+                if (spr && spr->name.compare(0, 6, "PLA00_") == 0)
+                    ++filler;
+            }
+        m_retail_nav_padding = filler * 10 >= x_size * 16;
+    }
 
 	//////////////
 	///// L2 /////
@@ -6796,6 +6812,26 @@ int SpellMap::ScrollToUnit(MapUnit* unit, TScroll* scroll)
 // Unit Move Range Stuff
 // ----------------------------------------------------------------------------
 
+// Pathfinding and movement preview must use the SAME playable boundary.
+// Renderer and camera still display the full map (no invisible companies).
+bool SpellMap::IsTacticalMovementTile(MapXY tile) const
+{
+    if (tile.x < 0 || tile.y < 0 || tile.x >= x_size || tile.y >= y_size)
+        return false;
+    if (!game_mode || spellcross_tactical::IsWithinRetailNavigationEnvelope(
+            tile.x, tile.y, x_size, y_size, m_retail_nav_padding))
+        return true;
+
+    // Scenario-authored staging / extraction / destination squares take
+    // precedence, including user-created maps with unusual placements.
+    auto explicitSquare = [&](const std::vector<MapXY>& marks) {
+        return std::any_of(marks.begin(), marks.end(),
+            [&](const MapXY& p) {return p.x == tile.x && p.y == tile.y;});
+    };
+    return explicitSquare(start) || explicitSquare(escape) ||
+           explicitSquare(target);
+}
+
 // init move range finder
 SpellMap::MoveRange::MoveRange(SpellMap* map)
 {
@@ -7061,8 +7097,8 @@ void SpellMap::MoveRange::Worker()
 
 			// look for next neighbor
 			MapXY neig_pos = map->GetNeighborTile8D(posz.back(), dirz.back());
-			if (!neig_pos.IsSelected())
-				continue;
+            if (!map->IsTacticalMovementTile(neig_pos))
+                continue;
 
 			// skip done tiles
 			if (done[map->ConvXY(neig_pos)])
@@ -7176,7 +7212,7 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 {
 	vector<AStarNode> path;
 	if (!unit || !unit->unit || unit->GetWalkAP() <= 0 ||
-		!target.IsSelected() || !unit->coor.IsSelected())
+        !unit->coor.IsSelected() || !map->IsTacticalMovementTile(target))
 		return path;
 
 	// The HUD movement-range worker and AI may both call FindPath(). Never
@@ -7256,8 +7292,8 @@ vector<AStarNode> SpellMap::MoveRange::FindPathInternal(MapUnit* unit, MapXY tar
 		for (int nid = 0; nid < 8; nid++)
 		{
 			MapXY n_pos = map->GetNeighborTile8D(current_node->pos, nid);
-			if (!n_pos.IsSelected())
-				continue;
+            if (!map->IsTacticalMovementTile(n_pos))
+                continue;
 			int n_idx = map->ConvXY(n_pos);
 			AStarNode* neighbor_node = &nodes->at(n_idx);
 
@@ -9627,6 +9663,98 @@ bool SpellMap::MovePanickedEnemy(MapUnit* unit)
 	return false;
 }
 
+// Special-action state-machine integration for the enemy Magotar pair.
+bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
+{
+    if (!enemy || !enemy->is_enemy || !enemy->unit || !unit_view ||
+        !enemy->CanSpecAction() || !enemy->coor.IsSelected() || !spelldata)
+        return false;
+
+    const int type = enemy->unit->type_id;
+    if ((type != 48 || !enemy->unit->isActionLand()) &&
+        (type != 47 || !enemy->unit->isActionTakeOff()))
+        return false;
+
+    bool seesGround = false;
+    double nearestGround = 1e30;
+    for (auto* target : units)
+    {
+        if (!target || target->is_enemy || !target->unit ||
+            target->isDead() || target->unit->isAir() ||
+            !unit_view->HasDirectSight(enemy, target->coor))
+            continue;
+        seesGround = true;
+        nearestGround = (std::min)(nearestGround,
+            enemy->coor.Distance(target->coor));
+    }
+
+    const int index = ConvXY(enemy->coor);
+    if (index < 0 || index >= static_cast<int>(tiles.size()))
+        return false;
+    auto* nextType = spelldata->units->GetUnit(enemy->unit->action_params[2]);
+    if (!nextType || !nextType->gr_base)
+        return false;
+
+    bool nextLayerFree = true;
+    if (type == 48)
+    {
+        const int flags = tiles[index].flags;
+        // A flying unit cannot materialize inside an obstacle or on water.
+        if ((flags && flags != 0x70 && flags != 0x90) ||
+            (flags == 0x90 && !nextType->isWalk()))
+            nextLayerFree = false;
+    }
+    for (auto* other = Lunit[index]; other; other = other->next)
+        if (other != enemy && other->unit &&
+            other->unit->isAir() == nextType->isAir())
+            nextLayerFree = false;
+
+    const bool moving = group.order != AIGroupOrder::NONE &&
+        group.order != AIGroupOrder::WAIT_CONTACT &&
+        group.order != AIGroupOrder::STATIC_DEFENCE &&
+        group.order != AIGroupOrder::SUICIDE_DEFENCE;
+    MapXY goal;
+    if (type == 47 && moving)
+        goal = ResolveEnemyGroupGoal(group);
+    const auto choice = spellcross_tactical::DecideMagotarAction(
+        type, enemy->CanSpecAction() != 0, seesGround, nearestGround,
+        nextLayerFree, moving && goal.IsSelected(),
+        goal.IsSelected() ? enemy->coor.Distance(goal) : 0.0);
+    if (choice == spellcross_tactical::MagotarDecision::None ||
+        !nextLayerFree)
+        return false;
+
+    // Match the player's OnHUDairLandTakeOff() AP cost, sound, animation
+    // and timed AIR_LAND/AIR_TAKEOFF morphing (not an instant teleport).
+    enemy->action_points -= enemy->unit->action_ap;
+    enemy->PlayAction();
+    if (choice == spellcross_tactical::MagotarDecision::Land)
+    {
+        enemy->altitude = 100;
+        enemy->action_state = MapUnit::ACTION_STATE::AIR_LAND;
+    }
+    else
+    {
+        enemy->MorphUnit(nextType);
+        enemy->altitude = 0;
+        enemy->action_state = MapUnit::ACTION_STATE::AIR_TAKEOFF;
+    }
+    enemy->in_animation = enemy->unit->gr_base;
+    enemy->frame_stop = enemy->in_animation->anim.frames;
+    enemy->frame = 0;
+    enemy->azimuth = enemy->in_animation->GetAnimAzim(
+        enemy->in_animation->GetStaticAngle(enemy->azimuth));
+    enemy->ClearDigLevel();
+    enemy->ResetTurnsCounter();
+    enemy->was_moved = true;
+    spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
+        "Magotar form action id=%d old=%d new=%d pos=(%d,%d) distance=%.1f",
+        enemy->id, type, nextType->type_id, enemy->coor.x, enemy->coor.y,
+        nearestGround);
+    InvalidateHUDbuttons();
+    return true;
+}
+
 bool SpellMap::EnemyTurnStep()
 {
     // Schedule exactly one action.  enemy_turn_idx stays on the current company
@@ -9709,6 +9837,14 @@ bool SpellMap::EnemyTurnStep()
         {
             ++enemy_turn_idx;
             continue;
+        }
+
+        // Flight form 48 cannot attack ground troops until it performs its
+        // original landing action and becomes melee form 47.
+        if (TryEnemyMagotarStance(enemy, *group))
+        {
+            ReleaseMap();
+            return true;
         }
 
         // Morale/fear/paralysis/freezing are independent original special actions,
