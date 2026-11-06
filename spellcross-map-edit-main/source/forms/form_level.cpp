@@ -46,6 +46,7 @@
 #include "../strategic_mission_flow.h"
 #include "../strategic_unit_timer_rules.h"
 #include "../strategic_campaign_unlock_rules.h"
+#include "../strategic_buy_variant_rules.h"
 
 namespace
 {
@@ -6056,7 +6057,8 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
                     if (!IsTemporaryUnitIndex(i))
                         ++ownedUnits;
                 const int cost = GetUnitBuyCost(m_originalBuySelectedUnitId);
-                if (ownedUnits >= maxUnits || cost <= 0 || m_money < cost)
+                if (!spellcross_strategy::IsStrategicPurchasableUnitType(m_originalBuySelectedUnitId) ||
+                    ownedUnits >= maxUnits || cost <= 0 || m_money < cost)
                     return;
 
                 // Keep the per-roster state vector aligned even when the player
@@ -8094,6 +8096,10 @@ std::vector<StrategicLevelFrame::OriginalBuyRow> StrategicLevelFrame::BuildOrigi
             if (!unit)
                 continue;
             const int tid = unit->type_id;
+            // UDES type 35 is the folded-turret tactical state; the player
+            // buys type 36 and can fold it in battle using the original action.
+            if (!spellcross_strategy::IsStrategicPurchasableUnitType(tid))
+                continue;
             const int cost = GetUnitBuyCost(tid);
             if (cost <= 0)
                 continue;
@@ -9214,6 +9220,8 @@ void StrategicLevelFrame::RefreshBuyShopList()
             for (const auto* unit : m_spellData->units->GetUnits())
             {
                 if (!unit) continue;
+                if (!spellcross_strategy::IsStrategicPurchasableUnitType(unit->type_id))
+                    continue;
                 const int cost = GetUnitBuyCost(unit->type_id);
                 if (cost <= 0) continue;
 
@@ -9443,6 +9451,8 @@ void StrategicLevelFrame::OnBuyAction(wxCommandEvent&)
         else {
             // Unit
             const int tid = (int)data;
+            if (!spellcross_strategy::IsStrategicPurchasableUnitType(tid))
+                return;
             const int cost = GetUnitBuyCost(tid);
             if (cost <= 0) { wxMessageBox("No price defined.", "Buy", wxOK | wxICON_WARNING, this); return; }
             if (m_money < cost) {
