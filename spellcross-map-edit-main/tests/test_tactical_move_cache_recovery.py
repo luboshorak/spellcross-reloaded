@@ -33,7 +33,8 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         self.assertEqual(worker.count("completed_range_ap = range_ap;"), 2)
         self.assertEqual(worker.count("completed_range_pos = range_pos;"), 2)
         self.assertIn("completed_range_ap == unit->action_points", MAP)
-        self.assertIn("completed_range_pos == unit->coor", MAP)
+        self.assertIn("completed_range_pos.x == unit->coor.x", MAP)
+        self.assertIn("completed_range_pos.y == unit->coor.y", MAP)
         self.assertIn("return HasCachedMoveRangeLocked(unit);", MAP)
 
     def test_rmb_and_space_rebuild_stale_range_for_visual_preview(self):
