@@ -40,6 +40,19 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
                         options.index("CanUnitMove(select_pos)"))
         self.assertIn("unit_range->WaitIdle();", options)
 
+    def test_inflight_range_is_reused_instead_of_restarted_per_mouse_move(self):
+        options = MAP.split("int SpellMap::GetUnitOptions(", 1)[1].split(
+            "// reset AP of all units", 1
+        )[0]
+        self.assertIn("bool IsRangePending(const MapUnit* unit);", HEADER)
+        self.assertIn("MapUnit* requested_range_unit = nullptr", HEADER)
+        self.assertIn("requested_range_unit = unit;", MAP)
+        self.assertIn("requested_range_unit == unit", MAP)
+        self.assertIn("!unit_range->IsRangePending(unit_selection)", options)
+        self.assertIn("g_move_range_dirty_for == unit_selection", options)
+        self.assertLess(options.index("!unit_range->IsRangePending(unit_selection)"),
+                        options.rindex("unit_range->FindRange(unit_selection);"))
+
     def test_native_movement_boot_cursor_remains_wired_to_move_option(self):
         self.assertIn('gres.cur_move = gres.RenderCUR("DOJAZD.CUR");', GRAPHICS)
         mouse_move = MAIN.split("void MainFrame::OnCanvasMouseMove(", 1)[1].split(
