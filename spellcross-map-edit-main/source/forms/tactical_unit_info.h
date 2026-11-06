@@ -166,13 +166,14 @@ private:
 
     void AppendText(const wxString& text)
     {
-        const std::string raw = text.ToStdString();
-        std::istringstream lines(raw);
-        std::string line;
-        while (std::getline(lines, line))
+        // Preserve the original Czech/English CP895 text after conversion to
+        // Unicode; routing it through the Windows ANSI codepage loses accents.
+        wxStringTokenizer paragraphs(text, "\n", wxTOKEN_RET_EMPTY_ALL);
+        while (paragraphs.HasMoreTokens())
         {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            AppendWrapped(wxString::FromUTF8(line));
+            wxString line = paragraphs.GetNextToken();
+            line.Replace("\r", "");
+            AppendWrapped(line);
         }
     }
 
