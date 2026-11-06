@@ -2074,7 +2074,10 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
 
     auto tile_ok = [&](int x, int y, bool strict) -> bool
     {
-        if (x < 0 || y < 0 || x >= spell_map->x_size || y >= spell_map->y_size)
+        // The battle is constructed before game_mode is enabled. Apply
+        // the *same* navigation rules now that the runtime pathfinder uses
+        // once tactical combat starts (including retail map margins).
+        if (!spell_map->IsTacticalMovementTile(MapXY(x, y), true))
             return false;
         const uint8_t flags = spell_map->tiles[static_cast<size_t>(y * spell_map->x_size + x)].flags;
         if (strict)
@@ -2182,7 +2185,9 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
         unit->morale = 100.0;
         unit->ResetAP();
 
-        if (spell_map->PlaceUnit(unit))
+        // PlaceUnit may shift an occupied seed: its search must remain within
+        // the very same navigable area, or a new unit can become stranded.
+        if (spell_map->PlaceUnit(unit, true))
         {
             delete unit;
             continue;
