@@ -312,8 +312,9 @@ private:
         dc.Clear();
 
         if (m_picture.IsOk()) dc.DrawBitmap(m_picture, 0, 0, false);
-        // Use the original decorative HUD assets for the frame; the buttons
-        // and image themselves are original Spellcross pixels, not substitutes.
+        // The original art, bitmap font and buttons are native. These plain
+        // separators are the remaining non-native chrome pending exact retail
+        // screen-coordinate and frame-asset extraction.
         dc.SetPen(wxPen(wxColour(104, 96, 73), 2));
         dc.SetBrush(*wxTRANSPARENT_BRUSH);
         dc.DrawRectangle(0, 0, kArtW, kArtH);
