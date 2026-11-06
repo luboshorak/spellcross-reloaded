@@ -234,6 +234,7 @@ private:
     void OnCanvasLMouseDown(wxMouseEvent& event);
 	void OnCanvasLMouseUp(wxMouseEvent& event);
 	void HandleCanvasLeftClick(wxMouseEvent& event);
+    void OpenTacticalUnitInfo(MapUnit* unit);
 	void ResetBoxSelectionGesture();
     void ResetTransientTacticalPointerState(const char* reason);
 	wxRect CurrentBoxSelectionRect() const;
@@ -269,6 +270,7 @@ private:
         form_midi != NULL ||
         form_minimap != NULL ||
         form_units_list != NULL ||
+        m_unitInfoDialogOpen ||
         form_mmenu != NULL); };
 
     // (ShowMessage / CheckMessageState moved to public section)
@@ -288,6 +290,7 @@ private:
     bool m_reopen_mmenu_after_video = false;
     bool m_mainMenuReturnToTactical = false;
     bool m_inspectUnit = false;
+    bool m_unitInfoDialogOpen = false;
     
     // spellcross HUD interface stuff
     void OnPaintHUDbutton(wxPaintEvent& event);
