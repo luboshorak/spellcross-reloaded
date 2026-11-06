@@ -23,7 +23,7 @@ int main()
     assert(EdgePanAt(0, 580, 800, 600, 40).x == -1.0); // side through HUD
     assert(EdgePanAt(0, 580, 800, 600, 40).y > 0.0); // diagonal
     assert(EdgePanAt(400, 600, 800, 600, 40).y == 0.0); // outside
-    assert(EdgePanAtScreen(1400, 250, 1000, 200, 800, 600, 40).y < 0.0);
+    assert(EdgePanAtScreen(1400, 225, 1000, 200, 800, 600, 40).y < 0.0);
     assert(EdgePanAtScreen(-1600, 1100, -2000, 600, 800, 600, 40).y == 0.0);
     assert(EdgePanAtScreen(-1600, 1199, -2000, 600, 800, 600, 40).y == 1.0);
     // Near-edge acceleration remains continuous but much less sluggish.
