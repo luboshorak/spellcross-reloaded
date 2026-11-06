@@ -277,6 +277,9 @@ public:
     void RestoreTacticalCompanyIdentities(SpellMap& map) const;
     bool IsTacticalEnemyDescriptionAvailable(int unitType);
     std::vector<std::string> GetHostedCommanderNames(uint32_t company_uid) const;
+    // Tactical Info: localized original rank abbreviation + commander name (CP895).
+    // Keep GetHostedCommanderNames() unchanged for the original death message.
+    std::vector<std::string> GetHostedCommanderLabels(uint32_t company_uid) const;
     bool HasStrategicAutosave() const;
     bool RecoverPendingMissionFromLoadedBattle(const std::string& mission_token);
 
