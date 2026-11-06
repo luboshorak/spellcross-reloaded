@@ -7006,7 +7006,8 @@ bool SpellMap::MoveRange::HasCachedMoveRangeLocked(const MapUnit* unit) const
     // previous action points/position. Render already owns result_lock.
     return unit && completed_range_unit == unit &&
         completed_range_ap == unit->action_points &&
-        completed_range_pos == unit->coor;
+        completed_range_pos.x == unit->coor.x &&
+        completed_range_pos.y == unit->coor.y;
 }
 
 bool SpellMap::MoveRange::HasCachedMoveRange(const MapUnit* unit)
