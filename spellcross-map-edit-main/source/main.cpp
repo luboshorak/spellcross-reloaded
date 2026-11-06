@@ -6352,6 +6352,12 @@ void MainFrame::OpenTacticalUnitInfo(MapUnit* unit)
                 m_strategicLevel->IsTacticalEnemyDescriptionAvailable(
                     inspected->unit->type_id);
         },
+        [this](MapUnit* inspected) -> std::vector<std::string>
+        {
+            if (!inspected || inspected->is_enemy || !m_strategicLevel)
+                return {};
+            return m_strategicLevel->GetHostedCommanderLabels(inspected->strategic_uid);
+        },
         [this](MapUnit* chosen)
         {
             // Dismiss clears the pointer before destroying the panel.
