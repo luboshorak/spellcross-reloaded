@@ -2,40 +2,56 @@
 #include <cassert>
 int main()
 {
-    using spellcross_tactical::IsWithinRetailNavigationEnvelope;
-    using spellcross_tactical::DecideMagotarAction;
-    using D = spellcross_tactical::MagotarDecision;
-    // Original EN M06_04A has authored START at (1,78): on the DOS
-    // traversal mask this column is blocked. SpellMap's explicit START
-    // exception remains necessary so scripted deployment stays functional.
+    using namespace spellcross_tactical;
+    // Confirmed original LE traversal mask at 0x74852, repeated by class.
     assert(!IsWithinRetailNavigationEnvelope(1,78,56,104,true));
     assert(IsWithinRetailNavigationEnvelope(2,78,56,104,true));
     assert(IsWithinRetailNavigationEnvelope(52,85,56,104,true));
-    assert(!IsWithinRetailNavigationEnvelope(0,78,56,104,true));
-    assert(!IsWithinRetailNavigationEnvelope(55,78,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(53,78,56,104,true));
-    assert(!IsWithinRetailNavigationEnvelope(20,103,56,104,true));
-    assert(!IsWithinRetailNavigationEnvelope(20,90,56,104,true));
-    assert(!IsWithinRetailNavigationEnvelope(20,0,56,104,true));
-    // Last original M04_04 start row and M01_01 escape near right border.
-    assert(IsWithinRetailNavigationEnvelope(24,74,36,90,true));
-    // Authored objectives on the right border can be occupied but should
-    // not open the entire filler strip for pathfinding.
+    assert(!IsWithinRetailNavigationEnvelope(0,78,56,104,true));
+    // NO original vertical inset: original loops span whole map height.
+    assert(IsWithinRetailNavigationEnvelope(20,0,56,104,true));
+    assert(IsWithinRetailNavigationEnvelope(20,103,56,104,true));
+    assert(IsWithinRetailNavigationEnvelope(20,90,56,104,true));
+    assert(IsWithinRetailNavigationEnvelope(20,5,56,104,true));
+    assert(!IsWithinRetailNavigationEnvelope(20,104,56,104,true));
+    // Authored START/ESCAPE sites on x=1 or near right edge are handled
+    // by SpellMap's explicit scenario overrides; new maps are unrestricted.
     assert(!IsWithinRetailNavigationEnvelope(97,25,100,84,true));
     assert(IsWithinRetailNavigationEnvelope(96,25,100,84,true));
     assert(IsWithinRetailNavigationEnvelope(0,0,56,104,false));
-    assert(IsWithinRetailNavigationEnvelope(9,9,10,10,true));
 
-    assert(DecideMagotarAction(48,true,true,1.0,true,true,2.0)==D::Land);
-    assert(DecideMagotarAction(48,true,true,1.4,true,true,2.0)==D::Land);
-    assert(DecideMagotarAction(48,true,true,1.4,false,true,2.0)==D::None);
-    assert(DecideMagotarAction(48,false,true,1.0,true,true,2.0)==D::None);
-    assert(DecideMagotarAction(48,true,true,2.0,true,true,2.0)==D::None);
-    assert(DecideMagotarAction(47,true,true,1.0,true,true,8.0)==D::None);
-    assert(DecideMagotarAction(47,true,true,5.0,true,true,8.0)==D::TakeOff);
-    assert(DecideMagotarAction(47,true,false,0.0,true,true,8.0)==D::TakeOff);
-    assert(DecideMagotarAction(47,true,false,0.0,true,false,8.0)==D::None);
-    assert(DecideMagotarAction(47,false,false,0.0,true,true,8.0)==D::None);
-    assert(DecideMagotarAction(7,true,false,0.0,true,true,8.0)==D::None);
-    assert(DecideMagotarAction(8,true,true,1.0,true,true,2.0)==D::None);
+    // Original 0x7c9b8 zero-random hit-projection curve.
+    assert(OriginalEstimatedHitChance(0,9) == 0);
+    assert(OriginalEstimatedHitChance(10,10) == 16);
+    assert(OriginalEstimatedHitChance(11,10) == 16);
+    assert(OriginalEstimatedHitChance(24,10) == 100);
+    assert(OriginalEstimatedHitChance(25,10) == 100);
+    assert(OriginalEstimatedHitChance(9,10) == 16);
+    assert(OriginalEstimatedHitChance(0,25) == 0);
+    assert(OriginalEstimatedHitChance(1,12) == 1);
+    assert(OriginalEstimatedHitChance(1,11) == 0);
+
+    // 0x9c867: air-vs-ground ratios, zero-denominator 1e6 sentinel,
+    // and strict > tie-break to preference 2.
+    TacticalGroupFormEffect e{};
+    assert(OriginalFormPreference(e) == 2);
+    e.airUnits = 1;
+    assert(OriginalFormPreference(e) == 1);
+    e.groundUnits = 1;
+    assert(OriginalFormPreference(e) == 2);
+    e.airAttack = 70; e.airRetaliation = 20;
+    e.groundAttack = 90; e.groundRetaliation = 50;
+    assert(OriginalFormPreference(e) == 1); // 3.5 > 1.8
+    e.airAttack = 20;
+    assert(OriginalFormPreference(e) == 2); // 1.0 < 1.8
+    e.airAttack = 0; e.airRetaliation = 0; e.groundAttack = 0;
+    e.groundRetaliation = 0;
+    assert(OriginalFormPreference(e) == 2);
+    assert(OriginalMagotarAction(47,1) == MagotarDecision::TakeOff);
+    assert(OriginalMagotarAction(47,2) == MagotarDecision::None);
+    assert(OriginalMagotarAction(48,2) == MagotarDecision::Land);
+    assert(OriginalMagotarAction(48,1) == MagotarDecision::None);
+    assert(OriginalMagotarAction(7,1) == MagotarDecision::None);
+    assert(OriginalMagotarAction(8,2) == MagotarDecision::None);
 }

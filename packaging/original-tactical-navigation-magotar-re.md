@@ -20,8 +20,9 @@ The game uses Watcom x86 and original `JEDNOTKY.DEF` records of 207 bytes.
   for other movement classes. The routine also checks tile terrain/occupancy
   bits, e.g. `[tile+0x0F] & 0x80`, and categorical terrain values.
 - The routine iterates `y` over the entire DTA height; it does **not** prove
-  a generic `y=5..height-15` limit. The draft PR's vertical rectangle is only
-  derived from retail mission positions and must not be called an original rule.
+  a generic `y=5..height-15` limit. **The PR has removed that guessed
+  restriction**. Vertical navigability now follows the existing terrain
+  and occupancy rules.
   Further investigation should trace the movement-mask tile class and
   neighbor expansion, especially on northern/southern grey `PLA00_*` rows.
 - Retail scenario scripts can place START and objective markers on otherwise
@@ -63,18 +64,22 @@ The game uses Watcom x86 and original `JEDNOTKY.DEF` records of 207 bytes.
   original `action_ap` from the unit record before scheduling the
   action. Otherwise the AI can issue a movement command toward the
   selected landing square first.
-- **No evidence was found for the remake's distance triggers 1.5/4.5**
-  or its 3.5-tile takeoff hysteresis. These are project heuristics
-  currently in `tactical_navigation_rules.h`, not recovered DOS values.
-  Do **not** claim full Magotar AI parity or merge PR #126 without
-  implementing/testing the group strength + landing-site decisions.
+- **The guessed distance triggers (1.5/3.5/4.5) were removed from the PR**.
+  The new helper implements the observed return-1 vs return-2
+  group-form decision; the assembly's 0x7c9b8 no-RNG attack-vs-defence
+  quadratic is ported for pair-effect estimation, and landing site search
+  replaces a forced same-tile action. Dynamic bonuses and the exact
+  original list-building/route-cost calculation remain **unverified**.
+  Do **not** claim byte-exact Magotar AI parity until those are traced.
 
 ## Outstanding validation
 
-1. Trace the original vertical and terrain-bit restrictions all the way
-   through the enemy/human path-search consumers of `0x746FF`.
-2. Recover pairwise effectiveness helper `0x9B6C1` and exact meanings
-   of result 1 vs 2 in `0x9C867`; then port the exact decision flow.
+1. The original `0x746FF` mask loops all y rows; inspect per-tile
+   map classes and neighbor transitions in EN and CZ originals.
+2. The `0x9c867` result comparison and zero-random `0x7c9b8`
+   hit-projection curve are now ported; reproduce the remaining dynamic
+   AP/experience/terrain/difficulty adjustments of `0x9b6c1` and original
+   group-list choice, then verify candidate route costs from `0x9cdae`.
 3. Test against the user-installed Czech ISO (including M04_03A convoy)
    before treating the restoration as finished.
 

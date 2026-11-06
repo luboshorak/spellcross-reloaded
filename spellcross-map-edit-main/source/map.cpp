@@ -9664,71 +9664,167 @@ bool SpellMap::MovePanickedEnemy(MapUnit* unit)
 }
 
 // Special-action state-machine integration for the enemy Magotar pair.
+// EN SPELCROS.EXE 0x918aa/0x91948 and 0x92d71/0x92df0:
+// choose the enemy form by comparing AIR vs GROUND effectiveness for the
+// engaged Alliance company group. This replaces the guessed 1.5/4.5-tile
+// thresholds. The 0x9c867 ratio and 0x7c9b8 (zero-random) hit-projection
+// shape are ported; some dynamic DOS combat bonuses remain approximated by
+// the existing Reloaded GetAttack/GetDefence implementations.
 bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
 {
     if (!enemy || !enemy->is_enemy || !enemy->unit || !unit_view ||
-        !enemy->CanSpecAction() || !enemy->coor.IsSelected() || !spelldata)
+        !enemy->coor.IsSelected() || !spelldata || !unit_range)
         return false;
-
     const int type = enemy->unit->type_id;
     if ((type != 48 || !enemy->unit->isActionLand()) &&
         (type != 47 || !enemy->unit->isActionTakeOff()))
         return false;
 
-    bool seesGround = false;
-    double nearestGround = 1e30;
-    for (auto* target : units)
+    // Find the Alliance group that is actually engaging this enemy group.
+    // Original 0x9c867 filters both sides by AI tactical-group identifiers.
+    MapUnit* observed = GetUnit(group.target_unit_id);
+    if (!observed || observed->is_enemy || observed->isDead() ||
+        !unit_view->HasDirectSight(enemy, observed->coor))
+        observed = nullptr;
+    if (!observed)
     {
-        if (!target || target->is_enemy || !target->unit ||
-            target->isDead() || target->unit->isAir() ||
-            !unit_view->HasDirectSight(enemy, target->coor))
+        double nearest = 1e30;
+        for (auto* u : units)
+            if (u && !u->is_enemy && !u->isDead() && u->unit &&
+                unit_view->HasDirectSight(enemy, u->coor))
+            {
+                const double dist = enemy->coor.Distance(u->coor);
+                if (dist < nearest) { observed = u; nearest = dist; }
+            }
+    }
+    if (!observed)
+        return false;
+
+    std::vector<MapUnit*> allied;
+    auto clusters = BuildAllianceClusters();
+    for (const auto& cluster : clusters)
+        if (std::find(cluster.begin(), cluster.end(), observed) != cluster.end())
+        {
+            allied = cluster;
+            break;
+        }
+    if (allied.empty())
+        allied.push_back(observed);
+
+    std::vector<MapUnit*> enemies;
+    for (int id : group.unit_ids)
+    {
+        MapUnit* u = GetUnit(id);
+        if (u && u->is_enemy && u->unit && !u->isDead())
+            enemies.push_back(u);
+    }
+    if (enemies.empty())
+        enemies.push_back(enemy);
+
+    auto estimatedEffect = [](MapUnit* shooter, MapUnit* target) -> int
+    {
+        if (!shooter || !target || !shooter->unit || !target->unit ||
+            !shooter->unit->canAttack(target->unit))
+            return 0;
+        return spellcross_tactical::OriginalEstimatedHitChance(
+            shooter->GetAttack(target), target->GetDefence());
+    };
+
+    spellcross_tactical::TacticalGroupFormEffect strength;
+    for (MapUnit* ally : allied)
+    {
+        if (!ally || !ally->unit || ally->isDead())
             continue;
-        seesGround = true;
-        nearestGround = (std::min)(nearestGround,
-            enemy->coor.Distance(target->coor));
+        const bool air = ally->unit->isAir();
+        if (air) ++strength.airUnits;
+        else ++strength.groundUnits;
+        for (MapUnit* foe : enemies)
+        {
+            const int attack = (std::max)(0, estimatedEffect(ally, foe));
+            const int retaliation = (std::max)(0, estimatedEffect(foe, ally));
+            if (air)
+            {
+                strength.airAttack += attack;
+                strength.airRetaliation += retaliation;
+            }
+            else
+            {
+                strength.groundAttack += attack;
+                strength.groundRetaliation += retaliation;
+            }
+        }
     }
 
-    const int index = ConvXY(enemy->coor);
-    if (index < 0 || index >= static_cast<int>(tiles.size()))
+    const int preference = spellcross_tactical::OriginalFormPreference(strength);
+    const auto action = spellcross_tactical::OriginalMagotarAction(type, preference);
+    if (action == spellcross_tactical::MagotarDecision::None)
         return false;
-    auto* nextType = spelldata->units->GetUnit(enemy->unit->action_params[2]);
+
+    SpellUnitRec* nextType =
+        spelldata->units->GetUnit(enemy->unit->action_params[2]);
     if (!nextType || !nextType->gr_base)
         return false;
 
-    bool nextLayerFree = true;
-    if (type == 48)
+    // 0x9cdae: current cell first; otherwise seek an accessible unoccupied
+    // landing site, ranked by route cost. Original high tile flags 0/0x9000
+    // correspond here to open ground / walkable forest (0 / 0x90).
+    auto siteClearFor = [&](MapXY tile, bool landing) -> bool
     {
-        const int flags = tiles[index].flags;
-        // A flying unit cannot materialize inside an obstacle or on water.
-        if ((flags && flags != 0x70 && flags != 0x90) ||
-            (flags == 0x90 && !nextType->isWalk()))
-            nextLayerFree = false;
-    }
-    for (auto* other = Lunit[index]; other; other = other->next)
-        if (other != enemy && other->unit &&
-            other->unit->isAir() == nextType->isAir())
-            nextLayerFree = false;
+        if (!IsTacticalMovementTile(tile)) return false;
+        const int idx = ConvXY(tile);
+        if (idx < 0 || idx >= static_cast<int>(tiles.size())) return false;
+        if (landing)
+        {
+            const int flags = tiles[idx].flags;
+            if (flags != 0 && !(flags == 0x90 && nextType->isWalk()))
+                return false;
+        }
+        const bool nextIsAir = nextType->isAir();
+        for (auto* other = Lunit[idx]; other; other = other->next)
+            if (other != enemy && other->unit &&
+                (other->unit->isAir() == nextIsAir ||
+                 (landing && !other->unit->isAir())))
+                return false;
+        return true;
+    };
 
-    const bool moving = group.order != AIGroupOrder::NONE &&
-        group.order != AIGroupOrder::WAIT_CONTACT &&
-        group.order != AIGroupOrder::STATIC_DEFENCE &&
-        group.order != AIGroupOrder::SUICIDE_DEFENCE;
-    MapXY goal;
-    if (type == 47 && moving)
-        goal = ResolveEnemyGroupGoal(group);
-    const auto choice = spellcross_tactical::DecideMagotarAction(
-        type, enemy->CanSpecAction() != 0, seesGround, nearestGround,
-        nextLayerFree, moving && goal.IsSelected(),
-        goal.IsSelected() ? enemy->coor.Distance(goal) : 0.0);
-    if (choice == spellcross_tactical::MagotarDecision::None ||
-        !nextLayerFree)
+    const bool landing =
+        action == spellcross_tactical::MagotarDecision::Land;
+    if (landing && !siteClearFor(enemy->coor, true))
+    {
+        // The original 0x9cdae considers reachable squares if the current
+        // one cannot be used. Nearest valid route is preferred; no arbitrary
+        // distance threshold or forced teleport is introduced.
+        std::vector<std::pair<double, MapXY>> sites;
+        for (int y = 0; y < y_size; ++y)
+            for (int x = 0; x < x_size; ++x)
+            {
+                MapXY candidate(x,y);
+                if (siteClearFor(candidate, true))
+                    sites.emplace_back(enemy->coor.Distance(candidate), candidate);
+            }
+        std::sort(sites.begin(), sites.end(),
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& site : sites)
+            if (MoveEnemyToward(enemy, site.second, false))
+            {
+                spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
+                    "Magotar landing approach id=%d target=(%d,%d)",
+                    enemy->id,site.second.x,site.second.y);
+                return true;
+            }
+        return false;
+    }
+    if (!landing && !siteClearFor(enemy->coor, false))
         return false;
 
-    // Match the player's OnHUDairLandTakeOff() AP cost, sound, animation
-    // and timed AIR_LAND/AIR_TAKEOFF morphing (not an instant teleport).
+    // Original action AP check: 0x919b9 / 0x92e61, before action code 5.
+    if (!enemy->CanSpecAction())
+        return false;
+
     enemy->action_points -= enemy->unit->action_ap;
     enemy->PlayAction();
-    if (choice == spellcross_tactical::MagotarDecision::Land)
+    if (landing)
     {
         enemy->altitude = 100;
         enemy->action_state = MapUnit::ACTION_STATE::AIR_LAND;
@@ -9748,9 +9844,12 @@ bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
     enemy->ResetTurnsCounter();
     enemy->was_moved = true;
     spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
-        "Magotar form action id=%d old=%d new=%d pos=(%d,%d) distance=%.1f",
-        enemy->id, type, nextType->type_id, enemy->coor.x, enemy->coor.y,
-        nearestGround);
+        "Magotar DOS action id=%d type=%d form=%d preference=%d "
+        "air=%d/%d ground=%d/%d at=(%d,%d)",
+        enemy->id, type, nextType->type_id, preference,
+        strength.airAttack, strength.airRetaliation,
+        strength.groundAttack, strength.groundRetaliation,
+        enemy->coor.x, enemy->coor.y);
     InvalidateHUDbuttons();
     return true;
 }
