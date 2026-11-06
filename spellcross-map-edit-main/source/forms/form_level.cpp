@@ -13222,6 +13222,35 @@ std::vector<std::string> StrategicLevelFrame::GetHostedCommanderNames(uint32_t c
     return names;
 }
 
+// The tactical Info screen uses the same live officer identities and
+// retail HODNOSTI.CZ/ENG abbreviations as the strategic hierarchy. Keep
+// the name-only accessor above for death messages; their retail template
+// already supplies the prefix and must not unexpectedly gain a rank.
+std::vector<std::string> StrategicLevelFrame::GetHostedCommanderLabels(uint32_t company_uid) const
+{
+    std::vector<std::string> labels;
+    if (!company_uid) return labels;
+
+    std::unordered_set<uint32_t> seen;
+    for (const auto& slot : m_hierarchySlots)
+    {
+        if (slot.type != "commander" || !slot.commander_uid ||
+            slot.assigned_unit_uid != company_uid ||
+            !seen.insert(slot.commander_uid).second)
+            continue;
+
+        for (const auto& commander : m_playerCommanders)
+        {
+            if (commander.uid != slot.commander_uid) continue;
+            const wxString label = GetRankAbbrev(commander.rank) + L" " +
+                wxString::FromUTF8(commander.name);
+            labels.push_back(wstring2stringCP895(label.ToStdWstring()));
+            break;
+        }
+    }
+    return labels;
+}
+
 void StrategicLevelFrame::RemoveCommandersHostedByDeadUnits(
     const std::unordered_set<uint32_t>& dead_uids)
 {
@@ -13377,6 +13406,22 @@ void StrategicLevelFrame::UpdateCommanderRosterSelectionVisuals()
 
     // Force refresh to show color changes
     m_cmdRoster->Refresh();
+}
+
+bool StrategicLevelFrame::IsTacticalEnemyDescriptionAvailable(int unitType)
+{
+    EnsureResearchLoaded();
+    // RESEARCH.DEF Races / UnitType entries use Data(unit type ID).
+    // Unknown hostile units have no dossier text until this exact research
+    // project is completed; never expose all enemy text merely on sight.
+    for (const ResearchItem& item : m_researchDb)
+    {
+        if (item.group != "Races" || item.data != unitType ||
+            (item.flags != "UnitType" && item.flags != "NewUnit"))
+            continue;
+        return !item.researchable || m_researchCompleted.count(item.id) != 0;
+    }
+    return false;
 }
 
 void StrategicLevelFrame::RestoreTacticalCompanyIdentities(SpellMap& map) const
@@ -20673,6 +20718,15 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
         }
 
         matchedSurvivors.insert(survivor);
+
+        // The tactical Info dialog renames this concrete company in CP895.
+        // Synchronize by its roster identity, so the new name survives the
+        // mission debrief, later chapter transitions and strategic JSON saves.
+        pu.extra = survivor->name.empty() ? "-" : survivor->name;
+        if (rosterIdx < m_unitStates.size())
+            m_unitStates[rosterIdx].custom_name = survivor->name.empty()
+                ? std::string()
+                : spellcross_company::OriginalNameToUtf8(survivor->name);
 
         // Convert tactical manpower back to the strategic strength percentage.
         const int maxMan = survivor->unit ? survivor->unit->cnt : 0;
