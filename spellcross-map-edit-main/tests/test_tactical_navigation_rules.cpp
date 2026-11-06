@@ -5,17 +5,24 @@ int main()
     using spellcross_tactical::IsWithinRetailNavigationEnvelope;
     using spellcross_tactical::DecideMagotarAction;
     using D = spellcross_tactical::MagotarDecision;
-    // Original English M06_04A: START around (1,78), ESCAPE (52,85).
-    assert(IsWithinRetailNavigationEnvelope(1,78,56,104,true));
+    // Original EN M06_04A has authored START at (1,78): on the DOS
+    // traversal mask this column is blocked. SpellMap's explicit START
+    // exception remains necessary so scripted deployment stays functional.
+    assert(!IsWithinRetailNavigationEnvelope(1,78,56,104,true));
+    assert(IsWithinRetailNavigationEnvelope(2,78,56,104,true));
     assert(IsWithinRetailNavigationEnvelope(52,85,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(0,78,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(55,78,56,104,true));
+    assert(!IsWithinRetailNavigationEnvelope(53,78,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(20,103,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(20,90,56,104,true));
     assert(!IsWithinRetailNavigationEnvelope(20,0,56,104,true));
     // Last original M04_04 start row and M01_01 escape near right border.
     assert(IsWithinRetailNavigationEnvelope(24,74,36,90,true));
-    assert(IsWithinRetailNavigationEnvelope(97,25,100,84,true));
+    // Authored objectives on the right border can be occupied but should
+    // not open the entire filler strip for pathfinding.
+    assert(!IsWithinRetailNavigationEnvelope(97,25,100,84,true));
+    assert(IsWithinRetailNavigationEnvelope(96,25,100,84,true));
     assert(IsWithinRetailNavigationEnvelope(0,0,56,104,false));
     assert(IsWithinRetailNavigationEnvelope(9,9,10,10,true));
 
