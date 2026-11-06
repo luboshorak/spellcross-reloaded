@@ -18,9 +18,7 @@ class MissionSessionResetTests(unittest.TestCase):
         cls.close = MAP.split("void SpellMap::Close()", 1)[1].split(
             "// create blank map", 1
         )[0]
-        cls.hud = MAP.split("int SpellMap::RenderHUD(", 1)[1].split(
-            "// render", 1
-        )[0] if False else MAP.split("// Render the original enemy-turn HUD", 1)[1].split(
+        cls.hud = MAP.split("// Render the original enemy-turn HUD", 1)[1].split(
             "// render side fillings", 1
         )[0]
         cls.mission = MAP.split("int SpellMap::MissionStartEvent()", 1)[1].split(

@@ -15143,7 +15143,7 @@ int SpellMap::MissionStartEvent()
 	if (list.empty())
     {
         spellcross_diag::Log(spellcross_diag::Level::Info, "MISSION",
-            "MissionStart: no start events; map=%s objectives=%llu escape=%llu target=%llu",
+            "MissionStart: no start events; map=%s total_events=%llu escape=%llu target=%llu",
             std::filesystem::path(map_path).filename().string().c_str(),
             static_cast<unsigned long long>(events->GetEvents().size()),
             static_cast<unsigned long long>(escape.size()),
