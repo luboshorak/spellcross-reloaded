@@ -26,6 +26,7 @@
 #include <wx/choicdlg.h>
 #include <wx/progdlg.h>
 #ifdef _WIN32
+#include <windows.h>
 #include <wininet.h>
 #pragma comment(lib, "wininet.lib")
 #endif
@@ -55,6 +56,7 @@
 #include "resource.h"
 #include "app_identity.h"
 #include "main.h"
+#include "tactical_range_input.h"
 #include "campaign_company_identity.h"
 #include "other.h"
 #include "simpleini.h"
@@ -2827,6 +2829,11 @@ static wxString BuildSpellcrossWindowTitle(SpellMap* map)
     return title;
 }
 
+MainFrame::~MainFrame()
+{
+    ReleaseTacticalCursorClip();
+}
+
 // Main panel init
 MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY, "Spellcross", wxDefaultPosition, wxSize(1600,1000))
 {
@@ -2885,6 +2892,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
 		spellcross_ui_locale::Tr("menu.box_selection", "Drag-select unit &groups"),
 		spellcross_ui_locale::Tr("menu.box_selection_help", "Enable temporary unit groups selected by dragging the left mouse button"));
 	menuOptions->Check(ID_OptionsBoxSelection, spell_map && spell_map->IsBoxSelectionEnabled());
+    menuOptions->AppendCheckItem(ID_OptionsConfineCursor,
+        spellcross_ui_locale::Tr("menu.confine_cursor", "Keep cursor inside game window"),
+        spellcross_ui_locale::Tr("menu.confine_cursor_help", "Restrict the pointer to the active tactical game window; Alt+Tab releases it"));
+    menuOptions->Check(ID_OptionsConfineCursor, m_confineTacticalCursor);
 
     spellcross_window::AddFullscreen(menuOptions);
 
@@ -2954,7 +2965,23 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     canvas->Bind(wxEVT_THREAD,&MainFrame::OnThreadCanvas,this);
     Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
         if (!event.GetActive())
+        {
             ResetTransientTacticalPointerState("frame-deactivated");
+            ReleaseTacticalCursorClip();
+            m_edgePan.Reset();
+            m_lastEdgePanTick = {};
+        }
+        event.Skip();
+    });
+    // A native drop-down may extend beyond the frame, so temporarily
+    // relinquish the system cursor clip while the menu is visible.
+    Bind(wxEVT_MENU_OPEN, [this](wxMenuEvent& event) {
+        m_nativeMenuOpen = true;
+        ReleaseTacticalCursorClip();
+        event.Skip();
+    });
+    Bind(wxEVT_MENU_CLOSE, [this](wxMenuEvent& event) {
+        m_nativeMenuOpen = false;
         event.Skip();
     });
     
@@ -2967,6 +2994,11 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     
     Bind(wxEVT_MENU,&MainFrame::OnLoadCustomMap,this,ID_LoadCustomMap);
     Bind(wxEVT_MENU,&MainFrame::OnOpenMainMenu,this,ID_MainMenu);
+    Bind(wxEVT_MENU, [this](wxCommandEvent& event) {
+        m_confineTacticalCursor = event.IsChecked();
+        if (!m_confineTacticalCursor)
+            ReleaseTacticalCursorClip();
+    }, ID_OptionsConfineCursor);
 
 // Load a remake strategic JSON save or an original BIG_MAP.SAV.
 // JSON identifies its DEF; BIG_MAP.SAV carries the original level number.
@@ -3287,6 +3319,7 @@ bool MainFrame::LoadContinueGame()
 // on form close
 void MainFrame::RequestApplicationExit(const char* source)
 {
+    ReleaseTacticalCursorClip();
     // Native close/menu callbacks may re-enter while a wx modal dialog is
     // pumping messages. Do not stack identical dialogs or exit requests.
     if (m_applicationExitInProgress || m_exitDialogOpen)
@@ -3811,6 +3844,9 @@ void MainFrame::ShowTacticalWindow()
 
 void MainFrame::HideTacticalWindow()
 {
+    ReleaseTacticalCursorClip();
+    m_edgePan.Reset();
+    m_lastEdgePanTick = {};
     // Dispose the canvas overlay before any navigation to strategy, cutscenes
     // or the separate menu window, so it cannot retain old MapUnit pointers.
     CloseTacticalUnitInfo();
@@ -5036,6 +5072,158 @@ void MainFrame::OnStrategicCutsceneClosed(wxCloseEvent& ev)
 static std::string FindLevelDefContainingMission(const std::string& missionStem,
     const SpellData* spellData);
 
+// --- tactical camera edge-pan and Win32 cursor confinement ---
+void MainFrame::UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now)
+{
+    double seconds = 0.0;
+    if (m_lastEdgePanTick != std::chrono::steady_clock::time_point{})
+        seconds = std::chrono::duration<double>(now - m_lastEdgePanTick).count();
+    m_lastEdgePanTick = now;
+
+    if (!canvas || !spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode() ||
+        !IsShownOnScreen() || !IsActive() || m_nativeMenuOpen || inSubForm() ||
+        m_mission_end_flow || m_mission_result_visible || m_boxSelectPending ||
+        (m_rightPressActive && !m_rightRangeActive) || m_inspectUnit)
+    {
+        m_edgePan.Reset();
+        return;
+    }
+
+    const wxMouseState buttons = wxGetMouseState();
+    if (buttons.LeftIsDown() || (buttons.RightIsDown() && !m_rightRangeActive))
+    {
+        m_edgePan.Reset();
+        return;
+    }
+    // Keep input bounds aligned with ClipCursor(): on Windows both the
+    // pointer and frame rect use native screen pixels. This includes native
+    // decorations/menu above the canvas and the full HUD at the bottom.
+    int mouseX = 0, mouseY = 0, left = 0, top = 0, width = 0, height = 0;
+#ifdef _WIN32
+    POINT mouse{};
+    RECT frame{};
+    if (!::GetCursorPos(&mouse) ||
+        !::GetWindowRect(static_cast<HWND>(GetHandle()), &frame))
+    {
+        m_edgePan.Reset();
+        return;
+    }
+    mouseX = mouse.x;
+    mouseY = mouse.y;
+    left = frame.left;
+    top = frame.top;
+    width = frame.right - frame.left;
+    height = frame.bottom - frame.top;
+#else
+    const wxPoint mouse = wxGetMousePosition();
+    const wxRect frame = GetScreenRect();
+    mouseX = mouse.x;
+    mouseY = mouse.y;
+    left = frame.GetLeft();
+    top = frame.GetTop();
+    width = frame.GetWidth();
+    height = frame.GetHeight();
+#endif
+    if (width <= 0 || height <= 0)
+    {
+        m_edgePan.Reset();
+        return;
+    }
+
+    const int zone = FromDIP(40);
+    const auto direction = spellcross_tactical::EdgePanAtScreen(
+        mouseX, mouseY, left, top, width, height, zone);
+    const int displayScale = spellcross_display::Current().scale_percent;
+    // Faster than the first experimental version (1400 instead of 480
+    // screen px/s at the edge). Preserve the same perceived speed at all
+    // supported tactical zoom and display scaling settings.
+    const double mapPixelsPerScreenPixel = 10000.0 /
+        (static_cast<double>(displayScale) * TacticalZoomPercent());
+    const auto [stepX, stepY] = m_edgePan.Advance(
+        direction, seconds, mapPixelsPerScreenPixel);
+    if (stepX == 0 && stepY == 0)
+        return;
+
+    const auto before = spell_map->scroller.GetScroll();
+    spell_map->scroller.PanBy(stepX, stepY);
+    // Use the prepared surface for clamping rather than repeating all the
+    // RenderPrepare calculations on each 10ms timer tick.
+    const auto [mapWidth, mapHeight] = spell_map->GetMapSurfaceSize();
+    const auto [viewWidth, viewHeight] = spell_map->scroller.GetSurface();
+    spell_map->scroller.CheckScroll(0, 0,
+        (std::max)(0, mapWidth - viewWidth),
+        (std::max)(0, mapHeight - viewHeight));
+    if (spell_map->scroller.GetScroll() != before)
+        canvas->Refresh(false);
+}
+
+void MainFrame::ReleaseTacticalCursorClip()
+{
+#ifdef _WIN32
+    if (!m_tacticalCursorClipped)
+        return;
+    if (m_savedCursorClipValid)
+    {
+        const RECT previous = {
+            m_savedCursorClip.GetLeft(), m_savedCursorClip.GetTop(),
+            m_savedCursorClip.GetRight() + 1, m_savedCursorClip.GetBottom() + 1 };
+        ::ClipCursor(&previous);
+    }
+    else
+        ::ClipCursor(nullptr);
+    m_tacticalCursorClipped = false;
+    m_savedCursorClipValid = false;
+    m_currentCursorClip = wxRect();
+#endif
+}
+
+void MainFrame::UpdateTacticalCursorClip()
+{
+#ifdef _WIN32
+    const bool active = m_confineTacticalCursor && !m_applicationExitInProgress &&
+        canvas && canvas->IsShownOnScreen() && IsShownOnScreen() && IsActive() &&
+        !IsIconized() && !m_nativeMenuOpen && spell_map && spell_map->IsLoaded() &&
+        spell_map->isGameMode() && !m_mission_end_flow && !m_mission_result_visible &&
+        !inSubForm();
+    if (!active)
+    {
+        ReleaseTacticalCursorClip();
+        return;
+    }
+
+    // Native Win32 screen coordinates, so multi-monitor DPI conversion does
+    // not interfere with ClipCursor. Include the title/menu area; a canvas-
+    // only clip would make the restored top menu impossible to reach.
+    RECT windowRect{};
+    if (!::GetWindowRect(static_cast<HWND>(GetHandle()), &windowRect) ||
+        windowRect.right <= windowRect.left || windowRect.bottom <= windowRect.top)
+    {
+        ReleaseTacticalCursorClip();
+        return;
+    }
+    const wxRect targetClip(windowRect.left, windowRect.top,
+        windowRect.right - windowRect.left,
+        windowRect.bottom - windowRect.top);
+    // ClipCursor is system-wide and may synthesize cursor events. Do not
+    // reapply an identical rectangle on every 10 ms gameplay tick.
+    if (m_tacticalCursorClipped && targetClip == m_currentCursorClip)
+        return;
+    if (!m_tacticalCursorClipped)
+    {
+        RECT previous{};
+        m_savedCursorClipValid = ::GetClipCursor(&previous) != 0;
+        if (m_savedCursorClipValid)
+            m_savedCursorClip = wxRect(previous.left, previous.top,
+                previous.right - previous.left, previous.bottom - previous.top);
+    }
+    if (::ClipCursor(&windowRect))
+    {
+        m_tacticalCursorClipped = true;
+        m_currentCursorClip = targetClip;
+    }
+#endif
+}
+
 // map animation periodic refresh tick
 void MainFrame::OnTimer(wxTimerEvent& event)
 {
@@ -5061,6 +5249,7 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     // a useful final marker when a player reports an intermittent hang.
     static auto next_heartbeat = std::chrono::steady_clock::now();
     const auto now = std::chrono::steady_clock::now();
+    UpdateTacticalCursorClip();
     if (now >= next_heartbeat)
     {
         next_heartbeat = now + std::chrono::minutes(1);
@@ -5117,6 +5306,10 @@ void MainFrame::OnTimer(wxTimerEvent& event)
     // scripted events while the player browses original unit information.
     if (m_unitInfoDialogOpen)
         return;
+
+    // Run after input/overlay guards but before deployment returns. The
+    // battlefield scrolls even if the pointer is held stationary at an edge.
+    UpdateTacticalEdgePan(now);
 
     if (m_deployment_active)
     {
@@ -6175,8 +6368,11 @@ void MainFrame::ResetTransientTacticalPointerState(const char* reason)
     m_boxSelectPending = false;
     m_boxSelecting = false;
     m_rightPressActive = false;
+    m_rightRangeActive = false;
     m_rightDragged = false;
     m_orphanedPointerTicks = 0;
+    if (right)
+        SyncTemporaryRangeViewMode();
     if (box && capture)
         canvas->ReleaseMouse();
     if (spell_map && spell_map->IsLoaded())
@@ -6185,41 +6381,74 @@ void MainFrame::ResetTransientTacticalPointerState(const char* reason)
         canvas->Refresh();
 }
 
+void MainFrame::SyncTemporaryRangeViewMode()
+{
+    if (!spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode())
+        return;
+
+    using spellcross_tactical::TemporaryRangeMode;
+    const auto mode = spellcross_tactical::RequestedRangeMode(
+        m_rightRangeActive, m_rangeMoveKeyDown, m_rangeAttackKeyDown,
+        spell_map->IsGroupMode() || m_deployment_active ||
+        m_mission_end_flow || m_mission_result_visible);
+    switch (mode)
+    {
+        case TemporaryRangeMode::Move:
+            spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_MOVE);
+            break;
+        case TemporaryRangeMode::Attack:
+            spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_ATTACK);
+            break;
+        default:
+            spell_map->EndTemporaryUnitRangeViewMode();
+            break;
+    }
+}
+
 void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
 {
-	if (m_boxSelectPending)
-	{
-		ResetBoxSelectionGesture();
-		if (canvas) canvas->Refresh();
-	}
+    if (m_boxSelectPending)
+    {
+        ResetBoxSelectionGesture();
+        if (canvas) canvas->Refresh();
+    }
     if (m_tutorial_stage == 1 && m_tutorial_command == 4 && event.RightUp())
         m_tutorial_pressed_rmb = true;
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
+
     const auto point = TacticalMousePoint(event.GetPosition());
     if (event.RightDown())
     {
-        // A second press proves the first release event was lost.
         if (m_rightPressActive)
             ResetTransientTacticalPointerState("new-right-down-before-right-up");
         m_rightPressActive = true;
         m_rightDragged = false;
         m_rightPressStart = event.GetPosition();
-        spell_map->scroller.SetRef(point.x, point.y);
+        if (spell_map->isGameMode())
+        {
+            // Retail: hold RMB to show movement reach, never drag the camera.
+            // Keep Shift+RMB to inspect a unit without changing the overlay.
+            spell_map->scroller.Idle();
+            m_rightRangeActive = !event.ShiftDown() && !m_deployment_active &&
+                !inSubForm() && !spell_map->IsGroupMode() && !m_inspectUnit &&
+                !m_mission_end_flow && !m_mission_result_visible;
+            SyncTemporaryRangeViewMode();
+        }
+        else
+            spell_map->scroller.SetRef(point.x, point.y); // editor behavior
     }
     else if (event.RightUp())
     {
-        // TScroll::Move sets 'moved' for any cursor motion, even one pixel.
-        // A tiny hand jitter must not leave group mode active (which disables
-        // single-unit shooting). Only a real RMB drag should pan the map.
         const bool openInfo = event.ShiftDown() && !m_rightDragged &&
             !m_deployment_active && !inSubForm();
-        if (openInfo) spell_map->scroller.Move(point.x, point.y);
+        if (openInfo)
+            spell_map->scroller.Move(point.x, point.y);
         MapUnit* inspected = openInfo ? spell_map->GetCursorUnit() : nullptr;
         spell_map->scroller.Idle();
-        // Normal RMB continues to pan the map; Shift+RMB opens native
-        // dossier, as documented in the original Spellcross manual.
         m_rightPressActive = false;
+        m_rightRangeActive = false;
         m_rightDragged = false;
+        SyncTemporaryRangeViewMode();
         if (inspected && inspected->unit && !inspected->hide &&
             (!inspected->is_enemy || inspected->is_visible == 2))
         {
@@ -6227,14 +6456,11 @@ void MainFrame::OnCanvasRMouse(wxMouseEvent& event)
             return;
         }
     }
-    // Camera dragging must not change the tactical range-view mode; SPACE
-    // and M/A remain its explicit controls. This also prevents a stuck
-    // MOVEMENT MODE overlay if Windows loses an RMB-up event.
     if (canvas) canvas->Refresh();
 }
 
 
-// select all tiles
+// select all tiles// select all tiles
 
 // deselect all tiles
 
@@ -6509,13 +6735,15 @@ void MainFrame::OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent&)
 void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 {
     SetCursor(*wxSTANDARD_CURSOR);
+    m_edgePan.Reset();
 
-    if(!spell_map->IsLoaded())
+    if(!spell_map || !spell_map->IsLoaded())
         return;
     if(inUnitOptions())
         return;
 
-    spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
+    if (!m_rightRangeActive && !m_rangeMoveKeyDown && !m_rangeAttackKeyDown)
+        spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
     spell_map->scroller.Idle();
 }
 // on canvas mouse move
@@ -6524,7 +6752,7 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
     // Let the matching wxEVT_*_UP finish before the watchdog treats
     // a released right button as an orphaned camera drag.
-    if (m_rightPressActive && event.RightIsDown() && !m_rightDragged)
+    if (m_rightPressActive && !m_rightRangeActive && event.RightIsDown() && !m_rightDragged)
     {
         m_rightDragged = spellcross_tactical::IsSelectionDrag(
             m_rightPressStart.x, m_rightPressStart.y,
@@ -6551,7 +6779,8 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
     if (spellcross_display::ToLogical(event.GetY()) >=
         spell_map->GetHUDtop(spellcross_display::ToLogical(event.GetX())))
     {
-        spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
+        if (!m_rightRangeActive && !m_rangeMoveKeyDown && !m_rangeAttackKeyDown)
+            spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
         if (!last_in_hud) spell_map->InvalidateHUDbuttons();
         spell_map->scroller.Idle();
         last_in_hud = true;
@@ -6622,8 +6851,7 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
     spell_map->RenderPrepare();
     const auto point = TacticalMousePoint(event.GetPosition());
     spell_map->scroller.Move(point.x, point.y);
-    if (event.RightIsDown())
-        spell_map->scroller.SetRef(point.x, point.y);
+    // Zoom must not reactivate camera dragging during a held RMB preview.
     spell_map->InvalidateHUDbuttons();
     canvas->Refresh();
 }
@@ -6731,7 +6959,7 @@ void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
             if(!m_rangeMoveKeyDown)
             {
                 m_rangeMoveKeyDown = true;
-                spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_MOVE);
+                SyncTemporaryRangeViewMode();
             }
             if(canvas) canvas->Refresh();
             return;
@@ -6742,7 +6970,7 @@ void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
             if(!m_rangeAttackKeyDown)
             {
                 m_rangeAttackKeyDown = true;
-                spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_ATTACK);
+                SyncTemporaryRangeViewMode();
             }
             if(canvas) canvas->Refresh();
             return;
@@ -6781,13 +7009,8 @@ void MainFrame::OnCanvasKeyUp(wxKeyEvent& event)
         return;
     }
 
-    // If the other temporary key is still held, keep its mode active.
-    if(m_rangeAttackKeyDown)
-        spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_ATTACK);
-    else if(m_rangeMoveKeyDown)
-        spell_map->BeginTemporaryUnitRangeViewMode(SpellMap::UNIT_RANGE_MOVE);
-    else
-        spell_map->EndTemporaryUnitRangeViewMode();
+    // Restore the still-held input or the saved SPACE selection.
+    SyncTemporaryRangeViewMode();
 
     if(canvas) canvas->Refresh();
 }

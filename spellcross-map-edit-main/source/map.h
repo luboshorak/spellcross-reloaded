@@ -213,6 +213,8 @@ public:
 	void SetRef(int x, int y);
 	void Move(int x, int y);
 	void SetPos(int x,int y);
+	// Camera-only movement; unlike SetPos(), preserve the mouse hit-test reference.
+	void PanBy(int offset_x, int offset_y);
 	int Idle();
 	int ResizeSelection(int delta);
 	bool wasModified();

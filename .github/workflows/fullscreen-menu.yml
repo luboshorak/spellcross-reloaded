@@ -5,6 +5,10 @@ on:
   pull_request:
     paths:
       - 'spellcross-map-edit-main/source/tactical_zoom.h'
+      - 'spellcross-map-edit-main/source/tactical_edge_pan.h'
+      - 'spellcross-map-edit-main/source/tactical_range_input.h'
+      - 'spellcross-map-edit-main/tests/test_tactical_range_input.cpp'
+      - 'spellcross-map-edit-main/tests/test_tactical_edge_pan.cpp'
       - 'spellcross-map-edit-main/source/display_settings.h'
       - 'spellcross-map-edit-main/tests/test_display_settings.cpp'
       - 'spellcross-map-edit-main/source/tactical_box_selection.h'
@@ -45,6 +49,16 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_tactical_zoom.cpp -o /tmp/spellcross-zoom-test
           /tmp/spellcross-zoom-test
+      - name: Verify time-based mouse edge-pan and full-window hot zones
+        run: |
+          c++ -std=c++17 -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_tactical_edge_pan.cpp -o /tmp/spellcross-edge-pan-test
+          /tmp/spellcross-edge-pan-test
+      - name: Verify right-mouse movement preview priority
+        run: |
+          c++ -std=c++17 -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_tactical_range_input.cpp -o /tmp/spellcross-range-input-test
+          /tmp/spellcross-range-input-test
       - name: Verify persisted DPI settings, palette LUT and scaled hitboxes
         run: |
           c++ -std=c++17 -Wall -Wextra -pedantic $(wx-config --cxxflags) \
@@ -97,6 +111,16 @@ jobs:
           $binary = Join-Path $env:RUNNER_TEMP 'spellcross-menu-test.exe'
           $zoomTest = Join-Path $env:RUNNER_TEMP 'spellcross-zoom-test.exe'
           $boxSelectionTest = Join-Path $env:RUNNER_TEMP 'spellcross-box-selection-test.exe'
+          $edgePanTest = Join-Path $env:RUNNER_TEMP 'spellcross-edge-pan-test.exe'
+          $rangeInputTest = Join-Path $env:RUNNER_TEMP 'spellcross-range-input-test.exe'
+          & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_edge_pan.cpp "/Fe:$edgePanTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Edge-pan test compilation failed' }
+          & $edgePanTest
+          if ($LASTEXITCODE -ne 0) { throw 'Edge-pan test failed' }
+          & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_range_input.cpp "/Fe:$rangeInputTest"
+          if ($LASTEXITCODE -ne 0) { throw 'RMB preview test compilation failed' }
+          & $rangeInputTest
+          if ($LASTEXITCODE -ne 0) { throw 'RMB preview test failed' }
           & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_zoom.cpp "/Fe:$zoomTest"
           if ($LASTEXITCODE -ne 0) { throw 'Zoom test compilation failed' }
           & $zoomTest
