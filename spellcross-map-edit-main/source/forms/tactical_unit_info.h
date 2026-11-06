@@ -269,6 +269,32 @@ private:
                 b.y + (26 - icon->y_size) / 2);
     }
 
+    bool DrawOriginalFont(wxDC& dc, const wxString& text,
+        int x, int y, const wxColour& ink)
+    {
+        SpellFont* font = m_data ? m_data->font : nullptr;
+        if (!font || text.empty()) return false;
+        const std::string original = wstring2stringCP895(text.ToStdWstring());
+        const int width = std::clamp(font->GetTextWidth(original) + 5, 8, 188);
+        const int height = std::max(font->GetHeight() + 4, 16);
+        std::vector<uint8_t> pixels(static_cast<size_t>(width) * height, 0);
+        font->Render(pixels.data(), pixels.data() + pixels.size(), width,
+            1, 1, original, 7, -1, SpellFont::NONE);
+        wxImage img(width, height);
+        img.InitAlpha();
+        unsigned char* rgb = img.GetData();
+        unsigned char* alpha = img.GetAlpha();
+        for (size_t i = 0; i < pixels.size(); ++i)
+        {
+            rgb[3 * i] = ink.Red();
+            rgb[3 * i + 1] = ink.Green();
+            rgb[3 * i + 2] = ink.Blue();
+            alpha[i] = pixels[i] == 7 ? 255 : 0;
+        }
+        dc.DrawBitmap(wxBitmap(img), x, y, true);
+        return true;
+    }
+
     void OnPaint(wxPaintEvent&)
     {
         wxAutoBufferedPaintDC dc(this);
@@ -293,9 +319,13 @@ private:
         if (u && u->unit)
         {
             const std::string name = u->name.empty() ? std::string(u->unit->name) : u->name;
-            dc.SetFont(wxFont(wxFontInfo(11).Family(wxFONTFAMILY_TELETYPE).Bold()));
-            dc.SetTextForeground(wxColour(234, 89, 64));
-            dc.DrawText(DecodeText(name), 444, 9);
+            if (!DrawOriginalFont(dc, DecodeText(name), 444, 9,
+                wxColour(234, 89, 64)))
+            {
+                dc.SetFont(wxFont(wxFontInfo(11).Family(wxFONTFAMILY_TELETYPE).Bold()));
+                dc.SetTextForeground(wxColour(234, 89, 64));
+                dc.DrawText(DecodeText(name), 444, 9);
+            }
         }
 
         dc.SetFont(wxFont(wxFontInfo(10).Family(wxFONTFAMILY_TELETYPE)));
@@ -305,7 +335,9 @@ private:
         {
             const size_t idx = static_cast<size_t>(m_lineOffset + i);
             if (idx >= m_lines.size()) break;
-            dc.DrawText(m_lines[idx], 445, 38 + i * 17);
+            if (!DrawOriginalFont(dc, m_lines[idx], 445, 38 + i * 17,
+                wxColour(151, 197, 135)))
+                dc.DrawText(m_lines[idx], 445, 38 + i * 17);
         }
         for (const auto& button : kButtons) DrawButton(dc, button);
         dc.SetFont(wxFont(wxFontInfo(9).Family(wxFONTFAMILY_TELETYPE)));
