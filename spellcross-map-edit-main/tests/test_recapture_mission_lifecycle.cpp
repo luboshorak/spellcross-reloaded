@@ -98,6 +98,17 @@ int main(int argc, char** argv)
                     "Generated recapture contains the major rescue objective");
             }
         Check(objectives == 1, "Generated recapture objectives mismatch");
+        // The initial enemy band must not place a unit into the retail
+        // padding where neither its AI nor the player could ever reach it.
+        int spawnedEnemies = 0;
+        for (const auto* unit : map.units)
+        {
+            if (!unit || !unit->is_enemy) continue;
+            ++spawnedEnemies;
+            Check(map.IsTacticalMovementTile(unit->coor, true),
+                "Generated Other Side company spawned outside combat navigation");
+        }
+        Check(spawnedEnemies > 0, "Generated recapture spawned no enemies");
         const int money = strategy.m_money;
         const int experience = strategy.m_player.experience;
         strategy.HandleMissionResult(10, false, "m04_10a"); // Older tactical save token.
