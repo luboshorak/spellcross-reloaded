@@ -376,6 +376,7 @@ public:
 		bool StartMove_NoRangeCheck(MapUnit* unit, MapXY target);
 		bool StartAttack_NoHUD(MapUnit* attacker, MapUnit* target);
 		bool TryEnemyMoraleSpecialAction(MapUnit* unit);
+        bool TryEnemyMagotarStance(MapUnit* unit, AITacticalGroup& group);
 		bool StartMoraleSpecialAction(MapUnit* unit);
 		// Restored DOS area specials: morale/paralysis/freeze/dragon fear/Breorn roar.
 		void ApplyMoraleSpecialAction(MapUnit* unit);
@@ -393,6 +394,7 @@ public:
 		bool ProcessReactionFire();
 		int GetReactionInitiative(const MapUnit* unit) const;
 		// map state
+        bool m_retail_nav_padding = false;
 		bool is_valid;
 		// last error string
 		std::string last_error;
@@ -927,6 +929,7 @@ public:
 		~SpellMap();
 		int SetGameMode(int new_mode);
 		int isGameMode();
+        bool IsTacticalMovementTile(MapXY tile) const;
 		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
 		bool CanSavePausedBattle() const;
 		void SetGameDifficulty(GameDifficulty difficulty);

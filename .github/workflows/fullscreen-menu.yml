@@ -7,6 +7,8 @@ on:
       - 'spellcross-map-edit-main/source/tactical_zoom.h'
       - 'spellcross-map-edit-main/source/tactical_edge_pan.h'
       - 'spellcross-map-edit-main/source/tactical_range_input.h'
+      - 'spellcross-map-edit-main/source/tactical_navigation_rules.h'
+      - 'spellcross-map-edit-main/tests/test_tactical_navigation_rules.cpp'
       - 'spellcross-map-edit-main/source/strategic_buy_variant_rules.h'
       - 'spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp'
       - 'spellcross-map-edit-main/tests/test_divac_buy_and_goals.py'
@@ -62,6 +64,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_tactical_range_input.cpp -o /tmp/spellcross-range-input-test
           /tmp/spellcross-range-input-test
+      - name: Verify retail battlefield envelope and Magotar AI decisions
+        run: |
+          c++ -std=c++17 -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_tactical_navigation_rules.cpp -o /tmp/spellcross-navigation-test
+          /tmp/spellcross-navigation-test
       - name: Verify original strategic purchasable unit types
         run: |
           c++ -std=c++17 -Wall -Wextra -pedantic \
@@ -129,6 +136,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'RMB preview test compilation failed' }
           & $rangeInputTest
           if ($LASTEXITCODE -ne 0) { throw 'RMB preview test failed' }
+          $navigationTest = Join-Path $env:RUNNER_TEMP 'spellcross-navigation-test.exe'
+          & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_navigation_rules.cpp "/Fe:$navigationTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Tactical navigation test compilation failed' }
+          & $navigationTest
+          if ($LASTEXITCODE -ne 0) { throw 'Tactical navigation test failed' }
           $buyVariantsTest = Join-Path $env:RUNNER_TEMP 'spellcross-buy-variants-test.exe'
           & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp "/Fe:$buyVariantsTest"
           if ($LASTEXITCODE -ne 0) { throw 'Strategic unit variant test compilation failed' }
