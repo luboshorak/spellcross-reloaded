@@ -6320,7 +6320,11 @@ void MainFrame::OpenTacticalUnitInfo(MapUnit* unit)
     m_inspectUnit = false;
     SetCursor(*spell_data->gres.cur_pointer);
     m_unitInfoDialogOpen = true;
-    TacticalUnitInfoDialog dialog(this, spell_map, spell_data, unit,
+    // Parent the borderless dossier to the map canvas, NOT the outer frame.
+    // game_menu_bar.h installs a wxToolBar above the canvas; covering the
+    // frame's screen rectangle would obscure that original green top menu.
+    TacticalUnitInfoDialog dialog(canvas ? static_cast<wxWindow*>(canvas)
+        : static_cast<wxWindow*>(this), spell_map, spell_data, unit,
         [this](MapUnit* inspected) -> bool
         {
             if (!inspected || !inspected->unit) return false;
