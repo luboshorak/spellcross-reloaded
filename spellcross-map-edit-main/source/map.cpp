@@ -9785,28 +9785,46 @@ bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
         action == spellcross_tactical::MagotarDecision::Land;
     if (landing && !siteClearFor(enemy->coor, true))
     {
-        // The original 0x9cdae considers reachable squares if the current
-        // one cannot be used. Nearest valid route is preferred; no arbitrary
-        // distance threshold or forced teleport is introduced.
-        std::vector<std::pair<double, MapXY>> sites;
+        // Original 0x9cdae evaluates the already-known reachable candidates
+        // and picks the smallest path COST (0x666eb0), not Euclidean distance.
+        // Our A* equivalent supplies that cost on path.back().g_cost.
+        // First prune cells outside the current AP budget; retain a generous
+        // lower movement-cost bound because roads reduce per-step cost.
+        const int apBudget = enemy->action_points;
+        const int walkCost = enemy->GetWalkAP();
+        if (apBudget <= 0 || walkCost <= 0)
+            return false;
+        const double distanceBudget = (double)apBudget / (0.6 * walkCost) + 2.0;
+        MapXY cheapestSite;
+        int cheapestCost = INT_MAX;
+        double cheapestDistance = 1e30;
         for (int y = 0; y < y_size; ++y)
             for (int x = 0; x < x_size; ++x)
             {
-                MapXY candidate(x,y);
-                if (siteClearFor(candidate, true))
-                    sites.emplace_back(enemy->coor.Distance(candidate), candidate);
+                MapXY candidate(x, y);
+                const double distance = enemy->coor.Distance(candidate);
+                if (distance > distanceBudget ||
+                    !siteClearFor(candidate, true))
+                    continue;
+                auto path = unit_range->FindPath(enemy, candidate);
+                if (path.size() < 2 || path.back().pos != candidate)
+                    continue;
+                const int pathCost = path.back().g_cost;
+                if (pathCost < cheapestCost ||
+                    (pathCost == cheapestCost && distance < cheapestDistance))
+                {
+                    cheapestSite = candidate;
+                    cheapestCost = pathCost;
+                    cheapestDistance = distance;
+                }
             }
-        std::sort(sites.begin(), sites.end(),
-            [](const auto& a, const auto& b) { return a.first < b.first; });
-        for (const auto& site : sites)
-            if (MoveEnemyToward(enemy, site.second, false))
-            {
-                spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
-                    "Magotar landing approach id=%d target=(%d,%d)",
-                    enemy->id,site.second.x,site.second.y);
-                return true;
-            }
-        return false;
+        if (!cheapestSite.IsSelected() ||
+            !StartMove_NoRangeCheck(enemy, cheapestSite))
+            return false;
+        spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
+            "Magotar landing approach id=%d target=(%d,%d) path_ap=%d",
+            enemy->id, cheapestSite.x, cheapestSite.y, cheapestCost);
+        return true;
     }
     if (!landing && !siteClearFor(enemy->coor, false))
         return false;
