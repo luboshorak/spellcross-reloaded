@@ -14,24 +14,18 @@ Spellcross Reloaded is an open-source, fan-made restoration of **Spellcross: The
 
 Start with the [developer documentation index](./docs/README.md) for architecture, coordinate systems, rendering, data formats, lifecycle, build instructions, extension patterns, diagnostics, code conventions, research utilities and the repository-layout audit. Source-level uncertainties are collected in [needs verification](./docs/verification.md).
 
-## v0.9.4.2
+## v0.9.5
 
-This maintenance release restores original hierarchy controls and unit indicators, and fixes combat and transition behaviour:
+This release improves tactical mouse controls and unifies the remaining native gray settings dialogs with the dark-green strategic UI:
 
-- Hierarchy uses left-click to add and right-click to remove, with consistent commander hosts and formation bonuses after loading.
-- Strategic unit lists restore original strength bars and activity icons; wounded single-member units show their actual health in the tactical HUD.
-- Artillery cannot fire from slopes; mortar units retain their original exception.
-- Lost formation commanders are announced by name in the tactical information window.
-- Mission background sounds are muted during videos and restored afterwards.
-- Reinforcement messages wait until the strategic map is visible and painted.
+- Restore **right-button drag** to pan the tactical map. **Escape** deselects groups; right-click does not. Edge scrolling has been removed.
+- **Left-button drag-select** is now enabled by default and can still be toggled in Options.
+- Match the strategy palette in **Audio, Screen, About and Controls** dialogs, including custom green buttons and sliders.
+- Improve crash diagnostics with automatic `crash-last.txt` and `crash-last.dmp`, packaged symbols and build identity.
+- Harden movement/attack group transitions, overlapping combat animations and fullscreen mouse capture recovery.
+- Allow a user-confirmed exit without saving when an unfinished tactical action blocks a safe Continue snapshot.
 
-See the [release notes](./packaging/releases/v0.9.4.2.md) for the full changes. Earlier release notes are kept in [packaging/releases](./packaging/releases).
-
-For a crash or unexplained freeze in the development build, attach `debug.log`
-(and any `debug.1.log`–`debug.3.log`) from the game folder to your issue.
-The log rotates at 512 KiB per file; see the
-[runtime diagnostics guide](./docs/runtime-crash-diagnostics.md).
-This is diagnostic logging, **not** continuous autosaving.
+See the [v0.9.5 release notes](./packaging/releases/v0.9.5.md) and [previous releases](./packaging/releases). For a crash, attach `debug.log` and `crash-last.txt` (or a `.dmp` if needed); see the [crash diagnostics guide](./docs/runtime-crash-diagnostics.md).
 
 ## Download and play
 

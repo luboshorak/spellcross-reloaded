@@ -12,6 +12,8 @@
 #include <wx/choice.h>
 #include <wx/slider.h>
 #include "spell_ui_locale.h"
+#include "strategic_ui_theme.h"
+#include <array>
 
 namespace spellcross_display
 {
@@ -217,57 +219,98 @@ namespace spellcross_display
     inline bool ShowScreenDialog(wxWindow* parent, const std::function<void()>& refresh)
     {
         const Settings original = Current();
-        wxDialog dlg(parent, wxID_ANY,
+        wxDialog dialog(parent, wxID_ANY,
             spellcross_ui_locale::Tr("screen.title", "Screen"),
             wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE);
         auto* root = new wxBoxSizer(wxVERTICAL);
         auto addLabel = [&](const wxString& title) {
-            root->Add(new wxStaticText(&dlg, wxID_ANY, title), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+            root->Add(new wxStaticText(&dialog, wxID_ANY, title),
+                0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(14));
         };
 
         addLabel(spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
-        auto* scale = new wxChoice(&dlg, wxID_ANY);
-        scale->Append(spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"));
-        scale->Append(spellcross_ui_locale::Tr("screen.scale.enlarged", "125% - enlarged / sharp"));
-        scale->Append(spellcross_ui_locale::Tr("screen.scale.smooth", "125% - enlarged / smoothed"));
-        scale->SetSelection(original.scale_percent == 100 ? 0 : (original.smooth_scaling ? 2 : 1));
-        root->Add(scale, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+        const wxString scales[] = {
+            spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"),
+            spellcross_ui_locale::Tr("screen.scale.enlarged", "125% - enlarged / sharp"),
+            spellcross_ui_locale::Tr("screen.scale.smooth", "125% - enlarged / smoothed")
+        };
+        int selectedScale = original.scale_percent == 100 ? 0 :
+            (original.smooth_scaling ? 2 : 1);
+        std::array<spellcross_strategic_ui::Button*, 3> scaleButtons{};
+        auto* scaleRow = new wxBoxSizer(wxHORIZONTAL);
+        for (int i = 0; i < 3; ++i)
+        {
+            scaleButtons[i] = new spellcross_strategic_ui::Button(&dialog,
+                wxID_ANY, scales[i]);
+            scaleRow->Add(scaleButtons[i], 1, wxRIGHT | wxEXPAND,
+                i == 2 ? 0 : dialog.FromDIP(6));
+        }
+        root->Add(scaleRow, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, dialog.FromDIP(14));
 
         addLabel(spellcross_ui_locale::Tr("screen.brightness", "Brightness (%)"));
-        auto* brightness = new wxSlider(&dlg, wxID_ANY, original.brightness, 50, 150,
-            wxDefaultPosition, wxSize(340, -1), wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-        root->Add(brightness, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+        auto* brightness = new spellcross_strategic_ui::Slider(&dialog,
+            wxID_ANY, original.brightness, 50, 150);
+        root->Add(brightness, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
         addLabel(spellcross_ui_locale::Tr("screen.gamma", "Gamma (x100)"));
-        auto* gamma = new wxSlider(&dlg, wxID_ANY,
-            static_cast<int>(std::lround(original.gamma * 100)), 50, 200,
-            wxDefaultPosition, wxSize(340, -1), wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-        root->Add(gamma, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+        auto* gamma = new spellcross_strategic_ui::Slider(&dialog,
+            wxID_ANY, static_cast<int>(std::lround(original.gamma * 100)), 50, 200);
+        root->Add(gamma, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
         addLabel(spellcross_ui_locale::Tr("screen.temperature", "Color temperature (K)"));
-        auto* temp = new wxSlider(&dlg, wxID_ANY, original.temperature, 3500, 9500,
-            wxDefaultPosition, wxSize(340, -1), wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-        root->Add(temp, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+        auto* temperature = new spellcross_strategic_ui::Slider(&dialog,
+            wxID_ANY, original.temperature, 3500, 9500);
+        root->Add(temperature, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND,
+            dialog.FromDIP(14));
 
-        root->Add(dlg.CreateButtonSizer(wxOK | wxCANCEL), 0, wxALL | wxEXPAND, 10);
-        dlg.SetSizerAndFit(root);
+        auto* buttons = new wxBoxSizer(wxHORIZONTAL);
+        buttons->AddStretchSpacer();
+        auto* ok = new spellcross_strategic_ui::Button(&dialog, wxID_OK,
+            spellcross_ui_locale::Tr("dialog.ok", "OK"));
+        auto* cancel = new spellcross_strategic_ui::Button(&dialog, wxID_CANCEL,
+            spellcross_ui_locale::Tr("dialog.cancel", "Cancel"));
+        buttons->Add(ok, 0, wxRIGHT, dialog.FromDIP(8));
+        buttons->Add(cancel, 0);
+        root->Add(buttons, 0, wxEXPAND | wxALL, dialog.FromDIP(14));
+        dialog.SetSizerAndFit(root);
+        spellcross_strategic_ui::Apply(&dialog);
+        dialog.SetEscapeId(wxID_CANCEL);
+        ok->SetDefault();
+        dialog.CentreOnParent();
 
+        const auto updateSelection = [&]() {
+            for (int i = 0; i < 3; ++i)
+            {
+                wxFont font = scaleButtons[i]->GetFont();
+                font.SetWeight(i == selectedScale ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL);
+                scaleButtons[i]->SetFont(font);
+                scaleButtons[i]->Refresh(false);
+            }
+        };
         const auto apply = [&]() {
             Settings next;
-            next.scale_percent = scale->GetSelection() == 0 ? 100 : 125;
-            next.smooth_scaling = scale->GetSelection() == 2;
+            next.scale_percent = selectedScale == 0 ? 100 : 125;
+            next.smooth_scaling = selectedScale == 2;
             next.brightness = brightness->GetValue();
             next.gamma = gamma->GetValue() / 100.0;
-            next.temperature = temp->GetValue();
+            next.temperature = temperature->GetValue();
             Set(next);
             if (refresh) refresh();
         };
-        scale->Bind(wxEVT_CHOICE, [&](wxCommandEvent&) { apply(); });
+        for (int i = 0; i < 3; ++i)
+        {
+            scaleButtons[i]->Bind(wxEVT_BUTTON, [&, i](wxCommandEvent&) {
+                selectedScale = i;
+                updateSelection();
+                apply();
+            });
+        }
+        updateSelection();
         brightness->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         gamma->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
-        temp->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        temperature->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
 
-        if (dlg.ShowModal() == wxID_OK)
+        if (dialog.ShowModal() == wxID_OK)
         {
             apply();
             return true;
@@ -276,4 +319,5 @@ namespace spellcross_display
         if (refresh) refresh();
         return false;
     }
+
 }

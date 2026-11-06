@@ -6,7 +6,7 @@ int main()
 {
     using namespace spellcross_tactical;
 
-	static_assert(!BOX_SELECTION_ENABLED_BY_DEFAULT);
+	static_assert(BOX_SELECTION_ENABLED_BY_DEFAULT);
 
     const auto forward = NormalizeSelectionRect(10, 20, 40, 70);
     assert(forward.left == 10 && forward.top == 20);

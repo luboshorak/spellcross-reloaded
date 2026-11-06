@@ -3,16 +3,16 @@
 
 #define SPELLCROSS_VERSION_MAJOR 0
 #define SPELLCROSS_VERSION_MINOR 9
-#define SPELLCROSS_VERSION_PATCH 4
-#define SPELLCROSS_VERSION_BUILD 2
+#define SPELLCROSS_VERSION_PATCH 5
+#define SPELLCROSS_VERSION_BUILD 0
 
 // Windows VERSIONINFO must remain numeric. The release label is separate:
-// v0.9.4.2 is a stable maintenance release.
-#define SPELLCROSS_VERSION_COMMA 0,9,4,2
-#define SPELLCROSS_VERSION_STRING "0.9.4.2"
-#define SPELLCROSS_VERSION_WSTRING L"0.9.4.2"
-#define SPELLCROSS_RELEASE_LABEL "0.9.4.2"
-#define SPELLCROSS_RELEASE_TAG "v0.9.4.2"
+// v0.9.5 is the release label; Windows numeric version is 0.9.5.0.
+#define SPELLCROSS_VERSION_COMMA 0,9,5,0
+#define SPELLCROSS_VERSION_STRING "0.9.5.0"
+#define SPELLCROSS_VERSION_WSTRING L"0.9.5.0"
+#define SPELLCROSS_RELEASE_LABEL "0.9.5"
+#define SPELLCROSS_RELEASE_TAG "v0.9.5"
 
 #define SPELLCROSS_PRODUCT_NAME "Spellcross Reloaded"
 #define SPELLCROSS_PRODUCT_NAME_W L"Spellcross Reloaded"

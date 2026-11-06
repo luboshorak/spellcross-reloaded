@@ -1,6 +1,7 @@
 #include "form_about.h"
 #include "app_identity.h"
 #include "app_version.h"
+#include "../strategic_ui_theme.h"
 #include "../release_version_compare.h"
 
 #include <wx/bitmap.h>
@@ -206,13 +207,14 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
 {
     spellcross_app::ApplyWindowIcon(this);
     SetMinSize(wxSize(650, 480));
-    SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+    SetBackgroundColour(spellcross_menu::Background());
+    SetForegroundColour(spellcross_menu::Text());
 
     auto* root = new wxBoxSizer(wxVERTICAL);
 
     // Header -----------------------------------------------------------------
     auto* header = new wxPanel(this, wxID_ANY);
-    header->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE));
+    header->SetBackgroundColour(spellcross_menu::Highlight());
     auto* headerSizer = new wxBoxSizer(wxHORIZONTAL);
 
     wxIcon icon;
@@ -241,18 +243,21 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     const wxString buildLabel = "Version " + spellcross_app::VersionLabel() +
         "   |   build " + wxString::FromUTF8(__DATE__);
     auto* version = new wxStaticText(header, wxID_ANY, buildLabel);
-    version->SetForegroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+    version->SetForegroundColour(spellcross_strategic_ui::Inactive());
     titleSizer->Add(version, 0);
 
     headerSizer->Add(titleSizer, 1, wxALIGN_CENTER_VERTICAL | wxTOP | wxBOTTOM | wxRIGHT, 18);
     header->SetSizer(headerSizer);
     root->Add(header, 0, wxEXPAND);
 
-    root->Add(new wxStaticLine(this), 0, wxEXPAND);
+    auto* separatorTop = new wxPanel(this, wxID_ANY, wxDefaultPosition,
+        wxSize(-1, FromDIP(2)), wxBORDER_NONE);
+    separatorTop->SetBackgroundColour(spellcross_menu::Accent());
+    root->Add(separatorTop, 0, wxEXPAND);
 
     // Description -------------------------------------------------------------
     auto* content = new wxPanel(this, wxID_ANY);
-    content->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+    content->SetBackgroundColour(spellcross_menu::Background());
     auto* contentSizer = new wxBoxSizer(wxVERTICAL);
 
     auto* description = new wxStaticText(content, wxID_ANY,
@@ -263,7 +268,13 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     contentSizer->Add(description, 0, wxEXPAND | wxALL, 16);
 
     // Project details ----------------------------------------------------------
-    auto* projectBox = new wxStaticBoxSizer(wxVERTICAL, content, "Project");
+    auto* projectBox = new wxBoxSizer(wxVERTICAL);
+    auto* projectHeading = new wxStaticText(content, wxID_ANY, "Project");
+    wxFont projectFont = spellcross_menu::MenuFont();
+    projectFont.SetWeight(wxFONTWEIGHT_BOLD);
+    projectHeading->SetFont(projectFont);
+    projectHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
+    projectBox->Add(projectHeading, 0, wxLEFT | wxTOP | wxBOTTOM, FromDIP(9));
     auto* grid = new wxFlexGridSizer(2, 8, 12);
     grid->AddGrowableCol(1, 1);
     AddInfoRow(content, grid, "Author", wxString::FromUTF8("Luboš Horák"));
@@ -274,21 +285,25 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     projectBox->Add(grid, 0, wxEXPAND | wxALL, 10);
 
     auto* projectButtons = new wxBoxSizer(wxHORIZONTAL);
-    auto* openProject = new wxButton(content, ID_OPEN_PROJECT, "Open project on GitHub");
+    auto* openProject = new spellcross_strategic_ui::Button(content, ID_OPEN_PROJECT, "Open project on GitHub");
     projectButtons->Add(openProject, 0, wxRIGHT, 8);
     projectBox->Add(projectButtons, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
     contentSizer->Add(projectBox, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
 
     // Update section -----------------------------------------------------------
-    auto* updateBox = new wxStaticBoxSizer(wxVERTICAL, content, "Updates");
+    auto* updateBox = new wxBoxSizer(wxVERTICAL);
+    auto* updateHeading = new wxStaticText(content, wxID_ANY, "Updates");
+    updateHeading->SetFont(projectFont);
+    updateHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
+    updateBox->Add(updateHeading, 0, wxLEFT | wxTOP | wxBOTTOM, FromDIP(9));
     m_updateStatus = new wxStaticText(content, wxID_ANY,
         "Not checked. Use the button below to compare this build with GitHub releases.");
     m_updateStatus->Wrap(590);
     updateBox->Add(m_updateStatus, 0, wxEXPAND | wxALL, 10);
 
     auto* updateButtons = new wxBoxSizer(wxHORIZONTAL);
-    m_checkUpdates = new wxButton(content, ID_CHECK_UPDATES, "Check for updates");
-    m_openRelease = new wxButton(content, ID_OPEN_RELEASE, "Open GitHub releases");
+    m_checkUpdates = new spellcross_strategic_ui::Button(content, ID_CHECK_UPDATES, "Check for updates");
+    m_openRelease = new spellcross_strategic_ui::Button(content, ID_OPEN_RELEASE, "Open GitHub releases");
     updateButtons->Add(m_checkUpdates, 0, wxRIGHT, 8);
     updateButtons->Add(m_openRelease, 0);
     updateBox->Add(updateButtons, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
@@ -297,15 +312,30 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     content->SetSizer(contentSizer);
     root->Add(content, 1, wxEXPAND);
 
-    root->Add(new wxStaticLine(this), 0, wxEXPAND | wxLEFT | wxRIGHT, 10);
+    auto* separatorBottom = new wxPanel(this, wxID_ANY, wxDefaultPosition,
+        wxSize(-1, FromDIP(2)), wxBORDER_NONE);
+    separatorBottom->SetBackgroundColour(spellcross_menu::Accent());
+    root->Add(separatorBottom, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(10));
     auto* closeRow = new wxBoxSizer(wxHORIZONTAL);
     closeRow->AddStretchSpacer(1);
-    auto* close = new wxButton(this, wxID_OK, "Close");
+    auto* close = new spellcross_strategic_ui::Button(this, wxID_OK, "Close");
     close->SetDefault();
     closeRow->Add(close, 0);
     root->Add(closeRow, 0, wxEXPAND | wxALL, 12);
 
     SetSizerAndFit(root);
+    spellcross_strategic_ui::Apply(this);
+    // Preserve the distinctive large heading after applying the common font.
+    wxFont appFont = spellcross_menu::MenuFont();
+    appFont.SetPointSize(20);
+    appFont.SetWeight(wxFONTWEIGHT_BOLD);
+    appName->SetFont(appFont);
+    appName->SetForegroundColour(spellcross_strategic_ui::Heading());
+    header->SetBackgroundColour(spellcross_menu::Highlight());
+    version->SetForegroundColour(spellcross_strategic_ui::Inactive());
+    projectHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
+    updateHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
+    Layout();
     if (GetSize().GetWidth() < 680)
         SetSize(wxSize(680, GetSize().GetHeight()));
     CentreOnParent();
@@ -341,7 +371,7 @@ void FormAbout::OnOpenRelease(wxCommandEvent&)
 void FormAbout::OnCheckUpdates(wxCommandEvent&)
 {
     m_checkUpdates->Disable();
-    m_updateStatus->SetForegroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT));
+    m_updateStatus->SetForegroundColour(spellcross_menu::Text());
     m_updateStatus->SetLabel("Checking GitHub releases...");
     m_updateStatus->GetParent()->Layout();
     wxYieldIfNeeded();
@@ -353,7 +383,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
     std::string error;
     if (!FetchLatestReleaseTag(latestTag, error))
     {
-        m_updateStatus->SetForegroundColour(wxColour(170, 45, 45));
+        m_updateStatus->SetForegroundColour(wxColour(238, 108, 92));
         m_updateStatus->SetLabel("Update check failed: " + wxString::FromUTF8(error.c_str()));
         m_checkUpdates->Enable();
         m_updateStatus->GetParent()->Layout();
@@ -370,33 +400,33 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
 
     if (!comparable)
     {
-        m_updateStatus->SetForegroundColour(wxColour(100, 80, 20));
+        m_updateStatus->SetForegroundColour(spellcross_strategic_ui::Heading());
         m_updateStatus->SetLabel("Latest GitHub release: " + latest +
             ". The tag is not a standard numeric version, so it cannot be compared automatically.");
         m_openRelease->SetLabel("Open " + latest);
     }
     else if (cmp < 0)
     {
-        m_updateStatus->SetForegroundColour(wxColour(20, 105, 55));
+        m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
         m_updateStatus->SetLabel("A newer build is available: " + latest +
             " (installed: " + spellcross_app::VersionLabel() + ").");
         m_openRelease->SetLabel("Open " + latest + " on GitHub");
     }
     else if (cmp == 0)
     {
-        m_updateStatus->SetForegroundColour(wxColour(20, 105, 55));
+        m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
         m_updateStatus->SetLabel("You are up to date. Latest GitHub release: " + latest + ".");
         m_openRelease->SetLabel("Open " + latest + " on GitHub");
     }
     else
     {
-        m_updateStatus->SetForegroundColour(wxColour(55, 85, 125));
+        m_updateStatus->SetForegroundColour(wxColour(115, 200, 235));
         m_updateStatus->SetLabel("This build (" + spellcross_app::VersionLabel() +
             ") is newer than the latest public GitHub release (" + latest + ").");
         m_openRelease->SetLabel("Open latest public release");
     }
 #else
-    m_updateStatus->SetForegroundColour(wxColour(170, 45, 45));
+    m_updateStatus->SetForegroundColour(wxColour(238, 108, 92));
     m_updateStatus->SetLabel("Automatic update checking is currently available in Windows builds.");
 #endif
 
