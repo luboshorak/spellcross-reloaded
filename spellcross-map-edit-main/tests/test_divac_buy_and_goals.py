@@ -14,7 +14,8 @@ RULES = (ROOT / "source/strategic_buy_variant_rules.h").read_text(encoding="utf-
 
 class DivacBuyAndGoalRegressions(unittest.TestCase):
     def test_all_tactical_transformations_excluded_from_buy_rule(self):
-        self.assertRegex(RULES, r"unitId\s*<=\s*36")
+        self.assertRegex(RULES, r"unitId\s*<\s*37")
+        self.assertRegex(RULES, r"unitId\s*>\s*86")
         self.assertRegex(RULES, r"unitId\s*!=\s*8")
         self.assertRegex(RULES, r"unitId\s*!=\s*35")
         # The extra Destructor 73 and enemy Magotar 48 are excluded by
@@ -42,6 +43,18 @@ class DivacBuyAndGoalRegressions(unittest.TestCase):
                 body = STRATEGY.split("std::vector<StrategicLevelFrame::OriginalBuyRow> StrategicLevelFrame::" + start, 1)[-1]
             self.assertIn("IsStrategicPurchasableUnitType", body[:7000])
     
+
+    def test_radar_1r_and_2r_are_distinct_models_not_toggle_forms(self):
+        import json
+        all_units = json.loads((ROOT / "data/units.json").read_text(encoding="utf-8"))
+        radar1, radar2 = all_units[30], all_units[31]
+        self.assertEqual((radar1["name"], radar2["name"]), ("Radar 1R", "Radar 2R"))
+        self.assertEqual((radar1["special_act_id"], radar2["special_act_id"]), (1, 1))
+        self.assertEqual((radar1["special_act_params"][-1], radar2["special_act_params"][-1]), (11, 14))
+        self.assertNotEqual(radar1["buy_id"], radar2["buy_id"])
+        self.assertIn("30, 31", (ROOT / "tests/test_strategic_buy_variant_rules.cpp").read_text(encoding="utf-8"))
+        self.assertIn("unitId < 37", RULES)
+
     def test_target_sprite_falls_back_to_original_ciel_art(self):
         self.assertEqual(MAP.count('target_sprite = terrain->GetSprite("TARGET");'), 2)
         self.assertEqual(MAP.count("target_sprite = escape_sprite;"), 2)

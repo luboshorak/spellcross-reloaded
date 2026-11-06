@@ -12,8 +12,15 @@
 // Offer only the normal purchased configurations (7, 17, 36).
 // Types 8 and 35 must still exist in JEDNOTKY.DEF for battle transformations.
 // Type 73, although it has the same category and buy-id as 17 in units.json,
-// is beyond the normal roster and must never enter the purchase/re-arm lists.
-// Enemy Magotar 47 <-> 48 is likewise excluded as an enemy unit.
+// is within the original scenario-only range 37..86 and must never enter
+// the purchase/re-arm lists. Enemy Magotar 47 <-> 48 is also excluded.
+//
+// Radars 30 (Radar 1R) and 31 (Radar 2R) are distinct strategic models,
+// not a tactical transformation pair. Both independently toggle radar_up
+// via special action 1; their original detection radii are 11 and 14.
+//
+// Original 37..86 are excluded, but future mod-added types above 86 are
+// deliberately left to the existing research, price and faction gates.
 //
 // Do not apply this rule to tactical loading, saves, mission events, or the
 // unit definition database: both forms are needed in those contexts.
@@ -21,6 +28,7 @@ namespace spellcross_strategy
 {
     inline bool IsStrategicPurchasableUnitType(int unitId)
     {
-        return unitId >= 0 && unitId <= 36 && unitId != 8 && unitId != 35;
+        return unitId >= 0 && unitId != 8 && unitId != 35 &&
+            (unitId < 37 || unitId > 86);
     }
 }
