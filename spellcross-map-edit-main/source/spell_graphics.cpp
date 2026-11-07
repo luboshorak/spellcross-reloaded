@@ -16,14 +16,10 @@
 #include "wx/dcbuffer.h"
 #include <wx/rawbmp.h>
 #include <algorithm>
+#include <cstring>
 
 
-SpellGraphics::SpellGraphics()
-{
-	vector<wxCursor*> curs ={cur_pointer, cur_wait, cur_select, cur_question, cur_move, cur_attack_down, cur_attack_up, cur_attack_up_down};
-	for(auto& cur : curs)
-		cur = NULL;
-}
+SpellGraphics::SpellGraphics() = default;
 
 SpellGraphics::~SpellGraphics()
 {
@@ -45,11 +41,11 @@ int SpellGraphics::AddRaw(uint8_t* data,int dlen,int x_size,int y_size,const cha
 	items.emplace_back();	
 	auto &grp = items.back();	
 	
-	// store name (loose extension)
-	if(with_ext)
-		strcpy(grp.name,name);
-	else
-		strcpy_noext(grp.name,name);
+	// Preserve the loose-extension naming convention without overflowing name[13].
+	const size_t source_len = with_ext ? std::strlen(name) : std::strcspn(name, ".");
+	const size_t copy_len = (std::min)(source_len, sizeof(grp.name) - 1);
+	std::memcpy(grp.name, name, copy_len);
+	grp.name[copy_len] = '\0';
 
 	// copy pixel data	
 	grp.pixels.resize(dlen);
@@ -197,8 +193,10 @@ int SpellGraphics::AddLED(int color,const char* name,uint8_t pal[][3])
 	items.emplace_back();
 	auto& grp = items.back();
 
-	// store name (loose extension)
-	strcpy(grp.name,name);
+	// Fixed-width graphic resource names must remain null-terminated.
+	const size_t copy_len = (std::min)(std::strlen(name), sizeof(grp.name) - 1);
+	std::memcpy(grp.name, name, copy_len);
+	grp.name[copy_len] = '\0';
 
 	// make size
 	grp.x_size = 4;

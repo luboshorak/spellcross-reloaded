@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdarg.h>
 #include <vector>
+#include <limits>
 
 //using namespace std;
 
@@ -109,8 +110,12 @@ public:
 
     // write string with 16bit size prefix
     int write_str_p16(const char *data) {
-        uint16_t len = std::strlen(data) + 1;
-        std::ofstream::write((char*)&len,sizeof(uint16_t));
+        const size_t size_with_terminator = std::strlen(data) + 1;
+        if (size_with_terminator > std::numeric_limits<uint16_t>::max()) {
+            return(1);  // Cannot represent the length in a 16-bit prefix.
+        }
+        const uint16_t len = static_cast<uint16_t>(size_with_terminator);
+        std::ofstream::write(reinterpret_cast<const char*>(&len),sizeof(uint16_t));
         std::ofstream::write(data,len);
         return(0);
     };

@@ -854,7 +854,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		font7 = new SpellFont(font7_path.wstring());
 		if (status_list) status_list(" - OK");
 	}
-	catch (const std::exception& error) {
+	catch (const std::exception&) {
 		font7 = nullptr; // fallback: no 7pix font
 		if (status_list) status_list(" - failed! (optional, continuing)");
 		// NEHÁZET, jen log
@@ -869,7 +869,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		if (font) font->Merge(font14_aux);
 		if (status_list) status_list(" - OK");
 	}
-	catch (const std::exception& error) {
+	catch (const std::exception&) {
 		if (status_list) status_list(" - failed! (optional, continuing)");
 		// NEHÁZET
 	}

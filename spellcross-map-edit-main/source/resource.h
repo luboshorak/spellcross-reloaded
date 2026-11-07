@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
-// Microsoft Visual C++ vygeneroval soubor zahrnutí.
-// Použito resources.rc
+// Microsoft Visual C++ generated resource header.
+// Used by resources.rc
 //
 #define wxUSE_NO_MANIFEST               1
 #define IDI_ICON1                       101

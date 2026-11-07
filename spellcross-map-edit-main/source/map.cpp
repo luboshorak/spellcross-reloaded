@@ -2316,7 +2316,7 @@ int SpellMap::Load(wstring& path, SpellData* spelldata)
 		try {
 			def = new SpellDEF(path);
 		}
-		catch (const runtime_error& error) {
+		catch (const runtime_error&) {
 			last_error = string_format("Loading map DEF file '%ls' failed!", path.c_str());
 			Close();
 			return(1);
@@ -3246,7 +3246,7 @@ int SpellMap::SaveDTA(std::wstring path)
 	// terrain name	
 	char terr_name[13];
 	memset(terr_name, '\0', sizeof(terr_name));
-	strncpy(terr_name, terrain->name.c_str(), sizeof(terr_name));
+	memcpy(terr_name, terrain->name.c_str(), strnlen_s(terrain->name.c_str(), sizeof(terr_name)));
 	fw.write(terr_name, sizeof(terr_name));
 
 	// write sprites names
@@ -3255,7 +3255,7 @@ int SpellMap::SaveDTA(std::wstring path)
 		// non terminated 8 chars
 		char name[8];
 		memset(name, '\0', sizeof(name));
-		strncpy(name, spr->name.c_str(), sizeof(name));
+		memcpy(name, spr->name.c_str(), strnlen_s(spr->name.c_str(), sizeof(name)));
 		fw.write(name, sizeof(name));
 	}
 
@@ -3301,7 +3301,7 @@ int SpellMap::SaveDTA(std::wstring path)
 		// non terminated 8 chars
 		char name[8];
 		memset(name, '\0', sizeof(name));
-		strncpy(name, spr->name.c_str(), sizeof(name));
+		memcpy(name, spr->name.c_str(), strnlen_s(spr->name.c_str(), sizeof(name)));
 		fw.write(name, sizeof(name));
 	}
 
@@ -3337,7 +3337,7 @@ int SpellMap::SaveDTA(std::wstring path)
 		// write non terminated 8 char names
 		char name[8];
 		memset(name, '\0', sizeof(name));
-		strncpy(name, anm->name, sizeof(name));
+		memcpy(name, anm->name, strnlen_s(anm->name, sizeof(name)));
 		fw.write(name, sizeof(name));
 	}
 
@@ -3397,7 +3397,7 @@ int SpellMap::SaveDTA(std::wstring path)
 		// write non terminated 8 char names
 		char name[8];
 		memset(name, '\0', sizeof(name));
-		strncpy(name, pnm->name, sizeof(name));
+		memcpy(name, pnm->name, strnlen_s(pnm->name, sizeof(name)));
 		fw.write(name, sizeof(name));
 	}
 
@@ -9947,7 +9947,7 @@ bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
         const bool nextIsAir = nextType->isAir();
         for (auto* other = Lunit[idx]; other; other = other->next)
             if (other != enemy && other->unit &&
-                (other->unit->isAir() == nextIsAir ||
+                (static_cast<bool>(other->unit->isAir()) == nextIsAir ||
                  (landing && !other->unit->isAir())))
                 return false;
         return true;
@@ -11173,7 +11173,7 @@ void SpellMap::OnHUDswitchAirLand()
 		{
 			if (candidate != unit_selection && candidate->unit && !candidate->is_enemy &&
 				!candidate->isDead() && candidate->panic_turns <= 0 &&
-				candidate->unit->isAir() != static_cast<bool>(unit_sel_land_preference))
+				static_cast<bool>(candidate->unit->isAir()) != static_cast<bool>(unit_sel_land_preference))
 			{
 				SelectUnit(candidate);
 				break;

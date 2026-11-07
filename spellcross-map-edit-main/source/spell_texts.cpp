@@ -5,6 +5,7 @@
 #include "other.h"
 #include <stdexcept>
 #include <string>
+#include <limits>
 
 //using namespace std;
 
@@ -92,7 +93,7 @@ SpellTextChunks SpellTextRec::WordWrap(SpellFont* font,int x_limit)
     SpellTextChunks lines;
 
     wstring chunk;
-    int last_len = 0;
+    size_t last_len = 0;
     int line_pix = 0;
     wchar_t *w_str = pstr;
     wchar_t p_sym = ' ';
@@ -126,7 +127,6 @@ SpellTextChunks SpellTextRec::WordWrap(SpellFont* font,int x_limit)
                 pos_x = 0;
                 pos_y += y_step;
                 pstr = w_str;                
-                p_sym == ' ';                
             }
             chunk.insert(chunk.end(),*pstr);
         }
@@ -194,7 +194,10 @@ int SpellTexts::GetTextId(SpellTextRec* text)
     auto id = find(list.begin(), list.end(), text);
     if(id == list.end())
         return(-1);
-    return(id - list.begin());
+    const auto index = id - list.begin();
+    if(index > std::numeric_limits<int>::max())
+        return(-1);
+    return(static_cast<int>(index));
 }
 
 // get full list of texts

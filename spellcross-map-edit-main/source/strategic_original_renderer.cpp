@@ -331,7 +331,7 @@ bool StrategicOriginalRenderer::RenderStrategicMap(const AssetLoader& load,
     Palette pal{};
     if(!BuildPalette(load, state.level, pal, error)) return false;
 
-    std::vector<std::uint8_t> bigMap, vmm, hmla, level, clk, lst1, lst2;
+    std::vector<std::uint8_t> bigMap, vmm, hmla, level, clk, listPanel1Pixels, listPanel2Pixels;
     if(!LoadExact(load, "BIG_MAP.LZ", kScreenW * kScreenH, bigMap, error)) return false;
     if(!LoadExact(load, "VMM_FULL.LZ", kScreenSpecificW * kScreenH, vmm, error)) return false;
     if(!LoadExact(load, LevelAsset("HMLA__%02d.LZ", state.level), kMapW * kMapH, hmla, error)) return false;
@@ -341,8 +341,8 @@ bool StrategicOriginalRenderer::RenderStrategicMap(const AssetLoader& load,
         SetError(error, "Cannot load CLK territory mask");
         return false;
     }
-    if(!LoadExact(load, "VMM_LST1.LZ", 163u * 41u, lst1, error)) return false;
-    if(!LoadExact(load, "VMM_LST2.LZ", 406u * 174u, lst2, error)) return false;
+    if(!LoadExact(load, "VMM_LST1.LZ", 163u * 41u, listPanel1Pixels, error)) return false;
+    if(!LoadExact(load, "VMM_LST2.LZ", 406u * 174u, listPanel2Pixels, error)) return false;
 
     int clkW = 0, clkH = 0;
     std::vector<std::uint8_t> territoryMask;
@@ -387,8 +387,8 @@ bool StrategicOriginalRenderer::RenderStrategicMap(const AssetLoader& load,
     }
 
     // Exact original strategic-map subpanels found by matching against reference.
-    BlitOpaque(canvas, kScreenW, kScreenH, 6, 298, lst2, 406, 174);
-    BlitOpaque(canvas, kScreenW, kScreenH, 412, 434, lst1, 163, 41);
+    BlitOpaque(canvas, kScreenW, kScreenH, 6, 298, listPanel2Pixels, 406, 174);
+    BlitOpaque(canvas, kScreenW, kScreenH, 412, 434, listPanel1Pixels, 163, 41);
     if(!BlitListChrome(load, canvas, "SB_BG01.LZ", 429, "SB_BAR01.LZ", 373, error)) return false;
 
     // Convert the indexed framebuffer once. No layout manager touches coordinates.

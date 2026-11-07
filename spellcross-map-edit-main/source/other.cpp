@@ -1,18 +1,28 @@
 ﻿#include "other.h"
 
 #include <string>
-#include <codecvt>
 #include <filesystem>
 #include <random>
 #include <regex>
+#include <limits>
+#include <stdexcept>
+#include <Windows.h>
 
 
+// Windows wchar_t uses UTF-16. Replace deprecated codecvt with strict conversions.
 std::wstring char2wstring(const char* str)
 {
-    //setup converter
-    typedef std::codecvt_utf8<wchar_t> convert_type;
-    std::wstring_convert<convert_type,wchar_t> converter;
-    return converter.from_bytes(str);
+    if (!str)
+        throw std::invalid_argument("Null UTF-8 string");
+    const int required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, str, -1, nullptr, 0);
+    if (required == 0)
+        throw std::range_error("Invalid UTF-8 string");
+
+    std::wstring result(static_cast<size_t>(required), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, str, -1, result.data(), required) == 0)
+        throw std::range_error("UTF-8 to UTF-16 conversion failed");
+    result.pop_back(); // Exclude the terminating NUL included by -1.
+    return result;
 }
 
 std::wstring string2wstring(std::string str)
@@ -20,11 +30,25 @@ std::wstring string2wstring(std::string str)
     return char2wstring(str.c_str());
 }
 
-// convert wstring to UTF-8 string
+// Convert all UTF-16 code units to UTF-8, including embedded NULs.
 std::string wstring2string(const std::wstring& str)
 {
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
-    return myconv.to_bytes(str);
+    if (str.empty())
+        return {};
+    if (str.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        throw std::length_error("UTF-16 string exceeds Windows API length limit");
+
+    const int chars = static_cast<int>(str.size());
+    const int required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+        str.data(), chars, nullptr, 0, nullptr, nullptr);
+    if (required == 0)
+        throw std::range_error("Invalid UTF-16 string");
+
+    std::string result(static_cast<size_t>(required), '\0');
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+        str.data(), chars, result.data(), required, nullptr, nullptr) == 0)
+        throw std::range_error("UTF-16 to UTF-8 conversion failed");
+    return result;
 }
 
 // Original Polish language tables use Windows-1250, not UTF-8.
@@ -135,10 +159,10 @@ char wchar2charCP895(wchar_t sym)
                      L"≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ "};
     if(sym < 128)
         return(char(sym));
-    int unisym = codes.find(sym);
+    const auto unisym = codes.find(sym);
     if(unisym == std::wstring::npos)
         return(' ');
-    return(128 + unisym);
+    return(static_cast<char>(128 + unisym));
 }
 
 // convert wstring using CZ CP895 encoding to string

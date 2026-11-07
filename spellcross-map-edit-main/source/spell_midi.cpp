@@ -87,7 +87,7 @@ SpellMIDI::SpellMIDI(const std::wstring& music_fs_path, std::function<void(std::
         try {
             SpellMIDIfile* midi_file = new SpellMIDIfile(file->data,file->name);
             m_midi.push_back(midi_file);
-        }catch(const runtime_error& error) {
+        }catch(const runtime_error&) {
             delete music_fs;
             if(status_list)
                 status_list("   - failed!");

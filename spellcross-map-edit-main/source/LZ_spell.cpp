@@ -13,6 +13,7 @@
 #include "LZ_spell.h"
 
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 //---------------------------------------------------------------------------
 
@@ -677,7 +678,6 @@ int LZspell::LZbitPut(void** dsrc,int bw,int id)
 		0xF8000000u,0xFC000000u,0xFE000000u,0xFF000000u,
 		0xFF800000u,0xFFC00000u,0xFFE00000u,0xFFF00000u};	
 	static int bofs;
-	int i;
 
 	// reset bitstream
 	if(bw==0)
@@ -778,7 +778,10 @@ int LZspell::LZputItem(int id)
 	// put item
 	uint8_t* dptr = data.data() + duse;
 	int delta = LZbitPut((void**)&dptr,lzd.bw,id);
-	duse = dptr - data.data();
+	const auto bytes_used = dptr - data.data();
+	if(bytes_used > std::numeric_limits<int>::max())
+		return(2);
+	duse = static_cast<int>(bytes_used);
 	rlen += delta;
 
 	return(0);
@@ -794,7 +797,10 @@ int LZspell::LZputClear(void)
 	// put clear code
 	uint8_t* dptr = data.data() + duse;
 	int delta = LZbitPut((void**)&dptr, lzd.bw, lzd.idn);
-	duse = dptr - data.data();
+	const auto bytes_used = dptr - data.data();
+	if(bytes_used > std::numeric_limits<int>::max())
+		return(2);
+	duse = static_cast<int>(bytes_used);
 	rlen += delta;
 
 	return(0);

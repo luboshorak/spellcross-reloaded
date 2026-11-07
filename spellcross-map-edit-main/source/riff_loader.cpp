@@ -23,7 +23,7 @@ RIFF::RIFF(uint8_t* data,int len)
         throw std::runtime_error("Not a RIFF container (no RIFF header).");
     dptr += 4;
     uint32_t riff_len = *(uint32_t*)dptr; dptr += sizeof(uint32_t);
-    if(riff_len + 8 > len)
+    if(riff_len > static_cast<uint32_t>(len - 8))
         throw std::runtime_error("Input RIFF file possibly incomplete!");
     auto riffend = data + 8 + riff_len;
 
