@@ -9947,7 +9947,7 @@ bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
         const bool nextIsAir = nextType->isAir();
         for (auto* other = Lunit[idx]; other; other = other->next)
             if (other != enemy && other->unit &&
-                (other->unit->isAir() == nextIsAir ||
+                (static_cast<bool>(other->unit->isAir()) == nextIsAir ||
                  (landing && !other->unit->isAir())))
                 return false;
         return true;
@@ -11173,7 +11173,7 @@ void SpellMap::OnHUDswitchAirLand()
 		{
 			if (candidate != unit_selection && candidate->unit && !candidate->is_enemy &&
 				!candidate->isDead() && candidate->panic_turns <= 0 &&
-				candidate->unit->isAir() != static_cast<bool>(unit_sel_land_preference))
+				static_cast<bool>(candidate->unit->isAir()) != static_cast<bool>(unit_sel_land_preference))
 			{
 				SelectUnit(candidate);
 				break;
