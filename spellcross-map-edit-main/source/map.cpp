@@ -3246,7 +3246,7 @@ int SpellMap::SaveDTA(std::wstring path)
 	// terrain name	
 	char terr_name[13];
 	memset(terr_name, '\0', sizeof(terr_name));
-	strncpy(terr_name, terrain->name.c_str(), sizeof(terr_name));
+	memcpy(terr_name, terrain->name.c_str(), strnlen_s(terrain->name.c_str(), sizeof(terr_name)));
 	fw.write(terr_name, sizeof(terr_name));
 
 	// write sprites names
@@ -3255,7 +3255,7 @@ int SpellMap::SaveDTA(std::wstring path)
 		// non terminated 8 chars
 		char name[8];
 		memset(name, '\0', sizeof(name));
-		strncpy(name, spr->name.c_str(), sizeof(name));
+		memcpy(name, spr->name.c_str(), strnlen_s(spr->name.c_str(), sizeof(name)));
 		fw.write(name, sizeof(name));
 	}
 
@@ -3301,7 +3301,7 @@ int SpellMap::SaveDTA(std::wstring path)
 		// non terminated 8 chars
 		char name[8];
 		memset(name, '\0', sizeof(name));
-		strncpy(name, spr->name.c_str(), sizeof(name));
+		memcpy(name, spr->name.c_str(), strnlen_s(spr->name.c_str(), sizeof(name)));
 		fw.write(name, sizeof(name));
 	}
 
@@ -3337,7 +3337,7 @@ int SpellMap::SaveDTA(std::wstring path)
 		// write non terminated 8 char names
 		char name[8];
 		memset(name, '\0', sizeof(name));
-		strncpy(name, anm->name, sizeof(name));
+		memcpy(name, anm->name, strnlen_s(anm->name, sizeof(name)));
 		fw.write(name, sizeof(name));
 	}
 
@@ -3397,7 +3397,7 @@ int SpellMap::SaveDTA(std::wstring path)
 		// write non terminated 8 char names
 		char name[8];
 		memset(name, '\0', sizeof(name));
-		strncpy(name, pnm->name, sizeof(name));
+		memcpy(name, pnm->name, strnlen_s(pnm->name, sizeof(name)));
 		fw.write(name, sizeof(name));
 	}
 
