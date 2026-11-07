@@ -95,6 +95,24 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         self.assertLess(options.index("!unit_range->IsRangePending(unit_selection)"),
                         options.rindex("unit_range->FindRange(unit_selection);"))
 
+    def test_pending_range_still_waits_before_returning_to_input(self):
+        # #129 stopped re-queuing an existing range (good), but also skipped
+        # WaitIdle() while it was in flight. The previous successful build
+        # always waited before handing control back to the tactical UI.
+        options = MAP.split("int SpellMap::GetUnitOptions(", 1)[1].split(
+            "// reset AP of all units", 1
+        )[0]
+        pending = options.split("// Tick() may already be computing", 1)[1].split(
+            "if (unit_selection && g_attack_map_dirty_for", 1
+        )[0]
+        self.assertIn("if (!unit_range->IsRangePending(unit_selection))", pending)
+        self.assertIn("unit_range->FindRange(unit_selection);", pending)
+        self.assertIn("unit_range->WaitIdle();", pending)
+        self.assertLess(pending.index("if (!unit_range->IsRangePending"),
+                        pending.index("unit_range->FindRange(unit_selection);"))
+        self.assertLess(pending.index("unit_range->FindRange(unit_selection);"),
+                        pending.index("unit_range->WaitIdle();"))
+
     def test_native_movement_boot_cursor_remains_wired_to_move_option(self):
         self.assertIn('gres.cur_move = gres.RenderCUR("DOJAZD.CUR");', GRAPHICS)
         mouse_move = MAIN.split("void MainFrame::OnCanvasMouseMove(", 1)[1].split(
