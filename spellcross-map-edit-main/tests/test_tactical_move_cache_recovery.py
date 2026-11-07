@@ -113,6 +113,24 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         self.assertLess(pending.index("unit_range->FindRange(unit_selection);"),
                         pending.index("unit_range->WaitIdle();"))
 
+    def test_visible_move_overlay_recovers_if_ai_overwrites_shared_cache(self):
+        # A previous enemy/panic/reaction calculation can replace the only
+        # MoveRange result without changing the selected unit. Refresh before
+        # taking Render's map and result locks, never under them.
+        render = MAP.split("int SpellMap::Render(wxBitmap", 1)[1].split(
+            "// find selection tiles", 1
+        )[0]
+        self.assertIn("viewingUnitMoveRange()", render)
+        self.assertIn("RefreshSelectedMovePreview();", render)
+        self.assertIn("!enemy_turn_running", render)
+        self.assertLess(render.index("RefreshSelectedMovePreview();"),
+                        render.index("LockMap();") if "LockMap();" in render else 999999)
+        rendered = MAP.split("int SpellMap::Render(wxBitmap", 1)[1].split(
+            "// The shared worker can last have published", 1
+        )[0]
+        self.assertLess(rendered.index("RefreshSelectedMovePreview();"),
+                        rendered.index("unit_range->ResultLock(true);"))
+
     def test_native_movement_boot_cursor_remains_wired_to_move_option(self):
         self.assertIn('gres.cur_move = gres.RenderCUR("DOJAZD.CUR");', GRAPHICS)
         mouse_move = MAIN.split("void MainFrame::OnCanvasMouseMove(", 1)[1].split(
