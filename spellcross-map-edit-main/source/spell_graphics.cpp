@@ -18,12 +18,7 @@
 #include <algorithm>
 
 
-SpellGraphics::SpellGraphics()
-{
-	vector<wxCursor*> curs ={cur_pointer, cur_wait, cur_select, cur_question, cur_move, cur_attack_down, cur_attack_up, cur_attack_up_down};
-	for(auto& cur : curs)
-		cur = NULL;
-}
+SpellGraphics::SpellGraphics() = default;
 
 SpellGraphics::~SpellGraphics()
 {
