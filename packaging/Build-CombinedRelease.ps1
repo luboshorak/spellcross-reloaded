@@ -114,8 +114,8 @@ $vsInstallation = $null
 if (Test-Path -LiteralPath $vswhere) {
     $installed = @(& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
     if ($installed.Count -gt 0 -and $installed[0]) { $vsInstallation = [string]$installed[0] }
-    $m = @(& $vswhere -latest -products '*' -find 'MSBuild\Current\Bin\MSBuild.exe')
-    $d = @(& $vswhere -latest -products '*' -find 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe')
+    $m = @(& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'MSBuild\Current\Bin\MSBuild.exe')
+    $d = @(& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe')
     if ($m.Count -gt 0) { $msbuild = $m[0] }
     if ($d.Count -gt 0) { $dumpbin = $d[0] }
 }
@@ -166,7 +166,7 @@ if (-not $SkipBuild) {
     $buildLogDir = Join-Path $root 'dist\build-logs'
     New-Item -ItemType Directory -Path $buildLogDir -Force | Out-Null
     foreach ($project in @($gameProject, $editorProject)) {
-        $projectName = [System.IO.Path]::GetFileName((Split-Path -Parent $project))
+        $projectName = if ($project -eq $gameProject) { 'game' } else { 'editor' }
         $buildLog = Join-Path $buildLogDir ("$projectName-$releaseVersion.log")
         Write-Host "Building Release|x64 ($buildTarget): $project" -ForegroundColor Cyan
         $buildArgs = @('/m', $buildTarget, '/p:Configuration=Release', '/p:Platform=x64',
@@ -213,14 +213,18 @@ Copy-Required $editorExe (Join-Path $stageEditor 'spellcross_map_editor.exe')
 # release version alone is not an adequate identifier for a bugfix build.
 $gitBranch = '(no git)'
 $gitCommit = '(no git)'
+$gitWorktree = 'unknown'
 if (Get-Command git -ErrorAction SilentlyContinue) {
     $gitBranchCandidate = & git -C $root branch --show-current
     if ($LASTEXITCODE -eq 0 -and $gitBranchCandidate) { $gitBranch = "$gitBranchCandidate".Trim() }
     $gitCommitCandidate = & git -C $root rev-parse HEAD
     if ($LASTEXITCODE -eq 0 -and $gitCommitCandidate) { $gitCommit = "$gitCommitCandidate".Trim() }
     $gitChanges = @(& git -C $root status --porcelain --untracked-files=no)
-    if ($LASTEXITCODE -eq 0 -and $gitChanges.Count -gt 0) {
-        Write-Warning 'Tracked sources have local changes: BUILD-INFO Git commit alone does not identify the exact source state.'
+    if ($LASTEXITCODE -eq 0) {
+        $gitWorktree = if ($gitChanges.Count -gt 0) { 'dirty' } else { 'clean' }
+        if ($gitWorktree -eq 'dirty') {
+            Write-Warning 'Tracked sources have local changes: BUILD-INFO Git commit alone does not identify the exact source state.'
+        }
     }
 }
 $gameHash = (Get-FileHash -LiteralPath (Join-Path $stage 'Spellcross.exe') -Algorithm SHA256).Hash
@@ -228,6 +232,7 @@ $pdbHash = (Get-FileHash -LiteralPath (Join-Path $stageSymbols 'Spellcross.pdb')
 @"
 Git branch: $gitBranch
 Git commit: $gitCommit
+Git tracked worktree: $gitWorktree
 Game version: $releaseVersion
 Release label: $packageVersion
 Release tag: $releaseTag
