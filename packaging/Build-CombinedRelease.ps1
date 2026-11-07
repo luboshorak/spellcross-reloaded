@@ -1,11 +1,12 @@
 ﻿# Spellcross Reloaded + original map editor: clean portable x64 release.
 # Windows PowerShell 5.1+, MSVC Build Tools, wxWidgets/vcpkg x64.
-# Usage: .\packaging\Build-CombinedRelease.ps1 [-SkipBuild] [-WxRoot <path>] [-NoSfx] [-WinRARPath <path>]
+# Usage: .\packaging\Build-CombinedRelease.ps1 -Rebuild [-WxRoot <path>] [-PlatformToolset v143] [-MovieSource previous-release.zip] [-NoSfx]
 [CmdletBinding()]
 param(
     [switch]$SkipBuild,
     [switch]$Rebuild,
     [string]$WxRoot = '',
+    [string]$PlatformToolset = '',
     [string]$OutputDirectory = '',
     [string]$MovieSource = '',
     [switch]$NoZip,
@@ -59,8 +60,10 @@ function Copy-Required([string]$From, [string]$To) {
     Copy-Item -LiteralPath $From -Destination $To -Force
 }
 Assert-File $gameProject
-Assert-File $editorProject
-Assert-File (Join-Path $editor 'data\COMMON.fs')
+if (-not (Test-Path -LiteralPath $editorProject -PathType Leaf) -or
+    -not (Test-Path -LiteralPath (Join-Path $editor 'data\COMMON.fs') -PathType Leaf)) {
+    throw 'Standalone map editor submodule missing or incomplete. From the repo root run: git submodule sync --recursive; git submodule update --init --recursive'
+}
 
 # WinRAR is optional for regular ZIP builds, but when found we also emit an
 # SFX installer. -NoSfx disables it; -WinRARPath overrides autodetection.
@@ -107,7 +110,10 @@ if (-not $NoSfx) {
 $vswhere = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
 $msbuild = $null
 $dumpbin = $null
+$vsInstallation = $null
 if (Test-Path -LiteralPath $vswhere) {
+    $installed = @(& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+    if ($installed.Count -gt 0 -and $installed[0]) { $vsInstallation = [string]$installed[0] }
     $m = @(& $vswhere -latest -products '*' -find 'MSBuild\Current\Bin\MSBuild.exe')
     $d = @(& $vswhere -latest -products '*' -find 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe')
     if ($m.Count -gt 0) { $msbuild = $m[0] }
@@ -136,15 +142,41 @@ if (-not $WxRoot) {
 }
 if ($WxRoot) { $WxRoot = (Resolve-Path -LiteralPath $WxRoot).Path.TrimEnd('\') + '\' }
 
+# Older project files default to v145. VS 2022 generally ships v143.
+# Select an installed toolset and pass it as an explicit MSBuild property.
+if (-not $PlatformToolset -and $vsInstallation) {
+    foreach ($targetsVersion in @('v180', 'v170', 'v160')) {
+        $toolsets = Join-Path $vsInstallation ("MSBuild\Microsoft\VC\$targetsVersion\Platforms\x64\PlatformToolsets")
+        foreach ($candidate in @('v145', 'v143', 'v142')) {
+            if (Test-Path -LiteralPath (Join-Path $toolsets $candidate) -PathType Container) {
+                $PlatformToolset = $candidate
+                break
+            }
+        }
+        if ($PlatformToolset) { break }
+    }
+}
+if ($PlatformToolset) { Write-Host "Using MSVC PlatformToolset: $PlatformToolset" -ForegroundColor Cyan }
+
 if ($SkipBuild -and $Rebuild) { throw 'Cannot combine -SkipBuild and -Rebuild.' }
 if (-not $SkipBuild) {
     if (-not $msbuild) { throw 'MSBuild unavailable. Install Visual Studio C++ tools or use -SkipBuild.' }
     if (-not $WxRoot) { throw 'wxWidgets root unavailable. Supply -WxRoot path-to-vcpkg\installed\x64-windows.' }
     $buildTarget = if ($Rebuild) { '/t:Rebuild' } else { '/t:Build' }
+    $buildLogDir = Join-Path $root 'dist\build-logs'
+    New-Item -ItemType Directory -Path $buildLogDir -Force | Out-Null
     foreach ($project in @($gameProject, $editorProject)) {
-        Write-Host "Building Release|x64 ($buildTarget): $project"
-        & $msbuild $project '/m' $buildTarget '/p:Configuration=Release' '/p:Platform=x64' ("/p:wxwin=" + $WxRoot) '/v:minimal'
-        if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $project" }
+        $projectName = [System.IO.Path]::GetFileName((Split-Path -Parent $project))
+        $buildLog = Join-Path $buildLogDir ("$projectName-$releaseVersion.log")
+        Write-Host "Building Release|x64 ($buildTarget): $project" -ForegroundColor Cyan
+        $buildArgs = @('/m', $buildTarget, '/p:Configuration=Release', '/p:Platform=x64',
+            ("/p:wxwin=" + $WxRoot), '/v:minimal',
+            ("/flp:LogFile=$buildLog;Verbosity=normal"))
+        if ($PlatformToolset) { $buildArgs += "/p:PlatformToolset=$PlatformToolset" }
+        & $msbuild $project @buildArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "MSBuild failed for $project (exit code $LASTEXITCODE). Full log: $buildLog. If MSB8020 is reported, use -PlatformToolset v143 (VS 2022)."
+        }
     }
 }
 Assert-File $gameExe
@@ -186,6 +218,10 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     if ($LASTEXITCODE -eq 0 -and $gitBranchCandidate) { $gitBranch = "$gitBranchCandidate".Trim() }
     $gitCommitCandidate = & git -C $root rev-parse HEAD
     if ($LASTEXITCODE -eq 0 -and $gitCommitCandidate) { $gitCommit = "$gitCommitCandidate".Trim() }
+    $gitChanges = @(& git -C $root status --porcelain --untracked-files=no)
+    if ($LASTEXITCODE -eq 0 -and $gitChanges.Count -gt 0) {
+        Write-Warning 'Tracked sources have local changes: BUILD-INFO Git commit alone does not identify the exact source state.'
+    }
 }
 $gameHash = (Get-FileHash -LiteralPath (Join-Path $stage 'Spellcross.exe') -Algorithm SHA256).Hash
 $pdbHash = (Get-FileHash -LiteralPath (Join-Path $stageSymbols 'Spellcross.pdb') -Algorithm SHA256).Hash
@@ -229,21 +265,42 @@ foreach ($f in @('MANIFEST.tsv')) {
         Copy-Item -LiteralPath $src -Destination $movieDir -Force
     }
 }
-# 37 v0.8.0 H.264/AAC fallback clips are gitignored. Locate existing
-# locally owned copies, optionally supplied through -MovieSource.
-# Fail explicitly rather than distribute an incomplete cutscene pack.
+# The 37 H.264/AAC fallback clips are gitignored. Reuse local files or a
+# previously published ZIP, while checking every MP4 against MANIFEST.tsv.
+# -MovieSource accepts a folder OR a prior release ZIP.
 $manifest = Join-Path $movieDir 'MANIFEST.tsv'
 Assert-File $manifest
 $movieCandidates = @()
+$movieArchivePath = $null
 if ($MovieSource) {
     $provided = (Resolve-Path -LiteralPath $MovieSource).Path
-    $movieCandidates += $provided
-    $movieCandidates += (Join-Path $provided 'data\movie_fallback')
-    $movieCandidates += (Join-Path $provided 'movie_fallback')
+    if (Test-Path -LiteralPath $provided -PathType Leaf) {
+        if ([System.IO.Path]::GetExtension($provided) -ine '.zip') {
+            throw "-MovieSource expects a directory or a ZIP archive, got: $provided"
+        }
+        $movieArchivePath = $provided
+    } else {
+        $movieCandidates += $provided
+        $movieCandidates += (Join-Path $provided 'data\movie_fallback')
+        $movieCandidates += (Join-Path $provided 'movie_fallback')
+    }
+} else {
+    $previousReleaseZip = Join-Path $OutputDirectory 'Spellcross_Reloaded_v0.9.4.2.zip'
+    if (Test-Path -LiteralPath $previousReleaseZip -PathType Leaf) {
+        $movieArchivePath = $previousReleaseZip
+        Write-Host "Reusing MP4s from previous release: $movieArchivePath"
+    }
 }
 $movieCandidates += (Join-Path $game 'builds\x64\Release\data\movie_fallback')
 $movieCandidates += (Join-Path $gameAssets 'movie_fallback')
+$movieArchive = $null
+if ($movieArchivePath) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $movieArchive = [System.IO.Compression.ZipFile]::OpenRead($movieArchivePath)
+}
 $movieCount = 0
+try {
 foreach ($line in (Get-Content -LiteralPath $manifest -Encoding UTF8 | Select-Object -Skip 1)) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
     $fields = $line.Split([char]9)
@@ -263,15 +320,36 @@ foreach ($line in (Get-Content -LiteralPath $manifest -Encoding UTF8 | Select-Ob
             break
         }
     }
+    $destinationMovie = Join-Path $movieDir $movieFile
+    if (-not $movieSrc -and $movieArchive) {
+        $wantedEntry = 'data/movie_fallback/' + $movieFile
+        $entry = $movieArchive.Entries |
+            Where-Object { ($_.FullName -replace '\\', '/') -ieq $wantedEntry } |
+            Select-Object -First 1
+        if ($entry) {
+            $inputStream = $entry.Open()
+            try {
+                $outputStream = [System.IO.File]::Create($destinationMovie)
+                try { $inputStream.CopyTo($outputStream) }
+                finally { $outputStream.Dispose() }
+            } finally { $inputStream.Dispose() }
+            $movieSrc = $destinationMovie
+        }
+    }
     if (-not $movieSrc) {
-        throw ("Missing fallback movie " + $movieFile + ". Copy the 37 MP4 files from your v0.8.0 release to spellcross-map-edit-main\data\movie_fallback, or pass -MovieSource pointing at the old release folder.")
+        throw ("Missing fallback movie " + $movieFile + ". Put the prior v0.9.4.2 ZIP in dist, or pass -MovieSource path-to-prior-release.zip (or an extracted folder).")
     }
     $actualSha = (Get-FileHash -LiteralPath $movieSrc -Algorithm SHA256).Hash
     if (-not [string]::Equals($actualSha, $expectedSha, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "MP4 integrity check failed: $movieSrc (does not match MANIFEST.tsv)"
     }
-    Copy-Item -LiteralPath $movieSrc -Destination (Join-Path $movieDir $movieFile) -Force
+    if (-not [string]::Equals($movieSrc, $destinationMovie, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item -LiteralPath $movieSrc -Destination $destinationMovie -Force
+    }
     $movieCount++
+}
+} finally {
+    if ($movieArchive) { $movieArchive.Dispose() }
 }
 if ($movieCount -ne 37) { throw "Expected 37 fallback videos, got $movieCount entries" }
 Write-Host "Bundled and SHA-256 verified all $movieCount MP4 cutscenes." -ForegroundColor Green

@@ -4,6 +4,10 @@ on:
     branches: [main, feature/fullscreen-menu, experimental-features, 'restore/v0.9.4.2-7038920']
   pull_request:
     paths:
+      - 'packaging/Build-CombinedRelease.ps1'
+      - 'spellcross-map-edit-main/source/app_version.h'
+      - 'spellcross-map-edit-main/source/resources.rc'
+      - 'spellcross-map-edit-main/tests/test_release_candidate_metadata.py'
       - 'spellcross-map-edit-main/source/tactical_zoom.h'
       - 'spellcross-map-edit-main/source/strategic_buy_variant_rules.h'
       - 'spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp'
@@ -71,6 +75,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Validate release PowerShell script syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('packaging/Build-CombinedRelease.ps1', [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | Format-List | Out-String | Write-Host
+            throw 'Release script contains PowerShell syntax errors'
+          }
       - name: Download official wxWidgets MSVC x64 libraries
         shell: pwsh
         run: |

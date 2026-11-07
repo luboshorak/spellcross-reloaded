@@ -14,18 +14,16 @@ Spellcross Reloaded is an open-source, fan-made restoration of **Spellcross: The
 
 Start with the [developer documentation index](./docs/README.md) for architecture, coordinate systems, rendering, data formats, lifecycle, build instructions, extension patterns, diagnostics, code conventions, research utilities and the repository-layout audit. Source-level uncertainties are collected in [needs verification](./docs/verification.md).
 
-## v0.9.4.2
+## v0.9.4.3
 
-This maintenance release restores original hierarchy controls and unit indicators, and fixes combat and transition behaviour:
+This maintenance update starts from the stable v0.9.4.2 source commit `7038920`, without merging later changes from `main`.
 
-- Hierarchy uses left-click to add and right-click to remove, with consistent commander hosts and formation bonuses after loading.
-- Strategic unit lists restore original strength bars and activity icons; wounded single-member units show their actual health in the tactical HUD.
-- Artillery cannot fire from slopes; mortar units retain their original exception.
-- Lost formation commanders are announced by name in the tactical information window.
-- Mission background sounds are muted during videos and restored afterwards.
-- Reinforcement messages wait until the strategic map is visible and painted.
+- Hide tactical-only alternate unit forms from the strategic shop and re-arm lists; keep normal UDES and all combat transformations intact. (#120)
+- Restore original red crossed convoy/escape objective markers on tactical maps and minimaps, including unexplored objective cells, without revealing hidden terrain. (#122)
+- Verify Hi-Tech Infantry has no upgrades in the original game; no gameplay change needed. (#123)
+- Update version metadata and improve build diagnostics, MSVC toolset selection and reuse of 37 verified fallback MP4 videos from the previous ZIP.
 
-See the [release notes](./packaging/releases/v0.9.4.2.md) for the full changes. Earlier release notes are kept in [packaging/releases](./packaging/releases).
+See the [release notes](./packaging/releases/v0.9.4.3.md) and [earlier releases](./packaging/releases).
 
 For a crash or unexplained freeze in the development build, attach `debug.log`
 (and any `debug.1.log`–`debug.3.log`) from the game folder to your issue.

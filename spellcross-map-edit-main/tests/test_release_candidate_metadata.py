@@ -19,14 +19,14 @@ def macro(name):
 
 class ReleaseMetadataTest(unittest.TestCase):
     def test_numeric_windows_resource_matches_header(self):
-        self.assertEqual(macro("SPELLCROSS_VERSION_STRING"), "0.9.4.2")
+        self.assertEqual(macro("SPELLCROSS_VERSION_STRING"), "0.9.4.3")
         self.assertIn("#define SPELLCROSS_VERSION_COMMA 0,9,4,2", HEADER)
-        self.assertEqual(RESOURCE.count('"0.9.4.2\\0"'), 2)
+        self.assertEqual(RESOURCE.count('"0.9.4.3\\0"'), 2)
         self.assertNotIn('"0.9.2.3\\0"', RESOURCE)
 
     def test_release_label_and_tag(self):
-        self.assertEqual(macro("SPELLCROSS_RELEASE_LABEL"), "0.9.4.2")
-        self.assertEqual(macro("SPELLCROSS_RELEASE_TAG"), "v0.9.4.2")
+        self.assertEqual(macro("SPELLCROSS_RELEASE_LABEL"), "0.9.4.3")
+        self.assertEqual(macro("SPELLCROSS_RELEASE_TAG"), "v0.9.4.3")
         self.assertIn('SPELLCROSS_RELEASE_LABEL', IDENTITY)
 
     def test_packaging_uses_label_but_checks_binary_version(self):
@@ -37,9 +37,12 @@ class ReleaseMetadataTest(unittest.TestCase):
         self.assertIn('$builtProductVersion.Trim() -ne $releaseVersion', PACKAGER)
         self.assertIn('Release tag: $releaseTag', PACKAGER)
         self.assertIn('MP4 integrity check failed', PACKAGER)
+        self.assertIn('[System.IO.Compression.ZipFile]::OpenRead', PACKAGER)
+        self.assertIn('PlatformToolset', PACKAGER)
+        self.assertIn('MSBuild failed', PACKAGER)
 
     def test_release_notes_present(self):
-        notes = ROOT.parent / "packaging/releases/v0.9.4.2.md"
+        notes = ROOT.parent / "packaging/releases/v0.9.4.3.md"
         self.assertTrue(notes.is_file())
 
 
