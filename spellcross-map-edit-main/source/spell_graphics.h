@@ -15,13 +15,13 @@ class AnimPNM;
 class SpellGraphicItem
 {
 public:
-	int x_size;
-	int y_size;
-	int x_ofs;
-	int y_ofs;
-	char name[13];
+	int x_size = 0;
+	int y_size = 0;
+	int x_ofs = 0;
+	int y_ofs = 0;
+	char name[13]{};
 	vector<uint8_t> pixels;
-	uint8_t (*pal)[3];
+	uint8_t (*pal)[3] = nullptr;
 
 	uint8_t *GetPixels(int y = 0, int x = 0);
 	int Render(uint8_t *buf,uint8_t* buf_end,int buf_x_size,int x_pos,int y_pos,int in_black=false,int* y_buffer=NULL);
