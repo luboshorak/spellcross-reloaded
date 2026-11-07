@@ -5,6 +5,7 @@
 #include "other.h"
 #include <stdexcept>
 #include <string>
+#include <limits>
 
 //using namespace std;
 
@@ -193,7 +194,10 @@ int SpellTexts::GetTextId(SpellTextRec* text)
     auto id = find(list.begin(), list.end(), text);
     if(id == list.end())
         return(-1);
-    return(id - list.begin());
+    const auto index = id - list.begin();
+    if(index > std::numeric_limits<int>::max())
+        return(-1);
+    return(static_cast<int>(index));
 }
 
 // get full list of texts
