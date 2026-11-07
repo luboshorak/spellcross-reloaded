@@ -20,7 +20,7 @@ def macro(name):
 class ReleaseMetadataTest(unittest.TestCase):
     def test_numeric_windows_resource_matches_header(self):
         self.assertEqual(macro("SPELLCROSS_VERSION_STRING"), "0.9.4.3")
-        self.assertIn("#define SPELLCROSS_VERSION_COMMA 0,9,4,2", HEADER)
+        self.assertIn("#define SPELLCROSS_VERSION_COMMA 0,9,4,3", HEADER)
         self.assertEqual(RESOURCE.count('"0.9.4.3\\0"'), 2)
         self.assertNotIn('"0.9.2.3\\0"', RESOURCE)
 
