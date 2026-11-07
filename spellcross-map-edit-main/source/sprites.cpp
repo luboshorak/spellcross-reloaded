@@ -2205,7 +2205,7 @@ int Terrain::SaveSpriteContext(wstring& path)
 	{
 		char name[MAX_SPRITE_NAME+1];
 		memset(name,'\0',sizeof(name));
-		strncpy(name,sprites[k]->name.c_str(),sizeof(name));
+		strncpy_s(name, sizeof(name), sprites[k]->name.c_str(), MAX_SPRITE_NAME);
 		name[MAX_SPRITE_NAME] = '\0';
 		fw.write(name, sizeof(name));
 	}
@@ -2269,7 +2269,7 @@ int Terrain::SaveSpriteContext(wstring& path)
 	{
 		char name[MAX_SPRITE_NAME+1];
 		memset(name,'\0',sizeof(name));
-		strncpy(name,pnm->name,sizeof(name));
+		strncpy_s(name, sizeof(name), pnm->name, MAX_SPRITE_NAME);
 		name[MAX_SPRITE_NAME] = '\0';
 		fw.write(name,sizeof(name));
 	}
