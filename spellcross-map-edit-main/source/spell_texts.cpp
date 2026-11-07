@@ -126,7 +126,6 @@ SpellTextChunks SpellTextRec::WordWrap(SpellFont* font,int x_limit)
                 pos_x = 0;
                 pos_y += y_step;
                 pstr = w_str;                
-                p_sym == ' ';                
             }
             chunk.insert(chunk.end(),*pstr);
         }
