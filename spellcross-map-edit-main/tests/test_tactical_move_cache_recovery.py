@@ -66,6 +66,30 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         )[0]
         self.assertIn("viewingUnitMoveRange() && m_render_move_range_current", palette)
 
+    def test_explored_fog_does_not_hide_reachable_move_tiles(self):
+        render = MAP.split("int SpellMap::Render(wxBitmap", 1)[1].split(
+            "// unlock stuff while rendering", 1
+        )[0]
+        # The legitimate current-unit AP/fire results still select the
+        # original blue palettes; never substitute a foreign worker result.
+        self.assertIn("m_render_move_range_current = unit_range->HasCachedMoveRangeLocked(unit_selection)", render)
+        self.assertIn("const auto keep_movement_tint_in_fog =", render)
+        self.assertIn("viewingUnitMoveRange() && m_render_move_range_current", render)
+        self.assertIn("palette == terrain->filter.bluepal", render)
+        self.assertIn("palette == terrain->filter.dbluepal", render)
+        # L1, L3, START, cursor highlight and L4 all have fog-darkening
+        # overrides; none may erase the selected unit's valid MOVE palette.
+        self.assertEqual(render.count("!keep_movement_tint_in_fog(fil)"), 5)
+        # Completely unseen cells still skip terrain/object rendering.
+        self.assertGreaterEqual(
+            render.count("if (use_view_mask && unit_view->view[mxy] == 0)"),
+            4,
+        )
+        self.assertIn("if (use_view_mask && sid == 0 && unit_view->view[mxy] == 0)", render)
+        # Other revealed-object rendering and fog-of-war state must stay intact.
+        self.assertIn("int hide_units = use_view_mask && unit_view->view[mxy] < 1;", render)
+        self.assertNotIn("unit_view->view[mxy] = 1;", render)
+
     def test_preview_cursor_requires_current_range_owner(self):
         body = MAP.split("int SpellMap::CanUnitMove(", 1)[1].split(
             "// move unit (in game mode)", 1
