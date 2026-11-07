@@ -677,7 +677,6 @@ int LZspell::LZbitPut(void** dsrc,int bw,int id)
 		0xF8000000u,0xFC000000u,0xFE000000u,0xFF000000u,
 		0xFF800000u,0xFFC00000u,0xFFE00000u,0xFFF00000u};	
 	static int bofs;
-	int i;
 
 	// reset bitstream
 	if(bw==0)
