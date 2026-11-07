@@ -5953,7 +5953,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     continue;
                 if (use_view_mask && sid != 0)
                     fil = default_filter;
-                else if (use_view_mask && unit_view->view[mxy] == 1)
+                else if (use_view_mask && unit_view->view[mxy] == 1 &&
+                    !keep_movement_tint_in_fog(fil))
                     fil = terrain->filter.darkpal;
 
 				// L1 elevation
