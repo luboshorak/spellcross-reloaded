@@ -52,19 +52,19 @@ SpellMapEventRec::~SpellMapEventRec()
 }
 // add unit to event spawned units list
 int SpellMapEventRec::AddUnit(MapUnit* unit)
-{	
-	map->LockMap();
-	map->HaltUnitRanging(true);
-	
-	units.push_back(unit);
-	// make unit link to this event
-	unit->creator_event = this;
-	unit->is_event = true;
+{
+    map->HaltUnitRanging(true);
+    map->LockMap();
 
-	map->events->RelinkUnits();
-	map->ResumeUnitRanging(false);
-	map->ReleaseMap();
-	return(0);
+    units.push_back(unit);
+    unit->creator_event = this;
+    unit->is_event = true;
+
+    // Relink without trying to acquire map_lock recursively.
+    map->events->RelinkUnitsAlreadyLocked();
+    map->ReleaseMap();
+    map->ResumeUnitRanging(false);
+    return 0;
 }
 // try extract unit from the spawned units list
 MapUnit *SpellMapEventRec::ExtractUnit(MapUnit* unit)
@@ -299,15 +299,19 @@ SpellMapEventRec* SpellMapEvents::FindEvent(int type,int probab,MapXY pos)
 // inset new event to list
 SpellMapEventRec* SpellMapEvents::AddEvent(SpellMapEventRec* event)
 {
-	map->LockMap();
-	map->HaltUnitRanging(true);
-	events.push_back(event);	
-	map->ResumeUnitRanging(false);
-	map->ReleaseMap();
+    map->HaltUnitRanging(true);
+    map->LockMap();
+    auto* added = AddEventAlreadyLocked(event);
+    map->ReleaseMap();
+    map->ResumeUnitRanging(false);
+    return added;
+}
 
-	//###todo: check duplicates?
-
-	return(event);
+// Only use with the map mutex held and the range workers paused.
+SpellMapEventRec* SpellMapEvents::AddEventAlreadyLocked(SpellMapEventRec* event)
+{
+    events.push_back(event);
+    return event;
 }
 
 // remove event (returns original object, user deletes it!)
@@ -389,16 +393,21 @@ void SpellMapEvents::CleanupEvents()
 // clear all events
 void SpellMapEvents::ClearEvents()
 {
-	map->HaltUnitRanging(true);
-	map->LockMap();
-	events_map.assign(map->x_size*map->y_size,NULL);
-	for(auto& evt : events)
-		delete evt;
-	events.clear();
-	map->ReleaseMap();
-	map->ResumeUnitRanging(false);	
+    map->HaltUnitRanging(true);
+    map->LockMap();
+    ClearEventsAlreadyLocked();
+    map->ReleaseMap();
+    map->ResumeUnitRanging(false);
 }
 
+// Only use with the map mutex held and the range workers paused.
+void SpellMapEvents::ClearEventsAlreadyLocked()
+{
+    events_map.assign(map->x_size * map->y_size, NULL);
+    for (auto* evt : events)
+        delete evt;
+    events.clear();
+}
 
 // get last DEF command parser error
 std::string SpellMapEvents::GetLastError()
@@ -965,8 +974,8 @@ SpellMapEventRec** SpellMapEvents::EventMap(MapXY pos)
 // reset event triggers and build events map for fast search (call at least once at mission start)
 void SpellMapEvents::ResetEvents()
 {
-	map->LockMap();
 	map->HaltUnitRanging(true);
+	map->LockMap();
 
 	// reset all events
 	for(auto & evt : events)
@@ -989,17 +998,26 @@ void SpellMapEvents::ResetEvents()
 	}
 
 	// make link to trigger units
-	RelinkUnits();
+	RelinkUnitsAlreadyLocked();
 
-	map->ResumeUnitRanging(false);
 	map->ReleaseMap();
+	map->ResumeUnitRanging(false);
 }
 
 // build links to particular units
 int SpellMapEvents::RelinkUnits(vector<MapUnit*> *map_units)
 {
-	map->LockMap();
-	map->HaltUnitRanging(true);
+    map->HaltUnitRanging(true);
+    map->LockMap();
+    int result = RelinkUnitsAlreadyLocked(map_units);
+    map->ReleaseMap();
+    map->ResumeUnitRanging(false);
+    return result;
+}
+
+// Only use with the map mutex held and the range workers paused.
+int SpellMapEvents::RelinkUnitsAlreadyLocked(vector<MapUnit*> *map_units)
+{
 		
 	// take map units either from parent map (default) or from explicit list
 	vector<MapUnit*> units_list;
@@ -1063,9 +1081,6 @@ int SpellMapEvents::RelinkUnits(vector<MapUnit*> *map_units)
 		}
 	}
 
-	map->ResumeUnitRanging(false);
-	map->ReleaseMap();
-	
 	return(0);
 }
 

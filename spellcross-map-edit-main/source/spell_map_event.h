@@ -14,7 +14,7 @@ public:
     MapUnit* unit;
     int is_placed;
     bool was_listed;
-    // Pøidán výchozí konstruktor pro podporu default-inicializace
+    // PÃ¸idÃ¡n vÃ½chozÃ­ konstruktor pro podporu default-inicializace
     SpellMapEventUnitRec() : unit(nullptr), is_placed(0), was_listed(false) {}
     SpellMapEventUnitRec(MapUnit* unit) : unit(unit), is_placed(0), was_listed(false) {}
 };
@@ -158,6 +158,11 @@ public:
     int AddSpecialEvent(SpellData* data, SpellDEF* def, SpellDefCmd* cmd);
     int AddMissionObjective(SpellData* data,SpellDEF* def,SpellDefCmd* cmd);
     SpellMapEventRec* AddEvent(SpellMapEventRec *event);
+    // Caller-held map lock / halted range workers only. These operations do
+    // not lock or resume workers; use them during atomic save/load restore.
+    SpellMapEventRec* AddEventAlreadyLocked(SpellMapEventRec *event);
+    void ClearEventsAlreadyLocked();
+    int RelinkUnitsAlreadyLocked(vector<MapUnit*>* map_units=NULL);
     SpellMapEventRec* ExtractEvent(SpellMapEventRec* event);
     int EraseEvent(SpellMapEventRec* event);
 

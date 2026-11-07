@@ -6,6 +6,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1] / "source"
 HEADER = (ROOT / "map.h").read_text(encoding="utf-8")
 CODE = (ROOT / "map.cpp").read_text(encoding="utf-8")
+EVENTS = (ROOT / "spell_map_event.cpp").read_text(encoding="utf-8")
+EVENT_HEADER = (ROOT / "spell_map_event.h").read_text(encoding="utf-8")
 
 
 class WorkerSafetyContract(unittest.TestCase):
@@ -67,6 +69,58 @@ class WorkerSafetyContract(unittest.TestCase):
         self.assertLess(restore.index("map->ReleaseMap();"),
                         restore.index("map->ResumeUnitRanging(false);"))
         self.assertIn("map->RecalculateTacticalFormations();", restore)
+
+    def test_initial_snapshot_does_not_reenter_map_lock_via_events(self):
+        save = CODE.split("int SpellMap::Saves::Save(", 1)[1].split(
+            "// load save position", 1
+        )[0]
+        self.assertLess(save.index("map->HaltUnitRanging(true);"),
+                        save.index("map->LockMap();"))
+        self.assertIn("save->events->AddEventAlreadyLocked(", save)
+        self.assertNotIn("save->events->AddEvent(", save)
+        self.assertLess(save.index("map->ReleaseMap();"),
+                        save.index("map->ResumeUnitRanging(false);"))
+
+    def test_restore_events_do_not_reenter_map_lock(self):
+        restore = CODE.split("int SpellMap::Saves::Load(", 1)[1].split(
+            "// save initial state", 1
+        )[0]
+        for safe, unsafe in (
+            ("map->events->ClearEventsAlreadyLocked();",
+             "map->events->ClearEvents();"),
+            ("map->events->AddEventAlreadyLocked(",
+             "map->events->AddEvent("),
+            ("map->events->RelinkUnitsAlreadyLocked();",
+             "map->events->RelinkUnits();"),
+        ):
+            self.assertIn(safe, restore)
+            self.assertNotIn(unsafe, restore)
+
+    def test_event_lock_free_primitives_and_wrapper_order(self):
+        for name, invoked in (
+            ("AddEvent", "AddEventAlreadyLocked("),
+            ("ClearEvents", "ClearEventsAlreadyLocked("),
+            ("RelinkUnits", "RelinkUnitsAlreadyLocked("),
+        ):
+            with self.subTest(name=name):
+                start = EVENTS.index(f"SpellMapEvents::{name}(")
+                body = EVENTS[start:EVENTS.index("\n}", start)]
+                stages = ["HaltUnitRanging(true);", "LockMap();", invoked,
+                          "ReleaseMap();", "ResumeUnitRanging(false);"]
+                for prev, nxt in zip(stages, stages[1:]):
+                    self.assertLess(body.index(prev), body.index(nxt))
+                self.assertIn(f"{name}AlreadyLocked(", EVENT_HEADER)
+
+    def test_reset_and_event_unit_linking_do_not_lock_twice(self):
+        reset = EVENTS.split("void SpellMapEvents::ResetEvents()", 1)[1].split(
+            "// build links to particular units", 1
+        )[0]
+        self.assertIn("RelinkUnitsAlreadyLocked();", reset)
+        self.assertNotIn("\n\tRelinkUnits();", reset)
+        unit_add = EVENTS.split("int SpellMapEventRec::AddUnit(", 1)[1].split(
+            "// try extract unit", 1
+        )[0]
+        self.assertIn("map->events->RelinkUnitsAlreadyLocked();", unit_add)
 
     def test_tactical_load_logs_stage_boundaries(self):
         body = CODE.split("int SpellMap::LoadGameStateFromFile(", 1)[1].split(
