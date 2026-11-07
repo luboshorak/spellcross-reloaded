@@ -16071,9 +16071,10 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 	for (auto& unit : save->units)
 	{
 		MapUnit* copy = new MapUnit(*unit, false);
-		// AddUnit() acquires map_lock again. This restore already holds it,
-		// and a Windows SRW-backed std::mutex is not recursive. Populate the
-		// roster directly, then rebuild the derived formation state once.
+		// Bulk restore already owns the recursive map mutex and has paused
+		// range workers. Calling AddUnit() would stop/resume workers for each
+		// individual company, exposing incomplete restored state. Populate the
+		// roster directly; rebuild formations only after relinking all units.
 		map->units.push_back(copy);
 		if (unit == save->sel_unit)
 			map->SelectUnit(copy);
