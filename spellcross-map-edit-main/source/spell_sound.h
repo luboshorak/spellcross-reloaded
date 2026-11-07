@@ -25,12 +25,12 @@ class SpellSample
 {
 public:
     vector<int16_t> data;
-    int channels;
-    int samples;
-    int fs;
-    char name[13];
+    int channels = 0;
+    int samples = 0;
+    int fs = 0;
+    char name[13]{};
 
-    SpellSample() {};
+    SpellSample() = default;
 };
 
 class SpellSoundClassFile
