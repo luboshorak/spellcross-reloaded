@@ -243,7 +243,7 @@ int SpellVideo::DecodeCAN(uint8_t* data,int len)
 	audio.samples = 0;
 	audio.fs = 11025;
 	audio.channels = 1;
-	std::strcpy(audio.name,"stream");
+	strcpy_s(audio.name, sizeof(audio.name), "stream");
 
 	// read frames
 	while(p < pend)
@@ -337,7 +337,7 @@ int SpellVideo::DecodeDPK(uint8_t* data,int len)
 	audio.samples = 0;
 	audio.fs = 11025;
 	audio.channels = 1;
-	std::strcpy(audio.name, "stream");
+	strcpy_s(audio.name, sizeof(audio.name), "stream");
 	
 	
 	// read frames
@@ -583,7 +583,7 @@ int SpellVideo::DecodeDP2(uint8_t* dp2,int dp2_len, uint8_t *riff, int riff_len)
 		RIFF riff_cont(riff,riff_len);
 		
 		// store PCM data
-		std::strcpy(audio.name,"stream");
+		strcpy_s(audio.name, sizeof(audio.name), "stream");
 		audio.channels = riff_cont.channels;
 		audio.fs = riff_cont.fs;
 		audio.samples = riff_cont.samples;
