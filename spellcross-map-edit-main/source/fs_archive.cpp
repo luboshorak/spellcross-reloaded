@@ -14,6 +14,7 @@
 #include <vector>
 #include <fstream>
 #include <filesystem>
+#include <limits>
 #include <set>
 #include <cctype>
 
@@ -290,11 +291,13 @@ int FSarchive::GetFile(const char* name, uint8_t** data, int* size)
 					return(1);
 			}
 			
-			// file loaded - just return
+			// The public API uses int lengths; reject data that cannot fit.
+			if(size && file->data.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+				return(1);
 			if(data)
 				*data = file->data.data();
 			if(size)
-				*size = file->data.size();
+				*size = static_cast<int>(file->data.size());
 			return(0);
 		}
 	}
@@ -321,14 +324,16 @@ string FSarchive::GetFile(const char* name)
 // get file by order index (zero based)
 int FSarchive::GetFile(int id, uint8_t** data, int* size, const char **name)
 {	
-	if (id >= m_files.size())
+	if (id < 0 || static_cast<size_t>(id) >= m_files.size())
 		return(1);
 	if(LoadFile(m_files[id]))
+		return(1);
+	if(size && m_files[id]->data.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
 		return(1);
 	if (data)
 		*data = m_files[id]->data.data();
 	if (size)
-		*size = m_files[id]->data.size();
+		*size = static_cast<int>(m_files[id]->data.size());
 	if (name)
 		*name = m_files[id]->name.c_str();
 	return(0);
