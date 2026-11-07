@@ -350,6 +350,8 @@
 ;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <!-- Load Winsock 2 before windows.h to prevent legacy winsock.h declarations. -->
+      <ForcedIncludeFiles>winsock2.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>$(ProjectDir);$(wxwin)include;$(wxwin)include\msvc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>Disabled</Optimization>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -374,6 +376,8 @@
       <PreprocessorDefinitions>_HAS_STD_BYTE=0;NDEBUG;_WINDOWS;WXUSINGDLL;_CRT_SECURE_NO_WARNINGS;__WINDOWS_DS__;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <!-- Load Winsock 2 before windows.h to prevent legacy winsock.h declarations. -->
+      <ForcedIncludeFiles>winsock2.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>$(ProjectDir);$(wxwin)include;$(wxwin)include\msvc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -398,6 +402,8 @@
       <PreprocessorDefinitions>_HAS_STD_BYTE=0;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;__WINDOWS_DS__;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <!-- Load Winsock 2 before windows.h to prevent legacy winsock.h declarations. -->
+      <ForcedIncludeFiles>winsock2.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>$(ProjectDir);$(wxwin)include;$(wxwin)include\msvc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <LanguageStandard>stdcpp17</LanguageStandard>
