@@ -1981,7 +1981,7 @@ int Terrain::InitSpriteContext(wstring &path)
 	// read tool classes count
 	uint32_t tool_count = fr.read_u32();
 	// for each tool list:
-	for(int tid = 0; tid < tool_count; tid++)
+	for(uint32_t tid = 0; tid < tool_count; tid++)
 	{
 		// get class name/title
 		string name = fr.read_str_p16();
@@ -2000,7 +2000,7 @@ int Terrain::InitSpriteContext(wstring &path)
 
 		// for each item in tool class:
 		vector<int> list;
-		for(int k = 0; k < items_count; k++)
+		for(uint32_t k = 0; k < items_count; k++)
 		{
 			// get item name
 			auto item_name = fr.read_str_p16();
@@ -2018,7 +2018,7 @@ int Terrain::InitSpriteContext(wstring &path)
 	list.reserve(count);
 	vector<Sprite*> spr_list;
 	spr_list.reserve(count);
-	for(int k = 0; k < count; k++)
+	for(uint32_t k = 0; k < count; k++)
 	{
 		// get tile name
 		char tile_name[MAX_SPRITE_NAME+1];
@@ -2031,7 +2031,7 @@ int Terrain::InitSpriteContext(wstring &path)
 	}
 
 	// for each tile in the list:
-	for(int k = 0; k < count; k++)
+	for(uint32_t k = 0; k < count; k++)
 	{
 		// get reference tile		
 		if(list[k] < 0)
@@ -2047,7 +2047,7 @@ int Terrain::InitSpriteContext(wstring &path)
 				sprites[list[k]]->ReserveContext(quid, tid, cont_count);*/
 
 			// for each context tile
-			for(int sid = 0; sid < cont_count; sid++)
+			for(uint32_t sid = 0; sid < cont_count; sid++)
 			{
 				// get context tile index				
 				uint16_t tile_id;
@@ -2102,7 +2102,7 @@ int Terrain::InitSpriteContext(wstring &path)
 	// read PNM names
 	vector<AnimPNM*> pnm_list;
 	pnm_list.assign(pnms_count,NULL);
-	for(int k = 0; k < pnms_count; k++)
+	for(uint32_t k = 0; k < pnms_count; k++)
 	{
 		// get tile name
 		char tile_name[MAX_SPRITE_NAME+1];
@@ -2201,7 +2201,7 @@ int Terrain::SaveSpriteContext(wstring& path)
 	fw.write(count);
 
 	// store sprite name list, following code will work with indexes corresponding to this list
-	for(int k = 0; k < count;k++)
+	for(uint32_t k = 0; k < count;k++)
 	{
 		char name[MAX_SPRITE_NAME+1];
 		memset(name,'\0',sizeof(name));
@@ -2211,7 +2211,7 @@ int Terrain::SaveSpriteContext(wstring& path)
 	}
 
 	// --- for each sprite:
-	for(int k = 0; k < count;k++)
+	for(uint32_t k = 0; k < count;k++)
 	{
 		// for each tile side:
 		for(int quid = 0; quid < 4; quid++)
@@ -2221,7 +2221,7 @@ int Terrain::SaveSpriteContext(wstring& path)
 			fw.write(cont_count);
 
 			// for each context tile
-			for(int sid = 0; sid < cont_count; sid++)
+			for(uint32_t sid = 0; sid < cont_count; sid++)
 			{
 				// get context tile index
 				Sprite *sprite = sprites[k]->GetContext(quid, sid);
@@ -3589,7 +3589,7 @@ SpellObject::SpellObject(ifstreamext& fr, vector<Sprite*> &sprite_list, vector<A
 	sprite_pos.reserve(tile_count);
 	
 	// for each tile:
-	for(int k = 0;k < tile_count; k++)
+	for(uint32_t k = 0;k < tile_count; k++)
 	{
 		// read L1 sprite index
 		uint32_t id1 = fr.read_u32();
