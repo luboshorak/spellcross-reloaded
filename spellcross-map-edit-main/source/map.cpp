@@ -2316,7 +2316,7 @@ int SpellMap::Load(wstring& path, SpellData* spelldata)
 		try {
 			def = new SpellDEF(path);
 		}
-		catch (const runtime_error& error) {
+		catch (const runtime_error&) {
 			last_error = string_format("Loading map DEF file '%ls' failed!", path.c_str());
 			Close();
 			return(1);
