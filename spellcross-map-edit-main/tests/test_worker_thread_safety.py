@@ -68,6 +68,31 @@ class WorkerSafetyContract(unittest.TestCase):
         self.assertNotIn("was_halted = is_halted;", CODE)
         self.assertGreaterEqual(CODE.count("is_halted = was_halted > 0;"), 2)
 
+    def test_paused_worker_recovers_during_safe_player_preview(self):
+        # A worker can also be left paused by an interrupted runtime path
+        # after many turns; detect that rather than silently showing dark
+        # MOVEMENT MODE for every company.
+        self.assertIn("bool IsPaused() const;", HEADER)
+        paused = CODE.split("bool SpellMap::MoveRange::IsPaused() const", 1)[1].split(
+            "AStarNode::AStarNode()", 1
+        )[0]
+        self.assertIn("is_halted.load(std::memory_order_acquire)", paused)
+        preview = CODE.split("bool SpellMap::RefreshSelectedMovePreview()", 1)[1].split(
+            "// check if unit can move", 1
+        )[0]
+        self.assertIn("unit_range->IsPaused()", preview)
+        self.assertIn("unit_range->Resume(true);", preview)
+        self.assertIn("!enemy_turn_running", preview)
+        self.assertIn("!panic_turn_running", preview)
+        self.assertIn("!reaction_fire_active", preview)
+        self.assertLess(preview.index("unit_range->Resume(true);"),
+                        preview.index("unit_range->FindRange(selected);"))
+        options = CODE.split("int SpellMap::GetUnitOptions(", 1)[1].split(
+            "// reset AP of all units", 1
+        )[0]
+        self.assertIn("if (unit_selection && unit_range && unit_range->IsPaused())", options)
+        self.assertIn("RefreshSelectedMovePreview();", options)
+
     def test_queue_inspection_uses_control_lock(self):
         start = CODE.index("int SpellMap::ViewRange::isIdle()")
         end = CODE.index("int SpellMap::ViewRange::WaitIdle()", start)
