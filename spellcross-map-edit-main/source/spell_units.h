@@ -590,7 +590,7 @@ public:
 	// list of other units in view range
 	std::vector<int> units_in_view;
 
-	// Pøidejte tuto metodu do veøejné sekce tøídy MapUnit:
+	// Public accessors for MapUnit:
 	int GetAP() const { return action_points; }
 	int GetFireRange() const { const int range = (unit ? unit->fire_range : 0) + upgrade_range_bonus; return range > 0 ? range : 0; }
 
