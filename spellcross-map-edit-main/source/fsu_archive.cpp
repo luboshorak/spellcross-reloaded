@@ -542,7 +542,7 @@ int FSUarchive::LoadAuxData(std::wstring path)
 
 	// load list of resources
 	vector<string> names;
-	for(int uid = 0; uid < count; uid++)
+	for(uint32_t uid = 0; uid < count; uid++)
 	{
 		// resource name
 		string name = fr.read_str_p16();
@@ -574,7 +574,7 @@ int FSUarchive::LoadAuxData(std::wstring path)
 		}
 
 		// load animations
-		uint32_t anim_azims = fr.read_i32();
+		int32_t anim_azims = fr.read_i32();
 		for(int aid = 0; aid < anim_azims; aid++)
 		{
 			int x = fr.read_i32();
