@@ -632,6 +632,9 @@ public:
 		vector<MapXY> escape; // escape tiles list
 		vector<MapXY> target; // target tiles list
 		vector<MapUnit*> Lunit; // units layer array
+		// A rebuilt occupancy map invalidates previously computed MOVE previews,
+		// including when the selected unit's own AP and position stay unchanged.
+		std::atomic<uint64_t> unit_placement_revision{ 0 };
 		vector<uint8_t> select; // selection flags array
 		vector<uint32_t> L1_flags; // terrain class flags array
 		// list of units
@@ -868,6 +871,7 @@ public:
             MapUnit* completed_range_unit = nullptr; // protected by result_lock
 			MapXY completed_range_pos; // protected by result_lock
 			int completed_range_ap = -1; // protected by result_lock
+			uint64_t completed_range_units_revision = 0; // protected by result_lock
 			MapUnit* requested_range_unit = nullptr; // protected by ctrl_lock
 			std::mutex ctrl_lock; // thread control lock
 			std::mutex queue_lock; // task queue lock
