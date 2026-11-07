@@ -15274,7 +15274,8 @@ int SpellMap::PlaceUnit(MapUnit* unit, bool require_tactical_tile)
 				const MapXY next = GetNeighborTile8D(current, dir);
 				if (!IsTacticalMovementTile(next, true))
 					continue;
-				const int idx = ConvXY(next);
+				// ConvXY(MapXY&) is legacy non-const; use its x/y overload.
+				const int idx = ConvXY(next.x, next.y);
 				if (idx < 0 || checked[idx])
 					continue;
 				checked[idx] = 1;
