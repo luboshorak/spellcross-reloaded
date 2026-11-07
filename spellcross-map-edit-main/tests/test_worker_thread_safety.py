@@ -37,6 +37,25 @@ class WorkerSafetyContract(unittest.TestCase):
         end = CODE.index("void SpellMap::MoveRange::ResultLock(", start)
         self.assertIn("std::lock_guard<std::mutex> guard(ctrl_lock)", CODE[start:end])
 
+    def test_deployment_unit_addition_uses_safe_range_worker_lock_order(self):
+        # Deployment calls AddUnit() repeatedly on the UI thread while the
+        # view and movement range workers may still be finishing old tasks.
+        # Never hold map_lock while waiting for workers to halt or resuming
+        # those workers; otherwise lock-order inversion / races are possible.
+        add = CODE.split("int SpellMap::AddUnit(MapUnit* unit)", 1)[1].split(
+            "// try to place new unit", 1
+        )[0]
+        stages = [
+            "HaltUnitRanging(true);",
+            "LockMap();",
+            "units.push_back(unit);",
+            "ReleaseMap();",
+            "ResumeUnitRanging(false);",
+        ]
+        for previous, following in zip(stages, stages[1:]):
+            with self.subTest(before=previous, after=following):
+                self.assertLess(add.index(previous), add.index(following))
+
     def test_tactical_save_restoration_does_not_recursively_lock_map(self):
         restore = CODE.split("int SpellMap::Saves::Load(", 1)[1].split(
             "// save initial state", 1
