@@ -92,7 +92,7 @@ SpellTextChunks SpellTextRec::WordWrap(SpellFont* font,int x_limit)
     SpellTextChunks lines;
 
     wstring chunk;
-    int last_len = 0;
+    size_t last_len = 0;
     int line_pix = 0;
     wchar_t *w_str = pstr;
     wchar_t p_sym = ' ';
