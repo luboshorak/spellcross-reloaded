@@ -5776,6 +5776,17 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			 !deployment_allowed[static_cast<size_t>(index)]);
 	};
 
+	// Explored-but-not-currently-visible cells have view == 1. Their
+	// terrain may be shown dark, but the selected company's *known*
+	// movement range must remain blue instead of being overwritten by
+	// the fog's dark palette. Keep view == 0 fully hidden: do not reveal
+	// unexplored terrain, objects or enemy units through the overlay.
+	const auto keep_movement_tint_in_fog = [&](const uint8_t* palette) -> bool {
+		return viewingUnitMoveRange() && m_render_move_range_current &&
+			(palette == terrain->filter.bluepal ||
+			 palette == terrain->filter.dbluepal);
+	};
+
 	int use_view_mask = !deployment_mode && !show_map_cheat && (game_mode || units_view_debug_mode);
 
 	// FIX: v game mode se renderuje jen to, co je ve view masce.
@@ -5817,7 +5828,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
-			else if (use_view_mask && unit_view->view[mxy] == 1)
+			else if (use_view_mask && unit_view->view[mxy] == 1 &&
+				!keep_movement_tint_in_fog(fil))
 				fil = terrain->filter.darkpal;
 
 			// apply optional filter mask
@@ -5887,7 +5899,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
-			else if (use_view_mask && unit_view->view[mxy] == 1)
+			else if (use_view_mask && unit_view->view[mxy] == 1 &&
+				!keep_movement_tint_in_fog(fil))
 				fil = terrain->filter.darkpal;
 			else if (!use_view_mask && !anm->Compare(anm_selection) && cursor == pos && wHighlight_obj)
 				fil = terrain->filter.goldpal; // highlight animation
@@ -6011,7 +6024,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
-			else if (use_view_mask && unit_view->view[mxy] == 1)
+			else if (use_view_mask && unit_view->view[mxy] == 1 &&
+				!keep_movement_tint_in_fog(fil))
 				fil = terrain->filter.darkpal;
 
 			// get map tile
@@ -6052,7 +6066,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				continue;
 			if (use_view_mask && unit_view->view[mxy] == 0)
 				continue;
-			else if (use_view_mask && unit_view->view[mxy] == 1)
+			else if (use_view_mask && unit_view->view[mxy] == 1 &&
+				!keep_movement_tint_in_fog(fil))
 				fil = terrain->filter.darkpal;
 			else if (!use_view_mask && pos == cursor && wHighlight_obj)
 				fil = terrain->filter.goldpal; // highlight animation
