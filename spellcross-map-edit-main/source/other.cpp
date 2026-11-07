@@ -135,10 +135,10 @@ char wchar2charCP895(wchar_t sym)
                      L"≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ "};
     if(sym < 128)
         return(char(sym));
-    int unisym = codes.find(sym);
+    const auto unisym = codes.find(sym);
     if(unisym == std::wstring::npos)
         return(' ');
-    return(128 + unisym);
+    return(static_cast<char>(128 + unisym));
 }
 
 // convert wstring using CZ CP895 encoding to string
