@@ -4,59 +4,67 @@
 
 # Spellcross Reloaded
 
-**The classic 1997 strategy game, restored for modern Windows.**
+**An unofficial, open-source restoration of *Spellcross: The Last Battle* (1997) for modern Windows.**
 
-Spellcross Reloaded is an open-source, fan-made restoration of **Spellcross: The Last Battle**. Lead the Alliance through the original campaign, manage your army on the strategic map and fight tactical battles using the original artwork, sound and game data.
+Spellcross Reloaded brings the original turn-based strategy game to a native Windows application. Command the Earth Alliance against the Other Side, manage your forces on the strategic map, and lead them through tactical battles. The project uses the original game's campaign data, graphics and sound rather than replacing them with a new game.
 
-**[Download the latest published release](https://github.com/luboshorak/spellcross-reloaded/releases/latest)** · [Report a bug](https://github.com/luboshorak/spellcross-reloaded/issues) · [Map editor](https://github.com/luboshorak/spellcross-reloaded-editor)
-
-## Developer documentation
-
-Start with the [developer documentation index](./docs/README.md) for architecture, coordinate systems, rendering, data formats, lifecycle, build instructions, extension patterns, diagnostics, code conventions, research utilities and the repository-layout audit. Source-level uncertainties are collected in [needs verification](./docs/verification.md).
-
-## v0.9.5
-
-This release improves tactical mouse controls and unifies the remaining native gray settings dialogs with the dark-green strategic UI:
-
-- Restore **right-button drag** to pan the tactical map. **Escape** deselects groups; right-click does not. Edge scrolling has been removed.
-- **Left-button drag-select** is now enabled by default and can still be toggled in Options.
-- Match the strategy palette in **Audio, Screen, About and Controls** dialogs, including custom green buttons and sliders.
-- Improve crash diagnostics with automatic `crash-last.txt` and `crash-last.dmp`, packaged symbols and build identity.
-- Harden movement/attack group transitions, overlapping combat animations and fullscreen mouse capture recovery.
-- Allow a user-confirmed exit without saving when an unfinished tactical action blocks a safe Continue snapshot.
-
-See the [v0.9.5 release notes](./packaging/releases/v0.9.5.md) and [previous releases](./packaging/releases). For a crash, attach `debug.log` and `crash-last.txt` (or a `.dmp` if needed); see the [crash diagnostics guide](./docs/runtime-crash-diagnostics.md).
+**[Releases](https://github.com/luboshorak/spellcross-reloaded/releases)** · **[Report an issue](https://github.com/luboshorak/spellcross-reloaded/issues)** · **[Map editor](https://github.com/luboshorak/spellcross-reloaded-editor)**
 
 ## Download and play
 
-1. Download the **Windows x64 ZIP** or **EXE installer** from [Releases](https://github.com/luboshorak/spellcross-reloaded/releases).
-2. Extract or install the complete package into a writable folder.
-3. Start `Spellcross.exe` and follow the game-data wizard. Select your original CD, ISO or installed `DATA` folder, or use the supported CZ/EN download option.
+1. Download a Windows **x64** package from [Releases](https://github.com/luboshorak/spellcross-reloaded/releases). The ZIP is portable; some releases also provide an EXE installer.
+2. Extract the complete ZIP to a writable folder, or use the installer if one is available.
+3. Run `Spellcross.exe`. On first launch, follow the setup prompts to locate your **original Spellcross game data** (for example, from a CD, mounted ISO or existing installation).
 
-Original commercial game archives are **not included** in the package. Czech and English editions are supported; Polish and Italian retail-data loading remains experimental.
+**The original commercial game data is not included.** The Czech and English editions are the supported sources. Polish and Italian game-data compatibility is still experimental and should not be considered fully supported.
 
-To switch editions, close the game and start `Spellcross.exe --select-game-data`. A fresh Windows installation may also need the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe).
+To choose another game-data source later, close the game and run:
 
-## Playing and saving
+```text
+Spellcross.exe --select-game-data
+```
 
-The campaign includes research, recruitment, upgrades, commanders and formations. Tactical battles use terrain, shared visibility, morale, experience and defensive fire.
+If Windows reports missing Microsoft Visual C++ runtime DLLs, install the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe).
 
-Open **Help → Controls** in the game for keyboard and mouse instructions. **Alt+Enter** toggles fullscreen. **Escape** closes tactical overlays or cancels the active mode; otherwise it opens the main menu. In the strategic screen, Escape saves progress and returns to the menu.
+## Gameplay
 
-**Continue** restores the saved campaign or battle after restarting. Finish deployment and let an active action or enemy turn complete before exiting. Keep a backup of saves when updating.
+Spellcross combines two layers of turn-based strategy:
 
-This is an actively developed fan restoration. Please [report bugs](https://github.com/luboshorak/spellcross-reloaded/issues) with the game version, reproduction steps and a save or startup log where possible.
+- **Strategic campaign:** conquer and defend territories, recruit and replenish units, develop new technologies, purchase upgrades and organize commanders and formations.
+- **Tactical battles:** deploy companies, use terrain and visibility to your advantage, and manage movement, attacks, morale and unit experience.
+
+Reloaded also adds modern display scaling, fullscreen support, mouse controls and in-game help while retaining the original game's presentation.
+
+This is an **actively developed fan restoration**, not a finished commercial remaster. Some mechanics and edge cases may differ from the 1997 game, and bugs or regressions are still possible.
+
+## Controls and saved games
+
+Open **Help → Controls** in the game for the current mouse and keyboard shortcuts. **Alt+Enter** toggles fullscreen. Tactical camera movement supports right-button dragging; group selection can be enabled or disabled in Options.
+
+Use **Continue** to resume saved progress. Let active actions and enemy turns finish before leaving a tactical battle, and **back up your saved games before updating** to another build.
 
 ## Map editor
 
-The package includes a standalone map editor under `Editor/spellcross_map_editor.exe`. Create or edit terrain, objects, units and mission events, then load a custom tactical mission in Reloaded with **Ctrl+Alt+O**.
+Release packages include a separate editor at:
 
-[Map editor repository](https://github.com/luboshorak/spellcross-reloaded-editor) · [Building and packaging guide](./packaging/README.md)
+```text
+Editor/spellcross_map_editor.exe
+```
 
-## Credits and license
+It can be used to work with tactical maps, units, terrain, objects and mission data. In Reloaded, **Ctrl+Alt+O** opens a custom tactical map.
 
-Spellcross Reloaded is an independent fan project and is not an official Cauldron release.
+The editor is maintained in its [own repository](https://github.com/luboshorak/spellcross-reloaded-editor).
 
-The project grew from **Stanislav Mašláň's [Spellcross Map Editor](https://github.com/smaslan/spellcross-map-edit)** and research. His original work remains the foundation of the editor and restoration.
+## Bugs, development and building
 
-The source code is available under the [MIT License](./LICENSE). Original Spellcross artwork, music, cinematics and other commercial assets remain the property of their respective rights holders.
+Found a problem? [Open an issue](https://github.com/luboshorak/spellcross-reloaded/issues) and include the game version, what you were doing and how to reproduce it. For crashes, `debug.log` and `crash-last.txt` can help; see the [crash-reporting guide](./docs/runtime-crash-diagnostics.md). Review diagnostic files for private information before sharing them.
+
+For source code and technical documentation, start with the [developer guide](./docs/README.md). Windows build requirements, packaging and release instructions are in the [build guide](./packaging/README.md). Changes specific to individual versions belong in [release notes](./packaging/releases/), not on this page.
+
+## Credits and legal notice
+
+Spellcross Reloaded is an independent fan project, **not an official Cauldron release**.
+
+The project builds on the work of **Stanislav Mašláň**, author of the original open-source [Spellcross Map Editor](https://github.com/smaslan/spellcross-map-edit), and the contributors to this restoration.
+
+The project's source code is available under the [MIT License](./LICENSE). **That license does not cover the original Spellcross game data, graphics, music, sound, video or trademarks**, which remain the property of their respective rights holders.
