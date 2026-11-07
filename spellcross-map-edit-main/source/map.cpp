@@ -5674,6 +5674,16 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 	if (RenderPrepare(scroll))
 		return(1);
 
+	// Tactical MOVE overlays share one async cache with enemy/panic/reaction
+	// movement. A background task can evict the selected unit's range without
+	// changing the selection or firing another mouse event. Heal that stale
+	// preview when it is actually visible, BEFORE LockMap()/ResultLock() below:
+	// FindRange() can wait for the worker and must never run under those locks.
+	if (viewingUnitMoveRange() && unit_selection && !unit_selection->isMoving() &&
+		!enemy_turn_running && !panic_turn_running &&
+		!reaction_fire_active && reaction_fire_queue.empty())
+		RefreshSelectedMovePreview();
+
 	// find selection tiles
 	auto msel = GetSelections(scroll);
 	MapXY cursor;
@@ -15178,9 +15188,13 @@ MapUnit* SpellMap::CreateUnit(MapUnit* parent, SpellUnitRec* new_type)
 	unit->formation_attack_bonus = 0;
 	unit->formation_defence_bonus = 0;
 
-	// try place unit to map
-	if (PlaceUnit(unit))
+	// The editor may place freely, but runtime summons must be on tiles
+	// accepted by the tactical pathfinder, including fallback BFS results.
+	if (PlaceUnit(unit, isGameMode()))
 	{
+		spellcross_diag::Log(spellcross_diag::Level::Error, "UNIT",
+			"CreateUnit failed to find navigable tile type=%d at=(%d,%d)",
+			unit->unit ? unit->unit->type_id : -1, unit->coor.x, unit->coor.y);
 		delete unit;
 		ResumeUnitRanging(false);
 		return(NULL);
@@ -15231,6 +15245,65 @@ int SpellMap::PlaceUnit(MapUnit* unit, bool require_tactical_tile)
 	// resort units map for fast colision checks
 	SortUnits();
 
+	// The original DEF can deliberately mark START/ESCAPE/TARGET squares in
+	// the retail border, which IsTacticalMovementTile() correctly exempts.
+	// An exception is safe for a MOBILE scripted unit only when legal tiles
+	// connect that square back to the normal navigation area. Otherwise the
+	// unit would spawn on a tile that the A* search cannot leave.
+	auto has_navigation_exit = [&](MapXY candidate) -> bool
+	{
+		if (!require_tactical_tile || !m_retail_nav_padding ||
+			unit->GetWalkAP() <= 0 ||
+			spellcross_tactical::IsWithinRetailNavigationEnvelope(
+				candidate.x, candidate.y, x_size, y_size, true))
+			return true;
+
+		std::vector<uint8_t> checked(static_cast<size_t>(x_size) * y_size, 0);
+		std::deque<MapXY> frontier;
+		const int origin = ConvXY(candidate);
+		if (origin < 0)
+			return false;
+		checked[origin] = 1;
+		frontier.push_back(candidate);
+		while (!frontier.empty())
+		{
+			const MapXY current = frontier.front();
+			frontier.pop_front();
+			for (int dir = 0; dir < 8; ++dir)
+			{
+				const MapXY next = GetNeighborTile8D(current, dir);
+				if (!IsTacticalMovementTile(next, true))
+					continue;
+				// ConvXY(MapXY&) is legacy non-const; use its x/y overload.
+				const int idx = ConvXY(next.x, next.y);
+				if (idx < 0 || checked[idx])
+					continue;
+				checked[idx] = 1;
+				// Match the worker's basic terrain restrictions; pathfinding
+				// (and unit occupancy/AP) remains the final movement authority.
+				if (!unit->unit->isAir() && !unit->unit->usingTeleportMove())
+				{
+					const int flag = tiles[idx].flags;
+					const bool bridge = flag == 0x70;
+					const bool forest = flag == 0x90;
+					if (unit->unit->isHover())
+					{
+						if ((flag && !bridge) && flag != 0x60)
+							continue;
+					}
+					else if ((flag && !bridge && !forest) ||
+						(forest && !unit->unit->isWalk()))
+						continue;
+				}
+				if (spellcross_tactical::IsWithinRetailNavigationEnvelope(
+					next.x, next.y, x_size, y_size, true))
+					return true;
+				frontier.push_back(next);
+			}
+		}
+		return false;
+	};
+
 	vector<int> used(x_size * y_size, 0);
 	vector<MapXY> cand_list;
 	cand_list.push_back(unit->coor);
@@ -15272,6 +15345,11 @@ int SpellMap::PlaceUnit(MapUnit* unit, bool require_tactical_tile)
 				if (tiles[pos_mxy].flags && tiles[pos_mxy].flags != 0x90 && tiles[pos_mxy].flags != 0x60)
 					continue;
 			}
+
+			// Scenario-authored border marks may be legal but isolated from
+			// normal A*. Do not create another mobile stranded company there.
+			if (!has_navigation_exit(cand))
+				continue;
 
 			// found viable position: place new unit and leave
 			unit->coor = cand;
@@ -15552,7 +15630,7 @@ int SpellMap::MissionStartEvent()
             ++expectedUnits;
 			// make new unit
 			MapUnit* new_unit = new MapUnit(*unit.unit, true);
-			if (PlaceUnit(new_unit))
+			if (PlaceUnit(new_unit, true))
 			{
                 ++failedUnits;
                 // Previously this failure was silent, including for convoy
@@ -15628,8 +15706,13 @@ int SpellMap::ProcEventsList(SpellMapEventsList& list)
 			// make new unit						
 			MapUnit* new_unit = new MapUnit(*unit.unit);
 			unit.is_placed = true;
-			if (PlaceUnit(new_unit))
+			if (PlaceUnit(new_unit, true))
 			{
+				spellcross_diag::Log(spellcross_diag::Level::Error, "MISSION",
+					"Scripted event spawn FAILED map=%s unit_id=%d type=%d pos=(%d,%d)",
+					std::filesystem::path(map_path).filename().string().c_str(),
+					new_unit->id, new_unit->unit ? new_unit->unit->type_id : -1,
+					new_unit->coor.x, new_unit->coor.y);
 				delete new_unit;
 				continue;
 			}
