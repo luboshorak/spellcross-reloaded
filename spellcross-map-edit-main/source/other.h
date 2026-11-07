@@ -115,7 +115,7 @@ public:
             return(1);  // Cannot represent the length in a 16-bit prefix.
         }
         const uint16_t len = static_cast<uint16_t>(size_with_terminator);
-        std::ofstream::write(data ? (const char*)&len : nullptr,sizeof(uint16_t));
+        std::ofstream::write(reinterpret_cast<const char*>(&len),sizeof(uint16_t));
         std::ofstream::write(data,len);
         return(0);
     };
