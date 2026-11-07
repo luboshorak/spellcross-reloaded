@@ -294,7 +294,7 @@ void FormMIDI::ChangeSource()
 	if(!lbList->GetCount())
 		return;
 	auto file = midi->GetCurrentName();
-	for(int k = 0; k < lbList->GetCount(); k++)
+	for(decltype(lbList->GetCount()) k = 0; k < lbList->GetCount(); k++)
 		if(lbList->GetString(k).compare(file) == 0)
 		{
 			lbList->Select(k);
@@ -351,7 +351,7 @@ void FormMIDI::OnSaveAllClick(wxCommandEvent& ev)
 	auto midi = m_spell_data->midi;
 	for(auto & xmi : midi->GetMIDI())
 	{		
-		for(int k = 0; k < lbList->GetCount(); k++)
+		for(decltype(lbList->GetCount()) k = 0; k < lbList->GetCount(); k++)
 			if(lbList->GetString(k).compare(xmi->filename) == 0)
 			{
 				lbList->Select(k);
