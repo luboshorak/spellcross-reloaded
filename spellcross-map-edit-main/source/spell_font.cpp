@@ -12,6 +12,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <algorithm>
+#include <limits>
 
 using namespace std;
 
@@ -114,12 +115,18 @@ SpellFontSymbol::SpellFontSymbol(uint8_t** buf,uint8_t* buf_end,int sym_h)
 // get symbol size
 int SpellFontSymbol::GetHeight()
 {
-	return(pixels.size());
+	if(pixels.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+		throw std::length_error("Font symbol height exceeds int range");
+	return(static_cast<int>(pixels.size()));
 }
 int SpellFontSymbol::GetWidth()
 {
 	if(GetHeight())
-		return(pixels[0].size());
+	{
+		if(pixels[0].size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+			throw std::length_error("Font symbol width exceeds int range");
+		return(static_cast<int>(pixels[0].size()));
+	}
 	return(0);
 }
 // is symbol blank?
@@ -195,27 +202,33 @@ SpellFont::SpellFont(std::wstring font_path)
 		throw runtime_error("Cannot open font file!");
 
 	// read to local buffer and close
-	streampos flen = fr.tellg();
+	const std::streamoff flen = fr.tellg();
+	if(flen <= 0 || flen > std::numeric_limits<int>::max())
+		throw runtime_error("Font file size is invalid or exceeds int range!");
 	fr.seekg(0);
-	vector<uint8_t> data(flen);		
-	fr.read((char*)&data[0],flen);
+	vector<uint8_t> data(static_cast<size_t>(flen));
+	if(!fr.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(flen)))
+		throw runtime_error("Reading font file failed!");
 	fr.close();
 	
 	// check format type
 	const char *simple_font_mark = "SMfont_generV2.0";
-	if(flen < strlen(simple_font_mark))
+	const size_t mark_len = strlen(simple_font_mark);
+	if(data.size() < mark_len)
 		throw std::exception("Ivalid data in font file!");
-	int is_simple_font20 = memcmp(&data[0], simple_font_mark, strlen(simple_font_mark)) == 0;
+	int is_simple_font20 = memcmp(data.data(), simple_font_mark, mark_len) == 0;
 
 	if(!is_simple_font20)
 	{
 		// it is probably spellcross font FONT_001.FNT
-		SpellFont(&data[0], flen);
+		*this = SpellFont(data.data(), static_cast<int>(flen));
 		return;
 	}	
 	// it is SimpleFontEditor2.0 font
-	uint8_t *buf = &data[strlen(simple_font_mark)];
-	uint8_t *buf_end = &data[0] + flen;
+	if(data.size() == mark_len)
+		throw runtime_error("SimpleFont file has no font header!");
+	uint8_t *buf = data.data() + mark_len;
+	uint8_t *buf_end = data.data() + data.size();
 
 	// read font name
 	m_font_name = get_string_null(&buf,buf_end);
@@ -315,7 +328,9 @@ int SpellFont::RenderSymbol(uint8_t* buffer,uint8_t* buf_end,int buf_x_size,int 
 // render centered text (multiline, multicolor)
 int SpellFont::Render(uint8_t* buffer,uint8_t* buf_end,int buf_x_size,int x_pos,int y_pos,int x_limit,int y_limit,vector<std::string> text,vector<int> color,int bg_color,FontShadow shadow)
 {
-	int tot_y = text.size()*m_max_y;
+	if(m_max_y > 0 && text.size() > static_cast<size_t>(std::numeric_limits<int>::max() / m_max_y))
+		throw std::length_error("Rendered text height exceeds int range");
+	int tot_y = static_cast<int>(text.size() * static_cast<size_t>(m_max_y));
 	y_pos = y_pos + y_limit/2 - tot_y/2 - 0*m_max_y/2;
 	int x_end = 0;
 	for(int k = 0; k < text.size(); k++)
