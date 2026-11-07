@@ -37,6 +37,21 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         self.assertIn("completed_range_pos.y == unit->coor.y", MAP)
         self.assertIn("return HasCachedMoveRangeLocked(unit);", MAP)
 
+    def test_finishing_deployment_initializes_range_before_first_player_input(self):
+        deployment = MAIN.split("void MainFrame::FinishDeployment()", 1)[1].split(
+            "// File > Load custom map", 1
+        )[0]
+        self.assertIn("spell_map->RefreshSelectedMovePreview()", deployment)
+        self.assertLess(
+            deployment.index("spell_map->MissionStartEvent();"),
+            deployment.index("spell_map->RefreshSelectedMovePreview()"),
+        )
+        self.assertLess(
+            deployment.index("spell_map->InvalidateUnitsView();"),
+            deployment.index("spell_map->RefreshSelectedMovePreview()"),
+        )
+        self.assertIn("Initial movement preview unavailable after deployment", deployment)
+
     def test_other_units_rebuilding_occupancy_invalidates_same_unit_move_preview(self):
         # Selected-unit AP/position is unchanged when a friendly blocker moves.
         self.assertIn("std::atomic<uint64_t> unit_placement_revision{ 0 };", HEADER)
