@@ -7742,14 +7742,17 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 		g_move_range_dirty_for = nullptr;
 		unit_range->WaitIdle();
 	}
-	// Tick() normally starts a fresh range asynchronously after movement.
-	// Do not cancel and restart that SAME calculation on each mouse move:
-	// it will publish the selected unit's range when it finishes.
+	// Tick() may already be computing this unit's range. Never cancel
+	// and restart the same job on every mouse move; however, do NOT return
+	// to the input loop with an in-flight range calculation. That was
+	// introduced in the #129 change set after the last known successful
+	// v0.9.5 tactical load (9533b6f) and can leave a worker reading map
+	// state while tactical load/deployment replaces its unit list.
 	else if (unit_selection &&
-		!unit_range->HasCachedMoveRange(unit_selection) &&
-		!unit_range->IsRangePending(unit_selection))
+		!unit_range->HasCachedMoveRange(unit_selection))
 	{
-		unit_range->FindRange(unit_selection);
+		if (!unit_range->IsRangePending(unit_selection))
+			unit_range->FindRange(unit_selection);
 		unit_range->WaitIdle();
 	}
 	if (unit_selection && g_attack_map_dirty_for == unit_selection)
