@@ -15201,11 +15201,16 @@ MapUnit* SpellMap::CreateUnit(MapUnit* parent, SpellUnitRec* new_type)
 // add unit to map list (assuming there is no conflict)
 int SpellMap::AddUnit(MapUnit* unit)
 {
-	LockMap();
+	// Stop range/view workers before acquiring the map mutex: a worker may
+	// still be reading the unit roster and must be allowed to finish first.
+	// The v0.9.5 deployment crash resolves through this function's
+	// ResumeUnitRanging() call (map.cpp:15208 in build dfbbac9).
 	HaltUnitRanging(true);
+	LockMap();
 	units.push_back(unit);
-	ResumeUnitRanging(false);
 	ReleaseMap();
+	// Resume only after the new roster has been committed and unlocked.
+	ResumeUnitRanging(false);
 	if (game_mode && unit && unit->formation_id > 0)
 		RecalculateTacticalFormations();
 	return(0);
