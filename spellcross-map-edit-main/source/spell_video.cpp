@@ -14,6 +14,8 @@
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
+#include <limits>
+#include <stdexcept>
 
 // ------------------------------------------------------------------------------------------------
 // Video resources handling
@@ -105,22 +107,25 @@ SpellVideo::SpellVideo(std::wstring path)
 	if(!fr.is_open())
 		throw runtime_error("Cannot open video file!");
 
-	// read to local buffer and close
-	streampos flen = fr.tellg();
+	// Video decoders accept signed int lengths; reject unrepresentable input.
+	const std::streamoff flen = fr.tellg();
+	if(flen <= 0 || flen > std::numeric_limits<int>::max())
+		throw runtime_error("Video file size is invalid or exceeds int range!");
 	fr.seekg(0);
-	vector<uint8_t> data;
-	data.resize(flen);
-	fr.read((char*)data.data(),flen);
+	vector<uint8_t> data(static_cast<size_t>(flen));
+	if(!fr.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(flen)))
+		throw runtime_error("Reading video file failed!");
 	fr.close();
+	const int video_size = static_cast<int>(flen);
 
 	std::string ext = std::filesystem::path(path).extension().string();
 	std::transform(ext.begin(), ext.end(), ext.begin(), ::toupper);
 
-	if(ext == ".CAN" && DecodeCAN(data.data(), data.size()))
+	if(ext == ".CAN" && DecodeCAN(data.data(), video_size))
 	{
 		throw runtime_error("Decoding CAN video file failed!");
 	}	
-	else if(ext == ".DPK" && DecodeDPK(data.data(),data.size()))
+	else if(ext == ".DPK" && DecodeDPK(data.data(),video_size))
 	{
 		throw runtime_error("Decoding DPK video file failed!");
 	}
@@ -132,16 +137,19 @@ SpellVideo::SpellVideo(std::wstring path)
 		if(!frw.is_open())
 			throw runtime_error("Cannot open complement wave file!");
 
-		// read to local buffer and close
-		streampos wave_flen = frw.tellg();
+		// Complementary WAVE data uses the same signed int length limit.
+		const std::streamoff wave_flen = frw.tellg();
+		if(wave_flen <= 0 || wave_flen > std::numeric_limits<int>::max())
+			throw runtime_error("Complement wave file size is invalid or exceeds int range!");
 		frw.seekg(0);
-		vector<uint8_t> wave_data;
-		wave_data.resize(wave_flen);
-		frw.read((char*)wave_data.data(),wave_flen);
+		vector<uint8_t> wave_data(static_cast<size_t>(wave_flen));
+		if(!frw.read(reinterpret_cast<char*>(wave_data.data()), static_cast<std::streamsize>(wave_flen)))
+			throw runtime_error("Reading complement wave file failed!");
 		frw.close();
+		const int wave_size = static_cast<int>(wave_flen);
 
 		// try decode
-		if(DecodeDP2(data.data(), data.size(), wave_data.data(), wave_data.size()))
+		if(DecodeDP2(data.data(), video_size, wave_data.data(), wave_size))
 		{
 			throw runtime_error("Decoding DP2 video file failed!");
 		}
@@ -597,18 +605,21 @@ int SpellVideo::GetFramesCount()
 {
 	if(isDP2())
 		return((int)(fps*audio.samples/audio.fs));
-	return(frames.size());
+	if(frames.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+		throw std::length_error("Video frame count exceeds int range");
+	return(static_cast<int>(frames.size()));
 }
 
 uint8_t* SpellVideo::GetFrame(int id)
 {
-	if(id < 0)
+	if(id < 0 || frames.empty())
 		return(NULL);
-	if(isDP2())
-		id = mod(id, frames.size()); // loop frames for DP2 format
-	else if(id >= frames.size())
+	const size_t frame_index = isDP2()
+		? static_cast<size_t>(id) % frames.size() // loop frames for DP2 format
+		: static_cast<size_t>(id);
+	if(frame_index >= frames.size())
 		return(NULL);
-	return(frames[id].data());
+	return(frames[frame_index].data());
 }
 
 // get frame matching timestamp
