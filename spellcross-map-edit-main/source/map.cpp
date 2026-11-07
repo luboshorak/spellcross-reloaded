@@ -3149,6 +3149,15 @@ if (!mission_data || !mission_data->Size())
 	// map should be valid from this point
 	is_valid = true;
 
+	// ViewRange/MoveRange constructors deliberately start their worker threads
+	// halted (was_halted=1). Unlike Create(), Load() did not resume them.
+	// Later nested Halt()/Resume(false) calls only restore that original halted
+	// state, so every MOVE preview can stay permanently empty after loading a
+	// fresh mission. Loading a tactical save takes a different path and already
+	// calls ResumeUnitRanging(true), explaining the inconsistent repro.
+	// Start both workers after all mission data and their buffers exist.
+	ResumeUnitRanging(true);
+
 	// done
 	return(0);
 }
