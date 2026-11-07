@@ -3907,6 +3907,9 @@ void SpellMap::InvalidateUnitsView()
 void SpellMap::SortUnits()
 {
 	HaltUnitRanging();
+	// Other units change movement paths even when the selected unit does not
+	// move or spend AP. Invalidate its cached reach before rebuilding Lunit.
+	unit_placement_revision.fetch_add(1, std::memory_order_relaxed);
 
 	// clear units layer array
 	Lunit.assign(x_size * y_size, NULL);
@@ -7018,6 +7021,7 @@ bool SpellMap::MoveRange::HasCachedMoveRangeLocked(const MapUnit* unit) const
     // Never inspect a cache belonging to another unit or computed with its
     // previous action points/position. Render already owns result_lock.
     return unit && completed_range_unit == unit &&
+        completed_range_units_revision == map->unit_placement_revision.load(std::memory_order_relaxed) &&
         completed_range_ap == unit->action_points &&
         completed_range_pos.x == unit->coor.x &&
         completed_range_pos.y == unit->coor.y;
@@ -7102,6 +7106,7 @@ void SpellMap::MoveRange::Worker()
 		// moving and turn changes can alter AP without switching selected unit.
 		const MapXY range_pos = unit->coor;
 		const int range_ap = unit->action_points;
+		const uint64_t range_units_revision = map->unit_placement_revision.load(std::memory_order_relaxed);
 
 		// processed tiles flags
 		vector<int> done(map->x_size * map->y_size, false);
@@ -7119,6 +7124,7 @@ void SpellMap::MoveRange::Worker()
 			ap_left = unit_ap_left;
 			fire_left = unit_fire_left;
             completed_range_unit = unit;
+			completed_range_units_revision = range_units_revision;
 			completed_range_pos = range_pos;
 			completed_range_ap = range_ap;
 			ResultLock(false);
@@ -7156,6 +7162,7 @@ void SpellMap::MoveRange::Worker()
 					ap_left = unit_ap_left;
 					fire_left = unit_fire_left;
                     completed_range_unit = unit;
+			completed_range_units_revision = range_units_revision;
 			completed_range_pos = range_pos;
 			completed_range_ap = range_ap;
 					ResultLock(false);
