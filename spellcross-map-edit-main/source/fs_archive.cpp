@@ -90,7 +90,7 @@ void FSarchive::Append(wstring path,int options)
 	// rellocate file list
 	m_files.reserve(m_files.size() + count);
 
-	for(int i = 0; i < count; i++)
+	for(uint32_t i = 0; i < count; i++)
 	{	
 		// make file record
 		FSfile *file = new FSfile();
