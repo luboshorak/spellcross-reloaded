@@ -581,7 +581,7 @@ int SpellVideo::DecodeDP2(uint8_t* dp2,int dp2_len, uint8_t *riff, int riff_len)
 		audio.samples = riff_cont.samples;
 		riff_cont.ConvertPCM(audio.data);
 	}
-	catch(const runtime_error& error) {
+	catch(const runtime_error&) {
 		return(1);
 	}
 
