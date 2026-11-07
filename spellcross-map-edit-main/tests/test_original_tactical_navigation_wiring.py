@@ -51,6 +51,36 @@ class OriginalTacticalNavigationWiring(unittest.TestCase):
         self.assertIn("!game_mode && !enforce_combat_bounds", mask)
         self.assertIn("IsWithinRetailNavigationEnvelope(", mask)
 
+    def test_scripted_runtime_spawn_paths_enforce_combat_navigation(self):
+        creator = CPP.split("MapUnit* SpellMap::CreateUnit(", 1)[1].split(
+            "// add unit to map list", 1
+        )[0]
+        self.assertIn("PlaceUnit(unit, isGameMode())", creator)
+
+        mission_start = CPP.split("int SpellMap::MissionStartEvent()", 1)[1].split(
+            "// execute list of given events", 1
+        )[0]
+        self.assertIn("PlaceUnit(new_unit, true)", mission_start)
+
+        scripted_events = CPP.split("int SpellMap::ProcEventsList(", 1)[1].split(
+            "// get first event at cursor", 1
+        )[0]
+        self.assertIn("PlaceUnit(new_unit, true)", scripted_events)
+        self.assertIn("Scripted event spawn FAILED", scripted_events)
+
+    def test_border_marker_requires_exit_to_regular_pathfinding_area(self):
+        placement = CPP.split("int SpellMap::PlaceUnit(", 1)[1].split(
+            "// store new unit", 1
+        )[0]
+        self.assertIn("require_tactical_tile && !IsTacticalMovementTile(cand, true)", placement)
+        self.assertIn("auto has_navigation_exit =", placement)
+        self.assertIn("IsWithinRetailNavigationEnvelope(", placement)
+        self.assertIn("GetNeighborTile8D(current, dir)", placement)
+        self.assertIn("if (!IsTacticalMovementTile(next, true))", placement)
+        self.assertIn("if (!has_navigation_exit(cand))", placement)
+        self.assertLess(placement.index("if (!has_navigation_exit(cand))"),
+                        placement.index("unit->coor = cand;"))
+
     def test_dos_top_bottom_and_left_right_mask(self):
         self.assertIn("x >= 2 && x < width - 3", HEADER)
         self.assertIn("y >= 8 && y < height - 14", HEADER)
