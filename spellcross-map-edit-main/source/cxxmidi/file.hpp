@@ -27,6 +27,7 @@ SOFTWARE.
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <vector>
 #include <stdexcept>
 
@@ -85,8 +86,11 @@ namespace cxxmidi {
 
 uint32_t File::Write(std::ofstream &file, const uint8_t *c,
                      std::streamsize size) {
+  if (size < 0 || static_cast<uint64_t>(size) > std::numeric_limits<uint32_t>::max()) {
+    throw std::length_error("MIDI write size exceeds 32-bit limit");
+  }
   file.write(reinterpret_cast<const char *>(c), size);
-  return size;
+  return static_cast<uint32_t>(size);
 }
 
 File::File() : time_division_(500) {}
@@ -105,7 +109,8 @@ File::File(uint8_t *data, int size) : time_division_(500)
 
 File::File(std::vector<uint8_t> &data) : time_division_(500)
 {
-    if(Load(data.data(),data.size()))
+    if(data.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+       Load(data.data(),static_cast<int>(data.size())))
         throw std::runtime_error("Loading MIDI file failed!");
 }
 
@@ -161,7 +166,8 @@ uint32_t File::SaveEvent(std::ofstream &output_file, const Event &event,
     r += Write(output_file, &event.at(0));  // SysEx type
 
     uint8_t data_size = static_cast<uint8_t>(event.size()) - 1;
-    r += utils::SaveVlq(output_file, data_size);
+    // The encoded length of a uint8_t value fits into at most two VLQ bytes.
+    r += static_cast<uint32_t>(utils::SaveVlq(output_file, data_size));
 
     skip_data_bytes = 1;
     *last_cmd = 0;
@@ -234,14 +240,18 @@ int File::Load(std::wstring path)
     }
 
     // load file data
-    auto fileLength = file.tellg();
+    const std::streamoff fileLength = file.tellg();
+    if(fileLength <= 0 || fileLength > std::numeric_limits<int>::max())
+        return(1); // FileData and Load use a signed 32-bit length.
+
     file.seekg(0,std::ifstream::beg);
-    vector<uint8_t> data(fileLength);
-    file.read((char*)&data[0],fileLength);
+    vector<uint8_t> data(static_cast<size_t>(fileLength));
+    if(!file.read(reinterpret_cast<char*>(data.data()),static_cast<std::streamsize>(fileLength)))
+        return(1);
     file.close();
 
     // load MIDI
-    return(Load(data.data(),fileLength));
+    return(Load(data.data(),static_cast<int>(fileLength)));
 };
 
 int File::Load(uint8_t *data, int len)
