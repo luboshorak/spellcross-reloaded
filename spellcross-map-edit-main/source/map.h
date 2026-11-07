@@ -832,6 +832,7 @@ public:
 			bool HasCachedMoveRange(const MapUnit* unit);
 			bool HasCachedMoveRangeLocked(const MapUnit* unit) const; // caller holds result_lock
 			bool IsRangePending(const MapUnit* unit);
+			bool IsPaused() const; // atomic worker state: used for safe player-preview recovery
 			vector<AStarNode> FindPath(MapUnit* unit,MapXY target);
 			// EN group move: route may extend beyond current AP; if the exact target is
 			// blocked/unreachable, returns a route to the reachable tile closest to it.

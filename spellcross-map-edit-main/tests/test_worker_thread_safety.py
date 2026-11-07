@@ -26,9 +26,72 @@ class WorkerSafetyContract(unittest.TestCase):
                     rf"is_halted\s*=\s*true;\s*was_halted\s*=\s*1;\s*"
                     rf"thread\s*=\s*new std::thread\(&SpellMap::{klass}::Worker", re.S))
 
+    def test_fresh_map_load_resumes_both_halted_range_workers(self):
+        # Both constructors start paused until the complete map exists.
+        # Create() already resumes them; the ordinary Load() path must too.
+        # Without this, a fresh battle keeps MOVE previews empty for ALL
+        # companies, while restoring a .scsave may appear to fix the problem.
+        create = CODE.split("int SpellMap::Create(", 1)[1].split(
+            "// Load MAP from file", 1
+        )[0]
+        load = CODE.split("int SpellMap::Load(wstring& path", 1)[1].split(
+            "void SpellMap::RelinkUnit(", 1
+        )[0]
+        for name, body in (("Create", create), ("Load", load)):
+            with self.subTest(name=name):
+                self.assertIn("unit_view = new ViewRange(this);", body)
+                self.assertIn("unit_range = new MoveRange(this);", body)
+                self.assertIn("ResumeUnitRanging(true);", body)
+                self.assertLess(body.index("unit_range = new MoveRange(this);"),
+                                body.index("ResumeUnitRanging(true);"))
+                self.assertLess(body.index("is_valid = true;"),
+                                body.index("ResumeUnitRanging(true);"))
+
+    def test_fresh_map_load_does_not_leave_paused_worker_after_deployment(self):
+        # SetGameMode(1), SortUnits() and Saves::SaveInitial() use paired
+        # Halt()/Resume(false). None of them can unpause an already halted
+        # constructor; only Load()'s explicit Resume(true) can do that.
+        load = CODE.split("int SpellMap::Load(wstring& path", 1)[1].split(
+            "void SpellMap::RelinkUnit(", 1
+        )[0]
+        game = CODE.split("int SpellMap::SetGameMode(", 1)[1].split(
+            "// game mode", 1
+        )[0]
+        save = CODE.split("int SpellMap::Saves::Save(", 1)[1].split(
+            "// load save position", 1
+        )[0]
+        self.assertIn("ResumeUnitRanging(true);", load)
+        self.assertIn("ResumeUnitRanging(false);", game)
+        self.assertIn("map->ResumeUnitRanging(false);", save)
+
     def test_nested_halts_do_not_collapse_to_a_boolean(self):
         self.assertNotIn("was_halted = is_halted;", CODE)
         self.assertGreaterEqual(CODE.count("is_halted = was_halted > 0;"), 2)
+
+    def test_paused_worker_recovers_during_safe_player_preview(self):
+        # A worker can also be left paused by an interrupted runtime path
+        # after many turns; detect that rather than silently showing dark
+        # MOVEMENT MODE for every company.
+        self.assertIn("bool IsPaused() const;", HEADER)
+        paused = CODE.split("bool SpellMap::MoveRange::IsPaused() const", 1)[1].split(
+            "AStarNode::AStarNode()", 1
+        )[0]
+        self.assertIn("is_halted.load(std::memory_order_acquire)", paused)
+        preview = CODE.split("bool SpellMap::RefreshSelectedMovePreview()", 1)[1].split(
+            "// check if unit can move", 1
+        )[0]
+        self.assertIn("unit_range->IsPaused()", preview)
+        self.assertIn("unit_range->Resume(true);", preview)
+        self.assertIn("!enemy_turn_running", preview)
+        self.assertIn("!panic_turn_running", preview)
+        self.assertIn("!reaction_fire_active", preview)
+        self.assertLess(preview.index("unit_range->Resume(true);"),
+                        preview.index("unit_range->FindRange(selected);"))
+        options = CODE.split("int SpellMap::GetUnitOptions(", 1)[1].split(
+            "// reset AP of all units", 1
+        )[0]
+        self.assertIn("if (unit_selection && unit_range && unit_range->IsPaused())", options)
+        self.assertIn("RefreshSelectedMovePreview();", options)
 
     def test_queue_inspection_uses_control_lock(self):
         start = CODE.index("int SpellMap::ViewRange::isIdle()")

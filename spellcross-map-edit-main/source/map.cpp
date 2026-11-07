@@ -3149,6 +3149,15 @@ if (!mission_data || !mission_data->Size())
 	// map should be valid from this point
 	is_valid = true;
 
+	// ViewRange/MoveRange constructors deliberately start their worker threads
+	// halted (was_halted=1). Unlike Create(), Load() did not resume them.
+	// Later nested Halt()/Resume(false) calls only restore that original halted
+	// state, so every MOVE preview can stay permanently empty after loading a
+	// fresh mission. Loading a tactical save takes a different path and already
+	// calls ResumeUnitRanging(true), explaining the inconsistent repro.
+	// Start both workers after all mission data and their buffers exist.
+	ResumeUnitRanging(true);
+
 	// done
 	return(0);
 }
@@ -7036,6 +7045,11 @@ bool SpellMap::MoveRange::IsRangePending(const MapUnit* unit)
         (state == ThreadCtrl::BUSY || !pending.empty());
 }
 
+bool SpellMap::MoveRange::IsPaused() const
+{
+    return is_halted.load(std::memory_order_acquire);
+}
+
 
 AStarNode::AStarNode()
 {
@@ -7551,6 +7565,20 @@ bool SpellMap::RefreshSelectedMovePreview()
 		selected->is_enemy || selected->isDead())
 		return false;
 
+	// Normal map mutations pause workers only during the current UI callback.
+	// If a worker remains paused on a normal player-facing frame, its queued
+	// results can never publish and WaitIdle() silently treats it as idle.
+	// Recover on the UI thread, outside map/result locks, and report it so a
+	// future unbalanced Halt()/Resume() can be tracked down.
+	if (!deployment_mode && !enemy_turn_running && !panic_turn_running &&
+		!reaction_fire_active && reaction_fire_queue.empty() && unit_range->IsPaused())
+	{
+		spellcross_diag::Log(spellcross_diag::Level::Warning, "MOVE",
+			"Restoring unexpectedly paused movement worker unit=%d ap=%d",
+			selected->id, selected->action_points);
+		unit_range->Resume(true);
+	}
+
 	const bool invalidated = g_move_range_dirty_for == selected;
 	if (invalidated || !unit_range->HasCachedMoveRange(selected))
 	{
@@ -7742,6 +7770,11 @@ int SpellMap::GetUnitOptions(TScroll* scroll)
 			return UNIT_OPT_SELECT;
 		return select_pos.IsSelected() ? UNIT_OPT_MOVE : 0;
 	}
+
+	// An unexpected lingering worker pause would make *every* company lose its
+	// move cursor. Restore the player worker before any pointer hit test.
+	if (unit_selection && unit_range && unit_range->IsPaused())
+		RefreshSelectedMovePreview();
 
 	// A selection change must invalidate the old movement preview once.
 	// Otherwise, the shared worker may have published the range of an AI,
