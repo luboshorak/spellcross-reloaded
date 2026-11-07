@@ -2516,6 +2516,20 @@ void MainFrame::FinishDeployment()
         spell_map->unit_view->AddUnitsView();
     }
     spell_map->InvalidateUnitsView();
+
+    // Deployment has just changed the entire occupancy map; mission-start
+    // events may also spawn companies before the first player turn. Rebuild
+    // the selected company's MOVE range NOW, not after the first mouse move.
+    // Keep the normal renderer's later invalidation/recovery as a safeguard.
+    if (MapUnit* selected = spell_map->GetSelectedUnit();
+        selected && selected->unit && !selected->is_enemy && !selected->isDead())
+    {
+        if (!spell_map->RefreshSelectedMovePreview())
+            spellcross_diag::Log(spellcross_diag::Level::Warning, "MOVE",
+                "Initial movement preview unavailable after deployment unit=%d ap=%d walk_ap=%d",
+                selected->id, selected->action_points, selected->GetWalkAP());
+    }
+
     if (canvas) { canvas->SetFocus(); canvas->Refresh(); }
 }
 
