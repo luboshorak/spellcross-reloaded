@@ -42,7 +42,7 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         self.assertIn("std::atomic<uint64_t> unit_placement_revision{ 0 };", HEADER)
         self.assertIn("uint64_t completed_range_units_revision = 0;", HEADER)
         sorted_units = MAP.split("void SpellMap::SortUnits()", 1)[1].split(
-            "// invalidate current units view map", 1
+            "// clear units layer array", 1
         )[0]
         self.assertIn("unit_placement_revision.fetch_add(1, std::memory_order_relaxed);", sorted_units)
         worker = MAP.split("void SpellMap::MoveRange::Worker()", 1)[1].split(
