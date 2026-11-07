@@ -15963,6 +15963,9 @@ int SpellMap::Saves::Save(SpellMap::SavedState* slot)
 		save = saves.back();
 	}
 
+	// Snapshot must not race a view/range worker and must not re-lock
+	// the map when copying its already-owned event list.
+	map->HaltUnitRanging(true);
 	map->LockMap();
 
 	// copy destructible tiles
@@ -15982,7 +15985,7 @@ int SpellMap::Saves::Save(SpellMap::SavedState* slot)
 	// make blank copy of events
 	save->events = new SpellMapEvents(map);
 	for (auto& evt : map->events->GetEvents())
-		save->events->AddEvent(new SpellMapEventRec(evt));
+		save->events->AddEventAlreadyLocked(new SpellMapEventRec(evt));
 
 	// relink inter-units links and links units-events
 	for (int uid = 0; uid < map->units.size(); uid++)
@@ -16014,6 +16017,7 @@ int SpellMap::Saves::Save(SpellMap::SavedState* slot)
 	save->mission_losses = map->m_mission_losses;
 
 	map->ReleaseMap();
+	map->ResumeUnitRanging(false);
 
 	return(0);
 }
@@ -16058,9 +16062,9 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 	map->tiles = save->tiles;
 
 	// replace events	
-	map->events->ClearEvents();
+	map->events->ClearEventsAlreadyLocked();
 	for (auto& evt : save->events->GetEvents())
-		map->events->AddEvent(new SpellMapEventRec(evt));
+		map->events->AddEventAlreadyLocked(new SpellMapEventRec(evt));
 
 	// replace units
 	map->RemoveAllUnits();
@@ -16096,7 +16100,7 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 	map->SelectEvent(NULL);
 
 	// relink event units
-	map->events->RelinkUnits();
+	map->events->RelinkUnitsAlreadyLocked();
 
 	// restore already-triggered but not yet fully processed events
 	for (auto* evt : map->events->GetEvents())
