@@ -37,6 +37,29 @@ class TacticalMoveCacheRecovery(unittest.TestCase):
         self.assertIn("completed_range_pos.y == unit->coor.y", MAP)
         self.assertIn("return HasCachedMoveRangeLocked(unit);", MAP)
 
+    def test_other_units_rebuilding_occupancy_invalidates_same_unit_move_preview(self):
+        # Selected-unit AP/position is unchanged when a friendly blocker moves.
+        self.assertIn("std::atomic<uint64_t> unit_placement_revision{ 0 };", HEADER)
+        self.assertIn("uint64_t completed_range_units_revision = 0;", HEADER)
+        sorted_units = MAP.split("void SpellMap::SortUnits()", 1)[1].split(
+            "// invalidate current units view map", 1
+        )[0]
+        self.assertIn("unit_placement_revision.fetch_add(1, std::memory_order_relaxed);", sorted_units)
+        worker = MAP.split("void SpellMap::MoveRange::Worker()", 1)[1].split(
+            "// Keep heap priorities", 1
+        )[0]
+        self.assertIn("const uint64_t range_units_revision =", worker)
+        self.assertEqual(worker.count("completed_range_units_revision = range_units_revision;"), 2)
+        validation = MAP.split("bool SpellMap::MoveRange::HasCachedMoveRangeLocked(", 1)[1].split(
+            "bool SpellMap::MoveRange::HasCachedMoveRange(", 1
+        )[0]
+        self.assertIn(
+            "completed_range_units_revision == map->unit_placement_revision.load(std::memory_order_relaxed)",
+            validation,
+        )
+        self.assertIn("unit_range->HasCachedMoveRangeLocked(unit_selection)", MAP)
+        self.assertIn("unit_range->GetCachedMoveAP(unit, npos)", MAP)
+
     def test_rmb_and_space_rebuild_stale_range_for_visual_preview(self):
         temporary = MAP.split("int SpellMap::BeginTemporaryUnitRangeViewMode(", 1)[1].split(
             "int SpellMap::EndTemporaryUnitRangeViewMode(", 1
