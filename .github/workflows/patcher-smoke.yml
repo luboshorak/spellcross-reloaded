@@ -1,0 +1,59 @@
+name: Optional patch updater smoke
+on:
+  push:
+    branches: [feature/optional-auto-patching]
+  pull_request:
+    paths:
+      - 'packaging/Install-Patch.ps1'
+      - 'packaging/New-Patch.ps1'
+      - '.github/workflows/patcher-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  portable-patch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test delta patch, protected data and modified-binary rejection
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:RUNNER_TEMP 'spellcross-update-ci'
+          $prev = Join-Path $base 'old'
+          $next = Join-Path $base 'new'
+          $install = Join-Path $base 'installed'
+          $patch = Join-Path $base 'patch'
+          New-Item -ItemType Directory -Force -Path $prev,$next,$install,$patch | Out-Null
+          foreach ($dir in @($prev,$next,$install)) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'data'),(Join-Path $dir 'save'),(Join-Path $dir 'game_data\imports'),(Join-Path $dir 'DLC') | Out-Null
+          }
+          Set-Content -Encoding ASCII -Path (Join-Path $prev 'Spellcross.exe') -Value 'old-binary'
+          Set-Content -Encoding ASCII -Path (Join-Path $prev 'data\game.dat') -Value 'unchanged'
+          Set-Content -Encoding ASCII -Path (Join-Path $next 'Spellcross.exe') -Value 'new-binary'
+          Set-Content -Encoding ASCII -Path (Join-Path $next 'data\game.dat') -Value 'unchanged'
+          Copy-Item -LiteralPath (Join-Path $prev 'Spellcross.exe') -Destination (Join-Path $install 'Spellcross.exe')
+          Copy-Item -LiteralPath (Join-Path $prev 'data\game.dat') -Destination (Join-Path $install 'data\game.dat')
+          Set-Content -Encoding ASCII -Path (Join-Path $install 'save\slot1.scsave') -Value 'save-preserved'
+          Set-Content -Encoding ASCII -Path (Join-Path $install 'game_data\imports\COMMON.FS') -Value 'iso-preserved'
+          Set-Content -Encoding ASCII -Path (Join-Path $install 'DLC\snowfall.dat') -Value 'dlc-preserved'
+          Set-Content -Encoding ASCII -Path (Join-Path $install 'config.ini') -Value 'config-preserved'
+          & .\packaging\New-Patch.ps1 -PreviousDirectory $prev -CurrentDirectory $next -FromVersion '0.9.5' -ToVersion '0.9.6' -OutputDirectory $patch
+          if (-not (Test-Path -LiteralPath (Join-Path $patch 'patch-manifest.json'))) { throw 'Manifest not generated.' }
+          & .\packaging\Install-Patch.ps1 -InstallRoot $install -CurrentVersion '0.9.5' -TargetVersion '0.9.6' -LocalPatchDirectory $patch -NoRestart -NoPause
+          if ($LASTEXITCODE -ne 0) { throw 'Patch installation failed.' }
+          if ((Get-Content -LiteralPath (Join-Path $install 'Spellcross.exe') -Raw).Trim() -ne 'new-binary') { throw 'Executable not patched.' }
+          if ((Get-Content -LiteralPath (Join-Path $install 'data\game.dat') -Raw).Trim() -ne 'unchanged') { throw 'Unchanged file corrupted.' }
+          foreach ($sample in @(
+            @{ Path='save\slot1.scsave'; Content='save-preserved' },
+            @{ Path='game_data\imports\COMMON.FS'; Content='iso-preserved' },
+            @{ Path='DLC\snowfall.dat'; Content='dlc-preserved' },
+            @{ Path='config.ini'; Content='config-preserved' }
+          )) {
+            if ((Get-Content -LiteralPath (Join-Path $install $sample.Path) -Raw).Trim() -ne $sample.Content) {
+              throw "Protected user file changed: $($sample.Path)"
+            }
+          }
+          Set-Content -Encoding ASCII -Path (Join-Path $install 'Spellcross.exe') -Value 'locally-modified'
+          & .\packaging\Install-Patch.ps1 -InstallRoot $install -CurrentVersion '0.9.5' -TargetVersion '0.9.6' -LocalPatchDirectory $patch -NoRestart -NoPause
+          if ($LASTEXITCODE -eq 0) { throw 'Tampered source binary was accepted.' }
+          if ((Get-Content -LiteralPath (Join-Path $install 'Spellcross.exe') -Raw).Trim() -ne 'locally-modified') { throw 'Modified binary was overwritten.' }
