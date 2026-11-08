@@ -37,7 +37,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path (Join-Path $source 'packaging'),(Join-Path $source 'spellcross-map-edit-main\source') | Out-Null
           Copy-Item -LiteralPath '.\packaging\Release.ps1' -Destination (Join-Path $source 'packaging\Release.ps1')
           foreach ($file in @('app_version.h','resources.rc')) {
-            Copy-Item -LiteralPath (Join-Path 'spellcross-map-edit-main\source' $file) -Destination (Join-Path $source 'spellcross-map-edit-main\source' $file)
+            Copy-Item -LiteralPath (Join-Path 'spellcross-map-edit-main\source' $file) -Destination (Join-Path (Join-Path $source 'spellcross-map-edit-main\source') $file)
           }
           # Fake only the compiler/packer; exercise the REAL release driver and
           # REAL git commit/tag/atomic-push against a private test origin.
