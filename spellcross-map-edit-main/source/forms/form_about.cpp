@@ -290,8 +290,8 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
     {
         m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
         m_updateStatus->SetLabel(Tr("updates.new_available", "A newer build is available: ") + latest +
-            Tr("updates.installed", " (installed: ") + spellcross_app::VersionLabel() + ").");
-        m_openRelease->SetLabel("Open " + latest + Tr("updates.on_github", " on GitHub"));
+            " " + Tr("updates.installed", "(installed: ") + spellcross_app::VersionLabel() + ").");
+        m_openRelease->SetLabel("Open " + latest + " " + Tr("updates.on_github", "on GitHub"));
         if (spellcross_update::IsPatchClientInstalled())
         {
             m_latestReleaseTag = latestTag;
@@ -300,7 +300,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
         else
         {
             m_updateStatus->SetLabel(m_updateStatus->GetLabel() +
-                Tr("updates.no_client", " Patch installer is unavailable in this build; download the full release."));
+                " " + Tr("updates.no_client", "Patch installer is unavailable in this build; download the full release."));
         }
     }
     else if (cmp == 0)
