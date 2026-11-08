@@ -149,7 +149,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     AddInfoRow(content, grid, Tr("about.author", "Author"), wxString::FromUTF8("Luboš Horák"));
     AddInfoRow(content, grid, Tr("about.version", "Version"), spellcross_app::VersionLabel());
     AddInfoRow(content, grid, Tr("about.repository", "Repository"), "github.com/luboshorak/spellcross-reloaded");
-    AddInfoRow(content, grid, Tr("about.based_on", "Based on"), wxString::FromUTF8("Spellcross Map Editor by Stanislav Mašláň"));
+    AddInfoRow(content, grid, Tr("about.based_on", "Based on"), Tr("about.based_on_value", "Spellcross Map Editor by Stanislav Mašláň"));
     AddInfoRow(content, grid, Tr("about.license", "License"), "MIT License");
     projectBox->Add(grid, 0, wxEXPAND | wxALL, 10);
 
@@ -291,7 +291,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
         m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
         m_updateStatus->SetLabel(Tr("updates.new_available", "A newer build is available: ") + latest +
             " " + Tr("updates.installed", "(installed: ") + spellcross_app::VersionLabel() + ").");
-        m_openRelease->SetLabel("Open " + latest + " " + Tr("updates.on_github", "on GitHub"));
+        m_openRelease->SetLabel(Tr("updates.open", "Open ") + latest + " " + Tr("updates.on_github", "on GitHub"));
         if (spellcross_update::IsPatchClientInstalled())
         {
             m_latestReleaseTag = latestTag;
@@ -307,7 +307,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
     {
         m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
         m_updateStatus->SetLabel(Tr("updates.current", "You are up to date. Latest GitHub release: ") + latest + ".");
-        m_openRelease->SetLabel("Open " + latest + " on GitHub");
+        m_openRelease->SetLabel(Tr("updates.open", "Open ") + latest + " " + Tr("updates.on_github", "on GitHub"));
     }
     else
     {
@@ -333,7 +333,7 @@ void FormAbout::OnInstallPatch(wxCommandEvent&)
     wxMessageDialog confirm(this,
         Tr("updates.confirm", "Install the available patch now? The game will close, the updater will download and verify changed files, and Spellcross Reloaded will restart. Your saved games and imported original data are preserved."),
         Tr("updates.dialog_title", "Spellcross Reloaded update"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
-    confirm.SetYesNoLabels("Install patch", Tr("updates.later", "Not now"));
+    confirm.SetYesNoLabels(Tr("updates.install", "Install patch"), Tr("updates.later", "Not now"));
     if (confirm.ShowModal() != wxID_YES)
         return;
     std::string error;
