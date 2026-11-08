@@ -74,7 +74,7 @@ jobs:
           $previousPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
           try {
-            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version 0.9.7 -WxRoot 'Q:\missing-wx-root' -NoSfx 2>&1
+            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version 0.9.7 -WxRoot 'Q:\missing-wx-root' -NoSfx -NoPush -AllowNonMain 2>&1
             $exitCode = $LASTEXITCODE
           } finally {
             $ErrorActionPreference = $previousPreference
