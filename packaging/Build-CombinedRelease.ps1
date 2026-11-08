@@ -11,7 +11,9 @@ param(
     [switch]$NoZip,
     [switch]$NoSfx,
     [string]$WinRARPath = '',
-    [switch]$PruneOldBuilds
+    [switch]$PruneOldBuilds,
+    [string]$PreviousStageDirectory = '',
+    [string]$PreviousVersion = ''
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -352,6 +354,14 @@ if (Test-Path -LiteralPath $info -PathType Container) {
         }
     }
 }
+# The built-in opt-in updater ships alongside Spellcross.exe. It is not
+# launched by setup; game UI asks for consent before starting it.
+$updaterPath = Join-Path $root 'packaging\Install-Patch.ps1'
+Assert-File $updaterPath
+$stageUpdater = Join-Path $stage 'updater'
+New-Item -ItemType Directory -Force -Path $stageUpdater | Out-Null
+Copy-Required $updaterPath (Join-Path $stageUpdater 'Install-Patch.ps1')
+
 # Keep the shortcut icon and SFX source artwork under setup\ in releases.
 # The desktop shortcut icon is resolved relative to the user's chosen folder.
 if ($winrarExe) {
@@ -389,6 +399,20 @@ Minidumps can contain private game/user data; review before sharing.
 
 Before publishing, verify the package on a clean Windows machine.
 '@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8
+# Optional delta assets from the *previous verified release staging folder*.
+# The new build always remains a complete, standalone portable distribution.
+if ([bool]$PreviousStageDirectory -ne [bool]$PreviousVersion) {
+    throw 'Use -PreviousStageDirectory and -PreviousVersion together to generate patch assets.'
+}
+if ($PreviousStageDirectory) {
+    & (Join-Path $PSScriptRoot 'New-Patch.ps1') `
+        -PreviousDirectory $PreviousStageDirectory `
+        -CurrentDirectory $stage `
+        -FromVersion $PreviousVersion `
+        -ToVersion $packageVersion `
+        -OutputDirectory $OutputDirectory
+    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Patch generator failed.' }
+}
 if (-not $NoZip) {
     # Stable asset name for GitHub Releases. Build folders retain timestamps
     # for troubleshooting, but the ZIP itself contains files at its root.
