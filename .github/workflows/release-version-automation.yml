@@ -69,6 +69,19 @@ jobs:
             Assert-Clean
           }
 
+          # Deliberately fail AFTER injecting the version into both files:
+          # a nonexistent wxWidgets root must abort the native packager.
+          $previousPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version 0.9.7 -WxRoot 'Q:\missing-wx-root' -NoSfx 2>&1
+            $exitCode = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $previousPreference
+          }
+          if ($exitCode -eq 0) { throw 'Expected missing-dependency failure.' }
+          Assert-Clean
+
           # Legacy source checks must keep passing after the version override.
           python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_release_candidate_metadata.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Regression metadata tests failed.' }
