@@ -6,6 +6,10 @@ on:
     paths:
       - 'packaging/Install-Patch.ps1'
       - 'packaging/New-Patch.ps1'
+      - 'spellcross-map-edit-main/source/forms/form_about.cpp'
+      - 'spellcross-map-edit-main/source/main.cpp'
+      - 'spellcross-map-edit-main/locales/*.lang'
+      - 'spellcross-map-edit-main/source/tests/test_about_localization.py'
       - '.github/workflows/patcher-smoke.yml'
   workflow_dispatch:
 
@@ -14,6 +18,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check translated About and updater labels
+        shell: powershell
+        run: python .\spellcross-map-edit-main\source\tests\test_about_localization.py
       - name: Test delta patch, protected data and modified-binary rejection
         shell: powershell
         run: |
