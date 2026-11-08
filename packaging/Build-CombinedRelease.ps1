@@ -17,6 +17,30 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Public entry point: with -Version (or an interactive build) delegate to the
+# version-safe front-end. -NoVersionPrompt and -BuildOnly are internal
+# phases used by Release.ps1 (compile -> commit -> package -> push).
+if ($BuildOnly -and ($SkipBuild -or -not $NoVersionPrompt)) {
+    throw '-BuildOnly is the internal compile phase and requires -NoVersionPrompt without -SkipBuild.'
+}
+if ($SkipBuild -and $Version) {
+    throw '-Version requires compiling fresh binaries; do not combine with -SkipBuild.'
+}
+if ($Version -and $NoVersionPrompt) {
+    throw 'Internal -NoVersionPrompt cannot be combined with -Version.'
+}
+if (-not $NoVersionPrompt -and -not $SkipBuild) {
+    $releaseParams = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'NoVersionPrompt') {
+            $releaseParams[$key] = $PSBoundParameters[$key]
+        }
+    }
+    & (Join-Path $PSScriptRoot 'Release.ps1') @releaseParams
+    return
+}
+
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $game = Join-Path $root 'spellcross-map-edit-main'
 # Keep packaging synchronized with the app and Windows version metadata.
@@ -165,6 +189,12 @@ if ($builtFileVersion.Trim() -ne $releaseVersion -or
     throw "Spellcross.exe version mismatch: expected $releaseVersion, got FileVersion='$builtFileVersion', ProductVersion='$builtProductVersion'. Run Build-CombinedRelease.ps1 -Rebuild before packaging."
 }
 Write-Host "Validated executable FileVersion/ProductVersion: $releaseVersion" -ForegroundColor Green
+if ($BuildOnly) {
+    # Compilation and executable version validation done. Packaging must occur
+    # AFTER the release metadata commit so BUILD-INFO.txt points at that commit.
+    Write-Host 'Release binaries built and validated; packaging deferred until version commit.' -ForegroundColor Green
+    return
+}
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'dist' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $name = 'Spellcross-Reloaded-Win64-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
@@ -201,6 +231,7 @@ Built executable: $gameExe
 Spellcross.exe SHA256: $gameHash
 Spellcross.pdb SHA256: $pdbHash
 Build UTC: $((Get-Date).ToUniversalTime().ToString('o'))
+Version source: $(if ($env:SPELLCROSS_RELEASE_OVERRIDE) { 'Release.ps1 committed release metadata (' + $env:SPELLCROSS_RELEASE_OVERRIDE + ')' } else { 'app_version.h checked-in metadata' })
 "@ | Set-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Encoding UTF8
 Write-Host "Package provenance: $gitBranch / $gitCommit / exe SHA256 $gameHash / PDB SHA256 $pdbHash" -ForegroundColor Cyan
 
