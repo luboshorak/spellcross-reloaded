@@ -86,9 +86,10 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     // Request a high resolution directly from the embedded multi-size ICO.
     const int logoPixels = FromDIP(64);
     wxIcon icon("IDI_ICON2", wxBITMAP_TYPE_ICO_RESOURCE, logoPixels, logoPixels);
+    wxStaticBitmap* logo = nullptr;
     if (icon.IsOk())
     {
-        auto* logo = new wxStaticBitmap(header, wxID_ANY, wxBitmap(icon));
+        logo = new wxStaticBitmap(header, wxID_ANY, wxBitmap(icon));
         headerSizer->Add(logo, 0, wxALIGN_CENTER_VERTICAL | wxALL, 18);
     }
 
@@ -208,6 +209,8 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     header->SetBackgroundColour(spellcross_menu::Highlight());
     for (wxStaticText* headerText : {appName, subtitle, version})
         headerText->SetBackgroundColour(spellcross_menu::Highlight());
+    if (logo)
+        logo->SetBackgroundColour(spellcross_menu::Highlight());
     subtitle->SetForegroundColour(spellcross_menu::Text());
     version->SetForegroundColour(spellcross_strategic_ui::Inactive());
     header->Refresh();
