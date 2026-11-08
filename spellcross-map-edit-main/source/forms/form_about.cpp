@@ -18,17 +18,8 @@
 #include <wx/statline.h>
 #include <wx/utils.h>
 
-#include <algorithm>
-#include <cctype>
-#include <regex>
 #include <string>
 #include <vector>
-
-#ifdef __WXMSW__
-#include <windows.h>
-#include <winhttp.h>
-#pragma comment(lib, "winhttp.lib")
-#endif
 
 namespace
 {
@@ -38,10 +29,6 @@ namespace
     constexpr int ID_INSTALL_PATCH = wxID_HIGHEST + 404;
 
     using spellcross_release::CompareVersions;
-
-#ifdef __WXMSW__
-
-#endif
 
     wxStaticText* AddInfoRow(wxWindow* parent, wxFlexGridSizer* grid,
         const wxString& label, const wxString& value)
