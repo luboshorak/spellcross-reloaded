@@ -200,7 +200,7 @@ namespace spellcross_update
         const std::wstring args =
             L"-NoProfile -ExecutionPolicy Bypass -File \"" + script.wstring() +
             L"\" -InstallRoot \"" + root.wstring() +
-            L"\" -CurrentVersion \"" + std::wstring(SPELLCROSS_VERSION_WSTRING) +
+            L"\" -CurrentVersion \"" + std::wstring(L"" SPELLCROSS_RELEASE_LABEL) +
             L"\" -TargetVersion \"" + std::wstring(targetTag.begin() + 1, targetTag.end()) +
             L"\" -WaitPid " + std::to_wstring(GetCurrentProcessId());
         const HINSTANCE launched = ShellExecuteW(nullptr, L"open", L"powershell.exe",
