@@ -55,8 +55,17 @@ jobs:
           }
 
           foreach ($bad in @('0.9', '0.9.6-foobar', '0.9.6/evil', '0.9.6.65536', '01.2.3')) {
-            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version $bad -ValidateOnly 2>&1
-            if ($LASTEXITCODE -eq 0) { throw "Accepted invalid version: $bad" }
+            # Expected child stderr must not become a terminating PowerShell
+            # NativeCommandError in the parent CI shell.
+            $previousPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+              $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version $bad -ValidateOnly 2>&1
+              $exitCode = $LASTEXITCODE
+            } finally {
+              $ErrorActionPreference = $previousPreference
+            }
+            if ($exitCode -eq 0) { throw "Accepted invalid version: $bad" }
             Assert-Clean
           }
 
