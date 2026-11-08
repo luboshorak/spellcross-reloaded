@@ -39,7 +39,7 @@ jobs:
           Set-Content -Encoding ASCII -Path (Join-Path $install 'config.ini') -Value 'config-preserved'
           & .\packaging\New-Patch.ps1 -PreviousDirectory $prev -CurrentDirectory $next -FromVersion '0.9.5' -ToVersion '0.9.6' -OutputDirectory $patch
           if (-not (Test-Path -LiteralPath (Join-Path $patch 'patch-manifest.json'))) { throw 'Manifest not generated.' }
-          & .\packaging\Install-Patch.ps1 -InstallRoot $install -CurrentVersion '0.9.5' -TargetVersion '0.9.6' -LocalPatchDirectory $patch -NoRestart -NoPause
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Install-Patch.ps1 -InstallRoot $install -CurrentVersion '0.9.5' -TargetVersion '0.9.6' -LocalPatchDirectory $patch -NoRestart -NoPause
           if ($LASTEXITCODE -ne 0) { throw 'Patch installation failed.' }
           if ((Get-Content -LiteralPath (Join-Path $install 'Spellcross.exe') -Raw).Trim() -ne 'new-binary') { throw 'Executable not patched.' }
           if ((Get-Content -LiteralPath (Join-Path $install 'data\game.dat') -Raw).Trim() -ne 'unchanged') { throw 'Unchanged file corrupted.' }
@@ -54,6 +54,6 @@ jobs:
             }
           }
           Set-Content -Encoding ASCII -Path (Join-Path $install 'Spellcross.exe') -Value 'locally-modified'
-          & .\packaging\Install-Patch.ps1 -InstallRoot $install -CurrentVersion '0.9.5' -TargetVersion '0.9.6' -LocalPatchDirectory $patch -NoRestart -NoPause
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Install-Patch.ps1 -InstallRoot $install -CurrentVersion '0.9.5' -TargetVersion '0.9.6' -LocalPatchDirectory $patch -NoRestart -NoPause
           if ($LASTEXITCODE -eq 0) { throw 'Tampered source binary was accepted.' }
           if ((Get-Content -LiteralPath (Join-Path $install 'Spellcross.exe') -Raw).Trim() -ne 'locally-modified') { throw 'Modified binary was overwritten.' }
