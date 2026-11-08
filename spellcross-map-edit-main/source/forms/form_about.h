@@ -4,6 +4,7 @@
 #include <wx/dialog.h>
 #include <wx/stattext.h>
 #include <wx/string.h>
+#include <string>
 
 class FormAbout : public wxDialog
 {
@@ -20,10 +21,13 @@ private:
     wxStaticText* m_updateStatus = nullptr;
     wxButton* m_checkUpdates = nullptr;
     wxButton* m_openRelease = nullptr;
+    wxButton* m_installPatch = nullptr;
+    std::string m_latestReleaseTag;
     wxString m_latestReleaseUrl;
 
     void OnClose(wxCommandEvent& event);
     void OnCheckUpdates(wxCommandEvent& event);
     void OnOpenProject(wxCommandEvent& event);
     void OnOpenRelease(wxCommandEvent& event);
+    void OnInstallPatch(wxCommandEvent& event);
 };
