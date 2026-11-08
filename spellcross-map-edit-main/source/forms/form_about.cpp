@@ -3,6 +3,9 @@
 #include "app_version.h"
 #include "../strategic_ui_theme.h"
 #include "../release_version_compare.h"
+#include "../release_update.h"
+#include <wx/app.h>
+#include <wx/msgdlg.h>
 
 #include <wx/bitmap.h>
 #include <wx/panel.h>
@@ -32,158 +35,12 @@ namespace
     constexpr int ID_CHECK_UPDATES = wxID_HIGHEST + 401;
     constexpr int ID_OPEN_PROJECT = wxID_HIGHEST + 402;
     constexpr int ID_OPEN_RELEASE = wxID_HIGHEST + 403;
+    constexpr int ID_INSTALL_PATCH = wxID_HIGHEST + 404;
 
     using spellcross_release::CompareVersions;
 
 #ifdef __WXMSW__
-    class InternetHandle
-    {
-    public:
-        InternetHandle() = default;
-        explicit InternetHandle(HINTERNET handle) : m_handle(handle) {}
-        ~InternetHandle() { if (m_handle) WinHttpCloseHandle(m_handle); }
-        InternetHandle(const InternetHandle&) = delete;
-        InternetHandle& operator=(const InternetHandle&) = delete;
-        operator HINTERNET() const { return m_handle; }
-        bool IsOk() const { return m_handle != nullptr; }
-    private:
-        HINTERNET m_handle = nullptr;
-    };
 
-    bool FetchLatestReleaseTag(std::string& tag, std::string& error)
-    {
-        // Use the release *list*, not /releases/latest: GitHub's "latest" endpoint
-        // intentionally skips prereleases, while Spellcross Reloaded public builds
-        // are often published as prereleases during development.
-        InternetHandle session(WinHttpOpen(
-            L"SpellcrossReloaded/" SPELLCROSS_VERSION_WSTRING,
-            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-            WINHTTP_NO_PROXY_NAME,
-            WINHTTP_NO_PROXY_BYPASS,
-            0));
-        if (!session.IsOk())
-        {
-            error = "Could not initialize the Windows HTTP client.";
-            return false;
-        }
-
-        WinHttpSetTimeouts(session, 4000, 4000, 5000, 5000);
-
-        InternetHandle connection(WinHttpConnect(session, L"api.github.com", INTERNET_DEFAULT_HTTPS_PORT, 0));
-        if (!connection.IsOk())
-        {
-            error = "Could not connect to api.github.com.";
-            return false;
-        }
-
-        InternetHandle request(WinHttpOpenRequest(
-            connection,
-            L"GET",
-            L"/repos/luboshorak/spellcross-reloaded/releases?per_page=20",
-            nullptr,
-            WINHTTP_NO_REFERER,
-            WINHTTP_DEFAULT_ACCEPT_TYPES,
-            WINHTTP_FLAG_SECURE));
-        if (!request.IsOk())
-        {
-            error = "Could not create the GitHub update request.";
-            return false;
-        }
-
-        const wchar_t* headers =
-            L"Accept: application/vnd.github+json\r\n"
-            L"X-GitHub-Api-Version: 2022-11-28\r\n"
-            L"User-Agent: SpellcrossReloaded/" SPELLCROSS_VERSION_WSTRING L"\r\n";
-
-        if (!WinHttpSendRequest(request, headers, static_cast<DWORD>(-1L),
-            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-            !WinHttpReceiveResponse(request, nullptr))
-        {
-            error = "GitHub did not respond. Check your internet connection or proxy settings.";
-            return false;
-        }
-
-        DWORD status = 0;
-        DWORD statusSize = sizeof(status);
-        if (!WinHttpQueryHeaders(request,
-            WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-            WINHTTP_HEADER_NAME_BY_INDEX,
-            &status,
-            &statusSize,
-            WINHTTP_NO_HEADER_INDEX))
-        {
-            error = "Could not read the GitHub response status.";
-            return false;
-        }
-
-        if (status != 200)
-        {
-            error = "GitHub update check failed (HTTP " + std::to_string(status) + ").";
-            return false;
-        }
-
-        std::string body;
-        for (;;)
-        {
-            DWORD available = 0;
-            if (!WinHttpQueryDataAvailable(request, &available))
-            {
-                error = "Could not read the GitHub response.";
-                return false;
-            }
-            if (available == 0)
-                break;
-
-            const size_t oldSize = body.size();
-            body.resize(oldSize + available);
-            DWORD read = 0;
-            if (!WinHttpReadData(request, body.data() + oldSize, available, &read))
-            {
-                error = "Could not read the GitHub response.";
-                return false;
-            }
-            body.resize(oldSize + read);
-        }
-
-        const std::regex tagRegex(R"REGEX("tag_name"\s*:\s*"([^"]+)")REGEX");
-        std::sregex_iterator it(body.begin(), body.end(), tagRegex);
-        const std::sregex_iterator end;
-        if (it == end)
-        {
-            error = "No published GitHub release was found.";
-            return false;
-        }
-
-        // GitHub returns releases in publication order, but select the highest
-        // comparable numeric tag from the returned page so a later-published
-        // hotfix/legacy tag cannot hide a genuinely newer build.
-        std::string firstTag;
-        std::string bestTag;
-        for (; it != end; ++it)
-        {
-            const std::string candidate = (*it)[1].str();
-            if (firstTag.empty())
-                firstTag = candidate;
-
-            bool candidateComparable = false;
-            CompareVersions(candidate, SPELLCROSS_RELEASE_LABEL, candidateComparable);
-            if (!candidateComparable)
-                continue;
-
-            if (bestTag.empty())
-            {
-                bestTag = candidate;
-                continue;
-            }
-
-            bool tagsComparable = false;
-            if (CompareVersions(bestTag, candidate, tagsComparable) < 0 && tagsComparable)
-                bestTag = candidate;
-        }
-
-        tag = bestTag.empty() ? firstTag : bestTag;
-        return !tag.empty();
-    }
 #endif
 
     wxStaticText* AddInfoRow(wxWindow* parent, wxFlexGridSizer* grid,
@@ -304,8 +161,11 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     auto* updateButtons = new wxBoxSizer(wxHORIZONTAL);
     m_checkUpdates = new spellcross_strategic_ui::Button(content, ID_CHECK_UPDATES, "Check for updates");
     m_openRelease = new spellcross_strategic_ui::Button(content, ID_OPEN_RELEASE, "Open GitHub releases");
+    m_installPatch = new spellcross_strategic_ui::Button(content, ID_INSTALL_PATCH, "Install patch");
+    m_installPatch->Disable();
     updateButtons->Add(m_checkUpdates, 0, wxRIGHT, 8);
-    updateButtons->Add(m_openRelease, 0);
+    updateButtons->Add(m_openRelease, 0, wxRIGHT, 8);
+    updateButtons->Add(m_installPatch, 0);
     updateBox->Add(updateButtons, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
     contentSizer->Add(updateBox, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
 
@@ -344,6 +204,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     Bind(wxEVT_BUTTON, &FormAbout::OnCheckUpdates, this, ID_CHECK_UPDATES);
     Bind(wxEVT_BUTTON, &FormAbout::OnOpenProject, this, ID_OPEN_PROJECT);
     Bind(wxEVT_BUTTON, &FormAbout::OnOpenRelease, this, ID_OPEN_RELEASE);
+    Bind(wxEVT_BUTTON, &FormAbout::OnInstallPatch, this, ID_INSTALL_PATCH);
 
     std::vector<wxAcceleratorEntry> entries;
     entries.emplace_back(wxACCEL_NORMAL, WXK_ESCAPE, wxID_OK);
@@ -371,6 +232,8 @@ void FormAbout::OnOpenRelease(wxCommandEvent&)
 void FormAbout::OnCheckUpdates(wxCommandEvent&)
 {
     m_checkUpdates->Disable();
+    m_latestReleaseTag.clear();
+    m_installPatch->Disable();
     m_updateStatus->SetForegroundColour(spellcross_menu::Text());
     m_updateStatus->SetLabel("Checking GitHub releases...");
     m_updateStatus->GetParent()->Layout();
@@ -381,7 +244,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
 #ifdef __WXMSW__
     std::string latestTag;
     std::string error;
-    if (!FetchLatestReleaseTag(latestTag, error))
+    if (!spellcross_update::FetchLatestReleaseTag(latestTag, error))
     {
         m_updateStatus->SetForegroundColour(wxColour(238, 108, 92));
         m_updateStatus->SetLabel("Update check failed: " + wxString::FromUTF8(error.c_str()));
@@ -411,6 +274,16 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
         m_updateStatus->SetLabel("A newer build is available: " + latest +
             " (installed: " + spellcross_app::VersionLabel() + ").");
         m_openRelease->SetLabel("Open " + latest + " on GitHub");
+        if (spellcross_update::IsPatchClientInstalled())
+        {
+            m_latestReleaseTag = latestTag;
+            m_installPatch->Enable();
+        }
+        else
+        {
+            m_updateStatus->SetLabel(m_updateStatus->GetLabel() +
+                " Patch installer is unavailable in this build; download the full release.");
+        }
     }
     else if (cmp == 0)
     {
@@ -432,4 +305,28 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
 
     m_checkUpdates->Enable();
     m_updateStatus->GetParent()->Layout();
+}
+
+void FormAbout::OnInstallPatch(wxCommandEvent&)
+{
+#ifdef __WXMSW__
+    if (m_latestReleaseTag.empty())
+        return;
+    wxMessageDialog confirm(this,
+        "Install the available patch now?\n\nThe game will close, the updater will download and verify changed files, "
+        "and Spellcross Reloaded will restart. Your saved games and imported original data are preserved.",
+        "Spellcross Reloaded update", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+    confirm.SetYesNoLabels("Install patch", "Not now");
+    if (confirm.ShowModal() != wxID_YES)
+        return;
+    std::string error;
+    if (!spellcross_update::StartPatchInstaller(m_latestReleaseTag, error))
+    {
+        wxMessageBox(wxString::FromUTF8(error.c_str()), "Update could not start", wxOK | wxICON_ERROR, this);
+        return;
+    }
+    EndModal(wxID_APPLY);
+    if (wxTheApp)
+        wxTheApp->ExitMainLoop();
+#endif
 }
