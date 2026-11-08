@@ -56,4 +56,5 @@ jobs:
           Set-Content -Encoding ASCII -Path (Join-Path $install 'Spellcross.exe') -Value 'locally-modified'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Install-Patch.ps1 -InstallRoot $install -CurrentVersion '0.9.5' -TargetVersion '0.9.6' -LocalPatchDirectory $patch -NoRestart -NoPause
           if ($LASTEXITCODE -eq 0) { throw 'Tampered source binary was accepted.' }
+          $global:LASTEXITCODE = 0 # expected failure must not fail the entire workflow
           if ((Get-Content -LiteralPath (Join-Path $install 'Spellcross.exe') -Raw).Trim() -ne 'locally-modified') { throw 'Modified binary was overwritten.' }
