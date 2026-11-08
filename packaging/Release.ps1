@@ -134,6 +134,14 @@ try {
             throw "Could not persist expected $name value."
         }
     }
+    $actualResources = $byteEncoding.GetString([IO.File]::ReadAllBytes($resourcesPath))
+    foreach ($name in @('FileVersion','ProductVersion')) {
+        $regex = '(?m)^[ \t]*VALUE[ \t]+"' + $name + '"[ \t]*,[ \t]*"(?<value>[0-9]+(?:\.[0-9]+){3})\\0"'
+        $result = [regex]::Match($actualResources, $regex)
+        if (-not $result.Success -or $result.Groups['value'].Value -ne $numericVersion) {
+            throw "Could not persist expected resource $name value."
+        }
+    }
     Write-Host "Release: $releaseTag | Windows FileVersion/ProductVersion: $numericVersion" -ForegroundColor Cyan
     if ($ValidateOnly) {
         Write-Host 'Version metadata validation passed; no compilation requested.' -ForegroundColor Green
@@ -141,17 +149,17 @@ try {
     else {
         # Force a clean rebuild; incremental builds can keep old resources,
         # especially when the checked-in source version is restored afterward.
-        $args = @{
+        $buildParameters = @{
             Rebuild = $true
             NoVersionPrompt = $true
         }
         foreach ($key in @('WxRoot','OutputDirectory','MovieSource','NoZip','NoSfx','WinRARPath','PruneOldBuilds')) {
             if ($PSBoundParameters.ContainsKey($key)) {
-                $args[$key] = $PSBoundParameters[$key]
+                $buildParameters[$key] = $PSBoundParameters[$key]
             }
         }
         [Environment]::SetEnvironmentVariable('SPELLCROSS_RELEASE_OVERRIDE', $releaseLabel, 'Process')
-        & (Join-Path $PSScriptRoot 'Build-CombinedRelease.ps1') @args
+        & (Join-Path $PSScriptRoot 'Build-CombinedRelease.ps1') @buildParameters
         Write-Host "Release packages assembled for $releaseTag." -ForegroundColor Green
     }
 }
