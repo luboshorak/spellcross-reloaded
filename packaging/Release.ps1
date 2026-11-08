@@ -1,7 +1,7 @@
 # Spellcross Reloaded – one-command release version setup.
 # Usage: .\packaging\Release.ps1 [-Version 0.9.6] [-NoSfx] [-WxRoot ...]
-# Windows PowerShell 5.1+. Version metadata is temporarily injected and ALWAYS
-# restored byte-for-byte, even if compilation/packaging fails.
+# Windows PowerShell 5.1+. Version metadata is committed AFTER successful
+# compilation, then packages are stamped with the commit SHA and pushed.
 [CmdletBinding()]
 param(
     [string]$Version = '',
@@ -13,7 +13,9 @@ param(
     [switch]$NoSfx,
     [string]$WinRARPath = '',
     [switch]$PruneOldBuilds,
-    [switch]$ValidateOnly
+    [switch]$ValidateOnly,
+    [switch]$NoPush,
+    [switch]$AllowNonMain
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -27,8 +29,7 @@ foreach ($path in @($headerPath, $resourcesPath)) {
     }
 }
 
-# The input is intentionally separate from the version checked into main.
-# This makes repeated 'git pull --ff-only' and subsequent releases painless.
+# The chosen version will be committed to source control after compilation.
 if ([string]::IsNullOrWhiteSpace($Version)) {
     if ($ValidateOnly) { throw 'Supply -Version for non-interactive -ValidateOnly.' }
     $Version = Read-Host 'Release version (e.g. 0.9.6 or 0.9.6-RC1)'
@@ -75,20 +76,61 @@ function Change-Macro([string]$text, [string]$name, [string]$value) {
     return Replace-ExactlyOne $text $pattern $value $name
 }
 function Assert-GitVersionFilesClean([string]$repoRoot) {
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        if ($ValidateOnly) { return }
+        throw 'git.exe is required to commit and push a release version.'
+    }
     $gitDir = & git -C $repoRoot rev-parse --is-inside-work-tree 2>$null
-    if ($LASTEXITCODE -ne 0 -or "$gitDir".Trim() -ne 'true') { return }
-    foreach ($statusArgs in @(
-        @('diff','--quiet','--','spellcross-map-edit-main/source/app_version.h','spellcross-map-edit-main/source/resources.rc'),
-        @('diff','--cached','--quiet','--','spellcross-map-edit-main/source/app_version.h','spellcross-map-edit-main/source/resources.rc')
-    )) {
-        & git -C $repoRoot @statusArgs
-        if ($LASTEXITCODE -ne 0) {
-            throw 'app_version.h or resources.rc contains local changes. Commit/stash those files before releasing; refusing to overwrite them.'
+    if ($LASTEXITCODE -ne 0 -or "$gitDir".Trim() -ne 'true') {
+        if ($ValidateOnly) { return }
+        throw 'Run the release script from a valid Git working tree.'
+    }
+    $status = @(& git -C $repoRoot status --porcelain --untracked-files=normal)
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read Git worktree status.' }
+    if ($status.Count -gt 0) {
+        throw ('Git worktree must be clean before release: ' + ($status -join [Environment]::NewLine))
+    }
+    if ($ValidateOnly) { return }
+    $branch = (& git -C $repoRoot branch --show-current).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $branch) { throw 'Could not identify current Git branch.' }
+    if ($branch -ne 'main' -and -not ($NoPush -and $AllowNonMain)) {
+        throw "Release expects main. Current branch: $branch. Test a feature branch only with -NoPush -AllowNonMain."
+    }
+    if ($AllowNonMain -and -not $NoPush) { throw '-AllowNonMain requires -NoPush.' }
+    if (-not $NoPush) {
+        & git -C $repoRoot fetch --quiet origin main
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch origin/main; refusing to publish an unverified release.' }
+        $localCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
+        $remoteCommit = (& git -C $repoRoot rev-parse refs/remotes/origin/main).Trim()
+        if ($localCommit -ne $remoteCommit) {
+            throw 'Local main differs from origin/main. Run git pull --ff-only before releasing.'
         }
     }
 }
+function Invoke-ReleaseGit([string[]]$gitArguments) {
+    & git -C $root @gitArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw ("Git command failed (exit " + $LASTEXITCODE + "): git " + ($gitArguments -join ' '))
+    }
+}
 Assert-GitVersionFilesClean $root
+if (-not $ValidateOnly) {
+    $existingTag = @(& git -C $root tag --list $releaseTag)
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing release tags.' }
+    if ($existingTag.Count -gt 0) { throw "Release tag $releaseTag already exists locally." }
+    if (-not $NoPush) {
+        $remoteTag = @(& git -C $root ls-remote --tags origin ("refs/tags/" + $releaseTag))
+        if ($LASTEXITCODE -ne 0) { throw 'Could not verify remote release tags.' }
+        if ($remoteTag.Count -gt 0) { throw "Release tag $releaseTag already exists on origin." }
+    }
+    $currentText = Get-Content -LiteralPath $headerPath -Raw
+    $currentLabel = [regex]::Match($currentText, '(?m)^[ \t]*#define[ \t]+SPELLCROSS_RELEASE_LABEL[ \t]+"([^"]+)"')
+    if (-not $currentLabel.Success) { throw 'Could not find current release label.' }
+    if ($currentLabel.Groups[1].Value -eq $releaseLabel) {
+        throw "Requested version $releaseLabel is already checked into the source. Choose a new version."
+    }
+    if ($NoZip -and $NoSfx) { throw 'A release needs at least a ZIP or SFX package.' }
+}
 
 # Use a single-byte reversible view of the files. This preserves every byte
 # outside the ASCII version tokens even if the RC contains CP1250 or UTF-8
@@ -119,13 +161,12 @@ foreach ($name in @('FileVersion','ProductVersion')) {
 }
 
 $changed = $false
+$commitCreated = $false
 $previousBuildOverride = [Environment]::GetEnvironmentVariable('SPELLCROSS_RELEASE_OVERRIDE', 'Process')
 try {
-    $changed = $true  # Even a partial write must be repaired by finally.
+    $changed = $true
     [System.IO.File]::WriteAllBytes($headerPath, $byteEncoding.GetBytes($header))
     [System.IO.File]::WriteAllBytes($resourcesPath, $byteEncoding.GetBytes($resources))
-
-    # Verify the exact metadata we handed to the ordinary release packager.
     foreach ($name in $metadata.Keys) {
         $pattern = '(?m)^[ \t]*#define[ \t]+' + [regex]::Escape($name) +
             '[ \t]+(?<value>[^ \t\r\n]+)'
@@ -144,32 +185,60 @@ try {
     }
     Write-Host "Release: $releaseTag | Windows FileVersion/ProductVersion: $numericVersion" -ForegroundColor Cyan
     if ($ValidateOnly) {
-        Write-Host 'Version metadata validation passed; no compilation requested.' -ForegroundColor Green
-    }
-    else {
-        # Force a clean rebuild; incremental builds can keep old resources,
-        # especially when the checked-in source version is restored afterward.
-        $buildParameters = @{
-            Rebuild = $true
-            NoVersionPrompt = $true
-        }
-        foreach ($key in @('WxRoot','OutputDirectory','MovieSource','NoZip','NoSfx','WinRARPath','PruneOldBuilds')) {
-            if ($PSBoundParameters.ContainsKey($key)) {
-                $buildParameters[$key] = $PSBoundParameters[$key]
-            }
+        Write-Host 'Version metadata validation passed; source files will be restored.' -ForegroundColor Green
+    } else {
+        # 1. Compile and verify PE version before any Git commit.
+        $buildParameters = @{ Rebuild = $true; NoVersionPrompt = $true; BuildOnly = $true }
+        foreach ($key in @('WxRoot','MovieSource','WinRARPath','NoSfx')) {
+            if ($PSBoundParameters.ContainsKey($key)) { $buildParameters[$key] = $PSBoundParameters[$key] }
         }
         [Environment]::SetEnvironmentVariable('SPELLCROSS_RELEASE_OVERRIDE', $releaseLabel, 'Process')
+        Write-Host "Phase 1/4: compiling $releaseTag ..." -ForegroundColor Cyan
         & (Join-Path $PSScriptRoot 'Build-CombinedRelease.ps1') @buildParameters
-        Write-Host "Release packages assembled for $releaseTag." -ForegroundColor Green
+
+        # 2. Commit only version header and Windows resource metadata.
+        Write-Host 'Phase 2/4: committing release version ...' -ForegroundColor Cyan
+        Invoke-ReleaseGit @('add', '--',
+            'spellcross-map-edit-main/source/app_version.h',
+            'spellcross-map-edit-main/source/resources.rc')
+        Invoke-ReleaseGit @('commit', '-m', "chore(release): set version $releaseTag")
+        $commitCreated = $true
+        $releaseCommit = (& git -C $root rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $releaseCommit) {
+            throw 'Committed release version but could not resolve HEAD.'
+        }
+
+        # 3. Package after commit: BUILD-INFO.txt now has the exact SHA.
+        Write-Host "Phase 3/4: packaging binaries from $releaseCommit ..." -ForegroundColor Cyan
+        $packageParameters = @{ SkipBuild = $true; NoVersionPrompt = $true }
+        foreach ($key in @('WxRoot','OutputDirectory','MovieSource','NoZip','NoSfx','WinRARPath','PruneOldBuilds')) {
+            if ($PSBoundParameters.ContainsKey($key)) { $packageParameters[$key] = $PSBoundParameters[$key] }
+        }
+        & (Join-Path $PSScriptRoot 'Build-CombinedRelease.ps1') @packageParameters
+
+        # 4. Local tag and an atomic, non-forced push of branch + tag.
+        Write-Host 'Phase 4/4: tagging validated release ...' -ForegroundColor Cyan
+        Invoke-ReleaseGit @('tag', '-a', $releaseTag, '-m', "Spellcross Reloaded $releaseTag")
+        if ($NoPush) {
+            Write-Warning "Release committed and tagged LOCALLY ($releaseTag @ $releaseCommit); -NoPush selected."
+        } else {
+            Write-Host "Pushing release commit and $releaseTag to origin/main atomically ..." -ForegroundColor Cyan
+            Invoke-ReleaseGit @('push', '--atomic', 'origin', 'HEAD:refs/heads/main',
+                ("refs/tags/" + $releaseTag + ":refs/tags/" + $releaseTag))
+            Write-Host "Release source pushed: $releaseTag @ $releaseCommit" -ForegroundColor Green
+        }
+        Write-Host 'Packages created. GitHub Release assets are NOT uploaded automatically.' -ForegroundColor Green
     }
 }
 finally {
-    # Never leave main dirty merely because the release was compiled. This is
-    # also executed on normal build/package errors or when -ValidateOnly is used.
     [Environment]::SetEnvironmentVariable('SPELLCROSS_RELEASE_OVERRIDE', $previousBuildOverride, 'Process')
-    if ($changed) {
+    if ($changed -and -not $commitCreated) {
         [System.IO.File]::WriteAllBytes($headerPath, $originalHeader)
         [System.IO.File]::WriteAllBytes($resourcesPath, $originalResources)
-        Write-Host 'Original app_version.h and resources.rc restored.' -ForegroundColor DarkGray
+        Write-Host 'No version commit: original metadata restored.' -ForegroundColor Yellow
+    } elseif ($commitCreated) {
+        # After a successful commit even package/push failure MUST NOT erase
+        # the metadata; both source and released executables stay consistent.
+        Write-Host 'Version metadata remains permanently committed locally.' -ForegroundColor Green
     }
 }
