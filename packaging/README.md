@@ -12,9 +12,9 @@ This guide builds the Windows x64 game and its pinned standalone editor. For ins
 
 Original commercial Spellcross archives are not bundled.
 
-## One-command release build
+## One-command release build (commit and push)
 
-From a reviewed `main` checkout:
+After reviewing the changes in `main`, run:
 
 ```powershell
 git switch main
@@ -24,32 +24,40 @@ git submodule update --init --recursive
 .\packaging\Build-CombinedRelease.ps1 -Rebuild
 ```
 
-The script asks for **one release version** (for example `0.9.6`).
-It automatically sets all version macros in `app_version.h` and both
-Windows VERSIONINFO strings in `resources.rc`, compiles the game and map
-editor in Release x64, verifies the compiled EXE version, and packages
-the usual ZIP and optional WinRAR SFX.
-
-**No manual version edits.** Both source files are restored **byte-for-byte**
-in a `finally` block after a successful build or a normal error. Your
-next `git pull --ff-only` is not blocked by generated version changes.
-Do not forcibly kill PowerShell or turn off the PC during the build:
-a forced process termination cannot execute cleanup.
-
-You can also pass the desired release version directly:
+The script asks for one new version (for example `0.9.6`). Alternatively:
 
 ```powershell
 .\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 -Rebuild
 .\packaging\Build-CombinedRelease.ps1 -Version 0.9.6-RC1 -Rebuild
-.\packaging\Build-CombinedRelease.ps1 -Version 0.9.4.2 -Rebuild
+.\packaging\Build-CombinedRelease.ps1 -Version 0.9.7.1 -Rebuild
 ```
 
-Or use `.\packaging\Release.ps1 -Version 0.9.6`. Both routes force a
-clean rebuild to prevent stale version resources. `-SkipBuild` remains
-available as a legacy repackage action against the version stored in
-the checked-in header; `-SkipBuild -Version` is rejected.
+It executes **four phases**:
 
-With a custom dependency or movie location:
+1. Update `app_version.h` and the two `resources.rc` Windows VERSIONINFO
+   values. Fully rebuild and validate the game and standalone editor executables.
+2. **Commit the updated source version** to Git (only the two metadata files).
+3. Package the completed ZIP and optional WinRAR SFX using the real version
+   commit in `BUILD-INFO.txt`. Binaries and PDB hashes are recorded.
+4. Create an annotated tag (`v0.9.6`) and **atomically push the commit plus
+   tag to origin/main**. No force push is used.
+
+If compilation fails, the original version files are restored byte-for-byte
+and there is no version commit. If packaging or the final push fails **after
+the version commit**, the commit is deliberately kept locally. This avoids
+producing binaries whose version no longer matches Git. Resolve the failure
+and finish packaging or push manually; the script never rewrites Git history.
+
+The worktree must be clean, the current branch must be `main`, and it must
+match `origin/main`. The script checks Git tags to avoid releasing the same
+version twice. It does not alter your existing commits or stash changes.
+
+For local-only testing, `-NoPush` creates the version commit and tag locally
+without uploading them. On a feature branch, both `-NoPush -AllowNonMain` are
+required. To check version injection with no commit/build/push, use
+`.\packaging\Release.ps1 -Version 0.9.6 -ValidateOnly`.
+
+With custom dependencies or movie location:
 
 ```powershell
 .\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 `
@@ -57,36 +65,30 @@ With a custom dependency or movie location:
     -MovieSource "D:\Games\Spellcross-previous-build"
 ```
 
-Output, when WinRAR is installed:
+Output:
 
 ```text
 dist/Spellcross_Reloaded_v0.9.6.zip
 dist/Spellcross_Reloaded_v0.9.6.exe
 ```
 
-Without WinRAR the complete ZIP is still built. To test version injection
-without running the compiler: `.\packaging\Release.ps1 -Version 0.9.6
--ValidateOnly`.
+The EXE is only created when WinRAR is installed; ZIP creation is mandatory
+for an automated release. `-SkipBuild` is still available for manual
+repackaging of binaries that match the already committed version.
 
-**Reproducibility:** the release version is a build parameter, not a
-permanent source edit. `BUILD-INFO.txt` records the Git source commit,
-effective release version, and that it was injected by the release helper.
-To rebuild the tagged commit, pass the same `-Version`. A raw compilation
-of that tag without specifying the release version can have the older
-checked-in version number.
-
-If the two version source files already contain local changes, the
-helper refuses to overwrite them: finish or stash those edits first.
+**Reproducibility:** checkout of the pushed release tag contains the version
+that was actually compiled. A plain rebuild from that tag is consistent with
+the published `Spellcross.exe` and `BUILD-INFO.txt`.
 
 ## Version and package contents
 
-The release command temporarily overrides the checked-in version in `spellcross-map-edit-main/source/app_version.h`:
+The release command permanently commits the release version in `spellcross-map-edit-main/source/app_version.h` and `source/resources.rc`:
 
-| Field | v0.9.5 value |
+| Field | example v0.9.6 |
 | --- | --- |
-| Windows FileVersion / ProductVersion | `0.9.5.0` |
-| Display and package label | `0.9.5` |
-| Git tag | `v0.9.5` |
+| Windows FileVersion / ProductVersion | `0.9.6.0` |
+| Display and package label | `0.9.6` |
+| Git tag | `v0.9.6` |
 
 The script synchronizes the Windows resource strings and still stops if the compiled game EXE does not match the selected release version.
 
@@ -115,10 +117,13 @@ Game and editor keep separate configurations. The editor's `Editor/data/COMMON.f
 | --- | --- |
 | `-Version <x.y.z[.n][-RCn]>` | Select the release version instead of entering it at the prompt |
 | `-Rebuild` | Clean rebuild for a release (automatic in versioned builds) |
+| `-NoPush` | Commit and tag locally; skip GitHub push |
+| `-AllowNonMain` | Combined with `-NoPush`, permit a feature-branch dry run |
+| `-ValidateOnly` | Supported by Release.ps1, inject and restore version without compiling |
 | `-WxRoot <path>` | Explicit wxWidgets/vcpkg x64 installation |
 | `-MovieSource <path>` | Directory containing the manifest-matching fallback videos |
 | `-SkipBuild` | Repackage executables already compiled for this exact version |
-| `-NoZip` | Stage files without rebuilding the ZIP |
+| `-NoZip` | Only for legacy `-SkipBuild` packaging, not the automated release path |
 | `-NoSfx` | Disable the EXE installer |
 | `-WinRARPath <path>` | Explicit path to `WinRAR.exe` |
 
@@ -142,14 +147,13 @@ Use a clean Windows x64 rebuild and test the extracted package outside the sourc
 - Run the SFX into a custom folder and verify its Desktop shortcut.
 - On a clean Windows 10/11 x64 machine, check the [Visual C++ Redistributable](https://aka.ms/vc14/vc_redist.x64.exe) requirement.
 
-## Tag and publish the tested build
+## Publish the tested build
 
-Tag and publish only after full testing. This example uses v0.9.6; the same -Version is required to rebuild the source commit. The script does not create tags or upload releases.
+The release script already pushes the version commit and annotated tag.
+It intentionally **does not upload GitHub Release assets**. After testing
+the packages, attach them to that existing tag:
 
 ```powershell
-git status --short
-git tag -a v0.9.6 -m "Spellcross Reloaded v0.9.6"
-git push origin v0.9.6
 gh release create v0.9.6 `
     dist/Spellcross_Reloaded_v0.9.6.zip `
     dist/Spellcross_Reloaded_v0.9.6.exe `
@@ -158,4 +162,6 @@ gh release create v0.9.6 `
     --notes-file packaging/releases/v0.9.6.md
 ```
 
-If only the ZIP was built, omit the EXE argument. Review third-party runtime licenses before distribution. Original game assets are not covered by the source-code MIT license.
+Omit the EXE if WinRAR was unavailable. Do not create the same tag a second
+time. In the event of a rejected push the local version commit/tag remain
+available; resolve the conflict without force-pushing.
