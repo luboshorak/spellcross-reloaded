@@ -19,6 +19,30 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: PowerShell 7 StrictMode argument binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The previous regression crashed merely by reading an undeclared
+          # switch under Set-StrictMode -Version Latest. Verify PS7 can bind all
+          # internal switches and reaches the expected explicit validation.
+          try {
+            & .\packaging\Build-CombinedRelease.ps1 -BuildOnly -SkipBuild -NoVersionPrompt -NoSfx
+            throw 'Invalid -BuildOnly flags unexpectedly passed.'
+          } catch {
+            if ($_.Exception.Message -notlike '*-BuildOnly is the internal compile phase*') {
+              throw
+            }
+          }
+          try {
+            & .\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 -SkipBuild -NoSfx
+            throw 'Invalid -Version/-SkipBuild flags unexpectedly passed.'
+          } catch {
+            if ($_.Exception.Message -notlike '*-Version requires compiling fresh binaries*') {
+              throw
+            }
+          }
+
       - name: Simulate successful release with a local bare Git origin
         shell: powershell
         run: |
