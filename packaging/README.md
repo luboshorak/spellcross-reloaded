@@ -12,9 +12,9 @@ This guide builds the Windows x64 game and its pinned standalone editor. For ins
 
 Original commercial Spellcross archives are not bundled.
 
-## Build v0.9.5
+## One-command release build
 
-From a checkout containing the v0.9.5 version update:
+From a reviewed `main` checkout:
 
 ```powershell
 git switch main
@@ -24,41 +24,63 @@ git submodule update --init --recursive
 .\packaging\Build-CombinedRelease.ps1 -Rebuild
 ```
 
-For a new checkout:
+The script asks for **one release version** (for example `0.9.6`).
+It automatically sets all version macros in `app_version.h` and both
+Windows VERSIONINFO strings in `resources.rc`, compiles the game and map
+editor in Release x64, verifies the compiled EXE version, and packages
+the usual ZIP and optional WinRAR SFX.
+
+**No manual version edits.** Both source files are restored **byte-for-byte**
+in a `finally` block after a successful build or a normal error. Your
+next `git pull --ff-only` is not blocked by generated version changes.
+Do not forcibly kill PowerShell or turn off the PC during the build:
+a forced process termination cannot execute cleanup.
+
+You can also pass the desired release version directly:
 
 ```powershell
-git clone --recurse-submodules https://github.com/luboshorak/spellcross-reloaded.git
-cd spellcross-reloaded
-.\packaging\Build-CombinedRelease.ps1 -Rebuild
+.\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 -Rebuild
+.\packaging\Build-CombinedRelease.ps1 -Version 0.9.6-RC1 -Rebuild
+.\packaging\Build-CombinedRelease.ps1 -Version 0.9.4.2 -Rebuild
 ```
 
-If script execution is blocked by a local PowerShell policy, allow it for the current process and rerun the build:
+Or use `.\packaging\Release.ps1 -Version 0.9.6`. Both routes force a
+clean rebuild to prevent stale version resources. `-SkipBuild` remains
+available as a legacy repackage action against the version stored in
+the checked-in header; `-SkipBuild -Version` is rejected.
+
+With a custom dependency or movie location:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-.\packaging\Build-CombinedRelease.ps1 -Rebuild
-```
-
-For a custom dependency or video location:
-
-```powershell
-.\packaging\Build-CombinedRelease.ps1 -Rebuild `
+.\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 `
     -WxRoot "$HOME\vcpkg\installed\x64-windows" `
     -MovieSource "D:\Games\Spellcross-previous-build"
 ```
 
-The script rebuilds the game and editor, checks the compiled game version, verifies video hashes, copies runtime dependencies and stages the package. Output:
+Output, when WinRAR is installed:
 
 ```text
-dist/Spellcross_Reloaded_v0.9.5.zip
-dist/Spellcross_Reloaded_v0.9.5.exe
+dist/Spellcross_Reloaded_v0.9.6.zip
+dist/Spellcross_Reloaded_v0.9.6.exe
 ```
 
-The EXE is produced when WinRAR is available. Without WinRAR, the ZIP is still built.
+Without WinRAR the complete ZIP is still built. To test version injection
+without running the compiler: `.\packaging\Release.ps1 -Version 0.9.6
+-ValidateOnly`.
+
+**Reproducibility:** the release version is a build parameter, not a
+permanent source edit. `BUILD-INFO.txt` records the Git source commit,
+effective release version, and that it was injected by the release helper.
+To rebuild the tagged commit, pass the same `-Version`. A raw compilation
+of that tag without specifying the release version can have the older
+checked-in version number.
+
+If the two version source files already contain local changes, the
+helper refuses to overwrite them: finish or stash those edits first.
 
 ## Version and package contents
 
-The version comes from `spellcross-map-edit-main/source/app_version.h`:
+The release command temporarily overrides the checked-in version in `spellcross-map-edit-main/source/app_version.h`:
 
 | Field | v0.9.5 value |
 | --- | --- |
@@ -66,7 +88,7 @@ The version comes from `spellcross-map-edit-main/source/app_version.h`:
 | Display and package label | `0.9.5` |
 | Git tag | `v0.9.5` |
 
-The Windows resource strings in `source/resources.rc` must agree. Packaging stops if the actual game executable has a different version, including with `-SkipBuild`.
+The script synchronizes the Windows resource strings and still stops if the compiled game EXE does not match the selected release version.
 
 Both distributions have the same layout:
 
@@ -91,7 +113,8 @@ Game and editor keep separate configurations. The editor's `Editor/data/COMMON.f
 
 | Option | Purpose |
 | --- | --- |
-| `-Rebuild` | Clean rebuild for a release |
+| `-Version <x.y.z[.n][-RCn]>` | Select the release version instead of entering it at the prompt |
+| `-Rebuild` | Clean rebuild for a release (automatic in versioned builds) |
 | `-WxRoot <path>` | Explicit wxWidgets/vcpkg x64 installation |
 | `-MovieSource <path>` | Directory containing the manifest-matching fallback videos |
 | `-SkipBuild` | Repackage executables already compiled for this exact version |
@@ -121,18 +144,18 @@ Use a clean Windows x64 rebuild and test the extracted package outside the sourc
 
 ## Tag and publish the tested build
 
-Use the exact clean source commit that produced the verified packages. v0.9.5 is a regular release; publish it only after the source build and game smoke tests pass.
+Tag and publish only after full testing. This example uses v0.9.6; the same -Version is required to rebuild the source commit. The script does not create tags or upload releases.
 
 ```powershell
 git status --short
-git tag -a v0.9.5 -m "Spellcross Reloaded v0.9.5"
-git push origin v0.9.5
-gh release create v0.9.5 `
-    dist/Spellcross_Reloaded_v0.9.5.zip `
-    dist/Spellcross_Reloaded_v0.9.5.exe `
+git tag -a v0.9.6 -m "Spellcross Reloaded v0.9.6"
+git push origin v0.9.6
+gh release create v0.9.6 `
+    dist/Spellcross_Reloaded_v0.9.6.zip `
+    dist/Spellcross_Reloaded_v0.9.6.exe `
     --verify-tag `
-    --title "Spellcross Reloaded v0.9.5" `
-    --notes-file packaging/releases/v0.9.5.md
+    --title "Spellcross Reloaded v0.9.6" `
+    --notes-file packaging/releases/v0.9.6.md
 ```
 
 If only the ZIP was built, omit the EXE argument. Review third-party runtime licenses before distribution. Original game assets are not covered by the source-code MIT license.
