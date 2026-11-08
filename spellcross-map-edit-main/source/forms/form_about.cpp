@@ -4,6 +4,7 @@
 #include "../strategic_ui_theme.h"
 #include "../release_version_compare.h"
 #include "../release_update.h"
+#include "../spell_ui_locale.h"
 #include <wx/app.h>
 #include <wx/msgdlg.h>
 
@@ -20,6 +21,8 @@
 
 #include <string>
 #include <vector>
+#include <array>
+#include <cstdlib>
 
 namespace
 {
@@ -29,6 +32,23 @@ namespace
     constexpr int ID_INSTALL_PATCH = wxID_HIGHEST + 404;
 
     using spellcross_release::CompareVersions;
+    using spellcross_ui_locale::Tr;
+
+    wxString LocalizedBuildDate()
+    {
+        // __DATE__ uses English month abbreviations even in a Czech build.
+        const std::string date(__DATE__);
+        const std::array<std::string, 12> months = {
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+        };
+        for (size_t i = 0; i < months.size(); ++i)
+            if (date.size() >= 11 && date.compare(0, 3, months[i]) == 0)
+                return wxString::Format("%02d.%02d.%04d",
+                    std::atoi(date.substr(4, 2).c_str()),
+                    static_cast<int>(i + 1), std::atoi(date.substr(7, 4).c_str()));
+        return wxString::FromUTF8(__DATE__);
+    }
 
     wxStaticText* AddInfoRow(wxWindow* parent, wxFlexGridSizer* grid,
         const wxString& label, const wxString& value)
@@ -50,6 +70,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     : wxDialog(parent, id, title, pos, size, style)
 {
     spellcross_app::ApplyWindowIcon(this);
+    SetTitle(Tr("about.title", "About Spellcross Reloaded"));
     SetMinSize(wxSize(650, 480));
     SetBackgroundColour(spellcross_menu::Background());
     SetForegroundColour(spellcross_menu::Text());
@@ -61,8 +82,10 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     header->SetBackgroundColour(spellcross_menu::Highlight());
     auto* headerSizer = new wxBoxSizer(wxHORIZONTAL);
 
-    wxIcon icon;
-    icon.LoadFile("IDI_ICON2", wxBITMAP_TYPE_ICO_RESOURCE);
+    // An unspecified resource size selects the tiny 16x16 Windows icon.
+    // Request a high resolution directly from the embedded multi-size ICO.
+    const int logoPixels = FromDIP(64);
+    wxIcon icon("IDI_ICON2", wxBITMAP_TYPE_ICO_RESOURCE, logoPixels, logoPixels);
     if (icon.IsOk())
     {
         auto* logo = new wxStaticBitmap(header, wxID_ANY, wxBitmap(icon));
@@ -78,14 +101,15 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     titleSizer->Add(appName, 0, wxBOTTOM, 3);
 
     auto* subtitle = new wxStaticText(header, wxID_ANY,
-        "Fan-made restoration of Spellcross: The Last Battle");
+        Tr("about.subtitle", "Fan-made restoration of Spellcross: The Last Battle"));
     wxFont subtitleFont = subtitle->GetFont();
     subtitleFont.SetPointSize(10);
     subtitle->SetFont(subtitleFont);
     titleSizer->Add(subtitle, 0, wxBOTTOM, 8);
 
-    const wxString buildLabel = "Version " + spellcross_app::VersionLabel() +
-        "   |   build " + wxString::FromUTF8(__DATE__);
+    const wxString buildLabel = Tr("about.version", "Version") + " " +
+        spellcross_app::VersionLabel() + "   |   " +
+        Tr("about.build", "build") + " " + LocalizedBuildDate();
     auto* version = new wxStaticText(header, wxID_ANY, buildLabel);
     version->SetForegroundColour(spellcross_strategic_ui::Inactive());
     titleSizer->Add(version, 0);
@@ -105,9 +129,10 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     auto* contentSizer = new wxBoxSizer(wxVERTICAL);
 
     auto* description = new wxStaticText(content, wxID_ANY,
-        "Spellcross Reloaded rebuilds the original campaign and tactical game on top of "
-        "the Spellcross Map Editor codebase, while continuing to use the original game data. "
-        "The project is experimental, community-driven and still under active development.");
+        Tr("about.description",
+            "Spellcross Reloaded rebuilds the original campaign and tactical game on top of "
+            "the Spellcross Map Editor codebase, while continuing to use the original game data. "
+            "The project is experimental, community-driven and still under active development."));
     description->Wrap(600);
     contentSizer->Add(description, 0, wxEXPAND | wxALL, 16);
 
@@ -178,8 +203,14 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     appFont.SetWeight(wxFONTWEIGHT_BOLD);
     appName->SetFont(appFont);
     appName->SetForegroundColour(spellcross_strategic_ui::Heading());
+    // Apply() recursively overwrites child backgrounds with the content color.
+    // Restore the header text backgrounds to match the header itself.
     header->SetBackgroundColour(spellcross_menu::Highlight());
+    for (wxStaticText* headerText : {appName, subtitle, version})
+        headerText->SetBackgroundColour(spellcross_menu::Highlight());
+    subtitle->SetForegroundColour(spellcross_menu::Text());
     version->SetForegroundColour(spellcross_strategic_ui::Inactive());
+    header->Refresh();
     projectHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
     updateHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
     Layout();
