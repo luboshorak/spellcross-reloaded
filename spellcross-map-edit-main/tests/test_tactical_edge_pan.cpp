@@ -58,5 +58,20 @@ int main()
     pan.Advance({0.01, 0.0}, 0.01, 1.0);
     assert(pan.Advance({0.0, 0.0}, 0.01, 1.0).first == 0);
     assert(pan.Advance({-1.0, 0.0}, 0.01, 1.0).first < 0);
+    // Keyboard directions use the same frame-rate-independent accumulator.
+    assert(KeyboardPanDirection(true, false, false, false).x == -1.0);
+    assert(KeyboardPanDirection(false, true, false, false).x == 1.0);
+    assert(KeyboardPanDirection(false, false, true, false).y == -1.0);
+    assert(KeyboardPanDirection(false, false, false, true).y == 1.0);
+    assert(KeyboardPanDirection(true, true, false, false).x == 0.0);
+    assert(KeyboardPanDirection(false, false, true, true).y == 0.0);
+    const auto diagonal = KeyboardPanDirection(true, false, true, false);
+    assert(diagonal.x == -1.0 && diagonal.y == -1.0);
+    pan.Reset();
+    const auto keyboardStep = pan.Advance(diagonal, 0.01, 1.0);
+    assert(keyboardStep.first == -16 && keyboardStep.second == -16);
+    pan.Reset();
+    const auto releasedStep = pan.Advance({}, 0.01, 1.0);
+    assert(releasedStep.first == 0 && releasedStep.second == 0);
     return 0;
 }
