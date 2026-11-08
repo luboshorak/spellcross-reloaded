@@ -129,7 +129,13 @@ if (-not $ValidateOnly) {
     if ($currentLabel.Groups[1].Value -eq $releaseLabel) {
         throw "Requested version $releaseLabel is already checked into the source. Choose a new version."
     }
-    if ($NoZip -and $NoSfx) { throw 'A release needs at least a ZIP or SFX package.' }
+    $currentNumericMatch = [regex]::Match($currentText,
+        '(?m)^[ \t]*#define[ \t]+SPELLCROSS_VERSION_STRING[ \t]+"([0-9]+(?:\.[0-9]+){3})"')
+    if (-not $currentNumericMatch.Success) { throw 'Could not read current numeric version.' }
+    if ([version]$numericVersion -lt [version]$currentNumericMatch.Groups[1].Value) {
+        throw "Refusing to downgrade from $($currentNumericMatch.Groups[1].Value) to $numericVersion."
+    }
+    if ($NoZip) { throw 'Automated release always creates a full ZIP. -NoZip is only for the legacy packager.' }
 }
 
 # Use a single-byte reversible view of the files. This preserves every byte
@@ -162,6 +168,12 @@ foreach ($name in @('FileVersion','ProductVersion')) {
 
 $changed = $false
 $commitCreated = $false
+$addAttempted = $false
+$previousHead = ''
+if (-not $ValidateOnly) {
+    $previousHead = (& git -C $root rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $previousHead) { throw 'Cannot resolve Git HEAD.' }
+}
 $previousBuildOverride = [Environment]::GetEnvironmentVariable('SPELLCROSS_RELEASE_OVERRIDE', 'Process')
 try {
     $changed = $true
@@ -198,6 +210,7 @@ try {
 
         # 2. Commit only version header and Windows resource metadata.
         Write-Host 'Phase 2/4: committing release version ...' -ForegroundColor Cyan
+        $addAttempted = $true
         Invoke-ReleaseGit @('add', '--',
             'spellcross-map-edit-main/source/app_version.h',
             'spellcross-map-edit-main/source/resources.rc')
@@ -232,7 +245,20 @@ try {
 }
 finally {
     [Environment]::SetEnvironmentVariable('SPELLCROSS_RELEASE_OVERRIDE', $previousBuildOverride, 'Process')
+    if ($changed -and -not $commitCreated -and $previousHead) {
+        # If a post-commit hook returned an error after Git moved HEAD,
+        # never revert version bytes against a newly recorded commit.
+        $currentHead = (& git -C $root rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -eq 0 -and $currentHead -ne $previousHead) {
+            $commitCreated = $true
+            Write-Warning 'Git HEAD changed during release; leaving committed metadata untouched.'
+        }
+    }
     if ($changed -and -not $commitCreated) {
+        if ($addAttempted) {
+            & git -C $root restore --staged -- 'spellcross-map-edit-main/source/app_version.h' 'spellcross-map-edit-main/source/resources.rc'
+            if ($LASTEXITCODE -ne 0) { Write-Warning 'Could not unstage release metadata; inspect git status.' }
+        }
         [System.IO.File]::WriteAllBytes($headerPath, $originalHeader)
         [System.IO.File]::WriteAllBytes($resourcesPath, $originalResources)
         Write-Host 'No version commit: original metadata restored.' -ForegroundColor Yellow
