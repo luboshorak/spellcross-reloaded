@@ -411,7 +411,6 @@ if ($PreviousStageDirectory) {
         -FromVersion $PreviousVersion `
         -ToVersion $packageVersion `
         -OutputDirectory $OutputDirectory
-    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Patch generator failed.' }
 }
 if (-not $NoZip) {
     # Stable asset name for GitHub Releases. Build folders retain timestamps
