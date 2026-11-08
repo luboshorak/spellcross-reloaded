@@ -277,6 +277,7 @@ about.project=Project
 about.author=Author
 about.repository=Repository
 about.based_on=Based on
+about.based_on_value=Spellcross Map Editor by Stanislav Mašláň
 about.license=License
 about.open_project=Open project on GitHub
 about.close=Close
