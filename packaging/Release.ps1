@@ -124,12 +124,35 @@ function New-PinnedEditorCheckout {
     $gitlink = @(& git -C $root ls-files --stage -- 'external/map-editor')
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read pinned map-editor Git submodule.' }
     if ($gitlink.Count -eq 0) {
-        # Minimal Git fixtures may not include a submodule. Real production
-        # checkouts always have a pinned editor at external/map-editor.
+        # Minimal Git fixtures may not include a submodule.
         return ''
     }
     if ($gitlink.Count -ne 1 -or
-        $gitlink[0] -notmatch '^160000 ([0-9a-f]{40}) 0\s+external/map-editor
+        $gitlink[0] -notmatch '^160000 ([0-9a-f]{40}) 0\s+external/map-editor$') {
+        throw 'Invalid map-editor gitlink; refusing release.'
+    }
+    $pinnedCommit = $Matches[1]
+    if (-not (Test-Path -LiteralPath $editorRepository -PathType Container)) {
+        throw 'Editor submodule is missing. Run git submodule update --init --recursive.'
+    }
+    $editorHead = @(& git -C $editorRepository rev-parse HEAD)
+    if ($LASTEXITCODE -ne 0 -or $editorHead.Count -ne 1 -or
+        $editorHead[0].Trim() -ne $pinnedCommit) {
+        throw 'Editor checkout differs from its pinned commit. Preserve your local edits before updating it.'
+    }
+    $dirty = @(& git -C $editorRepository status --porcelain --untracked-files=normal)
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect editor submodule changes.' }
+    if ($dirty.Count -eq 0) { return '' }
+    $checkout = Join-Path ([IO.Path]::GetTempPath()) ('spellcross-pinned-editor-' + [guid]::NewGuid().ToString('N'))
+    Write-Warning 'Editor submodule is modified. Building from a clean temporary checkout of the pinned commit; local changes are untouched.'
+    & git -C $editorRepository worktree add --detach $checkout $pinnedCommit
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not create the pinned editor checkout; local editor files were not changed.'
+    }
+    return $checkout
+}
+Assert-GitVersionFilesClean $root
+if (-not $ValidateOnly) {
     $existingTag = @(& git -C $root tag --list $releaseTag)
     if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing release tags.' }
     if ($existingTag.Count -gt 0) { throw "Release tag $releaseTag already exists locally." }
