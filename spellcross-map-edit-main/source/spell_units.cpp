@@ -2086,7 +2086,7 @@ int MapUnit::GetDefence()
 // apply damage model for attack to target tile/object
 MapUnit::AttackResult MapUnit::DamageTarget(MapSprite *target)
 {
-	if(!target || !unit || !unit->unit)
+	if(!target || !unit)
 		return(AttackResult::Missed);
 
 	ResetTurnsCounter();
