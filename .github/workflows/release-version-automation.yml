@@ -1,0 +1,67 @@
+name: Release version automation
+on:
+  push:
+    branches: [feature/release-version-automation]
+    paths:
+      - 'packaging/Release.ps1'
+      - 'packaging/Build-CombinedRelease.ps1'
+      - 'packaging/README.md'
+      - '.github/workflows/release-version-automation.yml'
+  pull_request:
+    paths:
+      - 'packaging/Release.ps1'
+      - 'packaging/Build-CombinedRelease.ps1'
+      - '.github/workflows/release-version-automation.yml'
+  workflow_dispatch:
+
+jobs:
+  version-metadata-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version injection and byte-identical source restoration
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $header = 'spellcross-map-edit-main\source\app_version.h'
+          $rc = 'spellcross-map-edit-main\source\resources.rc'
+          $originalHeader = (Get-FileHash -LiteralPath $header -Algorithm SHA256).Hash
+          $originalRc = (Get-FileHash -LiteralPath $rc -Algorithm SHA256).Hash
+
+          function Assert-Clean {
+            if ((Get-FileHash -LiteralPath $header -Algorithm SHA256).Hash -ne $originalHeader) {
+              throw 'app_version.h was not restored byte-for-byte.'
+            }
+            if ((Get-FileHash -LiteralPath $rc -Algorithm SHA256).Hash -ne $originalRc) {
+              throw 'resources.rc was not restored byte-for-byte.'
+            }
+          }
+          $cases = @(
+            @{ Version='0.9.6'; File='0.9.6.0'; Tag='v0.9.6' },
+            @{ Version='0.9.4.2'; File='0.9.4.2'; Tag='v0.9.4.2' },
+            @{ Version='0.9.6-RC2'; File='0.9.6.0'; Tag='v0.9.6-RC2' },
+            @{ Version='v1.2.3-beta1'; File='1.2.3.0'; Tag='v1.2.3-beta1' }
+          )
+          foreach ($case in $cases) {
+            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version $case.Version -ValidateOnly 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              throw "Version $($case.Version) failed: $($output -join '; ')"
+            }
+            if ((($output -join ' ') -notmatch [regex]::Escape($case.Tag)) -or
+                (($output -join ' ') -notmatch [regex]::Escape($case.File))) {
+              throw "Version $($case.Version) did not yield expected tag and file version: $($output -join '; ')"
+            }
+            Assert-Clean
+          }
+
+          foreach ($bad in @('0.9', '0.9.6-foobar', '0.9.6/evil', '0.9.6.65536', '01.2.3')) {
+            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version $bad -ValidateOnly 2>&1
+            if ($LASTEXITCODE -eq 0) { throw "Accepted invalid version: $bad" }
+            Assert-Clean
+          }
+
+          # Legacy source checks must keep passing after the version override.
+          python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_release_candidate_metadata.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Regression metadata tests failed.' }
+          Assert-Clean
+          $global:LASTEXITCODE = 0
