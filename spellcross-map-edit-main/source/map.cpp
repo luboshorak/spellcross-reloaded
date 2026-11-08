@@ -10,6 +10,7 @@
 #include "map.h"
 #include "runtime_diagnostics.h"
 #include "unit_health_display.h"
+#include "destructible_health.h"
 #include "tactical_zoom.h"
 #include "tactical_navigation_rules.h"
 #include "display_settings.h"
@@ -693,7 +694,7 @@ int MapSprite::UpdateDestructible()
 		*tile = (*tile)->destructible_alt;
 	}
 
-	if (!hp && (*tile)->two_stage_desctruct)
+	if (spellcross_tactical::ShouldFinishDestruction(hp, true, (*tile)->is_destructed) && (*tile)->two_stage_desctruct)
 	{
 		// total destroy of wall
 		*tile = NULL;
@@ -701,7 +702,7 @@ int MapSprite::UpdateDestructible()
 		return(true);
 	}
 
-	if (!hp && (*tile)->destructible_alt)
+	if (spellcross_tactical::ShouldFinishDestruction(hp, false, (*tile)->is_destructed) && (*tile)->destructible_alt)
 	{
 		// destroy of single destruct level object (bridge, non-walls)
 		*tile = (*tile)->destructible_alt;
@@ -11005,7 +11006,7 @@ int SpellMap::RenderHUD(uint8_t* buf, uint8_t* buf_end, int buf_x_size, MapXY* c
 		string name = spec_obj->name;
 		font->Render(buf, buf_end, buf_x_size, hud_left + 415, hud_top + 26, name, 232, 254, SpellFont::DIAG2);
 
-		int hp = 100 * destructible->hp / spec_obj->hp;
+		int hp = spellcross_tactical::DestructibleHealthPercent(destructible->hp, spec_obj->hp);
 		int stat_pos = font->Render(buf, buf_end, buf_x_size, hud_left + 415 + 5, hud_top + 26 + 16, "Object state: ", 234, 254, SpellFont::DIAG2);
 		font->Render(buf, buf_end, buf_x_size, stat_pos, hud_top + 26 + 16, string_format("%d%%", hp), 232, 254, SpellFont::DIAG2);
 

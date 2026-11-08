@@ -14,6 +14,15 @@ namespace spellcross_tactical
         double y = 0.0;
     };
 
+    // Query physical arrow-key state once per timer tick. This is independent
+    // of OS key-repeat speed and works even after a HUD button takes focus.
+    // Opposing arrows cancel on their own axis.
+    inline EdgePanDirection KeyboardPanDirection(bool left, bool right, bool up, bool down)
+    {
+        return { static_cast<double>(static_cast<int>(right) - static_cast<int>(left)),
+            static_cast<double>(static_cast<int>(down) - static_cast<int>(up)) };
+    }
+
     // The far edge is exclusive. Constrain the hot zone on small viewports
     // so opposing edges never overlap and the centre always stays neutral.
     inline double EdgePanAxis(int position, int begin, int end, int zone)

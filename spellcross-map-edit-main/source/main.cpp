@@ -5085,63 +5085,79 @@ void MainFrame::UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now)
         seconds = std::chrono::duration<double>(now - m_lastEdgePanTick).count();
     m_lastEdgePanTick = now;
 
+    // All camera controls share the same modal/focus restrictions. Do not pan
+    // underneath menus, dialogs, inspection, results or another application.
     if (!canvas || !spell_map || !spell_map->IsLoaded() || !spell_map->isGameMode() ||
-        !IsShownOnScreen() || !IsActive() || m_nativeMenuOpen || inSubForm() ||
-        m_mission_end_flow || m_mission_result_visible || m_boxSelectPending ||
-        (m_rightPressActive && !m_rightRangeActive) || m_inspectUnit)
+        !IsShownOnScreen() || !IsActive() || IsIconized() || m_nativeMenuOpen ||
+        inSubForm() || m_mission_end_flow || m_mission_result_visible ||
+        m_boxSelectPending || (m_rightPressActive && !m_rightRangeActive) ||
+        m_inspectUnit)
     {
         m_edgePan.Reset();
         return;
     }
 
-    const wxMouseState buttons = wxGetMouseState();
-    if (buttons.LeftIsDown() || (buttons.RightIsDown() && !m_rightRangeActive))
+    // Prefer keyboard panning whenever an arrow is held; never mix the
+    // keyboard vector with an edge hot zone under the stationary mouse.
+    // wxGetKeyState is not tied to which child window currently has focus.
+    const bool left = wxGetKeyState(WXK_LEFT);
+    const bool right = wxGetKeyState(WXK_RIGHT);
+    const bool up = wxGetKeyState(WXK_UP);
+    const bool down = wxGetKeyState(WXK_DOWN);
+    const bool keyboardActive = left || right || up || down;
+    spellcross_tactical::EdgePanDirection direction{};
+
+    if (keyboardActive)
+        direction = spellcross_tactical::KeyboardPanDirection(left, right, up, down);
+    else
     {
-        m_edgePan.Reset();
-        return;
-    }
-    // Keep input bounds aligned with ClipCursor(): on Windows both the
-    // pointer and frame rect use native screen pixels. This includes native
-    // decorations/menu above the canvas and the full HUD at the bottom.
-    int mouseX = 0, mouseY = 0, left = 0, top = 0, width = 0, height = 0;
+        const wxMouseState buttons = wxGetMouseState();
+        if (buttons.LeftIsDown() || (buttons.RightIsDown() && !m_rightRangeActive))
+        {
+            m_edgePan.Reset();
+            return;
+        }
+        // Both cursor and frame geometry must use native screen pixels on
+        // Windows. Keep the existing edge-pan hot zones/menu/HUD behaviour.
+        int mouseX = 0, mouseY = 0, frameLeft = 0, frameTop = 0;
+        int frameWidth = 0, frameHeight = 0;
 #ifdef _WIN32
-    POINT mouse{};
-    RECT frame{};
-    if (!::GetCursorPos(&mouse) ||
-        !::GetWindowRect(static_cast<HWND>(GetHandle()), &frame))
-    {
-        m_edgePan.Reset();
-        return;
-    }
-    mouseX = mouse.x;
-    mouseY = mouse.y;
-    left = frame.left;
-    top = frame.top;
-    width = frame.right - frame.left;
-    height = frame.bottom - frame.top;
+        POINT mouse{};
+        RECT frame{};
+        if (!::GetCursorPos(&mouse) ||
+            !::GetWindowRect(static_cast<HWND>(GetHandle()), &frame))
+        {
+            m_edgePan.Reset();
+            return;
+        }
+        mouseX = mouse.x;
+        mouseY = mouse.y;
+        frameLeft = frame.left;
+        frameTop = frame.top;
+        frameWidth = frame.right - frame.left;
+        frameHeight = frame.bottom - frame.top;
 #else
-    const wxPoint mouse = wxGetMousePosition();
-    const wxRect frame = GetScreenRect();
-    mouseX = mouse.x;
-    mouseY = mouse.y;
-    left = frame.GetLeft();
-    top = frame.GetTop();
-    width = frame.GetWidth();
-    height = frame.GetHeight();
+        const wxPoint mouse = wxGetMousePosition();
+        const wxRect frame = GetScreenRect();
+        mouseX = mouse.x;
+        mouseY = mouse.y;
+        frameLeft = frame.GetLeft();
+        frameTop = frame.GetTop();
+        frameWidth = frame.GetWidth();
+        frameHeight = frame.GetHeight();
 #endif
-    if (width <= 0 || height <= 0)
-    {
-        m_edgePan.Reset();
-        return;
+        if (frameWidth <= 0 || frameHeight <= 0)
+        {
+            m_edgePan.Reset();
+            return;
+        }
+        direction = spellcross_tactical::EdgePanAtScreen(
+            mouseX, mouseY, frameLeft, frameTop, frameWidth,
+            frameHeight, FromDIP(40));
     }
 
-    const int zone = FromDIP(40);
-    const auto direction = spellcross_tactical::EdgePanAtScreen(
-        mouseX, mouseY, left, top, width, height, zone);
     const int displayScale = spellcross_display::Current().scale_percent;
-    // Faster than the first experimental version (1400 instead of 480
-    // screen px/s at the edge). Preserve the same perceived speed at all
-    // supported tactical zoom and display scaling settings.
+    // Preserve perceived speed at every zoom/DPI, for mouse and keyboard.
     const double mapPixelsPerScreenPixel = 10000.0 /
         (static_cast<double>(displayScale) * TacticalZoomPercent());
     const auto [stepX, stepY] = m_edgePan.Advance(
@@ -5151,8 +5167,6 @@ void MainFrame::UpdateTacticalEdgePan(std::chrono::steady_clock::time_point now)
 
     const auto before = spell_map->scroller.GetScroll();
     spell_map->scroller.PanBy(stepX, stepY);
-    // Use the prepared surface for clamping rather than repeating all the
-    // RenderPrepare calculations on each 10ms timer tick.
     const auto [mapWidth, mapHeight] = spell_map->GetMapSurfaceSize();
     const auto [viewWidth, viewHeight] = spell_map->scroller.GetSurface();
     spell_map->scroller.CheckScroll(0, 0,

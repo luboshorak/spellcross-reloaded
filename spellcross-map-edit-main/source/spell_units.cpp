@@ -12,6 +12,7 @@
 
 #include "spell_units.h"
 #include "unit_health_display.h"
+#include "destructible_health.h"
 #include "spellcross.h"
 #include "spell_map_event.h"
 #include "map.h"
@@ -2085,10 +2086,17 @@ int MapUnit::GetDefence()
 // apply damage model for attack to target tile/object
 MapUnit::AttackResult MapUnit::DamageTarget(MapSprite *target)
 {
-	if(!target)
+	if(!target || !unit || !unit->unit)
 		return(AttackResult::Missed);
 
 	ResetTurnsCounter();
+
+	// Another attack may have destroyed this scenery tile while our projectile
+	// was still flying. Never dereference a removed sprite or damage a dead
+	// object again. The other attack owns the destruction transition/event.
+	auto tile = target->GetDestructible();
+	if (!tile || !tile->destructible || spellcross_tactical::DestructibleIsDead(target->hp))
+		return(AttackResult::Missed);
 
 	// The target does NOT reset its digging timer here.  Original Spellcross
 	// only removes an already-built entrenchment level for an incoming attack;
@@ -2098,7 +2106,6 @@ MapUnit::AttackResult MapUnit::DamageTarget(MapSprite *target)
 	double attack = GetAttack();
 	
 	// object's defence
-	auto tile = target->GetDestructible();
 	double defence = tile->destructible->defence;
 
 	// damage model
@@ -2106,10 +2113,10 @@ MapUnit::AttackResult MapUnit::DamageTarget(MapSprite *target)
 	if(hit < 0)
 		return(AttackResult::Missed);
 	
-	// reduce HP
-	target->hp = (std::max)(target->hp - hit, 0);
+	// reduce HP, clamping to zero without integer underflow
+	target->hp = spellcross_tactical::ApplyDestructibleDamage(target->hp, hit);
 
-	if(!target->hp)
+	if(spellcross_tactical::DestructibleIsDead(target->hp))
 		return(AttackResult::Kill);
 	else
 		return(AttackResult::Hit);
