@@ -104,7 +104,7 @@ function Get-PatchSteps([string]$from, [string]$to, [string]$localDir, [string]$
     }
     $result = @($steps.ToArray())
     [array]::Reverse($result)
-    return ,$result
+    return $result
 }
 
 $lockStream = $null
@@ -231,7 +231,10 @@ try {
         throw $cause
     }
     Write-Host ('Spellcross Reloaded updated to v{0}.' -f $TargetVersion) -ForegroundColor Green
-    if (-not $NoRestart) { Start-Process -FilePath $exe -WorkingDirectory $root -ArgumentList '--no-update-check' }
+    if (-not $NoRestart) {
+        try { Start-Process -FilePath $exe -WorkingDirectory $root -ArgumentList '--no-update-check' }
+        catch { Write-Warning ('Updated successfully, but automatic restart failed: ' + $_.Exception.Message) }
+    }
 } catch {
     Write-Host ('Update cancelled: ' + $_.Exception.Message) -ForegroundColor Red
     Write-Host 'Your existing installation and player data have been preserved.'
