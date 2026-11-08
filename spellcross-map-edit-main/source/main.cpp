@@ -55,6 +55,7 @@
 
 #include "resource.h"
 #include "app_identity.h"
+#include "release_update.h"
 #include "main.h"
 #include "tactical_range_input.h"
 #include "campaign_company_identity.h"
@@ -2626,6 +2627,52 @@ bool MyApp::OnInit()
     spellcross_diag::Initialize(runtime_root, SPELLCROSS_VERSION_STRING);
     spellcross_diag::Log(spellcross_diag::Level::Info, "STARTUP",
         "Runtime initialized; working directory and game source resolver ready");
+    // The first player-facing action is an optional update check. Offline
+    // machines, development checkouts and a declined patch continue normally.
+    // --no-update-check is passed exactly once by the patch installer after
+    // restarting, avoiding a redundant network request after an update.
+#ifdef __WXMSW__
+    bool skipUpdateCheck = false;
+    for (int i = 1; i < argc; ++i)
+        if (wxString(argv[i]) == "--no-update-check")
+            skipUpdateCheck = true;
+    if (!skipUpdateCheck && spellcross_update::IsPatchClientInstalled())
+    {
+        std::string latestTag, updateError;
+        if (spellcross_update::FetchLatestReleaseTag(latestTag, updateError))
+        {
+            bool comparable = false;
+            const int comparison = spellcross_release::CompareVersions(
+                SPELLCROSS_RELEASE_LABEL, latestTag, comparable);
+            if (comparable && comparison < 0)
+            {
+                wxMessageDialog offer(nullptr,
+                    "A newer Spellcross Reloaded build is available: " +
+                        wxString::FromUTF8(latestTag.c_str()) +
+                        "\nInstalled: " + spellcross_app::VersionLabel() +
+                        "\n\nInstall the patch now? If you decline, the current version starts normally. "
+                        "You can install later from Help > About / Info.",
+                    "Spellcross Reloaded update", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+                offer.SetYesNoLabels("Install patch", "Not now");
+                if (offer.ShowModal() == wxID_YES)
+                {
+                    std::string launchError;
+                    if (spellcross_update::StartPatchInstaller(latestTag, launchError))
+                        return false; // exit before patcher touches Spellcross.exe
+                    wxMessageBox(wxString::FromUTF8(launchError.c_str()) +
+                        "\nContinuing with the installed game version.",
+                        "Updater unavailable", wxOK | wxICON_WARNING);
+                }
+            }
+        }
+        else
+        {
+            spellcross_diag::Log(spellcross_diag::Level::Info, "UPDATE",
+                "Startup release check unavailable; continuing offline");
+        }
+    }
+#endif
+
     config_path = FindConfigPath(executable_dir, runtime_root, startup_dir).wstring();
 
     // Empty/missing config.ini is valid for a fresh release. Load it when it
