@@ -19,6 +19,83 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Simulate successful release with a local bare Git origin
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:RUNNER_TEMP 'spellcross-release-integration'
+          $source = Join-Path $base 'checkout'
+          $origin = Join-Path $base 'origin.git'
+          $proof = Join-Path $base 'packaged-head.txt'
+          New-Item -ItemType Directory -Force -Path $base,$source | Out-Null
+          & git init --bare $origin | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create isolated Git origin.' }
+          & git init -b main $source | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create test checkout.' }
+          & git -C $source config user.email 'release-ci@example.invalid'
+          & git -C $source config user.name 'Release CI'
+          New-Item -ItemType Directory -Force -Path (Join-Path $source 'packaging'),(Join-Path $source 'spellcross-map-edit-main\source') | Out-Null
+          Copy-Item -LiteralPath '.\packaging\Release.ps1' -Destination (Join-Path $source 'packaging\Release.ps1')
+          foreach ($file in @('app_version.h','resources.rc')) {
+            Copy-Item -LiteralPath (Join-Path 'spellcross-map-edit-main\source' $file) -Destination (Join-Path $source 'spellcross-map-edit-main\source' $file)
+          }
+          # Fake only the compiler/packer; exercise the REAL release driver and
+          # REAL git commit/tag/atomic-push against a private test origin.
+          @'
+          [CmdletBinding()]
+          param(
+              [switch]$Rebuild,
+              [switch]$BuildOnly,
+              [switch]$SkipBuild,
+              [switch]$NoVersionPrompt
+          )
+          if (-not $NoVersionPrompt) { throw 'Lost internal release delegation.' }
+          $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+          $header = Get-Content -Raw -LiteralPath (Join-Path $root 'spellcross-map-edit-main\source\app_version.h')
+          if ($header -notmatch '#define SPELLCROSS_RELEASE_TAG "v0.9.6"') { throw 'Build did not receive new version metadata.' }
+          if ($BuildOnly) {
+              if (-not $Rebuild -or $SkipBuild) { throw 'Compile phase arguments incorrect.' }
+              $env:SPELLCROSS_TEST_COMPILED = 'yes'
+              return
+          }
+          if (-not $SkipBuild -or $env:SPELLCROSS_TEST_COMPILED -ne 'yes') {
+              throw 'Packaging ran before the successful compilation.'
+          }
+          $head = (& git -C $root rev-parse HEAD).Trim()
+          $committed = & git -C $root show 'HEAD:spellcross-map-edit-main/source/app_version.h'
+          if (($committed -join [Environment]::NewLine) -notmatch 'SPELLCROSS_RELEASE_TAG "v0.9.6"') {
+              throw 'Packaging ran before the version commit.'
+          }
+          Set-Content -LiteralPath $env:SPELLCROSS_TEST_PROOF -Value $head -Encoding ASCII
+          '@ | Set-Content -LiteralPath (Join-Path $source 'packaging\Build-CombinedRelease.ps1') -Encoding UTF8
+          & git -C $source add .
+          & git -C $source commit -m 'test baseline' | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline commit failed.' }
+          $old = (& git -C $source rev-parse HEAD).Trim()
+          & git -C $source remote add origin $origin
+          & git -C $source push -u origin main | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not initialize origin/main.' }
+
+          $env:SPELLCROSS_TEST_PROOF = $proof
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.6'
+          if ($LASTEXITCODE -ne 0) { throw 'Release driver failed in isolated Git integration test.' }
+          $new = (& git -C $source rev-parse HEAD).Trim()
+          $remote = (& git --git-dir=$origin rev-parse refs/heads/main).Trim()
+          $tag = (& git -C $source rev-list -n 1 v0.9.6).Trim()
+          $remoteTag = (& git --git-dir=$origin rev-list -n 1 refs/tags/v0.9.6).Trim()
+          if ($new -eq $old -or $remote -ne $new -or $tag -ne $new -or $remoteTag -ne $new) {
+            throw 'Version commit and tag were not pushed together to test origin.'
+          }
+          if ((Get-Content -LiteralPath $proof -Raw).Trim() -ne $new) {
+            throw 'Package recorded a different Git commit than the release version commit.'
+          }
+          if (@(& git -C $source status --porcelain).Count -gt 0) {
+            throw 'Versioned checkout is unexpectedly dirty after release.'
+          }
+          Remove-Item Env:\SPELLCROSS_TEST_PROOF -ErrorAction SilentlyContinue
+          Remove-Item Env:\SPELLCROSS_TEST_COMPILED -ErrorAction SilentlyContinue
+          $global:LASTEXITCODE = 0
+
       - name: Check version injection and byte-identical source restoration
         shell: powershell
         run: |
