@@ -111,6 +111,19 @@ When SFX generation is enabled, `setup/` also contains the installer icon and br
 
 Game and editor keep separate configurations. The editor's `Editor/data/COMMON.fs` contains editor resources; it is distinct from the original game's `COMMON.FS`.
 
+## Optional in-game patches (experimental)
+
+The game can now offer a **voluntary** update when it starts, and the Info
+window has a manual **Install patch** action. Each full ZIP/SFX includes the
+PowerShell updater; an older build without the client needs one initial full
+download. To generate the optional patch assets, pass
+`-PreviousStageDirectory <previous extracted release>` and
+`-PreviousVersion <previous version>` to this release script.
+Publish the resulting `patch-manifest.json` and
+`Spellcross_Patch_vFROM_to_vTO.zip` on the matching GitHub Release, in
+addition to the complete ZIP/SFX. See [patch-updates.md](../docs/patch-updates.md)
+for the update-chain behavior, safety checks and unverified edge cases.
+
 ## Packaging options
 
 | Option | Purpose |

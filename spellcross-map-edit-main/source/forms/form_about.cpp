@@ -3,6 +3,10 @@
 #include "app_version.h"
 #include "../strategic_ui_theme.h"
 #include "../release_version_compare.h"
+#include "../release_update.h"
+#include "../spell_ui_locale.h"
+#include <wx/app.h>
+#include <wx/msgdlg.h>
 
 #include <wx/bitmap.h>
 #include <wx/panel.h>
@@ -15,176 +19,36 @@
 #include <wx/statline.h>
 #include <wx/utils.h>
 
-#include <algorithm>
-#include <cctype>
-#include <regex>
 #include <string>
 #include <vector>
-
-#ifdef __WXMSW__
-#include <windows.h>
-#include <winhttp.h>
-#pragma comment(lib, "winhttp.lib")
-#endif
+#include <array>
+#include <cstdlib>
 
 namespace
 {
     constexpr int ID_CHECK_UPDATES = wxID_HIGHEST + 401;
     constexpr int ID_OPEN_PROJECT = wxID_HIGHEST + 402;
     constexpr int ID_OPEN_RELEASE = wxID_HIGHEST + 403;
+    constexpr int ID_INSTALL_PATCH = wxID_HIGHEST + 404;
 
     using spellcross_release::CompareVersions;
+    using spellcross_ui_locale::Tr;
 
-#ifdef __WXMSW__
-    class InternetHandle
+    wxString LocalizedBuildDate()
     {
-    public:
-        InternetHandle() = default;
-        explicit InternetHandle(HINTERNET handle) : m_handle(handle) {}
-        ~InternetHandle() { if (m_handle) WinHttpCloseHandle(m_handle); }
-        InternetHandle(const InternetHandle&) = delete;
-        InternetHandle& operator=(const InternetHandle&) = delete;
-        operator HINTERNET() const { return m_handle; }
-        bool IsOk() const { return m_handle != nullptr; }
-    private:
-        HINTERNET m_handle = nullptr;
-    };
-
-    bool FetchLatestReleaseTag(std::string& tag, std::string& error)
-    {
-        // Use the release *list*, not /releases/latest: GitHub's "latest" endpoint
-        // intentionally skips prereleases, while Spellcross Reloaded public builds
-        // are often published as prereleases during development.
-        InternetHandle session(WinHttpOpen(
-            L"SpellcrossReloaded/" SPELLCROSS_VERSION_WSTRING,
-            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-            WINHTTP_NO_PROXY_NAME,
-            WINHTTP_NO_PROXY_BYPASS,
-            0));
-        if (!session.IsOk())
-        {
-            error = "Could not initialize the Windows HTTP client.";
-            return false;
-        }
-
-        WinHttpSetTimeouts(session, 4000, 4000, 5000, 5000);
-
-        InternetHandle connection(WinHttpConnect(session, L"api.github.com", INTERNET_DEFAULT_HTTPS_PORT, 0));
-        if (!connection.IsOk())
-        {
-            error = "Could not connect to api.github.com.";
-            return false;
-        }
-
-        InternetHandle request(WinHttpOpenRequest(
-            connection,
-            L"GET",
-            L"/repos/luboshorak/spellcross-reloaded/releases?per_page=20",
-            nullptr,
-            WINHTTP_NO_REFERER,
-            WINHTTP_DEFAULT_ACCEPT_TYPES,
-            WINHTTP_FLAG_SECURE));
-        if (!request.IsOk())
-        {
-            error = "Could not create the GitHub update request.";
-            return false;
-        }
-
-        const wchar_t* headers =
-            L"Accept: application/vnd.github+json\r\n"
-            L"X-GitHub-Api-Version: 2022-11-28\r\n"
-            L"User-Agent: SpellcrossReloaded/" SPELLCROSS_VERSION_WSTRING L"\r\n";
-
-        if (!WinHttpSendRequest(request, headers, static_cast<DWORD>(-1L),
-            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-            !WinHttpReceiveResponse(request, nullptr))
-        {
-            error = "GitHub did not respond. Check your internet connection or proxy settings.";
-            return false;
-        }
-
-        DWORD status = 0;
-        DWORD statusSize = sizeof(status);
-        if (!WinHttpQueryHeaders(request,
-            WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-            WINHTTP_HEADER_NAME_BY_INDEX,
-            &status,
-            &statusSize,
-            WINHTTP_NO_HEADER_INDEX))
-        {
-            error = "Could not read the GitHub response status.";
-            return false;
-        }
-
-        if (status != 200)
-        {
-            error = "GitHub update check failed (HTTP " + std::to_string(status) + ").";
-            return false;
-        }
-
-        std::string body;
-        for (;;)
-        {
-            DWORD available = 0;
-            if (!WinHttpQueryDataAvailable(request, &available))
-            {
-                error = "Could not read the GitHub response.";
-                return false;
-            }
-            if (available == 0)
-                break;
-
-            const size_t oldSize = body.size();
-            body.resize(oldSize + available);
-            DWORD read = 0;
-            if (!WinHttpReadData(request, body.data() + oldSize, available, &read))
-            {
-                error = "Could not read the GitHub response.";
-                return false;
-            }
-            body.resize(oldSize + read);
-        }
-
-        const std::regex tagRegex(R"REGEX("tag_name"\s*:\s*"([^"]+)")REGEX");
-        std::sregex_iterator it(body.begin(), body.end(), tagRegex);
-        const std::sregex_iterator end;
-        if (it == end)
-        {
-            error = "No published GitHub release was found.";
-            return false;
-        }
-
-        // GitHub returns releases in publication order, but select the highest
-        // comparable numeric tag from the returned page so a later-published
-        // hotfix/legacy tag cannot hide a genuinely newer build.
-        std::string firstTag;
-        std::string bestTag;
-        for (; it != end; ++it)
-        {
-            const std::string candidate = (*it)[1].str();
-            if (firstTag.empty())
-                firstTag = candidate;
-
-            bool candidateComparable = false;
-            CompareVersions(candidate, SPELLCROSS_RELEASE_LABEL, candidateComparable);
-            if (!candidateComparable)
-                continue;
-
-            if (bestTag.empty())
-            {
-                bestTag = candidate;
-                continue;
-            }
-
-            bool tagsComparable = false;
-            if (CompareVersions(bestTag, candidate, tagsComparable) < 0 && tagsComparable)
-                bestTag = candidate;
-        }
-
-        tag = bestTag.empty() ? firstTag : bestTag;
-        return !tag.empty();
+        // __DATE__ uses English month abbreviations even in a Czech build.
+        const std::string date(__DATE__);
+        const std::array<std::string, 12> months = {
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+        };
+        for (size_t i = 0; i < months.size(); ++i)
+            if (date.size() >= 11 && date.compare(0, 3, months[i]) == 0)
+                return wxString::Format("%02d.%02d.%04d",
+                    std::atoi(date.substr(4, 2).c_str()),
+                    static_cast<int>(i + 1), std::atoi(date.substr(7, 4).c_str()));
+        return wxString::FromUTF8(__DATE__);
     }
-#endif
 
     wxStaticText* AddInfoRow(wxWindow* parent, wxFlexGridSizer* grid,
         const wxString& label, const wxString& value)
@@ -206,6 +70,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     : wxDialog(parent, id, title, pos, size, style)
 {
     spellcross_app::ApplyWindowIcon(this);
+    SetTitle(Tr("about.title", "About Spellcross Reloaded"));
     SetMinSize(wxSize(650, 480));
     SetBackgroundColour(spellcross_menu::Background());
     SetForegroundColour(spellcross_menu::Text());
@@ -217,11 +82,14 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     header->SetBackgroundColour(spellcross_menu::Highlight());
     auto* headerSizer = new wxBoxSizer(wxHORIZONTAL);
 
-    wxIcon icon;
-    icon.LoadFile("IDI_ICON2", wxBITMAP_TYPE_ICO_RESOURCE);
+    // An unspecified resource size selects the tiny 16x16 Windows icon.
+    // Request a high resolution directly from the embedded multi-size ICO.
+    const int logoPixels = FromDIP(64);
+    wxIcon icon("IDI_ICON2", wxBITMAP_TYPE_ICO_RESOURCE, logoPixels, logoPixels);
+    wxStaticBitmap* logo = nullptr;
     if (icon.IsOk())
     {
-        auto* logo = new wxStaticBitmap(header, wxID_ANY, wxBitmap(icon));
+        logo = new wxStaticBitmap(header, wxID_ANY, wxBitmap(icon));
         headerSizer->Add(logo, 0, wxALIGN_CENTER_VERTICAL | wxALL, 18);
     }
 
@@ -234,14 +102,15 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     titleSizer->Add(appName, 0, wxBOTTOM, 3);
 
     auto* subtitle = new wxStaticText(header, wxID_ANY,
-        "Fan-made restoration of Spellcross: The Last Battle");
+        Tr("about.subtitle", "Fan-made restoration of Spellcross: The Last Battle"));
     wxFont subtitleFont = subtitle->GetFont();
     subtitleFont.SetPointSize(10);
     subtitle->SetFont(subtitleFont);
     titleSizer->Add(subtitle, 0, wxBOTTOM, 8);
 
-    const wxString buildLabel = "Version " + spellcross_app::VersionLabel() +
-        "   |   build " + wxString::FromUTF8(__DATE__);
+    const wxString buildLabel = Tr("about.version", "Version") + " " +
+        spellcross_app::VersionLabel() + "   |   " +
+        Tr("about.build", "build") + " " + LocalizedBuildDate();
     auto* version = new wxStaticText(header, wxID_ANY, buildLabel);
     version->SetForegroundColour(spellcross_strategic_ui::Inactive());
     titleSizer->Add(version, 0);
@@ -261,15 +130,16 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     auto* contentSizer = new wxBoxSizer(wxVERTICAL);
 
     auto* description = new wxStaticText(content, wxID_ANY,
-        "Spellcross Reloaded rebuilds the original campaign and tactical game on top of "
-        "the Spellcross Map Editor codebase, while continuing to use the original game data. "
-        "The project is experimental, community-driven and still under active development.");
+        Tr("about.description",
+            "Spellcross Reloaded rebuilds the original campaign and tactical game on top of "
+            "the Spellcross Map Editor codebase, while continuing to use the original game data. "
+            "The project is experimental, community-driven and still under active development."));
     description->Wrap(600);
     contentSizer->Add(description, 0, wxEXPAND | wxALL, 16);
 
     // Project details ----------------------------------------------------------
     auto* projectBox = new wxBoxSizer(wxVERTICAL);
-    auto* projectHeading = new wxStaticText(content, wxID_ANY, "Project");
+    auto* projectHeading = new wxStaticText(content, wxID_ANY, Tr("about.project", "Project"));
     wxFont projectFont = spellcross_menu::MenuFont();
     projectFont.SetWeight(wxFONTWEIGHT_BOLD);
     projectHeading->SetFont(projectFont);
@@ -277,35 +147,38 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     projectBox->Add(projectHeading, 0, wxLEFT | wxTOP | wxBOTTOM, FromDIP(9));
     auto* grid = new wxFlexGridSizer(2, 8, 12);
     grid->AddGrowableCol(1, 1);
-    AddInfoRow(content, grid, "Author", wxString::FromUTF8("Luboš Horák"));
-    AddInfoRow(content, grid, "Version", spellcross_app::VersionLabel());
-    AddInfoRow(content, grid, "Repository", "github.com/luboshorak/spellcross-reloaded");
-    AddInfoRow(content, grid, "Based on", wxString::FromUTF8("Spellcross Map Editor by Stanislav Mašláň"));
-    AddInfoRow(content, grid, "License", "MIT License");
+    AddInfoRow(content, grid, Tr("about.author", "Author"), wxString::FromUTF8("Luboš Horák"));
+    AddInfoRow(content, grid, Tr("about.version", "Version"), spellcross_app::VersionLabel());
+    AddInfoRow(content, grid, Tr("about.repository", "Repository"), "github.com/luboshorak/spellcross-reloaded");
+    AddInfoRow(content, grid, Tr("about.based_on", "Based on"), Tr("about.based_on_value", "Spellcross Map Editor by Stanislav Mašláň"));
+    AddInfoRow(content, grid, Tr("about.license", "License"), "MIT License");
     projectBox->Add(grid, 0, wxEXPAND | wxALL, 10);
 
     auto* projectButtons = new wxBoxSizer(wxHORIZONTAL);
-    auto* openProject = new spellcross_strategic_ui::Button(content, ID_OPEN_PROJECT, "Open project on GitHub");
+    auto* openProject = new spellcross_strategic_ui::Button(content, ID_OPEN_PROJECT, Tr("about.open_project", "Open project on GitHub"));
     projectButtons->Add(openProject, 0, wxRIGHT, 8);
     projectBox->Add(projectButtons, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
     contentSizer->Add(projectBox, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
 
     // Update section -----------------------------------------------------------
     auto* updateBox = new wxBoxSizer(wxVERTICAL);
-    auto* updateHeading = new wxStaticText(content, wxID_ANY, "Updates");
+    auto* updateHeading = new wxStaticText(content, wxID_ANY, Tr("updates.title", "Updates"));
     updateHeading->SetFont(projectFont);
     updateHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
     updateBox->Add(updateHeading, 0, wxLEFT | wxTOP | wxBOTTOM, FromDIP(9));
     m_updateStatus = new wxStaticText(content, wxID_ANY,
-        "Not checked. Use the button below to compare this build with GitHub releases.");
+        Tr("updates.not_checked", "Not checked. Use the button below to compare this build with GitHub releases."));
     m_updateStatus->Wrap(590);
     updateBox->Add(m_updateStatus, 0, wxEXPAND | wxALL, 10);
 
     auto* updateButtons = new wxBoxSizer(wxHORIZONTAL);
-    m_checkUpdates = new spellcross_strategic_ui::Button(content, ID_CHECK_UPDATES, "Check for updates");
-    m_openRelease = new spellcross_strategic_ui::Button(content, ID_OPEN_RELEASE, "Open GitHub releases");
+    m_checkUpdates = new spellcross_strategic_ui::Button(content, ID_CHECK_UPDATES, Tr("updates.check", "Check for updates"));
+    m_openRelease = new spellcross_strategic_ui::Button(content, ID_OPEN_RELEASE, Tr("updates.open_releases", "Open GitHub releases"));
+    m_installPatch = new spellcross_strategic_ui::Button(content, ID_INSTALL_PATCH, Tr("updates.install", "Install patch"));
+    m_installPatch->Disable();
     updateButtons->Add(m_checkUpdates, 0, wxRIGHT, 8);
-    updateButtons->Add(m_openRelease, 0);
+    updateButtons->Add(m_openRelease, 0, wxRIGHT, 8);
+    updateButtons->Add(m_installPatch, 0);
     updateBox->Add(updateButtons, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
     contentSizer->Add(updateBox, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
 
@@ -318,7 +191,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     root->Add(separatorBottom, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(10));
     auto* closeRow = new wxBoxSizer(wxHORIZONTAL);
     closeRow->AddStretchSpacer(1);
-    auto* close = new spellcross_strategic_ui::Button(this, wxID_OK, "Close");
+    auto* close = new spellcross_strategic_ui::Button(this, wxID_OK, Tr("about.close", "Close"));
     close->SetDefault();
     closeRow->Add(close, 0);
     root->Add(closeRow, 0, wxEXPAND | wxALL, 12);
@@ -331,8 +204,16 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     appFont.SetWeight(wxFONTWEIGHT_BOLD);
     appName->SetFont(appFont);
     appName->SetForegroundColour(spellcross_strategic_ui::Heading());
+    // Apply() recursively overwrites child backgrounds with the content color.
+    // Restore the header text backgrounds to match the header itself.
     header->SetBackgroundColour(spellcross_menu::Highlight());
+    for (wxStaticText* headerText : {appName, subtitle, version})
+        headerText->SetBackgroundColour(spellcross_menu::Highlight());
+    if (logo)
+        logo->SetBackgroundColour(spellcross_menu::Highlight());
+    subtitle->SetForegroundColour(spellcross_menu::Text());
     version->SetForegroundColour(spellcross_strategic_ui::Inactive());
+    header->Refresh();
     projectHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
     updateHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
     Layout();
@@ -344,6 +225,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     Bind(wxEVT_BUTTON, &FormAbout::OnCheckUpdates, this, ID_CHECK_UPDATES);
     Bind(wxEVT_BUTTON, &FormAbout::OnOpenProject, this, ID_OPEN_PROJECT);
     Bind(wxEVT_BUTTON, &FormAbout::OnOpenRelease, this, ID_OPEN_RELEASE);
+    Bind(wxEVT_BUTTON, &FormAbout::OnInstallPatch, this, ID_INSTALL_PATCH);
 
     std::vector<wxAcceleratorEntry> entries;
     entries.emplace_back(wxACCEL_NORMAL, WXK_ESCAPE, wxID_OK);
@@ -371,8 +253,10 @@ void FormAbout::OnOpenRelease(wxCommandEvent&)
 void FormAbout::OnCheckUpdates(wxCommandEvent&)
 {
     m_checkUpdates->Disable();
+    m_latestReleaseTag.clear();
+    m_installPatch->Disable();
     m_updateStatus->SetForegroundColour(spellcross_menu::Text());
-    m_updateStatus->SetLabel("Checking GitHub releases...");
+    m_updateStatus->SetLabel(Tr("updates.checking", "Checking GitHub releases..."));
     m_updateStatus->GetParent()->Layout();
     wxYieldIfNeeded();
 
@@ -381,10 +265,10 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
 #ifdef __WXMSW__
     std::string latestTag;
     std::string error;
-    if (!FetchLatestReleaseTag(latestTag, error))
+    if (!spellcross_update::FetchLatestReleaseTag(latestTag, error))
     {
         m_updateStatus->SetForegroundColour(wxColour(238, 108, 92));
-        m_updateStatus->SetLabel("Update check failed: " + wxString::FromUTF8(error.c_str()));
+        m_updateStatus->SetLabel(Tr("updates.check_failed", "Could not check for updates. Check the connection and try again."));
         m_checkUpdates->Enable();
         m_updateStatus->GetParent()->Layout();
         return;
@@ -401,35 +285,68 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
     if (!comparable)
     {
         m_updateStatus->SetForegroundColour(spellcross_strategic_ui::Heading());
-        m_updateStatus->SetLabel("Latest GitHub release: " + latest +
-            ". The tag is not a standard numeric version, so it cannot be compared automatically.");
-        m_openRelease->SetLabel("Open " + latest);
+        m_updateStatus->SetLabel(Tr("updates.latest", "Latest GitHub release: ") + latest +
+            Tr("updates.nonstandard", ". Its version tag cannot be compared automatically."));
+        m_openRelease->SetLabel(Tr("updates.open", "Open ") + latest);
     }
     else if (cmp < 0)
     {
         m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
-        m_updateStatus->SetLabel("A newer build is available: " + latest +
-            " (installed: " + spellcross_app::VersionLabel() + ").");
-        m_openRelease->SetLabel("Open " + latest + " on GitHub");
+        m_updateStatus->SetLabel(Tr("updates.new_available", "A newer build is available: ") + latest +
+            " " + Tr("updates.installed", "(installed: ") + spellcross_app::VersionLabel() + ").");
+        m_openRelease->SetLabel(Tr("updates.open", "Open ") + latest + " " + Tr("updates.on_github", "on GitHub"));
+        if (spellcross_update::IsPatchClientInstalled())
+        {
+            m_latestReleaseTag = latestTag;
+            m_installPatch->Enable();
+        }
+        else
+        {
+            m_updateStatus->SetLabel(m_updateStatus->GetLabel() +
+                " " + Tr("updates.no_client", "Patch installer is unavailable in this build; download the full release."));
+        }
     }
     else if (cmp == 0)
     {
         m_updateStatus->SetForegroundColour(spellcross_menu::Accent());
-        m_updateStatus->SetLabel("You are up to date. Latest GitHub release: " + latest + ".");
-        m_openRelease->SetLabel("Open " + latest + " on GitHub");
+        m_updateStatus->SetLabel(Tr("updates.current", "You are up to date. Latest GitHub release: ") + latest + ".");
+        m_openRelease->SetLabel(Tr("updates.open", "Open ") + latest + " " + Tr("updates.on_github", "on GitHub"));
     }
     else
     {
         m_updateStatus->SetForegroundColour(wxColour(115, 200, 235));
-        m_updateStatus->SetLabel("This build (" + spellcross_app::VersionLabel() +
-            ") is newer than the latest public GitHub release (" + latest + ").");
-        m_openRelease->SetLabel("Open latest public release");
+        m_updateStatus->SetLabel(Tr("updates.local_newer", "This build (") + spellcross_app::VersionLabel() +
+            Tr("updates.local_newer_suffix", ") is newer than the latest public GitHub release (") + latest + ").");
+        m_openRelease->SetLabel(Tr("updates.open_latest", "Open latest public release"));
     }
 #else
     m_updateStatus->SetForegroundColour(wxColour(238, 108, 92));
-    m_updateStatus->SetLabel("Automatic update checking is currently available in Windows builds.");
+    m_updateStatus->SetLabel(Tr("updates.windows_only", "Automatic update checking is currently available in Windows builds."));
 #endif
 
     m_checkUpdates->Enable();
     m_updateStatus->GetParent()->Layout();
+}
+
+void FormAbout::OnInstallPatch(wxCommandEvent&)
+{
+#ifdef __WXMSW__
+    if (m_latestReleaseTag.empty())
+        return;
+    wxMessageDialog confirm(this,
+        Tr("updates.confirm", "Install the available patch now? The game will close, the updater will download and verify changed files, and Spellcross Reloaded will restart. Your saved games and imported original data are preserved."),
+        Tr("updates.dialog_title", "Spellcross Reloaded update"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+    confirm.SetYesNoLabels(Tr("updates.install", "Install patch"), Tr("updates.later", "Not now"));
+    if (confirm.ShowModal() != wxID_YES)
+        return;
+    std::string error;
+    if (!spellcross_update::StartPatchInstaller(m_latestReleaseTag, error))
+    {
+        wxMessageBox(Tr("updates.launch_failed", "Could not launch the patch installer."), Tr("updates.launch_title", "Update could not start"), wxOK | wxICON_ERROR, this);
+        return;
+    }
+    EndModal(wxID_APPLY);
+    if (wxTheApp)
+        wxTheApp->ExitMainLoop();
+#endif
 }
