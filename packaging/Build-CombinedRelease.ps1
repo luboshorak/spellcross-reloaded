@@ -11,10 +11,33 @@ param(
     [switch]$NoZip,
     [switch]$NoSfx,
     [string]$WinRARPath = '',
-    [switch]$PruneOldBuilds
+    [switch]$PruneOldBuilds,
+    [string]$Version = '',
+    [switch]$NoVersionPrompt
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Public entry point: with -Version (or an interactive build) delegate to the
+# version-safe front-end. -NoVersionPrompt is internal, used by Release.ps1
+# after it has temporarily prepared the source headers.
+if ($SkipBuild -and $Version) {
+    throw '-Version requires compiling fresh binaries; do not combine with -SkipBuild.'
+}
+if ($Version -and $NoVersionPrompt) {
+    throw 'Internal -NoVersionPrompt cannot be combined with -Version.'
+}
+if (-not $NoVersionPrompt -and -not $SkipBuild) {
+    $releaseParams = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'NoVersionPrompt') {
+            $releaseParams[$key] = $PSBoundParameters[$key]
+        }
+    }
+    & (Join-Path $PSScriptRoot 'Release.ps1') @releaseParams
+    return
+}
+
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $game = Join-Path $root 'spellcross-map-edit-main'
 # Keep packaging synchronized with the app and Windows version metadata.
@@ -199,6 +222,7 @@ Built executable: $gameExe
 Spellcross.exe SHA256: $gameHash
 Spellcross.pdb SHA256: $pdbHash
 Build UTC: $((Get-Date).ToUniversalTime().ToString('o'))
+Version source: $(if ($env:SPELLCROSS_RELEASE_OVERRIDE) { 'Release.ps1 command-line version override (' + $env:SPELLCROSS_RELEASE_OVERRIDE + ')' } else { 'app_version.h checked-in metadata' })
 "@ | Set-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Encoding UTF8
 Write-Host "Package provenance: $gitBranch / $gitCommit / exe SHA256 $gameHash / PDB SHA256 $pdbHash" -ForegroundColor Cyan
 
