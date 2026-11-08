@@ -80,6 +80,8 @@ namespace spellcross_help
                 "Click the HUD Info button, then a visible unit to inspect its statistics. Escape cancels inspection.");
 
             heading("help.keys", "Tactical map — keyboard");
+            row("help.key.pan_arrows", "Arrow keys", "help.action.pan_arrows",
+                "Hold to scroll the battlefield, including diagonally. Available during deployment.");
             row("help.key.space", "Space", "help.action.space",
                 "Cycle the normal, movement-range and attack-range views.");
             row("help.key.ranges", "Hold M / A", "help.action.ranges",
