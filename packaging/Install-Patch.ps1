@@ -247,3 +247,6 @@ try {
     }
     if ($lockStream) { try { Remove-Item -LiteralPath $lockPath -Force } catch {} }
 }
+
+# Explicit success status (do not inherit $LASTEXITCODE from another process).
+exit 0
