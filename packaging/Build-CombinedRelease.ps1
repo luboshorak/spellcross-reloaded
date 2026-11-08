@@ -13,11 +13,23 @@ param(
     [string]$WinRARPath = '',
     [switch]$PruneOldBuilds,
     [string]$PreviousStageDirectory = '',
-    [string]$PreviousVersion = ''
+    [string]$PreviousVersion = '',
+    [string]$Version = '',
+    [switch]$NoVersionPrompt,
+    [switch]$BuildOnly,
+    [switch]$NoPush,
+    [switch]$AllowNonMain,
+    [string]$EditorRoot = ''
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# When the regular release packager is invoked interactively, do not pass
+# internal editor directory overrides; Release.ps1 chooses it after checking
+# the pinned Git submodule state.
+if (-not $NoVersionPrompt -and $EditorRoot) {
+    throw '-EditorRoot is an internal release parameter.'
+}
 # Public entry point: with -Version (or an interactive build) delegate to the
 # version-safe front-end. -NoVersionPrompt and -BuildOnly are internal
 # phases used by Release.ps1 (compile -> commit -> package -> push).
@@ -70,7 +82,14 @@ if ($releaseTag -ne ('v' + $packageVersion)) {
     throw "Release tag '$releaseTag' does not match release label '$packageVersion'."
 }
 Write-Host "Preparing $releaseTag (Windows FileVersion $releaseVersion)" -ForegroundColor Cyan
-$editor = Join-Path $root 'external\map-editor'
+# Release.ps1 can supply a clean detached checkout at the pinned submodule
+# commit when the user's map-editor working tree contains local changes.
+# Never compile unpublished editor edits into a public release by accident.
+$editor = if ($EditorRoot) {
+    (Resolve-Path -LiteralPath $EditorRoot -ErrorAction Stop).Path
+} else {
+    Join-Path $root 'external\map-editor'
+}
 $gameProject = Join-Path $game 'source\spellcross_map_editor.vcxproj'
 $editorProject = Join-Path $editor 'source\spellcross_map_editor.vcxproj'
 $gameExe = Join-Path $game 'builds\x64\Release\Spellcross.exe'
