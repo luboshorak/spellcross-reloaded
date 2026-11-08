@@ -1,7 +1,7 @@
 name: Release version automation
 on:
   push:
-    branches: [feature/release-version-automation]
+    branches: [feature/release-version-automation, fix/release-script-strictmode-dirty-editor]
     paths:
       - 'packaging/Release.ps1'
       - 'packaging/Build-CombinedRelease.ps1'
@@ -19,6 +19,30 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: PowerShell 7 StrictMode argument binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The previous regression crashed merely by reading an undeclared
+          # switch under Set-StrictMode -Version Latest. Verify PS7 can bind all
+          # internal switches and reaches the expected explicit validation.
+          try {
+            & .\packaging\Build-CombinedRelease.ps1 -BuildOnly -SkipBuild -NoVersionPrompt -NoSfx
+            throw 'Invalid -BuildOnly flags unexpectedly passed.'
+          } catch {
+            if ($_.Exception.Message -notlike '*-BuildOnly is the internal compile phase*') {
+              throw
+            }
+          }
+          try {
+            & .\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 -SkipBuild -NoSfx
+            throw 'Invalid -Version/-SkipBuild flags unexpectedly passed.'
+          } catch {
+            if ($_.Exception.Message -notlike '*-Version requires compiling fresh binaries*') {
+              throw
+            }
+          }
+
       - name: Simulate successful release with a local bare Git origin
         shell: powershell
         run: |
@@ -27,6 +51,8 @@ jobs:
           $source = Join-Path $base 'checkout'
           $origin = Join-Path $base 'origin.git'
           $proof = Join-Path $base 'packaged-head.txt'
+          $editorSeed = Join-Path $base 'editor-seed'
+          $editorOrigin = Join-Path $base 'editor.git'
           New-Item -ItemType Directory -Force -Path $base,$source | Out-Null
           & git init --bare $origin | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Could not create isolated Git origin.' }
@@ -34,6 +60,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not create test checkout.' }
           & git -C $source config user.email 'release-ci@example.invalid'
           & git -C $source config user.name 'Release CI'
+          # Real submodule with an unpublished local edit.
+          New-Item -ItemType Directory -Force -Path (Join-Path $editorSeed 'source') | Out-Null
+          & git init -b main $editorSeed | Out-Null
+          & git -C $editorSeed config user.email 'editor-ci@example.invalid'
+          & git -C $editorSeed config user.name 'Editor CI'
+          Set-Content -LiteralPath (Join-Path $editorSeed 'source\pinned.txt') -Value 'PINNED' -Encoding ASCII
+          & git -C $editorSeed add .
+          & git -C $editorSeed commit -m 'pinned editor' | Out-Null
+          & git clone --bare $editorSeed $editorOrigin | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not initialize editor submodule origin.' }
+          & git -C $source -c protocol.file.allow=always submodule add $editorOrigin external/map-editor | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not pin editor submodule.' }
           New-Item -ItemType Directory -Force -Path (Join-Path $source 'packaging'),(Join-Path $source 'spellcross-map-edit-main\source') | Out-Null
           Copy-Item -LiteralPath '.\packaging\Release.ps1' -Destination (Join-Path $source 'packaging\Release.ps1')
           foreach ($file in @('app_version.h','resources.rc')) {
@@ -47,12 +85,19 @@ jobs:
               [switch]$Rebuild,
               [switch]$BuildOnly,
               [switch]$SkipBuild,
-              [switch]$NoVersionPrompt
+              [switch]$NoVersionPrompt,
+              [string]$EditorRoot = ''
           )
           if (-not $NoVersionPrompt) { throw 'Lost internal release delegation.' }
           $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
           $header = Get-Content -Raw -LiteralPath (Join-Path $root 'spellcross-map-edit-main\source\app_version.h')
           if ($header -notmatch '#define SPELLCROSS_RELEASE_TAG "v0.9.6"') { throw 'Build did not receive new version metadata.' }
+          if (-not $EditorRoot -or -not (Test-Path -LiteralPath (Join-Path $EditorRoot 'source\pinned.txt'))) {
+              throw 'Release did not select a clean pinned editor checkout.'
+          }
+          if ((Get-Content -LiteralPath (Join-Path $EditorRoot 'source\pinned.txt') -Raw).Trim() -ne 'PINNED') {
+              throw 'Release used unpublished local editor modifications!'
+          }
           if ($BuildOnly) {
               if (-not $Rebuild -or $SkipBuild) { throw 'Compile phase arguments incorrect.' }
               $env:SPELLCROSS_TEST_COMPILED = 'yes'
@@ -75,6 +120,11 @@ jobs:
           & git -C $source remote add origin $origin
           & git -C $source push -u origin main | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Could not initialize origin/main.' }
+          Set-Content -LiteralPath (Join-Path $source 'external\map-editor\source\pinned.txt') -Value 'USER-EDIT' -Encoding ASCII
+          $dirty = @(& git -C $source status --porcelain --untracked-files=normal)
+          if ($dirty -notcontains ' m external/map-editor' -and $dirty -notcontains ' M external/map-editor') {
+              throw ('Expected a dirty editor submodule; git status was: ' + ($dirty -join ', '))
+          }
 
           $env:SPELLCROSS_TEST_PROOF = $proof
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.6'
@@ -89,8 +139,10 @@ jobs:
           if ((Get-Content -LiteralPath $proof -Raw).Trim() -ne $new) {
             throw 'Package recorded a different Git commit than the release version commit.'
           }
-          if (@(& git -C $source status --porcelain).Count -gt 0) {
-            throw 'Versioned checkout is unexpectedly dirty after release.'
+          $editorLocal = (Get-Content -LiteralPath (Join-Path $source 'external\map-editor\source\pinned.txt') -Raw).Trim()
+          if ($editorLocal -ne 'USER-EDIT') { throw 'User editor changes were overwritten.' }
+          if (@(& git -C $source status --porcelain --ignore-submodules=dirty).Count -gt 0) {
+            throw 'Versioned checkout contains unexpected modifications besides the editor.'
           }
           Remove-Item Env:\SPELLCROSS_TEST_PROOF -ErrorAction SilentlyContinue
           Remove-Item Env:\SPELLCROSS_TEST_COMPILED -ErrorAction SilentlyContinue

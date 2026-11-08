@@ -15,7 +15,9 @@ param(
     [switch]$PruneOldBuilds,
     [switch]$ValidateOnly,
     [switch]$NoPush,
-    [switch]$AllowNonMain
+    [switch]$AllowNonMain,
+    [string]$PreviousStageDirectory = '',
+    [string]$PreviousVersion = ''
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -85,7 +87,11 @@ function Assert-GitVersionFilesClean([string]$repoRoot) {
         if ($ValidateOnly) { return }
         throw 'Run the release script from a valid Git working tree.'
     }
-    $status = @(& git -C $repoRoot status --porcelain --untracked-files=normal)
+    # A dirty submodule working tree does not change the tracked superproject
+    # commit. We rebuild the editor from its PINNED commit in a temporary
+    # worktree below, never from the player's locally modified files.
+    # This still detects a changed/staged gitlink and all other project edits.
+    $status = @(& git -C $repoRoot status --porcelain --ignore-submodules=dirty --untracked-files=normal)
     if ($LASTEXITCODE -ne 0) { throw 'Could not read Git worktree status.' }
     if ($status.Count -gt 0) {
         throw ('Git worktree must be clean before release: ' + ($status -join [Environment]::NewLine))
@@ -112,6 +118,38 @@ function Invoke-ReleaseGit([string[]]$gitArguments) {
     if ($LASTEXITCODE -ne 0) {
         throw ("Git command failed (exit " + $LASTEXITCODE + "): git " + ($gitArguments -join ' '))
     }
+}
+function New-PinnedEditorCheckout {
+    $editorRepository = Join-Path $root 'external\map-editor'
+    $gitlink = @(& git -C $root ls-files --stage -- 'external/map-editor')
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot read pinned map-editor Git submodule.' }
+    if ($gitlink.Count -eq 0) {
+        # Minimal Git fixtures may not include a submodule.
+        return ''
+    }
+    if ($gitlink.Count -ne 1 -or
+        $gitlink[0] -notmatch '^160000 ([0-9a-f]{40}) 0\s+external/map-editor$') {
+        throw 'Invalid map-editor gitlink; refusing release.'
+    }
+    $pinnedCommit = $Matches[1]
+    if (-not (Test-Path -LiteralPath $editorRepository -PathType Container)) {
+        throw 'Editor submodule is missing. Run git submodule update --init --recursive.'
+    }
+    $editorHead = @(& git -C $editorRepository rev-parse HEAD)
+    if ($LASTEXITCODE -ne 0 -or $editorHead.Count -ne 1 -or
+        $editorHead[0].Trim() -ne $pinnedCommit) {
+        throw 'Editor checkout differs from its pinned commit. Preserve your local edits before updating it.'
+    }
+    $dirty = @(& git -C $editorRepository status --porcelain --untracked-files=normal)
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect editor submodule changes.' }
+    if ($dirty.Count -eq 0) { return '' }
+    $checkout = Join-Path ([IO.Path]::GetTempPath()) ('spellcross-pinned-editor-' + [guid]::NewGuid().ToString('N'))
+    Write-Warning 'Editor submodule is modified. Building from a clean temporary checkout of the pinned commit; local changes are untouched.'
+    & git -C $editorRepository worktree add --detach $checkout $pinnedCommit | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not create the pinned editor checkout; local editor files were not changed.'
+    }
+    return $checkout
 }
 Assert-GitVersionFilesClean $root
 if (-not $ValidateOnly) {
@@ -168,6 +206,7 @@ foreach ($name in @('FileVersion','ProductVersion')) {
 
 $changed = $false
 $commitCreated = $false
+$cleanEditorWorktree = ''
 $addAttempted = $false
 $previousHead = ''
 if (-not $ValidateOnly) {
@@ -200,7 +239,11 @@ try {
         Write-Host 'Version metadata validation passed; source files will be restored.' -ForegroundColor Green
     } else {
         # 1. Compile and verify PE version before any Git commit.
+        $cleanEditorWorktree = New-PinnedEditorCheckout
         $buildParameters = @{ Rebuild = $true; NoVersionPrompt = $true; BuildOnly = $true }
+        if ($cleanEditorWorktree) {
+            $buildParameters['EditorRoot'] = $cleanEditorWorktree
+        }
         foreach ($key in @('WxRoot','MovieSource','WinRARPath','NoSfx')) {
             if ($PSBoundParameters.ContainsKey($key)) { $buildParameters[$key] = $PSBoundParameters[$key] }
         }
@@ -224,7 +267,10 @@ try {
         # 3. Package after commit: BUILD-INFO.txt now has the exact SHA.
         Write-Host "Phase 3/4: packaging binaries from $releaseCommit ..." -ForegroundColor Cyan
         $packageParameters = @{ SkipBuild = $true; NoVersionPrompt = $true }
-        foreach ($key in @('WxRoot','OutputDirectory','MovieSource','NoZip','NoSfx','WinRARPath','PruneOldBuilds')) {
+        if ($cleanEditorWorktree) {
+            $packageParameters['EditorRoot'] = $cleanEditorWorktree
+        }
+        foreach ($key in @('WxRoot','OutputDirectory','MovieSource','NoZip','NoSfx','WinRARPath','PruneOldBuilds','PreviousStageDirectory','PreviousVersion')) {
             if ($PSBoundParameters.ContainsKey($key)) { $packageParameters[$key] = $PSBoundParameters[$key] }
         }
         & (Join-Path $PSScriptRoot 'Build-CombinedRelease.ps1') @packageParameters
@@ -245,6 +291,13 @@ try {
 }
 finally {
     [Environment]::SetEnvironmentVariable('SPELLCROSS_RELEASE_OVERRIDE', $previousBuildOverride, 'Process')
+    if ($cleanEditorWorktree) {
+        $editorRepository = Join-Path $root 'external\map-editor'
+        & git -C $editorRepository worktree remove --force $cleanEditorWorktree
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Could not remove temporary pinned editor worktree: $cleanEditorWorktree"
+        }
+    }
     if ($changed -and -not $commitCreated -and $previousHead) {
         # If a post-commit hook returned an error after Git moved HEAD,
         # never revert version bytes against a newly recorded commit.

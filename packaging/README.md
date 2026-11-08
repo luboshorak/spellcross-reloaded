@@ -48,9 +48,17 @@ the version commit**, the commit is deliberately kept locally. This avoids
 producing binaries whose version no longer matches Git. Resolve the failure
 and finish packaging or push manually; the script never rewrites Git history.
 
-The worktree must be clean, the current branch must be `main`, and it must
-match `origin/main`. The script checks Git tags to avoid releasing the same
-version twice. It does not alter your existing commits or stash changes.
+The main repository must have no uncommitted changes, and its current
+branch must match `origin/main`. **Local modifications inside the
+`external/map-editor` submodule are allowed**, provided the submodule is
+still checked out at the commit pinned by main. In that case, the release
+script automatically builds and packages the editor from a temporary clean
+Git worktree at that pinned commit. The developer's edited submodule is
+never cleaned, reset, stashed, or overwritten. A changed submodule commit
+(gitlink), by contrast, still blocks release. A missing or uninitialized
+submodule also blocks release with an actionable message.
+
+The script checks Git tags to avoid releasing the same version twice.
 
 For local-only testing, `-NoPush` creates the version commit and tag locally
 without uploading them. On a feature branch, both `-NoPush -AllowNonMain` are
