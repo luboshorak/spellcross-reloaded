@@ -47,6 +47,14 @@ class ReportedIssuesRegression(unittest.TestCase):
         self.assertIn("FindRankRec(commander->rank + 1)", battle)
         self.assertIn("UpdateCommanderHierarchyLabel(id)", battle)
 
+    def test_149_damaged_wall_never_spawns_with_zero_hit_points(self):
+        init = MAP.split("void MapSprite::SetL1(", 1)[1].split(
+            "void MapSprite::SetL2(", 1
+        )[0]
+        self.assertIn("if (L1->two_stage_desctruct && L1->is_destructed)", init)
+        self.assertIn("const int halfHp = std::max(1, max_hp / 2)", init)
+        self.assertIn("hp = std::max(1,", init)
+
     def test_149_two_stage_wall_destruction_does_not_revert_damaged_sprite(self):
         wall = MAP.split("int MapSprite::UpdateDestructible()", 1)[1].split(
             "Sprite* MapSprite::GetDestructible()", 1
