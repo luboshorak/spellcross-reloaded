@@ -24,7 +24,7 @@ class ReleaseMetadataTest(unittest.TestCase):
         components = []
         for key in ("MAJOR", "MINOR", "PATCH", "BUILD"):
             match = re.search(
-                r"^#define\\s+SPELLCROSS_VERSION_" + key + r"\\s+(\\d+)\\s*$",
+                r"^#define\s+SPELLCROSS_VERSION_" + key + r"\s+(\d+)\s*$",
                 HEADER, re.M,
             )
             self.assertIsNotNone(match, f"Missing numeric version component: {key}")
