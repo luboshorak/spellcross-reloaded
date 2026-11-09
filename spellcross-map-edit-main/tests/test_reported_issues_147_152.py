@@ -16,9 +16,7 @@ TEXT = (ROOT / "spell_texts.cpp").read_text(encoding="utf-8")
 
 class ReportedIssuesRegression(unittest.TestCase):
     def test_151_long_mission_briefing_has_independent_scroll_state(self):
-        render = STRATEGY.split("// Territory briefing text in the original lower frame.", 1)[1].split(
-            "//", 1
-        )[0] if False else STRATEGY.split(
+        render = STRATEGY.split(
             "// Territory briefing text in the original lower frame.", 1
         )[1].split("const int unitRowsY", 1)[0]
         self.assertIn("OriginalWrapText(font, briefing, 356, 4096)", render)
