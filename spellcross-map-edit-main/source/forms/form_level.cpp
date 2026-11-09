@@ -3383,11 +3383,14 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             constexpr int briefingTextY = 329;
             constexpr int briefingLinePitch = 14;
             constexpr int briefingMaxLines = 9;
-            const auto lines = OriginalWrapText(font, briefing, 356, briefingMaxLines);
+            // Retain the full briefing while drawing the original nine-line viewport.
+            const auto lines = OriginalWrapText(font, briefing, 356, 4096);
+            const int maxScroll = std::max(0, static_cast<int>(lines.size()) - briefingMaxLines);
+            const int firstLine = std::clamp(m_originalBriefingScroll, 0, maxScroll);
             int y = briefingTextY;
-            for (const auto& line : lines)
+            for (int row = 0; row < briefingMaxLines && firstLine + row < static_cast<int>(lines.size()); ++row)
             {
-                OriginalDrawSpellText(image, font, line, 22, y, text, 374, true);
+                OriginalDrawSpellText(image, font, lines[static_cast<size_t>(firstLine + row)], 22, y, text, 374, true);
                 y += briefingLinePitch;
             }
         }
@@ -7020,6 +7023,20 @@ void StrategicLevelFrame::OnOriginalStrategicMouseWheel(wxMouseEvent& ev)
         m_originalStrategicScreen == OriginalStrategicScreen::Options)
     {
         ev.Skip();
+        return;
+    }
+
+    // The native lower-left briefing frame scrolls independently of the roster.
+    if (m_originalStrategicScreen == OriginalStrategicScreen::Map &&
+        lx >= 22 && lx < 396 && ly >= 326 && ly < 456 &&
+        m_spellData && m_spellData->font)
+    {
+        const wxString briefing = OriginalCleanBriefing(m_originalBriefingText);
+        const auto lines = OriginalWrapText(m_spellData->font, briefing, 356, 4096);
+        const int maxScroll = std::max(0, static_cast<int>(lines.size()) - 9);
+        m_originalBriefingScroll = std::clamp(m_originalBriefingScroll - steps * 3, 0, maxScroll);
+        m_originalStrategicDirty = true;
+        m_originalStrategicPanel->Refresh();
         return;
     }
 
@@ -15462,6 +15479,7 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
         box->ShowPosition(0);
     }
     m_originalBriefingText = info;
+    m_originalBriefingScroll = 0; // new territory begins at the first line
     m_originalStrategicDirty = true;
     RefreshUI();
 }
@@ -17130,6 +17148,8 @@ static bool LoadStrategicStateFile(
                 StrategicLevelFrame::CommanderRec c;
                 (void)ParseJsonStringField(obj, "name", c.name);
                 (void)ParseJsonIntField(obj, "rank", c.rank);
+                (void)ParseJsonIntField(obj, "battles_fought", c.battles_fought);
+                c.battles_fought = std::max(0, c.battles_fought);
                 {
                     int uid = 0;
                     if (ParseJsonIntField(obj, "uid", uid) && uid > 0)
@@ -17433,7 +17453,7 @@ static bool SaveStrategicStateFile(
     {
         const auto& c = playerCommanders[i];
         f << "    {\"name\": \"" << EscapeJson(c.name) << "\", \"rank\": " << c.rank
-          << ", \"uid\": " << c.uid << "}";
+          << ", \"uid\": " << c.uid << ", \"battles_fought\": " << c.battles_fought << "}";
         if (i + 1 < playerCommanders.size())
             f << ",";
         f << "\n";
@@ -17445,7 +17465,7 @@ static bool SaveStrategicStateFile(
     {
         const auto& c = availableCommanders[i];
         f << "    {\"name\": \"" << EscapeJson(c.name) << "\", \"rank\": " << c.rank
-          << ", \"uid\": " << c.uid << "}";
+          << ", \"uid\": " << c.uid << ", \"battles_fought\": " << c.battles_fought << "}";
         if (i + 1 < availableCommanders.size())
             f << ",";
         f << "\n";
@@ -20660,6 +20680,55 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
     // did not return, the commander is dead as well and disappears from both
     // the owned commander pool and every hierarchy slot immediately.
     RemoveCommandersHostedByDeadUnits(deadStrategicUids);
+
+    // Subordinate commanders progress by deployments, independently of John's
+    // strategic XP. HODNOSTI.DEF's actions_required is the number of battles
+    // to advance FROM the current commander rank.
+    if (m_ranks.empty())
+        LoadRanksTable();
+    const std::unordered_set<uint32_t> deployedHosts(
+        m_pendingMission.sent_unit_uids.begin(), m_pendingMission.sent_unit_uids.end());
+    std::unordered_set<uint32_t> countedCommanders;
+    std::vector<std::string> promotedSlots;
+    for (const auto& slot : m_hierarchySlots)
+    {
+        if (slot.type != "commander" || slot.commander_uid == 0 ||
+            slot.assigned_unit_uid == 0 ||
+            deployedHosts.count(slot.assigned_unit_uid) == 0 ||
+            survivingStrategicUids.count(slot.assigned_unit_uid) == 0 ||
+            !countedCommanders.insert(slot.commander_uid).second)
+            continue;
+
+        auto commander = std::find_if(m_playerCommanders.begin(), m_playerCommanders.end(),
+            [&](const CommanderRec& c) { return c.uid == slot.commander_uid; });
+        if (commander == m_playerCommanders.end())
+            continue;
+
+        commander->battles_fought = std::min(commander->battles_fought + 1, 1000000);
+        const int previousRank = commander->rank;
+        while (const CommanderRankRec* currentRank = FindRankRec(commander->rank))
+        {
+            if (currentRank->actions_required <= 0 ||
+                commander->battles_fought < currentRank->actions_required ||
+                !FindRankRec(commander->rank + 1))
+                break;
+            ++commander->rank;
+        }
+        if (commander->rank != previousRank)
+        {
+            m_commanderRankByUid[commander->uid] = commander->rank;
+            for (auto& assigned : m_hierarchySlots)
+            {
+                if (assigned.type == "commander" && assigned.commander_uid == commander->uid)
+                {
+                    assigned.rank = commander->rank;
+                    promotedSlots.push_back(assigned.id);
+                }
+            }
+        }
+    }
+    for (const auto& id : promotedSlots)
+        UpdateCommanderHierarchyLabel(id);
 
     // New campaign launches carry an exact strategic UID into every tactical
     // company.  Use it as the primary identity so two companies of the same
