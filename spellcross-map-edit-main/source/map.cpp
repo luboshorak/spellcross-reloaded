@@ -688,13 +688,19 @@ int MapSprite::UpdateDestructible()
 	if (!tile)
 		return(false);
 
-	if ((*tile)->two_stage_desctruct && 2 * hp < (*tile)->destructible->hp && !(*tile)->is_destructed && (*tile)->destructible_alt)
+	// Cache the original wall class before switching to its damaged sprite.
+	// The alternate sprite does not have to carry the same two-stage flag.
+	// At zero HP it must still be removed, even if this very shot crossed
+	// both the half-damage threshold and the destruction threshold.
+	const bool wasTwoStageWall = (*tile)->two_stage_desctruct;
+	if (wasTwoStageWall && 2 * hp < (*tile)->destructible->hp && !(*tile)->is_destructed && (*tile)->destructible_alt)
 	{
 		// half destruct tile
 		*tile = (*tile)->destructible_alt;
 	}
 
-	if (spellcross_tactical::ShouldFinishDestruction(hp, true, (*tile)->is_destructed) && (*tile)->two_stage_desctruct)
+	if (spellcross_tactical::ShouldFinishDestruction(hp, true, (*tile)->is_destructed) &&
+		(wasTwoStageWall || (*tile)->two_stage_desctruct))
 	{
 		// total destroy of wall
 		*tile = NULL;
