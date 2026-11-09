@@ -52,8 +52,8 @@ class ReportedIssuesRegression(unittest.TestCase):
             "void MapSprite::SetL2(", 1
         )[0]
         self.assertIn("if (L1->two_stage_desctruct && L1->is_destructed)", init)
-        self.assertIn("const int halfHp = std::max(1, max_hp / 2)", init)
-        self.assertIn("hp = std::max(1,", init)
+        self.assertIn("const int halfHp = (std::max)(1, max_hp / 2)", init)
+        self.assertIn("hp = (std::max)(1,", init)
 
     def test_149_two_stage_wall_destruction_does_not_revert_damaged_sprite(self):
         wall = MAP.split("int MapSprite::UpdateDestructible()", 1)[1].split(
