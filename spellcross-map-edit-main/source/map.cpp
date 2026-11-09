@@ -653,7 +653,13 @@ void MapSprite::SetL1(Sprite* sprite, int elev)
 		// init hit points
 		int max_hp = L1->destructible->hp;
 		if (L1->two_stage_desctruct && L1->is_destructed)
-			hp = rand() % (max_hp / 2);
+		{
+			// Existing damaged wall sprites are still solid and targetable.
+			// The old random range sometimes returned exactly 0 HP, leaving
+			// a visible wall that subsequent DamageTarget() refused to hit.
+			const int halfHp = std::max(1, max_hp / 2);
+			hp = std::max(1, std::max((10 * max_hp) / 100, rand() % halfHp));
+		}
 		else if (L1->is_destructed)
 			hp = 0;
 		else
