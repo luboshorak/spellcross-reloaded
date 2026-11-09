@@ -650,6 +650,7 @@ public:
         uint32_t uid = 0;
         std::string name;
         int rank = 0;
+        int battles_fought = 0; // battles participated in; preserved in strategic JSON saves
     };
 
     // owned commanders (max 14)
@@ -881,6 +882,7 @@ public:
     wxBitmap m_originalStrategicBitmap;
     wxString m_originalStrategicError;
     wxString m_originalBriefingText;
+    int m_originalBriefingScroll = 0;
     wxRect m_originalStrategicDrawRect;
     int m_originalUnitScroll = 0;
     int m_originalHierarchyUnitScroll = 0;
