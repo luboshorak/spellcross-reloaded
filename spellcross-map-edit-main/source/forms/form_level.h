@@ -307,6 +307,9 @@ public:
     // Check and trigger counter-attacks (called in OnEndTurn)
     void CheckCounterAttacks();
 
+    // DOS random Army scheduler; executed after scripted events each turn.
+    void ProcessRandomCounterAttack();
+
     // Retain enemy occupiers for the recapture; transfer land only once.
     void SurrenderCounterAttack(CounterAttackState& attack);
 
@@ -361,6 +364,8 @@ public:
     // Counter-attack tracking
     std::vector<CounterAttackState> m_counterAttacks;
     int m_nextCounterAttackId = 1;
+    // Retail strategic attack cooldown, persisted with the campaign.
+    int m_lastEnemyAttackTurn = 1;
     
     // Territory timeouts (territory_id -> deadline turn)
     std::unordered_map<int, int> m_territoryTimeoutTurn;

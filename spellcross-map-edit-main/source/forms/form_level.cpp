@@ -44,6 +44,7 @@
 #include "../runtime_diagnostics.h"
 #include "../strategic_countdown_rules.h"
 #include "../strategic_mission_flow.h"
+#include "../strategic_random_attack_rules.h"
 #include "../strategic_unit_timer_rules.h"
 #include "../strategic_campaign_unlock_rules.h"
 #include "../strategic_buy_variant_rules.h"
@@ -2776,6 +2777,9 @@ void StrategicLevelFrame::StartFreshGameMode(const std::vector<LevelData::Player
     LoadRanksTable();
     RecomputePlayerRank();
 
+    // A new chapter begins a new enemy attack cooldown, as in retail.
+    m_lastEnemyAttackTurn = m_turn;
+
     // Process immediate level events (AbsTime(-1) = fires right away, e.g. E02_0001 intro text)
     ProcessLevelEvents();
 
@@ -2862,6 +2866,7 @@ struct MissionFlowPersistSaveView
     const std::unordered_map<int, int>* activatedEvents = nullptr;
     const std::vector<StrategicLevelFrame::CounterAttackState>* counterAttacks = nullptr;
     const int* nextAttackId = nullptr;
+    const int* lastEnemyAttackTurn = nullptr;
 };
 
 struct MissionFlowPersistLoadView
@@ -2871,6 +2876,7 @@ struct MissionFlowPersistLoadView
     std::unordered_map<int, int>* activatedEvents = nullptr;
     std::vector<StrategicLevelFrame::CounterAttackState>* counterAttacks = nullptr;
     int* nextAttackId = nullptr;
+    int* lastEnemyAttackTurn = nullptr;
 };
 
 static thread_local const MissionFlowPersistSaveView* g_missionFlowPersistSave = nullptr;
@@ -7362,6 +7368,7 @@ bool StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& p
     mfsv.activatedEvents = &m_activatedEvents;
     mfsv.counterAttacks = &m_counterAttacks;
     mfsv.nextAttackId = &m_nextCounterAttackId;
+    mfsv.lastEnemyAttackTurn = &m_lastEnemyAttackTurn;
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
@@ -7457,6 +7464,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     mflv.activatedEvents = &m_activatedEvents;
     mflv.counterAttacks = &m_counterAttacks;
     mflv.nextAttackId = &m_nextCounterAttackId;
+    mflv.lastEnemyAttackTurn = &m_lastEnemyAttackTurn;
     MissionFlowPersistLoadView* prevMFL = g_missionFlowPersistLoad;
     g_missionFlowPersistLoad = &mflv;
 
@@ -16508,7 +16516,11 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
     // after it. Already-ticked deadlines remain untouched.
     CheckTimeouts();
 
-    // Check counter-attacks (legacy territory-based)
+    // Original DOS stochastic Army scheduling, after prioritized scripted
+    // Army events and before displaying the defence prompts.
+    ProcessRandomCounterAttack();
+
+    // Check scheduled and freshly generated defences.
     CheckCounterAttacks();
     
     // Update stats
@@ -16907,10 +16919,20 @@ static bool LoadStrategicStateFile(
         if (g_missionFlowPersistLoad->activatedEvents) g_missionFlowPersistLoad->activatedEvents->clear();
         if (g_missionFlowPersistLoad->counterAttacks) g_missionFlowPersistLoad->counterAttacks->clear();
         if (g_missionFlowPersistLoad->nextAttackId) *g_missionFlowPersistLoad->nextAttackId = 1;
+        // Legacy saves have no cooldown; anchor it to their current turn
+        // rather than allowing an immediate random attack after migration.
+        if (g_missionFlowPersistLoad->lastEnemyAttackTurn)
+            *g_missionFlowPersistLoad->lastEnemyAttackTurn = turn;
 
         const std::string mf = ExtractJsonBlock(data, "mission_flow");
         if (!mf.empty() && mf != "null")
         {
+            if (g_missionFlowPersistLoad->lastEnemyAttackTurn)
+            {
+                int lastTurn = turn;
+                if (ParseJsonIntField(mf, "last_enemy_attack_turn", lastTurn))
+                    *g_missionFlowPersistLoad->lastEnemyAttackTurn = std::clamp(lastTurn, 0, std::max(0, turn));
+            }
             if (g_missionFlowPersistLoad->timeoutTurn)
             {
                 const std::string obj = ExtractJsonBlock(mf, "timeouts");
@@ -17362,6 +17384,9 @@ static bool SaveStrategicStateFile(
         f << "  \"mission_flow\": {\n";
         f << "    \"next_counter_attack_id\": "
           << (g_missionFlowPersistSave->nextAttackId ? *g_missionFlowPersistSave->nextAttackId : 1)
+          << ",\n";
+        f << "    \"last_enemy_attack_turn\": "
+          << (g_missionFlowPersistSave->lastEnemyAttackTurn ? *g_missionFlowPersistSave->lastEnemyAttackTurn : turn)
           << ",\n";
         f << "    \"timeouts\": {";
         bool firstT = true;
@@ -17987,6 +18012,8 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
     m_pendingMission = PendingMissionResult{};
     m_counterAttacks.clear();
     m_nextCounterAttackId = 1;
+    // The DOS snapshot has no lossless mapping for this remake timer.
+    m_lastEnemyAttackTurn = m_turn;
     m_selectedUnitsForMission.clear();
     m_selectedCommandersForMission.clear();
     m_cmdGenWindowStartTurn = ((m_turn - 1) / 25) * 25 + 1;
@@ -18103,6 +18130,7 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
     mflv.activatedEvents = &m_activatedEvents;
     mflv.counterAttacks = &m_counterAttacks;
     mflv.nextAttackId = &m_nextCounterAttackId;
+    mflv.lastEnemyAttackTurn = &m_lastEnemyAttackTurn;
     MissionFlowPersistLoadView* prevMF = g_missionFlowPersistLoad;
     g_missionFlowPersistLoad = &mflv;
 
@@ -18426,6 +18454,7 @@ void StrategicLevelFrame::SaveStrategicState() const
     mfsv.activatedEvents = &m_activatedEvents;
     mfsv.counterAttacks = &m_counterAttacks;
     mfsv.nextAttackId = &m_nextCounterAttackId;
+    mfsv.lastEnemyAttackTurn = &m_lastEnemyAttackTurn;
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
@@ -21175,6 +21204,121 @@ void StrategicLevelFrame::SurrenderCounterAttack(CounterAttackState& attack)
     MarkOverlayDirty();
 }
 
+void StrategicLevelFrame::ProcessRandomCounterAttack()
+{
+    if (!m_gameModeEnabled || m_lastEnemyAttackTurn >= m_turn)
+        return;
+
+    // A scripted Army action (or another defence becoming due) has priority.
+    // Do not show two concurrent attack prompts during one strategic tick.
+    if (std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+            [this](const CounterAttackState& attack) {
+                return !attack.completed && attack.trigger_turn <= m_turn;
+            }))
+        return;
+
+    // DOS 0x2EC8E reads frequency from ENEMY frontier missions, not the
+    // current chapter or the player's recently conquered mission.
+    const auto frontier = spellcross_strategy::FindCounterAttackFrontier(
+        m_clkValues, m_clkW, m_clkH, m_ownedTerritories);
+    if (frontier.borders.empty())
+        return;
+
+    int attackRate = 0;
+    int minimumGap = std::numeric_limits<int>::max();
+    for (const int enemyTerritory : frontier.enemy_sources)
+    {
+        const std::string token = ResolveMissionTokenForTerritory(enemyTerritory);
+        const LevelMission* mission = FindMissionByNameUpper(to_upper(token));
+        int rate = mission ? mission->freq_random_a : -1;
+        int gap = mission ? mission->freq_random_b : -1;
+        // Retail copies AttackFlags[4..5] into newly generated Rxxxx
+        // occupation missions; they have no authored LevelMission record.
+        if ((!mission || rate < 0 || gap < 0) &&
+            spellcross_strategy::IsGeneratedMissionToken(token) &&
+            m_level.attack_flags.size() >= 6)
+        {
+            rate = m_level.attack_flags[4];
+            gap = m_level.attack_flags[5];
+        }
+        if (rate > 0 && gap >= 0 && gap < minimumGap)
+        {
+            minimumGap = gap;
+            attackRate = rate;
+        }
+    }
+
+    const int attackChance = attackRate > 0
+        ? spellcross_strategy::RandomCounterAttackChance(
+            m_turn, m_lastEnemyAttackTurn, attackRate, minimumGap)
+        : 0;
+    if (attackChance == 0)
+        return;
+
+    std::vector<int> targets;
+    for (const int target : frontier.player_targets)
+    {
+        // Only actual chapter territories have a corresponding battle DTA.
+        const auto territory = std::find_if(
+            m_level.territories.begin(), m_level.territories.end(),
+            [target](const LevelTerritory& t) { return t.id == target; });
+        if (territory == m_level.territories.end())
+            continue;
+        if (std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+                [target](const CounterAttackState& attack) {
+                    return attack.territory_id == target && !attack.completed;
+                }))
+            continue;
+        // Starting sectors are eligible as well; unlike the older scripted
+        // attack heuristic, we do not arbitrarily exclude start_territory.
+        const std::string mission = spellcross_strategy::GeneratedMissionToken(territory->mission);
+        if (!mission.empty() && !ResolveMapDtaPathForMissionToken(mission).empty())
+            targets.push_back(target);
+    }
+    if (targets.empty() || m_level.attack_units.empty() ||
+        m_level.attack_flags.size() < 4)
+        return;
+
+    const int roll = std::rand() % 100;
+    if (!spellcross_strategy::RandomCounterAttackRoll(
+            m_turn, m_lastEnemyAttackTurn, attackRate, minimumGap, roll))
+        return;
+
+    auto randomBelow = [](int exclusiveMaximum) {
+        return exclusiveMaximum > 1 ? std::rand() % exclusiveMaximum : 0;
+    };
+    std::vector<int> enemyForce = spellcross_strategy::BuildRandomCounterAttackForce(
+        m_level.attack_units, m_level.attack_special_units,
+        m_level.attack_flags, randomBelow);
+    if (enemyForce.empty())
+        return;
+
+    const int targetId = targets[static_cast<size_t>(randomBelow(static_cast<int>(targets.size())))];
+    const auto territory = std::find_if(m_level.territories.begin(), m_level.territories.end(),
+        [targetId](const LevelTerritory& t) { return t.id == targetId; });
+
+    CounterAttackState attack;
+    attack.attack_id = m_nextCounterAttackId;
+    if (m_nextCounterAttackId < std::numeric_limits<int>::max())
+        ++m_nextCounterAttackId;
+    attack.territory_id = targetId;
+    attack.conquest_turn = m_turn;
+    attack.trigger_turn = m_turn;
+    attack.counter_mission = spellcross_strategy::GeneratedMissionToken(territory->mission);
+    attack.enemy_units = std::move(enemyForce);
+    m_counterAttacks.push_back(std::move(attack));
+
+    // CheckCounterAttacks() triggers the existing defence UI in THIS turn.
+    // Both accepted battles and refused defences keep the generated Army
+    // through the existing mission/save/recapture lifecycle.
+    m_lastEnemyAttackTurn = m_turn;
+    spellcross_diag::Log(spellcross_diag::Level::Info, "STRATEGY",
+        "DOS random OS attack turn=%d target=%d frequency=(%d,%d) chance=%d%% force=%llu",
+        m_turn, targetId, attackRate, minimumGap,
+        attackChance,
+        static_cast<unsigned long long>(m_counterAttacks.back().enemy_units.size()));
+}
+
 void StrategicLevelFrame::CheckCounterAttacks()
 {
     if (!m_gameModeEnabled)
@@ -21545,6 +21689,8 @@ void StrategicLevelFrame::ProcessLevelEvents()
             for (const auto& army : evt->armies)
                 eventAttack.enemy_units.insert(eventAttack.enemy_units.end(), army.units.begin(), army.units.end());
             m_counterAttacks.push_back(std::move(eventAttack));
+            // Scripted Army events share the retail enemy-attack cooldown.
+            m_lastEnemyAttackTurn = m_turn;
             CounterAttackState& activeAttack = m_counterAttacks.back();
             m_territoryCurrentMission[target_tid] = activeAttack.counter_mission;
             m_territoryTimeoutTurn.erase(target_tid);
