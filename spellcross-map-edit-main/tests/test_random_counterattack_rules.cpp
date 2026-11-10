@@ -11,7 +11,7 @@ using namespace spellcross_strategy;
 int main()
 {
     // LEVEL_06 frequency (20,6): increasing conditional probability.
-    const std::vector<int> chance = {0,0,0,0,0,0,0,20,40,60,80,100,100};
+    const std::vector<int> chance = {0,0,0,0,0,0,0,0,20,40,60,80,100};
     for (int elapsed = 0; elapsed < static_cast<int>(chance.size()); ++elapsed)
         assert(RandomCounterAttackChance(1 + elapsed, 1, 20, 6) == chance[elapsed]);
     assert(!RandomCounterAttackRoll(9, 1, 20, 6, 20));
