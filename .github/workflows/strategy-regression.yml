@@ -19,6 +19,7 @@ on:
       - 'spellcross-map-edit-main/source/spell_units.cpp'
       - 'spellcross-map-edit-main/source/strategic_campaign_unlock_rules.h'
       - 'spellcross-map-edit-main/source/strategic_mission_flow.h'
+      - 'spellcross-map-edit-main/source/strategic_random_attack_rules.h'
       - 'spellcross-map-edit-main/source/app_version.h'
       - 'spellcross-map-edit-main/source/app_identity.h'
       - 'spellcross-map-edit-main/source/resources.rc'
@@ -59,6 +60,12 @@ jobs:
             spellcross-map-edit-main/tests/test_original_strategy_mission_flow.cpp \
             -o /tmp/spellcross-original-mission-flow-test
           /tmp/spellcross-original-mission-flow-test
+      - name: Compile and test original random counterattack rules
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_random_counterattack_rules.cpp \
+            -o /tmp/spellcross-random-counterattack-test
+          /tmp/spellcross-random-counterattack-test
       - name: Compile and test campaign unit purchase unlock rules
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
