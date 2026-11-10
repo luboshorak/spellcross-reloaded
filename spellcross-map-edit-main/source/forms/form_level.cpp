@@ -21179,9 +21179,11 @@ void StrategicLevelFrame::ProcessRandomCounterAttack()
         }
     }
 
-    if (attackRate <= 0 ||
-        spellcross_strategy::RandomCounterAttackChance(
-            m_turn, m_lastEnemyAttackTurn, attackRate, minimumGap) == 0)
+    const int attackChance = attackRate > 0
+        ? spellcross_strategy::RandomCounterAttackChance(
+            m_turn, m_lastEnemyAttackTurn, attackRate, minimumGap)
+        : 0;
+    if (attackChance == 0)
         return;
 
     std::vector<int> targets;
@@ -21244,8 +21246,7 @@ void StrategicLevelFrame::ProcessRandomCounterAttack()
     spellcross_diag::Log(spellcross_diag::Level::Info, "STRATEGY",
         "DOS random OS attack turn=%d target=%d frequency=(%d,%d) chance=%d%% force=%llu",
         m_turn, targetId, attackRate, minimumGap,
-        spellcross_strategy::RandomCounterAttackChance(
-            m_turn, m_lastEnemyAttackTurn - 1, attackRate, minimumGap),
+        attackChance,
         static_cast<unsigned long long>(m_counterAttacks.back().enemy_units.size()));
 }
 
