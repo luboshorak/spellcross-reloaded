@@ -19,15 +19,30 @@ def macro(name):
 
 class ReleaseMetadataTest(unittest.TestCase):
     def test_numeric_windows_resource_matches_header(self):
-        self.assertEqual(macro("SPELLCROSS_VERSION_STRING"), "0.9.5.0")
-        self.assertIn("#define SPELLCROSS_VERSION_COMMA 0,9,5,0", HEADER)
-        self.assertEqual(RESOURCE.count('"0.9.5.0\\0"'), 2)
-        self.assertNotIn('"0.9.2.3\\0"', RESOURCE)
+        # The release version changes frequently; verify that its four numeric
+        # components agree across the executable VERSIONINFO and header.
+        components = []
+        for key in ("MAJOR", "MINOR", "PATCH", "BUILD"):
+            match = re.search(
+                r"^#define\s+SPELLCROSS_VERSION_" + key + r"\s+(\d+)\s*$",
+                HEADER, re.M,
+            )
+            self.assertIsNotNone(match, f"Missing numeric version component: {key}")
+            components.append(int(match.group(1)))
+        version = ".".join(map(str, components))
+        self.assertEqual(macro("SPELLCROSS_VERSION_STRING"), version)
+        self.assertIn(
+            "#define SPELLCROSS_VERSION_COMMA " + ",".join(map(str, components)),
+            HEADER,
+        )
+        self.assertEqual(RESOURCE.count('"' + version + '\\0"'), 2)
+        self.assertIn("FILEVERSION SPELLCROSS_VERSION_COMMA", RESOURCE)
 
     def test_release_label_and_tag(self):
-        self.assertEqual(macro("SPELLCROSS_RELEASE_LABEL"), "0.9.5")
-        self.assertEqual(macro("SPELLCROSS_RELEASE_TAG"), "v0.9.5")
-        self.assertIn('SPELLCROSS_RELEASE_LABEL', IDENTITY)
+        version = macro("SPELLCROSS_VERSION_STRING")
+        self.assertEqual(macro("SPELLCROSS_RELEASE_LABEL"), version.rsplit(".", 1)[0])
+        self.assertEqual(macro("SPELLCROSS_RELEASE_TAG"), "v" + macro("SPELLCROSS_RELEASE_LABEL"))
+        self.assertIn("SPELLCROSS_RELEASE_LABEL", IDENTITY)
 
     def test_packaging_uses_label_but_checks_binary_version(self):
         self.assertIn('$packageVersion', PACKAGER)
