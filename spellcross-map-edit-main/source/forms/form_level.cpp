@@ -44,6 +44,7 @@
 #include "../runtime_diagnostics.h"
 #include "../strategic_countdown_rules.h"
 #include "../strategic_mission_flow.h"
+#include "../strategic_battle_recovery_rules.h"
 #include "../strategic_random_attack_rules.h"
 #include "../strategic_unit_timer_rules.h"
 #include "../strategic_campaign_unlock_rules.h"
@@ -11373,7 +11374,8 @@ wxPanel* StrategicLevelFrame::BuildHierarchySlot(wxWindow* parent,
 
     auto* panel = new spellcross_strategic_ui::Panel(parent, wxID_ANY, wxDefaultPosition, slotSize, wxBORDER_THEME);
 
-    auto* label = new wxStaticText(panel, wxID_ANY, placeholder);
+    auto* label = new wxStaticText(panel, wxID_ANY, placeholder,
+        wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END | wxST_NO_AUTORESIZE);
     label->SetFont(m_fontText);
 
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -12833,9 +12835,9 @@ void StrategicLevelFrame::UpdateCommanderHierarchyLabel(const std::string& comma
     }
 
     wxString base = wxString::Format("%s %s", GetRankAbbrev(cs.rank), wxString::FromUTF8(cs.commander_name));
-    if (cs.assigned_unit_uid != 0 && !cs.assigned_unit_display.empty())
-        base += wxString::Format(" → %s", cs.assigned_unit_display);
-
+    // The host company already has its own slot below the commander.
+    // Appending it to the commander's name makes higher-rank labels overrun
+    // adjacent nodes and can visually join unrelated officers (#156).
     cs.label->SetLabel(base);
     cs.label->GetParent()->Layout();
 }
@@ -20843,14 +20845,13 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
                 ? std::string()
                 : spellcross_company::OriginalNameToUtf8(survivor->name);
 
-        // Convert tactical manpower back to the strategic strength percentage.
-        const int maxMan = survivor->unit ? survivor->unit->cnt : 0;
-        if (survivor->unit && survivor->unit->isSingleMan())
-            pu.health = std::clamp((1000 - survivor->damage_remainder + 5) / 10, 1, 100);
-        else
-            pu.health = maxMan > 0
-                ? std::max(1, (survivor->man * 100 + maxMan / 2) / maxMan)
-                : 100;
+        // Convert tactical casualties into post-battle strength. After a
+        // victory, wounded survivors heal; only dead require recruits (#155).
+        pu.health = spellcross_strategy::RecoveredStrategicHealth(
+            survivor->man, survivor->wounded,
+            survivor->unit ? survivor->unit->cnt : 0,
+            survivor->damage_remainder,
+            survivor->unit && survivor->unit->isSingleMan(), success);
 
         if (rosterIdx < m_unitStates.size())
         {
@@ -20903,13 +20904,11 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
         LevelData::PlayerUnitAdd pu;
         pu.unit_id = s->unit->type_id;
         pu.count = 1;
-        const int maxMan = s->unit ? s->unit->cnt : 0;
-        if (s->unit && s->unit->isSingleMan())
-            pu.health = std::clamp((1000 - s->damage_remainder + 5) / 10, 1, 100);
-        else
-            pu.health = maxMan > 0
-                ? std::max(1, (s->man * 100 + maxMan / 2) / maxMan)
-                : 100;
+        pu.health = spellcross_strategy::RecoveredStrategicHealth(
+            s->man, s->wounded,
+            s->unit ? s->unit->cnt : 0,
+            s->damage_remainder,
+            s->unit && s->unit->isSingleMan(), success);
         pu.extra = s->name.empty() ? "-" : s->name;
         pu.experience = std::max(0, s->experience);
         pu.experience_level = std::clamp(s->experience_level > 0
