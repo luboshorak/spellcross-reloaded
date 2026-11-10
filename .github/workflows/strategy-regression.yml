@@ -84,6 +84,12 @@ jobs:
             spellcross-map-edit-main/tests/test_unit_availability.cpp \
             -o /tmp/spellcross-unit-availability-test
           /tmp/spellcross-unit-availability-test
+      - name: Compile and test post-battle wounded recovery
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_battle_recovery_rules.cpp \
+            -o /tmp/spellcross-battle-recovery-test
+          /tmp/spellcross-battle-recovery-test
       - name: Compile and test single-member and multi-member health display
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
