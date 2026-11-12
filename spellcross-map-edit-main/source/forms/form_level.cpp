@@ -45,6 +45,7 @@
 #include "../strategic_countdown_rules.h"
 #include "../strategic_mission_flow.h"
 #include "../strategic_battle_recovery_rules.h"
+#include "../strategic_commander_uid_rules.h"
 #include "../strategic_random_attack_rules.h"
 #include "../strategic_unit_timer_rules.h"
 #include "../strategic_campaign_unlock_rules.h"
@@ -7496,14 +7497,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     m_researchProgressById = std::move(loadedResearchProgress);
     m_researchCompleted = std::move(loadedResearchCompleted);
 
-    uint32_t maxCommanderUid = 0;
-    for (const auto& c : m_playerCommanders)
-        maxCommanderUid = std::max(maxCommanderUid, c.uid);
-    m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
-    for (auto& c : m_playerCommanders)
-        if (c.uid == 0) c.uid = m_nextCommanderUid++;
-    for (auto& c : m_availableCommanders)
-        if (c.uid == 0) c.uid = m_nextCommanderUid++;
+    NormalizeCommanderIdentities();
     RestoreHierarchyAssignments(loadedHierarchy);
 
     if (spellcross_menu::Model(this))
@@ -7617,14 +7611,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
         win->m_unitStates = std::move(loadedUnitStates2);
         win->m_playerCommanders = std::move(playerCmds2);
         win->m_availableCommanders = std::move(availCmds2);
-        uint32_t maxCommanderUid2 = 0;
-        for (const auto& c : win->m_playerCommanders)
-            maxCommanderUid2 = std::max(maxCommanderUid2, c.uid);
-        win->m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid2 + 1);
-        for (auto& c : win->m_playerCommanders)
-            if (c.uid == 0) c.uid = win->m_nextCommanderUid++;
-        for (auto& c : win->m_availableCommanders)
-            if (c.uid == 0) c.uid = win->m_nextCommanderUid++;
+        win->NormalizeCommanderIdentities();
         win->m_cmdGenWindowStartTurn = windowStart2;
         win->m_cmdGenCountInWindow = genCount2;
         win->m_gameModeEnabled = gm2;
@@ -10981,6 +10968,19 @@ int StrategicLevelFrame::GetUnitExperienceLevel(int unitId, int experience) cons
     return std::clamp(xp / 100 + 1, 1, 12);
 }
 
+void StrategicLevelFrame::NormalizeCommanderIdentities()
+{
+    const size_t repaired = spellcross_strategy::EnsureUniqueCommanderUids(
+        m_playerCommanders, m_availableCommanders, m_nextCommanderUid);
+    if (repaired)
+        spellcross_diag::Log(spellcross_diag::Level::Warning, "SAVE",
+            "Repaired %llu missing/duplicate commander UIDs (kept first saved identity)",
+            static_cast<unsigned long long>(repaired));
+    m_commanderRankByUid.clear();
+    for (const auto& commander : m_playerCommanders)
+        m_commanderRankByUid[commander.uid] = commander.rank;
+}
+
 void StrategicLevelFrame::NormalizeStrategicUnitInstances()
 {
     // Spellcross treats every company as a separate strategic object. Older
@@ -11782,6 +11782,10 @@ void StrategicLevelFrame::RestoreHierarchyAssignments(
     };
 
     // First restore unit and commander occupancy.
+    // Legacy/hand-edited saves can reference the same officer in multiple
+    // slots. One UID represents only one person; ambiguous duplicate slots
+    // must stay empty rather than joining two names/entities (#156).
+    std::unordered_set<uint32_t> restoredCommanderIds;
     for (const auto& rec : records)
     {
         const auto it = m_hierarchySlotIndex.find(rec.slot_id);
@@ -11803,7 +11807,7 @@ void StrategicLevelFrame::RestoreHierarchyAssignments(
         else if (slot.type == "commander" && rec.commander_uid != 0)
         {
             const CommanderRec* c = findCommander(rec.commander_uid);
-            if (c)
+            if (c && restoredCommanderIds.insert(c->uid).second)
             {
                 slot.commander_uid = c->uid;
                 slot.rank = c->rank;
@@ -18176,22 +18180,9 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
         m_playerCommanders = std::move(playerCmds);
         m_availableCommanders = std::move(availCmds);
 
-        // Commander UIDs are now persisted.  Older JSON saves did not carry
-        // them, so assign deterministic fresh IDs before restoring hierarchy.
-        uint32_t maxCommanderUid = 0;
-        for (const auto& c : m_playerCommanders)
-            maxCommanderUid = std::max(maxCommanderUid, c.uid);
-        m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
-        for (auto& c : m_playerCommanders)
-        {
-            if (c.uid == 0)
-                c.uid = m_nextCommanderUid++;
-        }
-        for (auto& c : m_availableCommanders)
-        {
-            if (c.uid == 0)
-                c.uid = m_nextCommanderUid++;
-        }
+        // Keep references from the first saved UID; regenerate duplicates
+        // without conflating unrelated officers in full hierarchies (#156).
+        NormalizeCommanderIdentities();
 
         RestoreHierarchyAssignments(loadedHierarchy);
 
@@ -18399,12 +18390,7 @@ void StrategicLevelFrame::LoadPlayerStateFromPreviousLevel()
     // into one strategic company per row and allocate stable UIDs.
     NormalizeStrategicUnitInstances();
 
-    uint32_t maxCommanderUid = 0;
-    for (const auto& commander : m_playerCommanders)
-        maxCommanderUid = std::max(maxCommanderUid, commander.uid);
-    m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
-    for (auto& commander : m_playerCommanders)
-        if (commander.uid == 0) commander.uid = m_nextCommanderUid++;
+    NormalizeCommanderIdentities();
 
     // Keep surviving campaign formations. Temporary/support companies removed
     // above are simply skipped by the UID-based restoration.
@@ -22268,10 +22254,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     // campaign roster with the new level's starting units.
     newWin->NormalizeStrategicUnitInstances();
 
-    uint32_t maxCommanderUid = 0;
-    for (const auto& commander : newWin->m_playerCommanders)
-        maxCommanderUid = std::max(maxCommanderUid, commander.uid);
-    newWin->m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
+    newWin->NormalizeCommanderIdentities();
 
     // Transfer the chapter first, but do not fire its introduction events
     // while the completed level's outro and the new intro are queued.
