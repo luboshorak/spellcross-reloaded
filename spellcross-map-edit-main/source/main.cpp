@@ -67,6 +67,7 @@
 #include "map.h"
 #include "runtime_diagnostics.h"
 #include "strategic_generated_spawn_rules.h"
+#include "strategic_battle_recovery_rules.h"
 
 #include "level.h"
 #include <wx/filedlg.h>
@@ -5483,13 +5484,13 @@ void MainFrame::OnTimer(wxTimerEvent& event)
                     LevelData::PlayerUnitAdd earned;
                     earned.unit_id = u->unit->type_id;
                     earned.count = 1;
-                    const int maxMan = u->unit->cnt;
-                    if (u->unit->isSingleMan())
-                        earned.health = std::clamp((1000 - u->damage_remainder + 5) / 10, 1, 100);
-                    else
-                        earned.health = maxMan > 0
-                            ? std::max(1, (u->man * 100 + maxMan / 2) / maxMan)
-                            : 100;
+                    // Apply exactly the same post-victory healing as
+                    // ordinary strategic battles. The standalone opening
+                    // mission has no strategic frame yet; without this fix
+                    // wounded rescued ArmyUnit members were still lost (#155).
+                    earned.health = spellcross_strategy::RecoveredStrategicHealth(
+                        u->man, u->wounded, u->unit->cnt, u->damage_remainder,
+                        u->unit->isSingleMan(), true);
                     earned.extra = u->name.empty() ? "-" : u->name;
                     earned.experience = std::max(0, u->experience);
                     earned.experience_level = std::clamp(u->experience_level > 0
