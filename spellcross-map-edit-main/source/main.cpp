@@ -5365,6 +5365,14 @@ void MainFrame::OnTimer(wxTimerEvent& event)
         return;
     }
 
+    // Every cutscene is modal for gameplay, including chapter transitions
+    // queued by the strategic frame. The canvas behind FormVideoBox is still
+    // visible, so visibility alone must not allow Tick() to run combat/AI,
+    // projectiles, mission events or ambient battle audio underneath it (#162).
+    // Cover the CallAfter interval between consecutive chapter videos too.
+    if (form_video_box || HasPendingStrategicCutscenes())
+        return;
+
     // Once a mission result has been latched, the finished battlefield is
     // immutable until we return to strategy.  Previously only the visible
     // result overlay paused Tick(); dismissing it to play an outro video made
