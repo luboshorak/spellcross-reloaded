@@ -282,25 +282,36 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 out.start_units.push_back(pu);
                 continue;
             }
-            // PlayStartDeltaAnim - intro video levelu
+            // Retail LevelInit may specify multiple video commands of each
+            // type. Preserve their encounter order; previously the final
+            // PlayStartCANAnim overwrote L_08 with MAG and repeated ending
+            // deltas (BRANA/LEVEL7_1) were silently discarded (#150).
             if (cmd == "PlayStartDeltaAnim" && args.size() >= 1) {
-                out.intro_video = args[0];
+                if (args[0] != "none") {
+                    if (out.intro_video.empty()) out.intro_video = args[0];
+                    out.intro_videos.push_back(args[0]);
+                }
                 continue;
             }
-            // PlayStartCANAnim - intro video levelu (CAN format)
             if (cmd == "PlayStartCANAnim" && args.size() >= 1) {
-                out.intro_video = args[0];
+                if (args[0] != "none") {
+                    if (out.intro_video.empty()) out.intro_video = args[0];
+                    out.intro_videos.push_back(args[0]);
+                }
                 continue;
             }
-            // PlayEndDeltaAnim na úrovni levelu - outro video
-            // PlayEndCANAnim - original talking-head/story outro. This is
-            // distinct from PlayEndDeltaAnim (LEVEL_01: ALEX.SMK vs LEVEL1_1.SMK).
             if (cmd == "PlayEndCANAnim" && args.size() >= 1) {
-                out.outro_can_video = args[0];
+                if (args[0] != "none") {
+                    if (out.outro_can_video.empty()) out.outro_can_video = args[0];
+                    out.outro_videos.push_back(args[0]);
+                }
                 continue;
             }
             if (cmd == "PlayEndDeltaAnim" && args.size() >= 1) {
-                out.outro_video = args[0];
+                if (args[0] != "none") {
+                    if (out.outro_video.empty()) out.outro_video = args[0];
+                    out.outro_videos.push_back(args[0]);
+                }
                 continue;
             }
             // NextLevel - další level po dokončení všech misí
