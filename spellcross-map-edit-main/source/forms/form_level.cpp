@@ -22106,15 +22106,22 @@ void StrategicLevelFrame::AdvanceToNextLevel()
         }
     }
     
-    // Prefer the original talking-head/story CAN outro when present.
-    // PlayEndDeltaAnim is a separate level-transition animation and must not
-    // replace e.g. ALEX.SMK after the opening Escape mission.
-    const std::string& outroToPlay =
-        (!m_level.outro_can_video.empty() && m_level.outro_can_video != "none")
-        ? m_level.outro_can_video : m_level.outro_video;
-    if (!outroToPlay.empty() && outroToPlay != "none")
+    // Play every authored chapter ending in original LevelInit order.
+    // Prefer the ordered script commands over the old single-video fields;
+    // the latter discarded BRANA and LEVEL5_2 or chose only RUJNY_T (#150).
+    if (!m_level.outro_videos.empty())
     {
-        PlayVideo(outroToPlay);
+        for (const auto& clip : m_level.outro_videos)
+            if (!clip.empty() && clip != "none")
+                PlayVideo(clip);
+    }
+    else
+    {
+        const std::string& legacyOutro =
+            (!m_level.outro_can_video.empty() && m_level.outro_can_video != "none")
+            ? m_level.outro_can_video : m_level.outro_video;
+        if (!legacyOutro.empty() && legacyOutro != "none")
+            PlayVideo(legacyOutro);
     }
     
     if (nextDef.empty())
@@ -22282,11 +22289,17 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     if (m_main)
         m_main->m_strategicLevel = newWin;
 
-    // Play intro video of the NEW level (after window is shown)
-    if (!lvl.intro_video.empty() && lvl.intro_video != "none")
+    // Queue every authored chapter intro (CAN and Delta), preserving its
+    // original order. L_06 and L_08 are not replaceable by later story clips
+    // KEFTACI/MAG; all are individual LevelInit commands (#150).
+    if (!lvl.intro_videos.empty())
     {
-        newWin->PlayVideo(lvl.intro_video);
+        for (const auto& clip : lvl.intro_videos)
+            if (!clip.empty() && clip != "none")
+                newWin->PlayVideo(clip);
     }
+    else if (!lvl.intro_video.empty() && lvl.intro_video != "none")
+        newWin->PlayVideo(lvl.intro_video);
 
     newWin->Show();
     newWin->Raise();
