@@ -13,6 +13,7 @@
 #include "destructible_health.h"
 #include "tactical_zoom.h"
 #include "tactical_navigation_rules.h"
+#include "tactical_background_action_rules.h"
 #include "display_settings.h"
 #include "spellcross.h"
 #include "fs_archive.h"
@@ -8107,6 +8108,20 @@ bool SpellMap::StartNextGroupMove()
 		return std::abs(y1 - y2) / 2 + (x2 - x1) + 1;
 	};
 
+    // Preserve a queued group command while members are finishing takeoff/
+    // landing. Otherwise they are silently skipped when StartNextGroupMove
+    // builds its movement-ready list (#161).
+    bool pendingMemberAction = false;
+    for (const MapUnit* member : members)
+        if (member->action_state != MapUnit::ACTION_STATE::IDLE)
+        {
+            pendingMemberAction = true;
+            break;
+        }
+    if (spellcross_tactical::WaitForGroupMemberActions(
+        group_move_active, group_move_unit_id >= 0, pendingMemberAction))
+        return true;
+
 	std::stable_sort(members.begin(), members.end(),
 		[&](MapUnit* a, MapUnit* b)
 		{
@@ -13679,24 +13694,33 @@ int SpellMap::Tick()
 		unit = GetSelectedUnit();
 	}
 
-	// The tactical animator historically ticks only the selected unit. If the
-	// player changes selection after a lethal shot, the old attacker stays in
-	// HIT/DIE/UPDATE forever. CleanupDeadUnits() correctly protects its target
-	// against use-after-free, but the corpse then remains visible for arbitrary
-	// turns. Resume a pending lethal attack even if its owner is not selected.
-	// Never preempt another unit mid-action; the pending sequence completes as
-	// soon as the current animation is idle. Selection/HUD remain unchanged.
-	if (isGameMode() && (!unit || !IsUnitBusy(unit)))
+	// Tactical actions belong to their original owner even after the player
+	// selects a different company. Finish its rocket flight, takeoff/landing,
+	// and other pending animation before advancing a newer selected action.
+	// This prevents lost MLRS impacts and stranded mobile infantry (#161, #164).
+	// Keep the player's selection/HUD unchanged; only this Tick's local owner
+	// changes. Enemy, panic and reaction sequences keep their own driver.
+	if (isGameMode() && !enemy_turn_running && !panic_turn_running &&
+		!reaction_fire_active && reaction_fire_queue.empty() &&
+		(!group_move_active || group_move_unit_id < 0))
 	{
 		for (auto* owner : units)
 		{
-			if (!owner || owner == unit || owner->isDead() ||
-				!owner->attack_target ||
-				owner->attack_state == MapUnit::ATTACK_STATE::IDLE)
+			if (!owner || owner == unit)
 				continue;
-			if (!_ptr_in_units_list(units, owner->attack_target) ||
-				!owner->attack_target->isDead())
+			const spellcross_tactical::PendingUnitAnimation pending{
+				!owner->isDead(),
+				owner->is_enemy,
+				owner->move_state != MapUnit::MOVE_STATE::IDLE,
+				owner->attack_state != MapUnit::ATTACK_STATE::IDLE,
+				owner->action_state != MapUnit::ACTION_STATE::IDLE,
+				owner->attack_target != nullptr,
+				owner->attack_target_obj.IsSelected()
+			};
+			if (!spellcross_tactical::ShouldAdvanceBackgroundAnimation(pending))
 				continue;
+			// A target in the HIT state but with no attack of its own is
+			// advanced by its attacker, never as a separate attack owner.
 			unit = owner;
 			break;
 		}
