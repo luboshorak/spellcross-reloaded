@@ -98,6 +98,7 @@ public:
     int GetRecruitTime(int quality) const;
     int GetUnitExperienceLevel(int unitId, int experience) const;
     void NormalizeStrategicUnitInstances();
+    void NormalizeCommanderIdentities();
     void RebuildRosterRowUidsFromUnitStates();
     bool IsTemporaryUnitIndex(size_t index) const;
     int FindUnitIndexByUid(uint32_t uid) const;
