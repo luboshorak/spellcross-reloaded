@@ -98,6 +98,7 @@ public:
     int GetRecruitTime(int quality) const;
     int GetUnitExperienceLevel(int unitId, int experience) const;
     void NormalizeStrategicUnitInstances();
+    void NormalizeCommanderIdentities();
     void RebuildRosterRowUidsFromUnitStates();
     bool IsTemporaryUnitIndex(size_t index) const;
     int FindUnitIndexByUid(uint32_t uid) const;
@@ -307,6 +308,9 @@ public:
     // Check and trigger counter-attacks (called in OnEndTurn)
     void CheckCounterAttacks();
 
+    // DOS random Army scheduler; executed after scripted events each turn.
+    void ProcessRandomCounterAttack();
+
     // Retain enemy occupiers for the recapture; transfer land only once.
     void SurrenderCounterAttack(CounterAttackState& attack);
 
@@ -361,6 +365,8 @@ public:
     // Counter-attack tracking
     std::vector<CounterAttackState> m_counterAttacks;
     int m_nextCounterAttackId = 1;
+    // Retail strategic attack cooldown, persisted with the campaign.
+    int m_lastEnemyAttackTurn = 1;
     
     // Territory timeouts (territory_id -> deadline turn)
     std::unordered_map<int, int> m_territoryTimeoutTurn;
@@ -650,6 +656,7 @@ public:
         uint32_t uid = 0;
         std::string name;
         int rank = 0;
+        int battles_fought = 0; // battles participated in; preserved in strategic JSON saves
     };
 
     // owned commanders (max 14)
@@ -881,6 +888,7 @@ public:
     wxBitmap m_originalStrategicBitmap;
     wxString m_originalStrategicError;
     wxString m_originalBriefingText;
+    int m_originalBriefingScroll = 0;
     wxRect m_originalStrategicDrawRect;
     int m_originalUnitScroll = 0;
     int m_originalHierarchyUnitScroll = 0;

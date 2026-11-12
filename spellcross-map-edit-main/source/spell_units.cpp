@@ -1667,8 +1667,12 @@ int MapUnit::Render(Terrain* data,uint8_t* buffer,uint8_t* buf_end,int buf_x_pos
 
 	// render special unit type mark
 	int type_color = 0;
-	if(spec_type == MapUnitType::MissionUnit || spec_type == MapUnitType::VoluntUnit)
+	// Original DOS status palette: mission-only helper is blue (230),
+	// chapter-long volunteer is white (255), critical unit is red (253).
+	if(spec_type == MapUnitType::MissionUnit)
 		type_color = 230;
+	else if(spec_type == MapUnitType::VoluntUnit)
+		type_color = 255;
 	else if(spec_type == MapUnitType::SpecUnit)
 		type_color = 253;
 	for(int y = 9; y < bar_h; y+=2)

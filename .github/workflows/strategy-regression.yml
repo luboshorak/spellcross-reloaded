@@ -19,6 +19,11 @@ on:
       - 'spellcross-map-edit-main/source/spell_units.cpp'
       - 'spellcross-map-edit-main/source/strategic_campaign_unlock_rules.h'
       - 'spellcross-map-edit-main/source/strategic_mission_flow.h'
+      - 'spellcross-map-edit-main/source/strategic_random_attack_rules.h'
+      - 'spellcross-map-edit-main/source/strategic_battle_recovery_rules.h'
+      - 'spellcross-map-edit-main/source/strategic_commander_uid_rules.h'
+      - 'spellcross-map-edit-main/source/tactical_background_action_rules.h'
+      - 'spellcross-map-edit-main/source/strategic_generated_spawn_rules.h'
       - 'spellcross-map-edit-main/source/app_version.h'
       - 'spellcross-map-edit-main/source/app_identity.h'
       - 'spellcross-map-edit-main/source/resources.rc'
@@ -47,6 +52,13 @@ jobs:
             spellcross-map-edit-main/source/level.cpp \
             -o /tmp/spellcross-level-event-regression
           /tmp/spellcross-level-event-regression
+      - name: Compile and test original ordered chapter cinematic commands
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_level_video_playlist.cpp \
+            spellcross-map-edit-main/source/level.cpp \
+            -o /tmp/spellcross-level-video-playlist-test
+          /tmp/spellcross-level-video-playlist-test
       - name: Compile and test retail territory countdown freeze
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
@@ -59,6 +71,12 @@ jobs:
             spellcross-map-edit-main/tests/test_original_strategy_mission_flow.cpp \
             -o /tmp/spellcross-original-mission-flow-test
           /tmp/spellcross-original-mission-flow-test
+      - name: Compile and test original random counterattack rules
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_random_counterattack_rules.cpp \
+            -o /tmp/spellcross-random-counterattack-test
+          /tmp/spellcross-random-counterattack-test
       - name: Compile and test campaign unit purchase unlock rules
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
@@ -77,6 +95,30 @@ jobs:
             spellcross-map-edit-main/tests/test_unit_availability.cpp \
             -o /tmp/spellcross-unit-availability-test
           /tmp/spellcross-unit-availability-test
+      - name: Compile and test post-battle wounded recovery
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_battle_recovery_rules.cpp \
+            -o /tmp/spellcross-battle-recovery-test
+          /tmp/spellcross-battle-recovery-test
+      - name: Compile and test tactical deselection and group action scheduler
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_tactical_background_action_rules.cpp \
+            -o /tmp/spellcross-tactical-background-action-test
+          /tmp/spellcross-tactical-background-action-test
+      - name: Compile and test retail-generated DTA enemy placements
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_strategic_generated_spawn_rules.cpp \
+            -o /tmp/spellcross-generated-spawns-test
+          /tmp/spellcross-generated-spawns-test
+      - name: Compile and test stable commander identities
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_strategic_commander_uid_rules.cpp \
+            -o /tmp/spellcross-commander-uids-test
+          /tmp/spellcross-commander-uids-test
       - name: Compile and test single-member and multi-member health display
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \

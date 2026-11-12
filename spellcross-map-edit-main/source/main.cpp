@@ -66,6 +66,8 @@
 #include "display_settings.h"
 #include "map.h"
 #include "runtime_diagnostics.h"
+#include "strategic_generated_spawn_rules.h"
+#include "strategic_battle_recovery_rules.h"
 
 #include "level.h"
 #include <wx/filedlg.h>
@@ -2128,22 +2130,41 @@ bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(const std::wstring& dta_
         return out;
     };
 
-    // Enemy spawning remains separate from player deployment. The L5
-    // counter-attack posts also serve the original enemy group AI, so keep
-    // the existing enemy-side spawning behavior pending separate DOS checks.
-    std::vector<MapXY> enemyCandidates = collect_band(false, true);
-    if (enemyCandidates.empty())
-        enemyCandidates = collect_band(false, false);
-
-    if (enemyCandidates.empty())
+    // Enemy L5 posts are authored per DTA battlefield. In M08_17/M08_18
+    // the Alliance L6 deployment is in the NORTH, while in M08_04 it is
+    // on the EAST; a blanket "spawn enemies in the north" can put both
+    // armies on the same side and break contact/response (#163).
+    // Custom maps without L5 still get an opposite-side fallback.
+    double playerMeanY = spell_map->y_size / 2.0;
+    if (!spell_map->start.empty())
     {
-        wxMessageBox("The DTA battlefield has no usable enemy deployment area.",
-            "Launch", wxOK | wxICON_ERROR, this);
+        double sumY = 0.0;
+        for (const MapXY& startPos : spell_map->start)
+            sumY += startPos.y;
+        playerMeanY = sumY / static_cast<double>(spell_map->start.size());
+    }
+    const bool fallbackEnemiesAtBottom = playerMeanY < spell_map->y_size / 2.0;
+    std::vector<MapXY> fallbackCandidates = collect_band(fallbackEnemiesAtBottom, true);
+    if (fallbackCandidates.empty())
+        fallbackCandidates = collect_band(fallbackEnemiesAtBottom, false);
+    const auto fallbackSeeds = spread_pick(fallbackCandidates,
+        std::max<size_t>(1, enemy_unit_ids.size()));
+    const std::vector<MapXY> enemySeeds = spellcross_strategy::ChooseGeneratedEnemySeeds(
+        spell_map->counter_attack_post_enemy, fallbackSeeds,
+        [&](const MapXY& seed)
+        {
+            return seed.IsSelected() && seed.x >= 0 && seed.y >= 0 &&
+                seed.x < spell_map->x_size && seed.y < spell_map->y_size &&
+                spell_map->IsTacticalMovementTile(seed, true);
+        });
+
+    if (enemySeeds.empty())
+    {
+        wxMessageBox("This DTA battlefield has neither usable authored Other Side "
+                     "posts (L5) nor a legal fallback deployment area.",
+                     "Launch", wxOK | wxICON_ERROR, this);
         return false;
     }
-
-    const std::vector<MapXY> enemySeeds = spread_pick(enemyCandidates,
-        std::max<size_t>(1, enemy_unit_ids.size()));
 
     // Recreate the random/counter-attack mission objective used by the DOS
     // generated battle: destroy every Other Side company on the map.
@@ -5365,6 +5386,14 @@ void MainFrame::OnTimer(wxTimerEvent& event)
         return;
     }
 
+    // Every cutscene is modal for gameplay, including chapter transitions
+    // queued by the strategic frame. The canvas behind FormVideoBox is still
+    // visible, so visibility alone must not allow Tick() to run combat/AI,
+    // projectiles, mission events or ambient battle audio underneath it (#162).
+    // Cover the CallAfter interval between consecutive chapter videos too.
+    if (form_video_box || HasPendingStrategicCutscenes())
+        return;
+
     // Once a mission result has been latched, the finished battlefield is
     // immutable until we return to strategy.  Previously only the visible
     // result overlay paused Tick(); dismissing it to play an outro video made
@@ -5455,13 +5484,13 @@ void MainFrame::OnTimer(wxTimerEvent& event)
                     LevelData::PlayerUnitAdd earned;
                     earned.unit_id = u->unit->type_id;
                     earned.count = 1;
-                    const int maxMan = u->unit->cnt;
-                    if (u->unit->isSingleMan())
-                        earned.health = std::clamp((1000 - u->damage_remainder + 5) / 10, 1, 100);
-                    else
-                        earned.health = maxMan > 0
-                            ? std::max(1, (u->man * 100 + maxMan / 2) / maxMan)
-                            : 100;
+                    // Apply exactly the same post-victory healing as
+                    // ordinary strategic battles. The standalone opening
+                    // mission has no strategic frame yet; without this fix
+                    // wounded rescued ArmyUnit members were still lost (#155).
+                    earned.health = spellcross_strategy::RecoveredStrategicHealth(
+                        u->man, u->wounded, u->unit->cnt, u->damage_remainder,
+                        u->unit->isSingleMan(), true);
                     earned.extra = u->name.empty() ? "-" : u->name;
                     earned.experience = std::max(0, u->experience);
                     earned.experience_level = std::clamp(u->experience_level > 0

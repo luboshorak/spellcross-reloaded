@@ -13,6 +13,7 @@
 #include "destructible_health.h"
 #include "tactical_zoom.h"
 #include "tactical_navigation_rules.h"
+#include "tactical_background_action_rules.h"
 #include "display_settings.h"
 #include "spellcross.h"
 #include "fs_archive.h"
@@ -653,7 +654,13 @@ void MapSprite::SetL1(Sprite* sprite, int elev)
 		// init hit points
 		int max_hp = L1->destructible->hp;
 		if (L1->two_stage_desctruct && L1->is_destructed)
-			hp = rand() % (max_hp / 2);
+		{
+			// Existing damaged wall sprites are still solid and targetable.
+			// The old random range sometimes returned exactly 0 HP, leaving
+			// a visible wall that subsequent DamageTarget() refused to hit.
+			const int halfHp = (std::max)(1, max_hp / 2);
+			hp = (std::max)(1, (std::max)((10 * max_hp) / 100, rand() % halfHp));
+		}
 		else if (L1->is_destructed)
 			hp = 0;
 		else
@@ -688,13 +695,23 @@ int MapSprite::UpdateDestructible()
 	if (!tile)
 		return(false);
 
-	if ((*tile)->two_stage_desctruct && 2 * hp < (*tile)->destructible->hp && !(*tile)->is_destructed && (*tile)->destructible_alt)
+	// Cache the original wall class before switching to its damaged sprite.
+	// The alternate sprite does not have to carry the same two-stage flag.
+	// At zero HP it must still be removed, even if this very shot crossed
+	// both the half-damage threshold and the destruction threshold.
+	const bool wasTwoStageWall = (*tile)->two_stage_desctruct;
+	// An already-damaged wall can have two_stage_desctruct=false: the
+	// alternate sprite points back to its intact two-stage source.
+	const bool isDamagedWall = (*tile)->is_destructed && (*tile)->destructible_alt &&
+		(*tile)->destructible_alt->two_stage_desctruct;
+	if (wasTwoStageWall && 2 * hp < (*tile)->destructible->hp && !(*tile)->is_destructed && (*tile)->destructible_alt)
 	{
 		// half destruct tile
 		*tile = (*tile)->destructible_alt;
 	}
 
-	if (spellcross_tactical::ShouldFinishDestruction(hp, true, (*tile)->is_destructed) && (*tile)->two_stage_desctruct)
+	if (spellcross_tactical::ShouldFinishDestruction(hp, true, (*tile)->is_destructed) &&
+		(wasTwoStageWall || isDamagedWall || (*tile)->two_stage_desctruct))
 	{
 		// total destroy of wall
 		*tile = NULL;
@@ -8091,6 +8108,20 @@ bool SpellMap::StartNextGroupMove()
 		return std::abs(y1 - y2) / 2 + (x2 - x1) + 1;
 	};
 
+    // Preserve a queued group command while members are finishing takeoff/
+    // landing. Otherwise they are silently skipped when StartNextGroupMove
+    // builds its movement-ready list (#161).
+    bool pendingMemberAction = false;
+    for (const MapUnit* member : members)
+        if (member->action_state != MapUnit::ACTION_STATE::IDLE)
+        {
+            pendingMemberAction = true;
+            break;
+        }
+    if (spellcross_tactical::WaitForGroupMemberActions(
+        group_move_active, group_move_unit_id >= 0, pendingMemberAction))
+        return true;
+
 	std::stable_sort(members.begin(), members.end(),
 		[&](MapUnit* a, MapUnit* b)
 		{
@@ -13663,24 +13694,33 @@ int SpellMap::Tick()
 		unit = GetSelectedUnit();
 	}
 
-	// The tactical animator historically ticks only the selected unit. If the
-	// player changes selection after a lethal shot, the old attacker stays in
-	// HIT/DIE/UPDATE forever. CleanupDeadUnits() correctly protects its target
-	// against use-after-free, but the corpse then remains visible for arbitrary
-	// turns. Resume a pending lethal attack even if its owner is not selected.
-	// Never preempt another unit mid-action; the pending sequence completes as
-	// soon as the current animation is idle. Selection/HUD remain unchanged.
-	if (isGameMode() && (!unit || !IsUnitBusy(unit)))
+	// Tactical actions belong to their original owner even after the player
+	// selects a different company. Finish its rocket flight, takeoff/landing,
+	// and other pending animation before advancing a newer selected action.
+	// This prevents lost MLRS impacts and stranded mobile infantry (#161, #164).
+	// Keep the player's selection/HUD unchanged; only this Tick's local owner
+	// changes. Enemy, panic and reaction sequences keep their own driver.
+	if (isGameMode() && !enemy_turn_running && !panic_turn_running &&
+		!reaction_fire_active && reaction_fire_queue.empty() &&
+		(!group_move_active || group_move_unit_id < 0))
 	{
 		for (auto* owner : units)
 		{
-			if (!owner || owner == unit || owner->isDead() ||
-				!owner->attack_target ||
-				owner->attack_state == MapUnit::ATTACK_STATE::IDLE)
+			if (!owner || owner == unit)
 				continue;
-			if (!_ptr_in_units_list(units, owner->attack_target) ||
-				!owner->attack_target->isDead())
+			const spellcross_tactical::PendingUnitAnimation pending{
+				!owner->isDead(),
+				owner->is_enemy,
+				owner->move_state != MapUnit::MOVE_STATE::IDLE,
+				owner->attack_state != MapUnit::ATTACK_STATE::IDLE,
+				owner->action_state != MapUnit::ACTION_STATE::IDLE,
+				owner->attack_target != nullptr,
+				owner->attack_target_obj.IsSelected()
+			};
+			if (!spellcross_tactical::ShouldAdvanceBackgroundAnimation(pending))
 				continue;
+			// A target in the HIT state but with no attack of its own is
+			// advanced by its attacker, never as a separate attack owner.
 			unit = owner;
 			break;
 		}

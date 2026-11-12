@@ -44,6 +44,9 @@
 #include "../runtime_diagnostics.h"
 #include "../strategic_countdown_rules.h"
 #include "../strategic_mission_flow.h"
+#include "../strategic_battle_recovery_rules.h"
+#include "../strategic_commander_uid_rules.h"
+#include "../strategic_random_attack_rules.h"
 #include "../strategic_unit_timer_rules.h"
 #include "../strategic_campaign_unlock_rules.h"
 #include "../strategic_buy_variant_rules.h"
@@ -2776,6 +2779,9 @@ void StrategicLevelFrame::StartFreshGameMode(const std::vector<LevelData::Player
     LoadRanksTable();
     RecomputePlayerRank();
 
+    // A new chapter begins a new enemy attack cooldown, as in retail.
+    m_lastEnemyAttackTurn = m_turn;
+
     // Process immediate level events (AbsTime(-1) = fires right away, e.g. E02_0001 intro text)
     ProcessLevelEvents();
 
@@ -2862,6 +2868,7 @@ struct MissionFlowPersistSaveView
     const std::unordered_map<int, int>* activatedEvents = nullptr;
     const std::vector<StrategicLevelFrame::CounterAttackState>* counterAttacks = nullptr;
     const int* nextAttackId = nullptr;
+    const int* lastEnemyAttackTurn = nullptr;
 };
 
 struct MissionFlowPersistLoadView
@@ -2871,6 +2878,7 @@ struct MissionFlowPersistLoadView
     std::unordered_map<int, int>* activatedEvents = nullptr;
     std::vector<StrategicLevelFrame::CounterAttackState>* counterAttacks = nullptr;
     int* nextAttackId = nullptr;
+    int* lastEnemyAttackTurn = nullptr;
 };
 
 static thread_local const MissionFlowPersistSaveView* g_missionFlowPersistSave = nullptr;
@@ -3383,11 +3391,14 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             constexpr int briefingTextY = 329;
             constexpr int briefingLinePitch = 14;
             constexpr int briefingMaxLines = 9;
-            const auto lines = OriginalWrapText(font, briefing, 356, briefingMaxLines);
+            // Retain the full briefing while drawing the original nine-line viewport.
+            const auto lines = OriginalWrapText(font, briefing, 356, 4096);
+            const int maxScroll = std::max(0, static_cast<int>(lines.size()) - briefingMaxLines);
+            const int firstLine = std::clamp(m_originalBriefingScroll, 0, maxScroll);
             int y = briefingTextY;
-            for (const auto& line : lines)
+            for (int row = 0; row < briefingMaxLines && firstLine + row < static_cast<int>(lines.size()); ++row)
             {
-                OriginalDrawSpellText(image, font, line, 22, y, text, 374, true);
+                OriginalDrawSpellText(image, font, lines[static_cast<size_t>(firstLine + row)], 22, y, text, 374, true);
                 y += briefingLinePitch;
             }
         }
@@ -7023,6 +7034,20 @@ void StrategicLevelFrame::OnOriginalStrategicMouseWheel(wxMouseEvent& ev)
         return;
     }
 
+    // The native lower-left briefing frame scrolls independently of the roster.
+    if (m_originalStrategicScreen == OriginalStrategicScreen::Map &&
+        lx >= 22 && lx < 396 && ly >= 326 && ly < 456 &&
+        m_spellData && m_spellData->font)
+    {
+        const wxString briefing = OriginalCleanBriefing(m_originalBriefingText);
+        const auto lines = OriginalWrapText(m_spellData->font, briefing, 356, 4096);
+        const int maxScroll = std::max(0, static_cast<int>(lines.size()) - 9);
+        m_originalBriefingScroll = std::clamp(m_originalBriefingScroll - steps * 3, 0, maxScroll);
+        m_originalStrategicDirty = true;
+        m_originalStrategicPanel->Refresh();
+        return;
+    }
+
     if (m_originalStrategicScreen != OriginalStrategicScreen::Map ||
         lx < 416 || lx > 574 || ly < 55 || ly > 432)
     {
@@ -7345,6 +7370,7 @@ bool StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& p
     mfsv.activatedEvents = &m_activatedEvents;
     mfsv.counterAttacks = &m_counterAttacks;
     mfsv.nextAttackId = &m_nextCounterAttackId;
+    mfsv.lastEnemyAttackTurn = &m_lastEnemyAttackTurn;
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
@@ -7440,6 +7466,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     mflv.activatedEvents = &m_activatedEvents;
     mflv.counterAttacks = &m_counterAttacks;
     mflv.nextAttackId = &m_nextCounterAttackId;
+    mflv.lastEnemyAttackTurn = &m_lastEnemyAttackTurn;
     MissionFlowPersistLoadView* prevMFL = g_missionFlowPersistLoad;
     g_missionFlowPersistLoad = &mflv;
 
@@ -7470,14 +7497,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     m_researchProgressById = std::move(loadedResearchProgress);
     m_researchCompleted = std::move(loadedResearchCompleted);
 
-    uint32_t maxCommanderUid = 0;
-    for (const auto& c : m_playerCommanders)
-        maxCommanderUid = std::max(maxCommanderUid, c.uid);
-    m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
-    for (auto& c : m_playerCommanders)
-        if (c.uid == 0) c.uid = m_nextCommanderUid++;
-    for (auto& c : m_availableCommanders)
-        if (c.uid == 0) c.uid = m_nextCommanderUid++;
+    NormalizeCommanderIdentities();
     RestoreHierarchyAssignments(loadedHierarchy);
 
     if (spellcross_menu::Model(this))
@@ -7591,14 +7611,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
         win->m_unitStates = std::move(loadedUnitStates2);
         win->m_playerCommanders = std::move(playerCmds2);
         win->m_availableCommanders = std::move(availCmds2);
-        uint32_t maxCommanderUid2 = 0;
-        for (const auto& c : win->m_playerCommanders)
-            maxCommanderUid2 = std::max(maxCommanderUid2, c.uid);
-        win->m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid2 + 1);
-        for (auto& c : win->m_playerCommanders)
-            if (c.uid == 0) c.uid = win->m_nextCommanderUid++;
-        for (auto& c : win->m_availableCommanders)
-            if (c.uid == 0) c.uid = win->m_nextCommanderUid++;
+        win->NormalizeCommanderIdentities();
         win->m_cmdGenWindowStartTurn = windowStart2;
         win->m_cmdGenCountInWindow = genCount2;
         win->m_gameModeEnabled = gm2;
@@ -10955,6 +10968,19 @@ int StrategicLevelFrame::GetUnitExperienceLevel(int unitId, int experience) cons
     return std::clamp(xp / 100 + 1, 1, 12);
 }
 
+void StrategicLevelFrame::NormalizeCommanderIdentities()
+{
+    const size_t repaired = spellcross_strategy::EnsureUniqueCommanderUids(
+        m_playerCommanders, m_availableCommanders, m_nextCommanderUid);
+    if (repaired)
+        spellcross_diag::Log(spellcross_diag::Level::Warning, "SAVE",
+            "Repaired %llu missing/duplicate commander UIDs (kept first saved identity)",
+            static_cast<unsigned long long>(repaired));
+    m_commanderRankByUid.clear();
+    for (const auto& commander : m_playerCommanders)
+        m_commanderRankByUid[commander.uid] = commander.rank;
+}
+
 void StrategicLevelFrame::NormalizeStrategicUnitInstances()
 {
     // Spellcross treats every company as a separate strategic object. Older
@@ -11348,7 +11374,8 @@ wxPanel* StrategicLevelFrame::BuildHierarchySlot(wxWindow* parent,
 
     auto* panel = new spellcross_strategic_ui::Panel(parent, wxID_ANY, wxDefaultPosition, slotSize, wxBORDER_THEME);
 
-    auto* label = new wxStaticText(panel, wxID_ANY, placeholder);
+    auto* label = new wxStaticText(panel, wxID_ANY, placeholder,
+        wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END | wxST_NO_AUTORESIZE);
     label->SetFont(m_fontText);
 
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -11755,6 +11782,10 @@ void StrategicLevelFrame::RestoreHierarchyAssignments(
     };
 
     // First restore unit and commander occupancy.
+    // Legacy/hand-edited saves can reference the same officer in multiple
+    // slots. One UID represents only one person; ambiguous duplicate slots
+    // must stay empty rather than joining two names/entities (#156).
+    std::unordered_set<uint32_t> restoredCommanderIds;
     for (const auto& rec : records)
     {
         const auto it = m_hierarchySlotIndex.find(rec.slot_id);
@@ -11776,7 +11807,7 @@ void StrategicLevelFrame::RestoreHierarchyAssignments(
         else if (slot.type == "commander" && rec.commander_uid != 0)
         {
             const CommanderRec* c = findCommander(rec.commander_uid);
-            if (c)
+            if (c && restoredCommanderIds.insert(c->uid).second)
             {
                 slot.commander_uid = c->uid;
                 slot.rank = c->rank;
@@ -12808,9 +12839,9 @@ void StrategicLevelFrame::UpdateCommanderHierarchyLabel(const std::string& comma
     }
 
     wxString base = wxString::Format("%s %s", GetRankAbbrev(cs.rank), wxString::FromUTF8(cs.commander_name));
-    if (cs.assigned_unit_uid != 0 && !cs.assigned_unit_display.empty())
-        base += wxString::Format(" → %s", cs.assigned_unit_display);
-
+    // The host company already has its own slot below the commander.
+    // Appending it to the commander's name makes higher-rank labels overrun
+    // adjacent nodes and can visually join unrelated officers (#156).
     cs.label->SetLabel(base);
     cs.label->GetParent()->Layout();
 }
@@ -15462,6 +15493,7 @@ void StrategicLevelFrame::OnTerritory(wxCommandEvent& ev)
         box->ShowPosition(0);
     }
     m_originalBriefingText = info;
+    m_originalBriefingScroll = 0; // new territory begins at the first line
     m_originalStrategicDirty = true;
     RefreshUI();
 }
@@ -16490,7 +16522,11 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
     // after it. Already-ticked deadlines remain untouched.
     CheckTimeouts();
 
-    // Check counter-attacks (legacy territory-based)
+    // Original DOS stochastic Army scheduling, after prioritized scripted
+    // Army events and before displaying the defence prompts.
+    ProcessRandomCounterAttack();
+
+    // Check scheduled and freshly generated defences.
     CheckCounterAttacks();
     
     // Update stats
@@ -16889,10 +16925,20 @@ static bool LoadStrategicStateFile(
         if (g_missionFlowPersistLoad->activatedEvents) g_missionFlowPersistLoad->activatedEvents->clear();
         if (g_missionFlowPersistLoad->counterAttacks) g_missionFlowPersistLoad->counterAttacks->clear();
         if (g_missionFlowPersistLoad->nextAttackId) *g_missionFlowPersistLoad->nextAttackId = 1;
+        // Legacy saves have no cooldown; anchor it to their current turn
+        // rather than allowing an immediate random attack after migration.
+        if (g_missionFlowPersistLoad->lastEnemyAttackTurn)
+            *g_missionFlowPersistLoad->lastEnemyAttackTurn = turn;
 
         const std::string mf = ExtractJsonBlock(data, "mission_flow");
         if (!mf.empty() && mf != "null")
         {
+            if (g_missionFlowPersistLoad->lastEnemyAttackTurn)
+            {
+                int lastTurn = turn;
+                if (ParseJsonIntField(mf, "last_enemy_attack_turn", lastTurn))
+                    *g_missionFlowPersistLoad->lastEnemyAttackTurn = std::clamp(lastTurn, 0, std::max(0, turn));
+            }
             if (g_missionFlowPersistLoad->timeoutTurn)
             {
                 const std::string obj = ExtractJsonBlock(mf, "timeouts");
@@ -17130,6 +17176,8 @@ static bool LoadStrategicStateFile(
                 StrategicLevelFrame::CommanderRec c;
                 (void)ParseJsonStringField(obj, "name", c.name);
                 (void)ParseJsonIntField(obj, "rank", c.rank);
+                (void)ParseJsonIntField(obj, "battles_fought", c.battles_fought);
+                c.battles_fought = std::max(0, c.battles_fought);
                 {
                     int uid = 0;
                     if (ParseJsonIntField(obj, "uid", uid) && uid > 0)
@@ -17343,6 +17391,9 @@ static bool SaveStrategicStateFile(
         f << "    \"next_counter_attack_id\": "
           << (g_missionFlowPersistSave->nextAttackId ? *g_missionFlowPersistSave->nextAttackId : 1)
           << ",\n";
+        f << "    \"last_enemy_attack_turn\": "
+          << (g_missionFlowPersistSave->lastEnemyAttackTurn ? *g_missionFlowPersistSave->lastEnemyAttackTurn : turn)
+          << ",\n";
         f << "    \"timeouts\": {";
         bool firstT = true;
         for (const auto& kv : *g_missionFlowPersistSave->timeoutTurn)
@@ -17433,7 +17484,7 @@ static bool SaveStrategicStateFile(
     {
         const auto& c = playerCommanders[i];
         f << "    {\"name\": \"" << EscapeJson(c.name) << "\", \"rank\": " << c.rank
-          << ", \"uid\": " << c.uid << "}";
+          << ", \"uid\": " << c.uid << ", \"battles_fought\": " << c.battles_fought << "}";
         if (i + 1 < playerCommanders.size())
             f << ",";
         f << "\n";
@@ -17445,7 +17496,7 @@ static bool SaveStrategicStateFile(
     {
         const auto& c = availableCommanders[i];
         f << "    {\"name\": \"" << EscapeJson(c.name) << "\", \"rank\": " << c.rank
-          << ", \"uid\": " << c.uid << "}";
+          << ", \"uid\": " << c.uid << ", \"battles_fought\": " << c.battles_fought << "}";
         if (i + 1 < availableCommanders.size())
             f << ",";
         f << "\n";
@@ -17967,6 +18018,8 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
     m_pendingMission = PendingMissionResult{};
     m_counterAttacks.clear();
     m_nextCounterAttackId = 1;
+    // The DOS snapshot has no lossless mapping for this remake timer.
+    m_lastEnemyAttackTurn = m_turn;
     m_selectedUnitsForMission.clear();
     m_selectedCommandersForMission.clear();
     m_cmdGenWindowStartTurn = ((m_turn - 1) / 25) * 25 + 1;
@@ -18083,6 +18136,7 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
     mflv.activatedEvents = &m_activatedEvents;
     mflv.counterAttacks = &m_counterAttacks;
     mflv.nextAttackId = &m_nextCounterAttackId;
+    mflv.lastEnemyAttackTurn = &m_lastEnemyAttackTurn;
     MissionFlowPersistLoadView* prevMF = g_missionFlowPersistLoad;
     g_missionFlowPersistLoad = &mflv;
 
@@ -18126,22 +18180,9 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
         m_playerCommanders = std::move(playerCmds);
         m_availableCommanders = std::move(availCmds);
 
-        // Commander UIDs are now persisted.  Older JSON saves did not carry
-        // them, so assign deterministic fresh IDs before restoring hierarchy.
-        uint32_t maxCommanderUid = 0;
-        for (const auto& c : m_playerCommanders)
-            maxCommanderUid = std::max(maxCommanderUid, c.uid);
-        m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
-        for (auto& c : m_playerCommanders)
-        {
-            if (c.uid == 0)
-                c.uid = m_nextCommanderUid++;
-        }
-        for (auto& c : m_availableCommanders)
-        {
-            if (c.uid == 0)
-                c.uid = m_nextCommanderUid++;
-        }
+        // Keep references from the first saved UID; regenerate duplicates
+        // without conflating unrelated officers in full hierarchies (#156).
+        NormalizeCommanderIdentities();
 
         RestoreHierarchyAssignments(loadedHierarchy);
 
@@ -18349,12 +18390,7 @@ void StrategicLevelFrame::LoadPlayerStateFromPreviousLevel()
     // into one strategic company per row and allocate stable UIDs.
     NormalizeStrategicUnitInstances();
 
-    uint32_t maxCommanderUid = 0;
-    for (const auto& commander : m_playerCommanders)
-        maxCommanderUid = std::max(maxCommanderUid, commander.uid);
-    m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
-    for (auto& commander : m_playerCommanders)
-        if (commander.uid == 0) commander.uid = m_nextCommanderUid++;
+    NormalizeCommanderIdentities();
 
     // Keep surviving campaign formations. Temporary/support companies removed
     // above are simply skipped by the UID-based restoration.
@@ -18406,6 +18442,7 @@ void StrategicLevelFrame::SaveStrategicState() const
     mfsv.activatedEvents = &m_activatedEvents;
     mfsv.counterAttacks = &m_counterAttacks;
     mfsv.nextAttackId = &m_nextCounterAttackId;
+    mfsv.lastEnemyAttackTurn = &m_lastEnemyAttackTurn;
     const MissionFlowPersistSaveView* prevMF = g_missionFlowPersistSave;
     g_missionFlowPersistSave = &mfsv;
 
@@ -20661,6 +20698,55 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
     // the owned commander pool and every hierarchy slot immediately.
     RemoveCommandersHostedByDeadUnits(deadStrategicUids);
 
+    // Subordinate commanders progress by deployments, independently of John's
+    // strategic XP. HODNOSTI.DEF's actions_required is the number of battles
+    // to advance FROM the current commander rank.
+    if (m_ranks.empty())
+        LoadRanksTable();
+    const std::unordered_set<uint32_t> deployedHosts(
+        m_pendingMission.sent_unit_uids.begin(), m_pendingMission.sent_unit_uids.end());
+    std::unordered_set<uint32_t> countedCommanders;
+    std::vector<std::string> promotedSlots;
+    for (const auto& slot : m_hierarchySlots)
+    {
+        if (slot.type != "commander" || slot.commander_uid == 0 ||
+            slot.assigned_unit_uid == 0 ||
+            deployedHosts.count(slot.assigned_unit_uid) == 0 ||
+            survivingStrategicUids.count(slot.assigned_unit_uid) == 0 ||
+            !countedCommanders.insert(slot.commander_uid).second)
+            continue;
+
+        auto commander = std::find_if(m_playerCommanders.begin(), m_playerCommanders.end(),
+            [&](const CommanderRec& c) { return c.uid == slot.commander_uid; });
+        if (commander == m_playerCommanders.end())
+            continue;
+
+        commander->battles_fought = std::min(commander->battles_fought + 1, 1000000);
+        const int previousRank = commander->rank;
+        while (const CommanderRankRec* currentRank = FindRankRec(commander->rank))
+        {
+            if (currentRank->actions_required <= 0 ||
+                commander->battles_fought < currentRank->actions_required ||
+                !FindRankRec(commander->rank + 1))
+                break;
+            ++commander->rank;
+        }
+        if (commander->rank != previousRank)
+        {
+            m_commanderRankByUid[commander->uid] = commander->rank;
+            for (auto& assigned : m_hierarchySlots)
+            {
+                if (assigned.type == "commander" && assigned.commander_uid == commander->uid)
+                {
+                    assigned.rank = commander->rank;
+                    promotedSlots.push_back(assigned.id);
+                }
+            }
+        }
+    }
+    for (const auto& id : promotedSlots)
+        UpdateCommanderHierarchyLabel(id);
+
     // New campaign launches carry an exact strategic UID into every tactical
     // company.  Use it as the primary identity so two companies of the same
     // type cannot swap damage/experience on the way back to the strategic map.
@@ -20745,14 +20831,13 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
                 ? std::string()
                 : spellcross_company::OriginalNameToUtf8(survivor->name);
 
-        // Convert tactical manpower back to the strategic strength percentage.
-        const int maxMan = survivor->unit ? survivor->unit->cnt : 0;
-        if (survivor->unit && survivor->unit->isSingleMan())
-            pu.health = std::clamp((1000 - survivor->damage_remainder + 5) / 10, 1, 100);
-        else
-            pu.health = maxMan > 0
-                ? std::max(1, (survivor->man * 100 + maxMan / 2) / maxMan)
-                : 100;
+        // Convert tactical casualties into post-battle strength. After a
+        // victory, wounded survivors heal; only dead require recruits (#155).
+        pu.health = spellcross_strategy::RecoveredStrategicHealth(
+            survivor->man, survivor->wounded,
+            survivor->unit ? survivor->unit->cnt : 0,
+            survivor->damage_remainder,
+            survivor->unit && survivor->unit->isSingleMan(), success);
 
         if (rosterIdx < m_unitStates.size())
         {
@@ -20805,13 +20890,11 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
         LevelData::PlayerUnitAdd pu;
         pu.unit_id = s->unit->type_id;
         pu.count = 1;
-        const int maxMan = s->unit ? s->unit->cnt : 0;
-        if (s->unit && s->unit->isSingleMan())
-            pu.health = std::clamp((1000 - s->damage_remainder + 5) / 10, 1, 100);
-        else
-            pu.health = maxMan > 0
-                ? std::max(1, (s->man * 100 + maxMan / 2) / maxMan)
-                : 100;
+        pu.health = spellcross_strategy::RecoveredStrategicHealth(
+            s->man, s->wounded,
+            s->unit ? s->unit->cnt : 0,
+            s->damage_remainder,
+            s->unit && s->unit->isSingleMan(), success);
         pu.extra = s->name.empty() ? "-" : s->name;
         pu.experience = std::max(0, s->experience);
         pu.experience_level = std::clamp(s->experience_level > 0
@@ -21104,6 +21187,121 @@ void StrategicLevelFrame::SurrenderCounterAttack(CounterAttackState& attack)
         ShowBriefing(attack.territory_id);
     ApplyTerritoryVisibility();
     MarkOverlayDirty();
+}
+
+void StrategicLevelFrame::ProcessRandomCounterAttack()
+{
+    if (!m_gameModeEnabled || m_lastEnemyAttackTurn >= m_turn)
+        return;
+
+    // A scripted Army action (or another defence becoming due) has priority.
+    // Do not show two concurrent attack prompts during one strategic tick.
+    if (std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+            [this](const CounterAttackState& attack) {
+                return !attack.completed && attack.trigger_turn <= m_turn;
+            }))
+        return;
+
+    // DOS 0x2EC8E reads frequency from ENEMY frontier missions, not the
+    // current chapter or the player's recently conquered mission.
+    const auto frontier = spellcross_strategy::FindCounterAttackFrontier(
+        m_clkValues, m_clkW, m_clkH, m_ownedTerritories);
+    if (frontier.borders.empty())
+        return;
+
+    int attackRate = 0;
+    int minimumGap = std::numeric_limits<int>::max();
+    for (const int enemyTerritory : frontier.enemy_sources)
+    {
+        const std::string token = ResolveMissionTokenForTerritory(enemyTerritory);
+        const LevelMission* mission = FindMissionByNameUpper(to_upper(token));
+        int rate = mission ? mission->freq_random_a : -1;
+        int gap = mission ? mission->freq_random_b : -1;
+        // Retail copies AttackFlags[4..5] into newly generated Rxxxx
+        // occupation missions; they have no authored LevelMission record.
+        if ((!mission || rate < 0 || gap < 0) &&
+            spellcross_strategy::IsGeneratedMissionToken(token) &&
+            m_level.attack_flags.size() >= 6)
+        {
+            rate = m_level.attack_flags[4];
+            gap = m_level.attack_flags[5];
+        }
+        if (rate > 0 && gap >= 0 && gap < minimumGap)
+        {
+            minimumGap = gap;
+            attackRate = rate;
+        }
+    }
+
+    const int attackChance = attackRate > 0
+        ? spellcross_strategy::RandomCounterAttackChance(
+            m_turn, m_lastEnemyAttackTurn, attackRate, minimumGap)
+        : 0;
+    if (attackChance == 0)
+        return;
+
+    std::vector<int> targets;
+    for (const int target : frontier.player_targets)
+    {
+        // Only actual chapter territories have a corresponding battle DTA.
+        const auto territory = std::find_if(
+            m_level.territories.begin(), m_level.territories.end(),
+            [target](const LevelTerritory& t) { return t.id == target; });
+        if (territory == m_level.territories.end())
+            continue;
+        if (std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
+                [target](const CounterAttackState& attack) {
+                    return attack.territory_id == target && !attack.completed;
+                }))
+            continue;
+        // Starting sectors are eligible as well; unlike the older scripted
+        // attack heuristic, we do not arbitrarily exclude start_territory.
+        const std::string mission = spellcross_strategy::GeneratedMissionToken(territory->mission);
+        if (!mission.empty() && !ResolveMapDtaPathForMissionToken(mission).empty())
+            targets.push_back(target);
+    }
+    if (targets.empty() || m_level.attack_units.empty() ||
+        m_level.attack_flags.size() < 4)
+        return;
+
+    const int roll = std::rand() % 100;
+    if (!spellcross_strategy::RandomCounterAttackRoll(
+            m_turn, m_lastEnemyAttackTurn, attackRate, minimumGap, roll))
+        return;
+
+    auto randomBelow = [](int exclusiveMaximum) {
+        return exclusiveMaximum > 1 ? std::rand() % exclusiveMaximum : 0;
+    };
+    std::vector<int> enemyForce = spellcross_strategy::BuildRandomCounterAttackForce(
+        m_level.attack_units, m_level.attack_special_units,
+        m_level.attack_flags, randomBelow);
+    if (enemyForce.empty())
+        return;
+
+    const int targetId = targets[static_cast<size_t>(randomBelow(static_cast<int>(targets.size())))];
+    const auto territory = std::find_if(m_level.territories.begin(), m_level.territories.end(),
+        [targetId](const LevelTerritory& t) { return t.id == targetId; });
+
+    CounterAttackState attack;
+    attack.attack_id = m_nextCounterAttackId;
+    if (m_nextCounterAttackId < std::numeric_limits<int>::max())
+        ++m_nextCounterAttackId;
+    attack.territory_id = targetId;
+    attack.conquest_turn = m_turn;
+    attack.trigger_turn = m_turn;
+    attack.counter_mission = spellcross_strategy::GeneratedMissionToken(territory->mission);
+    attack.enemy_units = std::move(enemyForce);
+    m_counterAttacks.push_back(std::move(attack));
+
+    // CheckCounterAttacks() triggers the existing defence UI in THIS turn.
+    // Both accepted battles and refused defences keep the generated Army
+    // through the existing mission/save/recapture lifecycle.
+    m_lastEnemyAttackTurn = m_turn;
+    spellcross_diag::Log(spellcross_diag::Level::Info, "STRATEGY",
+        "DOS random OS attack turn=%d target=%d frequency=(%d,%d) chance=%d%% force=%llu",
+        m_turn, targetId, attackRate, minimumGap,
+        attackChance,
+        static_cast<unsigned long long>(m_counterAttacks.back().enemy_units.size()));
 }
 
 void StrategicLevelFrame::CheckCounterAttacks()
@@ -21476,6 +21674,8 @@ void StrategicLevelFrame::ProcessLevelEvents()
             for (const auto& army : evt->armies)
                 eventAttack.enemy_units.insert(eventAttack.enemy_units.end(), army.units.begin(), army.units.end());
             m_counterAttacks.push_back(std::move(eventAttack));
+            // Scripted Army events share the retail enemy-attack cooldown.
+            m_lastEnemyAttackTurn = m_turn;
             CounterAttackState& activeAttack = m_counterAttacks.back();
             m_territoryCurrentMission[target_tid] = activeAttack.counter_mission;
             m_territoryTimeoutTurn.erase(target_tid);
@@ -21906,15 +22106,22 @@ void StrategicLevelFrame::AdvanceToNextLevel()
         }
     }
     
-    // Prefer the original talking-head/story CAN outro when present.
-    // PlayEndDeltaAnim is a separate level-transition animation and must not
-    // replace e.g. ALEX.SMK after the opening Escape mission.
-    const std::string& outroToPlay =
-        (!m_level.outro_can_video.empty() && m_level.outro_can_video != "none")
-        ? m_level.outro_can_video : m_level.outro_video;
-    if (!outroToPlay.empty() && outroToPlay != "none")
+    // Play every authored chapter ending in original LevelInit order.
+    // Prefer the ordered script commands over the old single-video fields;
+    // the latter discarded BRANA and LEVEL5_2 or chose only RUJNY_T (#150).
+    if (!m_level.outro_videos.empty())
     {
-        PlayVideo(outroToPlay);
+        for (const auto& clip : m_level.outro_videos)
+            if (!clip.empty() && clip != "none")
+                PlayVideo(clip);
+    }
+    else
+    {
+        const std::string& legacyOutro =
+            (!m_level.outro_can_video.empty() && m_level.outro_can_video != "none")
+            ? m_level.outro_can_video : m_level.outro_video;
+        if (!legacyOutro.empty() && legacyOutro != "none")
+            PlayVideo(legacyOutro);
     }
     
     if (nextDef.empty())
@@ -22054,10 +22261,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     // campaign roster with the new level's starting units.
     newWin->NormalizeStrategicUnitInstances();
 
-    uint32_t maxCommanderUid = 0;
-    for (const auto& commander : newWin->m_playerCommanders)
-        maxCommanderUid = std::max(maxCommanderUid, commander.uid);
-    newWin->m_nextCommanderUid = std::max<uint32_t>(1, maxCommanderUid + 1);
+    newWin->NormalizeCommanderIdentities();
 
     // Transfer the chapter first, but do not fire its introduction events
     // while the completed level's outro and the new intro are queued.
@@ -22085,11 +22289,17 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     if (m_main)
         m_main->m_strategicLevel = newWin;
 
-    // Play intro video of the NEW level (after window is shown)
-    if (!lvl.intro_video.empty() && lvl.intro_video != "none")
+    // Queue every authored chapter intro (CAN and Delta), preserving its
+    // original order. L_06 and L_08 are not replaceable by later story clips
+    // KEFTACI/MAG; all are individual LevelInit commands (#150).
+    if (!lvl.intro_videos.empty())
     {
-        newWin->PlayVideo(lvl.intro_video);
+        for (const auto& clip : lvl.intro_videos)
+            if (!clip.empty() && clip != "none")
+                newWin->PlayVideo(clip);
     }
+    else if (!lvl.intro_video.empty() && lvl.intro_video != "none")
+        newWin->PlayVideo(lvl.intro_video);
 
     newWin->Show();
     newWin->Raise();

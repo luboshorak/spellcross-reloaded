@@ -156,8 +156,13 @@ struct LevelData {
 
     std::vector<std::string> unknown_lines; // pro debug
 
-    // Intro/outro videa levelu. Original LEVEL_xx.DEF distinguishes the
-    // talking-head CAN outro from the delta/map outro.
+    // Authoritative ordered PlayStart*/PlayEnd* commands from LEVEL_xx.DEF.
+    // Some chapters have multiple CAN/Delta clips; scalar compatibility
+    // fields below must never silently discard those ordered commands (#150).
+    std::vector<std::string> intro_videos;
+    std::vector<std::string> outro_videos;
+    // Legacy first/last-video consumers. Prefer the ordered vectors above for
+    // full strategic chapter transitions.
     std::string intro_video;
     std::string outro_can_video;
     std::string outro_video;

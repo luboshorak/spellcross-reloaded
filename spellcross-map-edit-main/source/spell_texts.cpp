@@ -32,10 +32,15 @@ SpellTextRec::SpellTextRec(std::string str, SpellLang lang, const char* name,Spe
             pstr++;
             continue;
         }
-        if(*pstr == 0x1A)
+        // The retail text resources can contain non-printable DOS control
+        // bytes (including SUB 0x1A). In the restored font they may render
+        // as pictograms, e.g. a stray character after a research description.
+        // Keep actual line boundaries; ignore controls, not CP895 letters.
+        const unsigned char byte = static_cast<unsigned char>(*pstr);
+        if ((byte < 0x20 && *pstr != '\r' && *pstr != '\n' && *pstr != '\t') ||
+            byte == 0x7F)
         {
-            // possibly some parameterized input mark?? - skip
-            pstr++;
+            ++pstr;
             continue;
         }        
         // Original text archives use hard display-width line breaks. Accept
