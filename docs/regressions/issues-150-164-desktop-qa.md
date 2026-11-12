@@ -1,0 +1,30 @@
+# Desktop regression checklist: Spellcross Reloaded #150, #155–164
+
+This is a **test-only integration branch**, not a released or native Windows-playtested build. Do not merge it into `main` until the scenarios below pass with the original Czech and English data. Preserve original saves; work on copies.
+
+## Provenance and changes
+
+- **#150 chapter movies:** `LevelLoader` now keeps the *ordered* LevelInit `PlayStartCANAnim`, `PlayStartDeltaAnim`, `PlayEndCANAnim` and `PlayEndDeltaAnim` calls. Previously repeated commands overwrote one another, including the chapter 8 first video (`L_08.SMK`) by its following `MAG.SMK`. The original scripts themselves also contain `RUJNY_T.SMK` and `KEFTACI.SMK`; do not drop these without original-edition playback verification. A synthetic parser regression preserves command order; exact playback timing and slow decoder startup remain to be checked.
+- **#155 wounded:** winning restores active+wounded members, not the dead. Applies to persistent companies, newly recruited mission volunteers and standalone opening-mission ArmyUnit rewards. Single-member fractional damage is not treated as wounded infantry.
+- **#156 hierarchy:** commander labels no longer append a host name, wx labels cannot resize their slots, and all save/level import paths repair duplicate/zero commander UIDs. The first stored occurrence keeps its UID for legacy hierarchy references; subsequent duplicates get new UIDs. Ambiguous repeated officer placements are rejected rather than merging identities. The reporter's manually edited `slot_08.json` is not available through this connector, so its exact original collision is not reproduced.
+- **#157 auxiliary stripe:** mission-only = blue, chapter-volunteer = white, critical = red.
+- **#161 mobile infantry and #164 MLRS:** the tactical timer advances the original owner of a pending allied movement/attack/action even if a different unit is selected; group movement waits for its members to finish takeoff. Reaction fire, enemy turns and panic retain their own priority.
+- **#162 video:** the tactical timer stops combat/event ticks while a video is visible or strategic cutscenes are queued, including gaps between adjacent videos.
+- **#163 level 8 recapture:** generated DTA battle places enemies from *authored* L5 Other Side posts, not an arbitrary north band. L6 player posts are unchanged; a legal fallback is used only if L5 positions are missing or invalid. Original map `M08_17.DTA` has northern Alliance L6 deployment and southern Other Side L5 positions.
+
+## Desktop QA (copy the player saves first)
+
+1. **Build & basic game:** checkout `test/consolidated-155-157-20261110`, run `packaging/Build-CombinedRelease.ps1 -Rebuild`; launch CZ then EN ISO with fresh profile, load/save and Continue in strategy and tactical view. Verify there is no new crash and that previously fixed mouse/movement operations remain functional.
+2. **MLRS #164:** attack an enemy with MLRS, immediately select another company while the rocket is airborne, and issue a different order. Repeat on a target that survives and one that is killed; check that the rocket's damage occurs once at the correct target and that both actions finish. Do the same when firing at destructible scenery. Do not change the initial enemy/attacker relationship while testing.
+3. **Mobile infantry #161:** order multiple companies to take off in quick succession, switch selection and then issue a group move. Verify every takeoff finishes, the group command is not lost, and no company stays locked in AIR_FINISH. Also verify landing and moving after landing.
+4. **Recapture #163:** from the issue's `slot_02.json`, let Other Side recapture a level-8 territory, launch recapture and verify that L5 enemy companies are deployed in original positions and react to Alliance contact. Try `M08_17` (north-side player deployment), `M08_04` (east-side player deployment) and one DTA-only starting territory; check pursuit, defensive fire, mission completion and save/Continue.
+5. **Chapter movies #150/#162:** complete chapters 5, 6 and 7; record the *actual* played clips in order and ensure no AI attacks/units die while the video plays or between back-to-back clips. Original `LEVEL_08.DEF` specifies `L_08.SMK` then `MAG.SMK`; do not interpret both as a single overwritten video. Measure any long pause before video separately: the parser fix does not establish a decoder performance fix.
+6. **Hierarchy #156:** fill both brigade pages with battalion/regiment/brigade commanders including major-general; save and reload. Check every officer has a unique ID and remains in its correct host, including Chino/Gasol if available. On a **copy** of a save, deliberately duplicate a commander's UID; load it and verify the first UID is preserved, the next officer is repaired and the tree neither combines names nor draws outside its slots. Re-save/reload.
+7. **Wounded #155:** end a successful battle with active/wounded/dead members; check health equals surviving active+wounded, and only the dead need recruits. Repeat with mission-earned ArmyUnit, chapter volunteer and a single-member unit. Check a failed battle does not auto-heal.
+8. **Unit stripes #157:** observe blue mission-only units, white chapter-long volunteers and red critical units, including after save/load and chapter transition.
+
+## Automated tests and limitations
+
+- CI: `Original strategy regression`, `Fullscreen menu regression`, `Optional patch updater smoke`. The strategy workflow runs header-only C++ tests for action owners, DTA L5 seed choice, commander UIDs and the complete LevelLoader video order. Python source integration checks assert wiring.
+- These do not replace compiling and operating the full game on Windows with legal original assets. The source-level action scheduler, UI and original campaign scripts have not been independently proven across a complete CZ/EN playthrough here.
+- Keep draft PR #160 open. Leave issue tickets open until the user has verified each symptom and checked for regressions.
