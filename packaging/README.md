@@ -8,7 +8,7 @@ This guide builds the Windows x64 game and its pinned standalone editor. For ins
 - A compatible wxWidgets/vcpkg x64 installation.
 - The editor submodule initialized at the revision pinned by this repository.
 - All **37 fallback MP4s** matching `data/movie_fallback/MANIFEST.tsv`.
-- **WinRAR** for the optional graphical SFX installer.
+- **WinRAR** for the full graphical SFX installer published to GitHub (required for in-game downloads).
 
 Original commercial Spellcross archives are not bundled.
 
@@ -21,17 +21,14 @@ git switch main
 git pull --ff-only
 git submodule sync --recursive
 git submodule update --init --recursive
-.\packaging\Build-CombinedRelease.ps1 -Rebuild `
-    -PreviousStageDirectory 'D:\Spellcross\previous-release' `
-    -PreviousVersion '0.9.6.1'
+.\packaging\Build-CombinedRelease.ps1 -Rebuild
 ```
 
-The script asks for one new version (for example `0.9.6`). Alternatively,
-supply `-Version`; the same previous-stage parameters remain mandatory:
+The script asks for one new version (for example `0.9.7`). Alternatively,
+supply `-Version` directly:
 
 ```powershell
-.\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 -Rebuild `
-    -PreviousStageDirectory 'D:\Spellcross\previous-release' -PreviousVersion 0.9.5
+.\packaging\Build-CombinedRelease.ps1 -Version 0.9.7 -Rebuild
 ```
 
 It executes **four phases**:
@@ -75,17 +72,16 @@ With custom dependencies or movie location:
     -MovieSource "D:\Games\Spellcross-previous-build"
 ```
 
-Output includes the full build and mandatory patch pair:
+Output contains **only two complete distribution archives** (example version):
 
 ```text
-dist/Spellcross_Reloaded_v0.9.6.zip
-dist/Spellcross_Reloaded_v0.9.6.exe
-dist/patch-manifest.json
-dist/Spellcross_Patch_v0.9.5_to_v0.9.6.zip
+dist/Spellcross_Reloaded_v0.9.7.zip
+dist/Spellcross_Reloaded_v0.9.7.exe
 ```
 
-The EXE is only created when WinRAR is installed; ZIP creation is mandatory
-for an automated release. `-SkipBuild` is still available for manual
+Both archives contain the whole game and editor; no previous build or patch
+manifest is needed. The EXE requires WinRAR. `Publish-Release.ps1` requires
+**both** assets, because the in-game updater downloads the EXE. `-SkipBuild` is still available for manual
 repackaging of binaries that match the already committed version.
 
 **Reproducibility:** checkout of the pushed release tag contains the version
@@ -123,18 +119,26 @@ When SFX generation is enabled, `setup/` also contains the installer icon and br
 
 Game and editor keep separate configurations. The editor's `Editor/data/COMMON.fs` contains editor resources; it is distinct from the original game's `COMMON.FS`.
 
-## Optional in-game patches (experimental)
+## Full-release updates
 
-The game can now offer a **voluntary** update when it starts, and the Info
-window has a manual **Install patch** action. Each full ZIP/SFX includes the
-PowerShell updater; an older build without the client needs one initial full
-download. Normal releases require patch inputs; pass
-`-PreviousStageDirectory <previous extracted release>` and
-`-PreviousVersion <previous version>` to this release script.
-Publish with `packaging/Publish-Release.ps1`; it rejects a missing or mismatched
-`patch-manifest.json` / `Spellcross_Patch_vFROM_to_vTO.zip` pair. See
-[patch-updates.md](../docs/patch-updates.md)
-for the update-chain behavior, safety checks and unverified edge cases.
+At startup, the game checks published GitHub releases for a newer version
+containing `Spellcross_Reloaded_vVERSION.exe`. The player can choose
+**Download**, **Not now**, or check **Do not show again**. That setting is
+stored in `config.ini` under `[STATE] suppress_update_prompt` and suppresses
+startup offers only. The **Help > About** screen always allows a manual check
+and download, even when startup offers are disabled.
+
+After consent, the entire SFX is downloaded to a temporary directory with
+progress and cancellation. It is checked for a complete HTTP transfer and an
+EXE header before it is launched. The game exits; the player then chooses the
+installation folder in WinRAR's SFX dialog. Select the existing folder to
+replace the old build. The downloader does **not** patch any local files or
+change imported retail data or saves. Confirm that the target folder is correct
+and back up any important data before replacing an installation.
+
+If no connection is available, the existing game continues without warnings.
+No PowerShell updater, patch manifests, delta archives or previous-version
+staging folders are shipped or required.
 
 ## Packaging options
 
@@ -145,12 +149,11 @@ for the update-chain behavior, safety checks and unverified edge cases.
 | `-NoPush` | Commit and tag locally; skip GitHub push |
 | `-AllowNonMain` | Combined with `-NoPush`, permit a feature-branch dry run |
 | `-ValidateOnly` | Supported by Release.ps1, inject and restore version without compiling |
-| `-NoPatch` | Explicit bootstrap/full-only release exception; normal releases require a previous stage |
 | `-WxRoot <path>` | Explicit wxWidgets/vcpkg x64 installation |
 | `-MovieSource <path>` | Directory containing the manifest-matching fallback videos |
 | `-SkipBuild` | Repackage executables already compiled for this exact version |
 | `-NoZip` | Only for legacy `-SkipBuild` packaging, not the automated release path |
-| `-NoSfx` | Disable the EXE installer |
+| `-NoSfx` | Disable SFX for local testing only; that build cannot be published with the in-game updater |
 | `-WinRARPath <path>` | Explicit path to `WinRAR.exe` |
 
 For example, regenerate only the SFX from exact-version executables:
@@ -176,12 +179,12 @@ Use a clean Windows x64 rebuild and test the extracted package outside the sourc
 ## Publish the tested build
 
 The release script pushes the version commit and annotated tag. After testing,
-publish through the validating wrapper so the updater assets cannot be omitted:
+publish through the validating wrapper, which requires the full ZIP and EXE:
 
 ```powershell
 .\packaging\Publish-Release.ps1 -Version 0.9.6
 ```
 
-Omit the EXE if WinRAR was unavailable. Do not create the same tag a second
+Do not publish if WinRAR was unavailable: the EXE is mandatory. Do not create the same tag a second
 time. In the event of a rejected push the local version commit/tag remain
 available; resolve the conflict without force-pushing.
