@@ -12,14 +12,11 @@ param(
     [switch]$NoSfx,
     [string]$WinRARPath = '',
     [switch]$PruneOldBuilds,
-    [string]$PreviousStageDirectory = '',
-    [string]$PreviousVersion = '',
     [string]$Version = '',
     [switch]$NoVersionPrompt,
     [switch]$BuildOnly,
     [switch]$NoPush,
     [switch]$AllowNonMain,
-    [switch]$NoPatch,
     [string]$EditorRoot = ''
 )
 Set-StrictMode -Version Latest
@@ -405,13 +402,6 @@ if (Test-Path -LiteralPath $info -PathType Container) {
         }
     }
 }
-# The built-in opt-in updater ships alongside Spellcross.exe. It is not
-# launched by setup; game UI asks for consent before starting it.
-$updaterPath = Join-Path $root 'packaging\Install-Patch.ps1'
-Assert-File $updaterPath
-$stageUpdater = Join-Path $stage 'updater'
-New-Item -ItemType Directory -Force -Path $stageUpdater | Out-Null
-Copy-Required $updaterPath (Join-Path $stageUpdater 'Install-Patch.ps1')
 
 # Keep the shortcut icon and SFX source artwork under setup\ in releases.
 # The desktop shortcut icon is resolved relative to the user's chosen folder.
@@ -433,6 +423,9 @@ Map editor: Editor\spellcross_map_editor.exe
 2. Launch Spellcross.exe first. Configure your own original Spellcross
    game archives, or download CZ/EN ISO, choose a local ISO, or use a CD.
 3. The game keeps new imported archives in game_data\imports\DATA-*.
+   New public builds are offered at startup; the game downloads and opens the
+   full SFX installer only after consent. Select your existing install folder
+   in the installer, or use Help > About to download manually.
 4. Launch Editor\spellcross_map_editor.exe. It locates that game-data folder.
 5. Game and editor have SEPARATE config.ini files in their executable folders.
 MP4 fallback videos: 37 files, verified against MANIFEST.tsv.
@@ -450,19 +443,6 @@ Minidumps can contain private game/user data; review before sharing.
 
 Before publishing, verify the package on a clean Windows machine.
 '@ | Set-Content -LiteralPath (Join-Path $stage 'README-FIRST.txt') -Encoding UTF8
-# Optional delta assets from the *previous verified release staging folder*.
-# The new build always remains a complete, standalone portable distribution.
-if ([bool]$PreviousStageDirectory -ne [bool]$PreviousVersion) {
-    throw 'Use -PreviousStageDirectory and -PreviousVersion together to generate patch assets.'
-}
-if ($PreviousStageDirectory) {
-    & (Join-Path $PSScriptRoot 'New-Patch.ps1') `
-        -PreviousDirectory $PreviousStageDirectory `
-        -CurrentDirectory $stage `
-        -FromVersion $PreviousVersion `
-        -ToVersion $packageVersion `
-        -OutputDirectory $OutputDirectory
-}
 if (-not $NoZip) {
     # Stable asset name for GitHub Releases. Build folders retain timestamps
     # for troubleshooting, but the ZIP itself contains files at its root.
