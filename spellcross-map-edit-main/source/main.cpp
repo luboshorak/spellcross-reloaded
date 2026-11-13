@@ -25,6 +25,7 @@
 #include <wx/dirdlg.h>
 #include <wx/choicdlg.h>
 #include <wx/progdlg.h>
+#include <wx/richmsgdlg.h>
 #ifdef _WIN32
 #include <windows.h>
 #include <wininet.h>
@@ -2726,16 +2727,15 @@ bool MyApp::OnInit()
     spellcross_ui_locale::SetLanguageFromEdition(
         spell_data && spell_data->units && spell_data->units->IsEnglish());
 
-    // Check for updates before entering the game UI. The retail edition must
-    // first be identified from JEDNOTKY.DEF so both the prompt and Info dialog
-    // use the correct Czech/English catalog, never the OS locale.
-    // --no-update-check avoids an extra request when restarting after a patch.
+    // Check GitHub on startup once retail CZ/EN language has been detected.
+    // A checkbox can disable startup offers permanently without disabling
+    // manual downloads from Help > About. Network failures never block play.
 #ifdef __WXMSW__
     bool skipUpdateCheck = false;
     for (int i = 1; i < argc; ++i)
         if (wxString(argv[i]) == "--no-update-check")
             skipUpdateCheck = true;
-    if (!skipUpdateCheck && spellcross_update::IsPatchClientInstalled())
+    if (!skipUpdateCheck && !ini.GetBoolValue("STATE", "suppress_update_prompt", false))
     {
         std::string latestTag, updateError;
         if (spellcross_update::FetchLatestReleaseTag(latestTag, updateError))
@@ -2745,25 +2745,40 @@ bool MyApp::OnInit()
                 SPELLCROSS_RELEASE_LABEL, latestTag, comparable);
             if (comparable && comparison < 0)
             {
-                wxMessageDialog offer(nullptr,
-                    spellcross_ui_locale::Tr("updates.startup_new", "A newer Spellcross Reloaded build is available: ") +
+                wxRichMessageDialog offer(nullptr,
+                    spellcross_ui_locale::Tr("updates.startup_new",
+                        "A newer Spellcross Reloaded build is available: ") +
                         wxString::FromUTF8(latestTag.c_str()) +
-                        "\n" + spellcross_ui_locale::Tr("updates.startup_installed", "Installed: ") + spellcross_app::VersionLabel() +
+                        "\n" + spellcross_ui_locale::Tr("updates.startup_installed",
+                            "Installed: ") + spellcross_app::VersionLabel() +
                         "\n\n" + spellcross_ui_locale::Tr("updates.startup_question",
-                            "Install the patch now? If you decline, the current version starts normally. "
-                            "You can install later from Help > About / Info."),
+                            "Download the complete new version and launch its installer? "
+                            "You can also update later from Help > About."),
                     spellcross_ui_locale::Tr("updates.dialog_title", "Spellcross Reloaded update"),
                     wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
                 offer.SetYesNoLabels(
-                    spellcross_ui_locale::Tr("updates.install", "Install patch"),
+                    spellcross_ui_locale::Tr("updates.install", "Download"),
                     spellcross_ui_locale::Tr("updates.later", "Not now"));
-                if (offer.ShowModal() == wxID_YES)
+                offer.ShowCheckBox(spellcross_ui_locale::Tr(
+                    "updates.dont_ask", "Do not show this update offer again"));
+                const int decision = offer.ShowModal();
+                if (offer.IsCheckBoxChecked())
+                {
+                    ini.SetBoolValue("STATE", "suppress_update_prompt", true);
+                    if (ini.SaveFile(config_path.c_str()) != SI_OK)
+                        spellcross_diag::Log(spellcross_diag::Level::Warning, "UPDATE",
+                            "Could not save the user's startup update preference");
+                }
+                if (decision == wxID_YES)
                 {
                     std::string launchError;
-                    if (spellcross_update::StartPatchInstaller(latestTag, launchError))
-                        return false; // exit before patcher touches Spellcross.exe
-                    wxMessageBox(spellcross_ui_locale::Tr("updates.launch_failed_continue",
-                        "Could not start the patch installer. The current game version will continue."),
+                    if (spellcross_update::DownloadAndLaunchFullRelease(
+                        latestTag, nullptr, launchError))
+                        return false; // WinRAR SFX opens its folder selector, game exits.
+                    wxMessageBox(
+                        spellcross_ui_locale::Tr("updates.launch_failed_continue",
+                            "The download or installer launch failed. The current game will continue.") +
+                            "\n" + wxString::FromUTF8(launchError.c_str()),
                         spellcross_ui_locale::Tr("updates.launch_title", "Update could not start"),
                         wxOK | wxICON_WARNING);
                 }
@@ -2772,14 +2787,13 @@ bool MyApp::OnInit()
         else
         {
             spellcross_diag::Log(spellcross_diag::Level::Info, "UPDATE",
-                "Startup release check unavailable; continuing offline");
+                "Startup full-release check unavailable; continuing offline");
         }
     }
 #endif
 
 
-
-    // --- restore the last tactical map only when the saved path is still valid.
+        // --- restore the last tactical map only when the saved path is still valid.
     // A fresh/portable config intentionally starts without one and should land
     // cleanly in the main menu instead of showing a bogus map-load error.
     wstring map_path = char2wstring(ini.GetValue("STATE","last_map",""));
