@@ -152,7 +152,6 @@ function New-PinnedEditorCheckout {
     }
     return $checkout
 }
-Assert-GitVersionFilesClean $root
 if (-not $ValidateOnly) {
     if ([bool]$PreviousStageDirectory -ne [bool]$PreviousVersion) {
         throw 'Use -PreviousStageDirectory and -PreviousVersion together.'
@@ -164,6 +163,9 @@ if (-not $ValidateOnly) {
         throw ('Patch assets are mandatory for a release. Supply -PreviousStageDirectory ' +
             'and -PreviousVersion, or explicitly select -NoPatch only for a bootstrap/full-only release.')
     }
+}
+Assert-GitVersionFilesClean $root
+if (-not $ValidateOnly) {
     $existingTag = @(& git -C $root tag --list $releaseTag)
     if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing release tags.' }
     if ($existingTag.Count -gt 0) { throw "Release tag $releaseTag already exists locally." }
