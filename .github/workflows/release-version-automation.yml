@@ -1,7 +1,7 @@
 name: Release version automation
 on:
   push:
-    branches: [feature/release-version-automation, fix/release-script-strictmode-dirty-editor]
+    branches: [main]
     paths:
       - 'packaging/Release.ps1'
       - 'packaging/Build-CombinedRelease.ps1'
@@ -44,12 +44,13 @@ jobs:
               throw
             }
           }
-          try {
-            & .\packaging\Build-CombinedRelease.ps1 -Version 0.9.7 -NoPush -AllowNonMain -NoSfx
-            throw 'Release without patch inputs unexpectedly passed.'
-          } catch {
-            if ($_.Exception.Message -notlike '*Patch assets are mandatory*') {
-              throw
+          # No previous-release directory, patch manifest or delta switch
+          # should ever be necessary for the full ZIP / EXE release.
+          foreach ($script in @('.\packaging\Release.ps1',
+                                  '.\packaging\Build-CombinedRelease.ps1')) {
+            $source = Get-Content -Raw -LiteralPath $script
+            if ($source -match 'PreviousStageDirectory|PreviousVersion|NoPatch|New-Patch') {
+              throw "Obsolete delta-patch dependency remains in $script"
             }
           }
 
@@ -137,7 +138,7 @@ jobs:
           }
 
           $env:SPELLCROSS_TEST_PROOF = $proof
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.6' -NoPatch
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.6'
           if ($LASTEXITCODE -ne 0) { throw 'Release driver failed in isolated Git integration test.' }
           $new = (& git -C $source rev-parse HEAD).Trim()
           $remote = (& git --git-dir=$origin rev-parse refs/heads/main).Trim()
@@ -213,7 +214,7 @@ jobs:
           $previousPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
           try {
-            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version 0.9.7 -WxRoot 'Q:\missing-wx-root' -NoSfx -NoPush -AllowNonMain -NoPatch 2>&1
+            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version 0.9.7 -WxRoot 'Q:\missing-wx-root' -NoSfx -NoPush -AllowNonMain 2>&1
             $exitCode = $LASTEXITCODE
           } finally {
             $ErrorActionPreference = $previousPreference
