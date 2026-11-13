@@ -8,6 +8,7 @@ on:
       - 'spellcross-map-edit-main/source/spell_language.h'
       - 'spellcross-map-edit-main/source/spellcross.cpp'
       - 'spellcross-map-edit-main/source/forms/form_loader.cpp'
+      - 'spellcross-map-edit-main/source/forms/form_video_box.cpp'
       - 'spellcross-map-edit-main/locales/**'
       - 'spellcross-map-edit-main/source/level.cpp'
       - 'spellcross-map-edit-main/source/level.h'

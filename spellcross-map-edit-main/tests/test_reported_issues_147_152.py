@@ -12,9 +12,15 @@ STRATEGY = (ROOT / "forms/form_level.cpp").read_text(encoding="utf-8")
 HEADER = (ROOT / "forms/form_level.h").read_text(encoding="utf-8")
 MAP = (ROOT / "map.cpp").read_text(encoding="utf-8")
 TEXT = (ROOT / "spell_texts.cpp").read_text(encoding="utf-8")
+VIDEO = (ROOT / "forms/form_video_box.cpp").read_text(encoding="utf-8")
 
 
 class ReportedIssuesRegression(unittest.TestCase):
+    def test_150_legacy_video_opens_archive_lazily(self):
+        self.assertIn(
+            "FSarchive fs(archive_path, FSarchive::Options::NO_LOAD);", VIDEO
+        )
+
     def test_151_long_mission_briefing_has_independent_scroll_state(self):
         render = STRATEGY.split(
             "// Territory briefing text in the original lower frame.", 1

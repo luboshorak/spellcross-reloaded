@@ -126,7 +126,10 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
 
     try
     {
-        FSarchive fs(archive_path);
+        // Loading every entry of MOVIE.FS/SPEAKER.FS for each queued clip can
+        // stall chapter transitions for many seconds. Parse the directory now
+        // and let SpellVideo request only the selected video and audio entries.
+        FSarchive fs(archive_path, FSarchive::Options::NO_LOAD);
         for (const auto& entry : entries)
         {
             try

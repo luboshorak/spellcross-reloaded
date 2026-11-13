@@ -300,6 +300,12 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 }
                 continue;
             }
+            if (cmd == "StartSpeaker" && args.size() >= 2) {
+                // The first argument names the matching speech audio entry;
+                // SpellVideo derives it from the DP2 name in args[1].
+                if (args[1] != "none") out.intro_videos.push_back(args[1]);
+                continue;
+            }
             if (cmd == "PlayEndCANAnim" && args.size() >= 1) {
                 if (args[0] != "none") {
                     if (out.outro_can_video.empty()) out.outro_can_video = args[0];
@@ -312,6 +318,10 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                     if (out.outro_video.empty()) out.outro_video = args[0];
                     out.outro_videos.push_back(args[0]);
                 }
+                continue;
+            }
+            if (cmd == "EndSpeaker" && args.size() >= 2) {
+                if (args[1] != "none") out.outro_videos.push_back(args[1]);
                 continue;
             }
             // NextLevel - další level po dokončení všech misí
