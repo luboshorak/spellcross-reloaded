@@ -1,4 +1,4 @@
-"""Regression guard for About / optional patch localization and restored header.
+"""Regression guard for About / full-release update localization and behavior.
 
 These are source-level tests. A Windows wxWidgets UI smoke build is still required
 for checking the actual rendered icon size and theme behavior.
@@ -38,7 +38,7 @@ class AboutUpdateTests(unittest.TestCase):
 
     def test_every_about_and_startup_update_label_has_both_translations(self):
         on_init = self.main.split("bool MyApp::OnInit()", 1)[1]
-        update = on_init.split("// Check for updates before entering the game UI.", 1)[1].split("#endif", 1)[0]
+        update = on_init.split("// Check GitHub on startup once retail CZ/EN language has been detected.", 1)[1].split("#endif", 1)[0]
         keys = set(re.findall(r'\bTr\(\s*"([^"]+)"', self.about + "\n" + update))
         self.assertGreaterEqual(len(keys), 35)
         for language, translations in (("cs", self.cs), ("en", self.en)):
@@ -62,11 +62,47 @@ class AboutUpdateTests(unittest.TestCase):
     def test_startup_uses_detected_retail_edition(self):
         on_init = self.main.split("bool MyApp::OnInit()", 1)[1]
         locale = on_init.index("spellcross_ui_locale::SetLanguageFromEdition(")
-        offer = on_init.index("// Check for updates before entering the game UI.")
+        offer = on_init.index("// Check GitHub on startup once retail CZ/EN language has been detected.")
         self.assertLess(locale, offer)
         self.assertIn('Tr("updates.startup_question"', on_init)
         self.assertIn('Tr("updates.later"', on_init)
         self.assertNotIn('SetYesNoLabels("Install patch"', self.about)
+
+    def test_full_download_replaces_patch_client(self):
+        updater = (SOURCE / "release_update.h").read_text(encoding="utf-8")
+        installer = (ROOT / "packaging" / "Publish-Release.ps1").read_text(encoding="utf-8")
+        packager = (ROOT / "packaging" / "Build-CombinedRelease.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("FetchLatestReleaseTag", updater)
+        self.assertIn("DownloadAndLaunchFullRelease", updater)
+        self.assertIn('L"github.com"', updater)
+        self.assertIn("WinHttpReadData", updater)
+        self.assertIn("wxProgressDialog progress(", updater)
+        self.assertIn("wxPD_CAN_ABORT", updater)
+        self.assertIn("ShellExecuteW(", updater)
+        self.assertIn("receivedTotal != expected", updater)
+        self.assertIn("mz[0] != 'M' || mz[1] != 'Z'", updater)
+        self.assertNotIn("StartPatchInstaller", updater)
+        self.assertNotIn("IsPatchClientInstalled", updater)
+        self.assertNotIn("Install-Patch.ps1", packager)
+        self.assertNotIn("New-Patch.ps1", packager)
+        self.assertNotIn("patch-manifest", installer)
+        self.assertIn("Full SFX installer missing", installer)
+
+    def test_startup_suppression_does_not_disable_manual_update(self):
+        self.assertIn('ini.GetBoolValue("STATE", "suppress_update_prompt", false)', self.main)
+        self.assertIn('ini.SetBoolValue("STATE", "suppress_update_prompt", true)', self.main)
+        self.assertIn("wxRichMessageDialog offer", self.main)
+        self.assertIn("offer.ShowCheckBox(", self.main)
+        self.assertIn("offer.IsCheckBoxChecked()", self.main)
+        self.assertIn("DownloadAndLaunchFullRelease(", self.main)
+        self.assertIn("void FormAbout::OnDownloadUpdate", self.about)
+        self.assertIn("DownloadAndLaunchFullRelease(", self.about)
+        self.assertNotIn("m_downloadUpdate->Disable()", self.about)
+        for language in (self.cs, self.en):
+            for key in ("updates.dont_ask", "updates.download_title",
+                        "updates.downloading", "updates.install"):
+                self.assertIn(key, language)
 
 
 if __name__ == "__main__":
