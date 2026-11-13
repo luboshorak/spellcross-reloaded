@@ -29,7 +29,7 @@ namespace
     constexpr int ID_CHECK_UPDATES = wxID_HIGHEST + 401;
     constexpr int ID_OPEN_PROJECT = wxID_HIGHEST + 402;
     constexpr int ID_OPEN_RELEASE = wxID_HIGHEST + 403;
-    constexpr int ID_INSTALL_PATCH = wxID_HIGHEST + 404;
+    constexpr int ID_DOWNLOAD_UPDATE = wxID_HIGHEST + 404;
 
     using spellcross_release::CompareVersions;
     using spellcross_ui_locale::Tr;
@@ -174,11 +174,10 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     auto* updateButtons = new wxBoxSizer(wxHORIZONTAL);
     m_checkUpdates = new spellcross_strategic_ui::Button(content, ID_CHECK_UPDATES, Tr("updates.check", "Check for updates"));
     m_openRelease = new spellcross_strategic_ui::Button(content, ID_OPEN_RELEASE, Tr("updates.open_releases", "Open GitHub releases"));
-    m_installPatch = new spellcross_strategic_ui::Button(content, ID_INSTALL_PATCH, Tr("updates.install", "Install patch"));
-    m_installPatch->Disable();
+    m_downloadUpdate = new spellcross_strategic_ui::Button(content, ID_DOWNLOAD_UPDATE, Tr("updates.install", "Download and run installer"));
     updateButtons->Add(m_checkUpdates, 0, wxRIGHT, 8);
     updateButtons->Add(m_openRelease, 0, wxRIGHT, 8);
-    updateButtons->Add(m_installPatch, 0);
+    updateButtons->Add(m_downloadUpdate, 0);
     updateBox->Add(updateButtons, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
     contentSizer->Add(updateBox, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
 
@@ -225,7 +224,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     Bind(wxEVT_BUTTON, &FormAbout::OnCheckUpdates, this, ID_CHECK_UPDATES);
     Bind(wxEVT_BUTTON, &FormAbout::OnOpenProject, this, ID_OPEN_PROJECT);
     Bind(wxEVT_BUTTON, &FormAbout::OnOpenRelease, this, ID_OPEN_RELEASE);
-    Bind(wxEVT_BUTTON, &FormAbout::OnInstallPatch, this, ID_INSTALL_PATCH);
+    Bind(wxEVT_BUTTON, &FormAbout::OnDownloadUpdate, this, ID_DOWNLOAD_UPDATE);
 
     std::vector<wxAcceleratorEntry> entries;
     entries.emplace_back(wxACCEL_NORMAL, WXK_ESCAPE, wxID_OK);
@@ -254,7 +253,6 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
 {
     m_checkUpdates->Disable();
     m_latestReleaseTag.clear();
-    m_installPatch->Disable();
     m_updateStatus->SetForegroundColour(spellcross_menu::Text());
     m_updateStatus->SetLabel(Tr("updates.checking", "Checking GitHub releases..."));
     m_updateStatus->GetParent()->Layout();
@@ -277,6 +275,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
     const std::string releaseUrl =
         std::string(SPELLCROSS_GITHUB_RELEASES_URL) + "/tag/" + latestTag;
     m_latestReleaseUrl = wxString::FromUTF8(releaseUrl.c_str());
+    m_latestReleaseTag = latestTag;
 
     bool comparable = false;
     const int cmp = CompareVersions(SPELLCROSS_RELEASE_LABEL, latestTag, comparable);
@@ -295,16 +294,7 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
         m_updateStatus->SetLabel(Tr("updates.new_available", "A newer build is available: ") + latest +
             " " + Tr("updates.installed", "(installed: ") + spellcross_app::VersionLabel() + ").");
         m_openRelease->SetLabel(Tr("updates.open", "Open ") + latest + " " + Tr("updates.on_github", "on GitHub"));
-        if (spellcross_update::IsPatchClientInstalled())
-        {
-            m_latestReleaseTag = latestTag;
-            m_installPatch->Enable();
-        }
-        else
-        {
-            m_updateStatus->SetLabel(m_updateStatus->GetLabel() +
-                " " + Tr("updates.no_client", "Patch installer is unavailable in this build; download the full release."));
-        }
+
     }
     else if (cmp == 0)
     {
@@ -328,21 +318,47 @@ void FormAbout::OnCheckUpdates(wxCommandEvent&)
     m_updateStatus->GetParent()->Layout();
 }
 
-void FormAbout::OnInstallPatch(wxCommandEvent&)
+void FormAbout::OnDownloadUpdate(wxCommandEvent&)
 {
 #ifdef __WXMSW__
+    // This entry point remains available even if the automatic startup
+    // notification was disabled by the player.
     if (m_latestReleaseTag.empty())
-        return;
+    {
+        std::string error;
+        if (!spellcross_update::FetchLatestReleaseTag(m_latestReleaseTag, error))
+        {
+            wxMessageBox(Tr("updates.check_failed",
+                "Could not check for updates. Check the connection and try again.") +
+                "\n" + wxString::FromUTF8(error.c_str()),
+                Tr("updates.launch_title", "Update could not start"),
+                wxOK | wxICON_WARNING, this);
+            return;
+        }
+    }
+
+    const wxString latest = wxString::FromUTF8(m_latestReleaseTag.c_str());
     wxMessageDialog confirm(this,
-        Tr("updates.confirm", "Install the available patch now? The game will close, the updater will download and verify changed files, and Spellcross Reloaded will restart. Your saved games and imported original data are preserved."),
-        Tr("updates.dialog_title", "Spellcross Reloaded update"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
-    confirm.SetYesNoLabels(Tr("updates.install", "Install patch"), Tr("updates.later", "Not now"));
+        Tr("updates.confirm",
+            "Download the complete release and launch its installer? "
+            "Choose your existing game folder in the installer to update it. "
+            "Your saved games and imported original data are not modified by the downloader.") +
+            "\n\n" + Tr("updates.latest", "Latest GitHub release: ") + latest,
+        Tr("updates.dialog_title", "Spellcross Reloaded update"),
+        wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+    confirm.SetYesNoLabels(Tr("updates.install", "Download and run installer"),
+        Tr("updates.later", "Not now"));
     if (confirm.ShowModal() != wxID_YES)
         return;
+
     std::string error;
-    if (!spellcross_update::StartPatchInstaller(m_latestReleaseTag, error))
+    if (!spellcross_update::DownloadAndLaunchFullRelease(m_latestReleaseTag, this, error))
     {
-        wxMessageBox(Tr("updates.launch_failed", "Could not launch the patch installer."), Tr("updates.launch_title", "Update could not start"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(Tr("updates.launch_failed",
+            "Could not download or launch the complete installer.") +
+            "\n" + wxString::FromUTF8(error.c_str()),
+            Tr("updates.launch_title", "Update could not start"),
+            wxOK | wxICON_ERROR, this);
         return;
     }
     EndModal(wxID_APPLY);
