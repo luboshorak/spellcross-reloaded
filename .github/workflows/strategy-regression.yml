@@ -19,6 +19,7 @@ on:
       - 'spellcross-map-edit-main/source/spell_units.cpp'
       - 'spellcross-map-edit-main/source/strategic_campaign_unlock_rules.h'
       - 'spellcross-map-edit-main/source/strategic_mission_flow.h'
+      - 'spellcross-map-edit-main/source/strategic_hierarchy_layout.h'
       - 'spellcross-map-edit-main/source/strategic_random_attack_rules.h'
       - 'spellcross-map-edit-main/source/strategic_battle_recovery_rules.h'
       - 'spellcross-map-edit-main/source/strategic_commander_uid_rules.h'
@@ -119,6 +120,12 @@ jobs:
             spellcross-map-edit-main/tests/test_strategic_commander_uid_rules.cpp \
             -o /tmp/spellcross-commander-uids-test
           /tmp/spellcross-commander-uids-test
+      - name: Compile and test strategic hierarchy geometry
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_strategic_hierarchy_layout.cpp \
+            -o /tmp/spellcross-hierarchy-layout-test
+          /tmp/spellcross-hierarchy-layout-test
       - name: Compile and test single-member and multi-member health display
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
