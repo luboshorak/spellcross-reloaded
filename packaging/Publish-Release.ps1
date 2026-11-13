@@ -1,12 +1,11 @@
-# Validate and publish one complete Spellcross GitHub release.
-# Refuses a normal publication unless the full ZIP and both delta assets agree.
+# Validate and publish a complete Spellcross GitHub release (ZIP + SFX EXE).
+# There are no delta patches: the in-game updater downloads the full EXE.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$Version,
     [string]$DistDirectory = '',
     [string]$NotesFile = '',
-    [switch]$ValidateOnly,
-    [switch]$FullOnly
+    [switch]$ValidateOnly
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -24,39 +23,26 @@ if (-not (Test-Path -LiteralPath $fullZip -PathType Leaf)) {
     throw "Full release ZIP missing: $fullZip"
 }
 
+$sfx = Join-Path $dist ("Spellcross_Reloaded_v{0}.exe" -f $label)
+if (-not (Test-Path -LiteralPath $sfx -PathType Leaf)) {
+    throw "Full SFX installer missing: $sfx. In-game updates require the complete EXE."
+}
+# Reject failed WinRAR output or mislabeled ZIP/HTML downloads.
+if ((Get-Item -LiteralPath $sfx).Length -lt 1MB) {
+    throw "Full SFX installer is unexpectedly small: $sfx"
+}
+$stream = [System.IO.File]::OpenRead($sfx)
+try {
+    if ($stream.ReadByte() -ne 77 -or $stream.ReadByte() -ne 90) {
+        throw "Full installer does not start with MZ: $sfx"
+    }
+} finally {
+    $stream.Dispose()
+}
+
 $assets = New-Object System.Collections.ArrayList
 [void]$assets.Add($fullZip)
-$sfx = Join-Path $dist ("Spellcross_Reloaded_v{0}.exe" -f $label)
-if (Test-Path -LiteralPath $sfx -PathType Leaf) { [void]$assets.Add($sfx) }
-
-if (-not $FullOnly) {
-    $manifestPath = Join-Path $dist 'patch-manifest.json'
-    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-        throw 'patch-manifest.json is mandatory. Rebuild with the previous release stage.'
-    }
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ([int]$manifest.schema -ne 1 -or [string]$manifest.to_version -ne $label) {
-        throw "Patch manifest does not target $label."
-    }
-    $from = [string]$manifest.from_version
-    if ($from -notmatch '^\d+\.\d+\.\d+(?:\.\d+)?(?:-(?:RC|beta)\d+)?$' -or $from -eq $label) {
-        throw "Invalid patch source version: $from"
-    }
-    $expectedArchive = "Spellcross_Patch_v${from}_to_v${label}.zip"
-    if ([string]$manifest.archive -ne $expectedArchive) {
-        throw "Patch manifest archive mismatch: expected $expectedArchive"
-    }
-    $patchZip = Join-Path $dist $expectedArchive
-    if (-not (Test-Path -LiteralPath $patchZip -PathType Leaf)) {
-        throw "Patch ZIP missing: $patchZip"
-    }
-    $actualHash = (Get-FileHash -LiteralPath $patchZip -Algorithm SHA256).Hash
-    if ($actualHash -ne [string]$manifest.archive_sha256) {
-        throw "Patch ZIP SHA256 does not match patch-manifest.json: $expectedArchive"
-    }
-    [void]$assets.Add($manifestPath)
-    [void]$assets.Add($patchZip)
-}
+[void]$assets.Add($sfx)
 
 if (-not $NotesFile) { $NotesFile = Join-Path $root ("packaging\releases\v{0}.md" -f $label) }
 if (-not (Test-Path -LiteralPath $NotesFile -PathType Leaf)) {
