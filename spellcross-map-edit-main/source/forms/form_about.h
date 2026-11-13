@@ -21,7 +21,7 @@ private:
     wxStaticText* m_updateStatus = nullptr;
     wxButton* m_checkUpdates = nullptr;
     wxButton* m_openRelease = nullptr;
-    wxButton* m_installPatch = nullptr;
+    wxButton* m_downloadUpdate = nullptr;
     std::string m_latestReleaseTag;
     wxString m_latestReleaseUrl;
 
@@ -29,5 +29,5 @@ private:
     void OnCheckUpdates(wxCommandEvent& event);
     void OnOpenProject(wxCommandEvent& event);
     void OnOpenRelease(wxCommandEvent& event);
-    void OnInstallPatch(wxCommandEvent& event);
+    void OnDownloadUpdate(wxCommandEvent& event);
 };
