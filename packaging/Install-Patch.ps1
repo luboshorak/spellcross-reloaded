@@ -26,7 +26,7 @@ function Assert-Path([string]$p) {
         throw "Unsafe patch path: $p"
     }
     if ($p -match '(?i)(^|/)(config\.ini|game_data|save|saves|dlc|temp|updates|\.spellcross-update[^/]*)(/|$)') { throw "Protected path in patch: $p" }
-    if ($p -notmatch '^(Spellcross\.exe|Editor/.+|data/(?!imports/).+|locales/.+|symbols/.+|third-party-licenses/.+|setup/.+|README-FIRST\.txt|BUILD-INFO\.txt|LICENSE-[^/]+\.txt|[^/]+\.dll)$') { throw "Unmanaged patch path: $p" }
+    if ($p -notmatch '^(Spellcross\.exe|Editor/.+|data/(?!imports/).+|locales/.+|symbols/.+|third-party-licenses/.+|setup/.+|updater/Install-Patch\.ps1|README-FIRST\.txt|BUILD-INFO\.txt|LICENSE-[^/]+\.txt|[^/]+\.dll)$') { throw "Unmanaged patch path: $p" }
     foreach ($segment in $p.Split('/')) {
         if ($segment -in @('.','..','') -or $segment.EndsWith('.') -or $segment.EndsWith(' ')) { throw "Unsafe filename: $p" }
     }
@@ -165,8 +165,17 @@ try {
                 }
                 Verify-Existing $oldPath ([string]$entry.old_sha256)
                 Assert-Hash ([string]$entry.sha256)
-                $archiveEntry = $zip.GetEntry($rel)
-                if ($null -eq $archiveEntry -or $archiveEntry.Length -ne [int64]$entry.size -or $archiveEntry.Length -gt 1073741824) {
+                # .NET Framework 4.x may store nested entry names with '\\'
+                # while newer runtimes use '/'. The signed manifest always
+                # uses portable '/' paths; normalize before matching.
+                $archiveMatches = @($zip.Entries | Where-Object {
+                    $_.FullName.Replace('\','/') -eq $rel
+                })
+                if ($archiveMatches.Count -ne 1) {
+                    throw "Missing or duplicate ZIP entry: $rel"
+                }
+                $archiveEntry = $archiveMatches[0]
+                if ($archiveEntry.Length -ne [int64]$entry.size -or $archiveEntry.Length -gt 1073741824) {
                     throw "Missing or invalid ZIP entry: $rel"
                 }
                 $out = Safe-Destination $staged $rel
@@ -179,9 +188,17 @@ try {
                 }
                 $operations[$rel] = 'write'
             }
+            $seenArchiveEntries = @{}
             foreach ($entry in $zip.Entries) {
-                if ($entry.Name -and -not $expected.ContainsKey([string]$entry.FullName)) {
-                    throw "Unexpected file in ZIP: $($entry.FullName)"
+                $zipRelative = ([string]$entry.FullName).Replace('\','/')
+                if ($entry.Name) {
+                    if ($seenArchiveEntries.ContainsKey($zipRelative)) {
+                        throw "Duplicate file in ZIP: $zipRelative"
+                    }
+                    $seenArchiveEntries[$zipRelative] = $true
+                }
+                if ($entry.Name -and -not $expected.ContainsKey($zipRelative)) {
+                    throw "Unexpected file in ZIP: $zipRelative"
                 }
             }
             foreach ($item in @($m.deleted)) {

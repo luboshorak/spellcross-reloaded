@@ -5,12 +5,14 @@ on:
     paths:
       - 'packaging/Release.ps1'
       - 'packaging/Build-CombinedRelease.ps1'
+      - 'packaging/Publish-Release.ps1'
       - 'packaging/README.md'
       - '.github/workflows/release-version-automation.yml'
   pull_request:
     paths:
       - 'packaging/Release.ps1'
       - 'packaging/Build-CombinedRelease.ps1'
+      - 'packaging/Publish-Release.ps1'
       - '.github/workflows/release-version-automation.yml'
   workflow_dispatch:
 
@@ -39,6 +41,14 @@ jobs:
             throw 'Invalid -Version/-SkipBuild flags unexpectedly passed.'
           } catch {
             if ($_.Exception.Message -notlike '*-Version requires compiling fresh binaries*') {
+              throw
+            }
+          }
+          try {
+            & .\packaging\Build-CombinedRelease.ps1 -Version 0.9.7 -NoPush -AllowNonMain -NoSfx
+            throw 'Release without patch inputs unexpectedly passed.'
+          } catch {
+            if ($_.Exception.Message -notlike '*Patch assets are mandatory*') {
               throw
             }
           }
@@ -127,7 +137,7 @@ jobs:
           }
 
           $env:SPELLCROSS_TEST_PROOF = $proof
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.6'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.6' -NoPatch
           if ($LASTEXITCODE -ne 0) { throw 'Release driver failed in isolated Git integration test.' }
           $new = (& git -C $source rev-parse HEAD).Trim()
           $remote = (& git --git-dir=$origin rev-parse refs/heads/main).Trim()
@@ -203,7 +213,7 @@ jobs:
           $previousPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
           try {
-            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version 0.9.7 -WxRoot 'Q:\missing-wx-root' -NoSfx -NoPush -AllowNonMain 2>&1
+            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version 0.9.7 -WxRoot 'Q:\missing-wx-root' -NoSfx -NoPush -AllowNonMain -NoPatch 2>&1
             $exitCode = $LASTEXITCODE
           } finally {
             $ErrorActionPreference = $previousPreference

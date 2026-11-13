@@ -21,15 +21,17 @@ git switch main
 git pull --ff-only
 git submodule sync --recursive
 git submodule update --init --recursive
-.\packaging\Build-CombinedRelease.ps1 -Rebuild
+.\packaging\Build-CombinedRelease.ps1 -Rebuild `
+    -PreviousStageDirectory 'D:\Spellcross\previous-release' `
+    -PreviousVersion '0.9.6.1'
 ```
 
-The script asks for one new version (for example `0.9.6`). Alternatively:
+The script asks for one new version (for example `0.9.6`). Alternatively,
+supply `-Version`; the same previous-stage parameters remain mandatory:
 
 ```powershell
-.\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 -Rebuild
-.\packaging\Build-CombinedRelease.ps1 -Version 0.9.6-RC1 -Rebuild
-.\packaging\Build-CombinedRelease.ps1 -Version 0.9.7.1 -Rebuild
+.\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 -Rebuild `
+    -PreviousStageDirectory 'D:\Spellcross\previous-release' -PreviousVersion 0.9.5
 ```
 
 It executes **four phases**:
@@ -73,11 +75,13 @@ With custom dependencies or movie location:
     -MovieSource "D:\Games\Spellcross-previous-build"
 ```
 
-Output:
+Output includes the full build and mandatory patch pair:
 
 ```text
 dist/Spellcross_Reloaded_v0.9.6.zip
 dist/Spellcross_Reloaded_v0.9.6.exe
+dist/patch-manifest.json
+dist/Spellcross_Patch_v0.9.5_to_v0.9.6.zip
 ```
 
 The EXE is only created when WinRAR is installed; ZIP creation is mandatory
@@ -124,12 +128,12 @@ Game and editor keep separate configurations. The editor's `Editor/data/COMMON.f
 The game can now offer a **voluntary** update when it starts, and the Info
 window has a manual **Install patch** action. Each full ZIP/SFX includes the
 PowerShell updater; an older build without the client needs one initial full
-download. To generate the optional patch assets, pass
+download. Normal releases require patch inputs; pass
 `-PreviousStageDirectory <previous extracted release>` and
 `-PreviousVersion <previous version>` to this release script.
-Publish the resulting `patch-manifest.json` and
-`Spellcross_Patch_vFROM_to_vTO.zip` on the matching GitHub Release, in
-addition to the complete ZIP/SFX. See [patch-updates.md](../docs/patch-updates.md)
+Publish with `packaging/Publish-Release.ps1`; it rejects a missing or mismatched
+`patch-manifest.json` / `Spellcross_Patch_vFROM_to_vTO.zip` pair. See
+[patch-updates.md](../docs/patch-updates.md)
 for the update-chain behavior, safety checks and unverified edge cases.
 
 ## Packaging options
@@ -141,6 +145,7 @@ for the update-chain behavior, safety checks and unverified edge cases.
 | `-NoPush` | Commit and tag locally; skip GitHub push |
 | `-AllowNonMain` | Combined with `-NoPush`, permit a feature-branch dry run |
 | `-ValidateOnly` | Supported by Release.ps1, inject and restore version without compiling |
+| `-NoPatch` | Explicit bootstrap/full-only release exception; normal releases require a previous stage |
 | `-WxRoot <path>` | Explicit wxWidgets/vcpkg x64 installation |
 | `-MovieSource <path>` | Directory containing the manifest-matching fallback videos |
 | `-SkipBuild` | Repackage executables already compiled for this exact version |
@@ -170,17 +175,11 @@ Use a clean Windows x64 rebuild and test the extracted package outside the sourc
 
 ## Publish the tested build
 
-The release script already pushes the version commit and annotated tag.
-It intentionally **does not upload GitHub Release assets**. After testing
-the packages, attach them to that existing tag:
+The release script pushes the version commit and annotated tag. After testing,
+publish through the validating wrapper so the updater assets cannot be omitted:
 
 ```powershell
-gh release create v0.9.6 `
-    dist/Spellcross_Reloaded_v0.9.6.zip `
-    dist/Spellcross_Reloaded_v0.9.6.exe `
-    --verify-tag `
-    --title "Spellcross Reloaded v0.9.6" `
-    --notes-file packaging/releases/v0.9.6.md
+.\packaging\Publish-Release.ps1 -Version 0.9.6
 ```
 
 Omit the EXE if WinRAR was unavailable. Do not create the same tag a second

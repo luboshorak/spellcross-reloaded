@@ -7626,6 +7626,12 @@ int SpellMap::CanUnitMove(MapXY target)
 	if (!unit)
 		return(false);
 
+    // Keep an accepted attack alive until its impact/cleanup is complete.
+    // Moving units can still receive a replacement movement destination.
+    if (unit->attack_state != MapUnit::ATTACK_STATE::IDLE ||
+        unit->action_state != MapUnit::ACTION_STATE::IDLE)
+        return(false);
+
 	// temporary original status effects block movement without consuming AP.
 	// This matters for freeze: the DOS routine sets its status bit but does not
 	// zero the AP counter, so idle/entrenchment accounting still sees untouched AP.
@@ -7704,6 +7710,12 @@ int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)
 	auto* unit = GetSelectedUnit();
 	if (!unit)
 		return(1);
+
+    // A move command must not interrupt a rocket already in flight.
+    // Only moving units may be redirected mid-animation.
+    if (unit->attack_state != MapUnit::ATTACK_STATE::IDLE ||
+        unit->action_state != MapUnit::ACTION_STATE::IDLE)
+        return(1);
 
     // Preview results are asynchronous and may belong to a previous unit
     // (e.g. after a reaction volley). An ACTUAL player command must be
@@ -8303,7 +8315,9 @@ bool SpellMap::StartMove_NoRangeCheck(MapUnit* unit, MapXY target)
 
 bool SpellMap::StartAttack_NoHUD(MapUnit* attacker, MapUnit* target)
 {
-    if (!attacker || !target || !CanUnitFireFromTerrain(attacker))
+    // Never overwrite an unfinished shot (especially MLRS projectile flight).
+    // A new order may start only after the previous attack has resolved.
+    if (!attacker || !target || IsUnitBusy(attacker) || !CanUnitFireFromTerrain(attacker))
         return(false);
 
     // has some attacks left?
@@ -10422,6 +10436,13 @@ int SpellMap::Attack(MapXY pos, int prefer_air)
 
     if (IsGroupMode())
         return(0);
+
+    // One shooter owns one attack sequence at a time. Rapid repeated clicks
+    // must not reset SHOT/FLIGHT/HIT before the projectile lands: AP was
+    // already charged on SHOT, but damage is applied only at FLIGHT impact.
+    // Ignore extra input without spending AP; allow another shot once idle.
+    if (IsUnitBusy(GetSelectedUnit()))
+        return(1);
 
 	if (!pos.IsSelected())
 		return(1);
@@ -12985,7 +13006,7 @@ int SpellMap::CanUnitAttack(MapUnit* target)
 
 	// attacking unit (selected)
 	auto attacker = GetSelectedUnit();
-	if (!attacker)
+	if (!attacker || IsUnitBusy(attacker))
 		return(false);
 
 	if (!CanUnitFireFromTerrain(attacker))
@@ -13069,7 +13090,7 @@ int SpellMap::CanUnitAttackObject(MapXY pos)
 
 	// attacking unit
 	auto unit = GetSelectedUnit();
-	if (!unit)
+	if (!unit || IsUnitBusy(unit))
 		return(false);
 
     if (!CanUnitFireFromTerrain(unit))

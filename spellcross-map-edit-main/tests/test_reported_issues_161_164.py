@@ -44,6 +44,48 @@ class ReportedIssues161164Tests(unittest.TestCase):
         self.assertIn("unit = owner;", tick)
         self.assertNotIn("unit_selection = owner;", tick)
 
+    def test_164_rapid_fire_never_replaces_an_inflight_projectile(self):
+        # Repeated clicks while SHOT/FLIGHT/HIT is active must not reset
+        # the pending attack's target, animation, or already-spent AP.
+        player_attack = MAP.split("int SpellMap::Attack(MapXY pos, int prefer_air)", 1)[1].split(
+            "// Find the live, controllable Alliance unit", 1
+        )[0]
+        self.assertLess(
+            player_attack.index("IsUnitBusy(GetSelectedUnit())"),
+            player_attack.index("unit->attack_target = NULL;"),
+        )
+
+        ai_attack = MAP.split("bool SpellMap::StartAttack_NoHUD(", 1)[1].split(
+            "// DOS helper used by morale shock routines", 1
+        )[0]
+        self.assertLess(
+            ai_attack.index("IsUnitBusy(attacker)"),
+            ai_attack.index("attacker->attack_target = NULL;"),
+        )
+
+        # Keep the cursor and actual command in agreement while busy.
+        target_checks = MAP.split("int SpellMap::CanUnitAttack(MapUnit* target)", 1)[1].split(
+            "// can selected unit attack land unit", 1
+        )[0]
+        object_checks = MAP.split("int SpellMap::CanUnitAttackObject(MapXY pos)", 1)[1].split(
+            "\n}\n", 1
+        )[0]
+        self.assertIn("IsUnitBusy(attacker)", target_checks)
+        self.assertIn("IsUnitBusy(unit)", object_checks)
+
+        # Movement may be redirected while moving, but it must not
+        # starve an attack after AP has been consumed on SHOT.
+        move = MAP.split("int SpellMap::MoveUnit(MapXY target, bool reserve_one_shot)", 1)[1].split(
+            "// get unit action options for cursor position", 1
+        )[0]
+        self.assertIn("unit->attack_state != MapUnit::ATTACK_STATE::IDLE", move)
+        self.assertIn("unit->action_state != MapUnit::ACTION_STATE::IDLE", move)
+        can_move = MAP.split("int SpellMap::CanUnitMove(MapXY target)", 1)[1].split(
+            "// move unit (in game mode)", 1
+        )[0]
+        self.assertIn("unit->attack_state != MapUnit::ATTACK_STATE::IDLE", can_move)
+
+
     def test_156_duplicate_officers_are_normalized_before_hierarchy_restore(self):
         self.assertIn("void StrategicLevelFrame::NormalizeCommanderIdentities()", LEVEL)
         self.assertIn("spellcross_strategy::EnsureUniqueCommanderUids(", LEVEL)
