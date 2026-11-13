@@ -39,6 +39,10 @@ on:
       - 'spellcross-map-edit-main/data/font.ttf'
       - 'spellcross-map-edit-main/source/main.cpp'
       - 'spellcross-map-edit-main/source/forms/form_level.cpp'
+      - 'spellcross-map-edit-main/source/forms/form_video_box.cpp'
+      - 'spellcross-map-edit-main/source/level.cpp'
+      - 'spellcross-map-edit-main/source/level.h'
+      - 'spellcross-map-edit-main/tests/test_level_video_playlist.cpp'
       - 'spellcross-map-edit-main/source/forms/form_mmenu.cpp'
       - 'spellcross-map-edit-main/locales/**'
       - 'spellcross-map-edit-main/tests/test_game_menu_bar.cpp'
@@ -134,6 +138,11 @@ jobs:
           $edgePanTest = Join-Path $env:RUNNER_TEMP 'spellcross-edge-pan-test.exe'
           $rangeInputTest = Join-Path $env:RUNNER_TEMP 'spellcross-range-input-test.exe'
           $hierarchyLayoutTest = Join-Path $env:RUNNER_TEMP 'spellcross-hierarchy-layout-test.exe'
+          $videoPlaylistTest = Join-Path $env:RUNNER_TEMP 'spellcross-level-video-playlist-test.exe'
+          & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_level_video_playlist.cpp spellcross-map-edit-main/source/level.cpp "/Fe:$videoPlaylistTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Chapter video playlist test compilation failed' }
+          & $videoPlaylistTest
+          if ($LASTEXITCODE -ne 0) { throw 'Chapter video playlist test failed' }
           & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_strategic_hierarchy_layout.cpp "/Fe:$hierarchyLayoutTest"
           if ($LASTEXITCODE -ne 0) { throw 'Hierarchy layout test compilation failed' }
           & $hierarchyLayoutTest
@@ -170,7 +179,7 @@ jobs:
           & $boxSelectionTest
           if ($LASTEXITCODE -ne 0) { throw 'Box-selection test failed' }
           $source = Join-Path $PWD 'spellcross-map-edit-main/source'
-          foreach ($file in @('main.cpp', 'map.cpp', 'spell_units.cpp', 'spell_map_event.cpp', 'forms/form_level.cpp', 'forms/form_mmenu.cpp', 'forms/form_about.cpp')) {
+          foreach ($file in @('main.cpp', 'map.cpp', 'spell_units.cpp', 'spell_map_event.cpp', 'forms/form_level.cpp', 'forms/form_video_box.cpp', 'forms/form_mmenu.cpp', 'forms/form_about.cpp')) {
             $object = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileName($file) + '.obj')
             & cl.exe /nologo /c /std:c++17 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" (Join-Path $source $file) "/Fo:$object"
             if ($LASTEXITCODE -ne 0) { throw "Tactical source compilation failed: $file" }

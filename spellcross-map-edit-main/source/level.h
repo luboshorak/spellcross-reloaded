@@ -156,9 +156,9 @@ struct LevelData {
 
     std::vector<std::string> unknown_lines; // pro debug
 
-    // Authoritative ordered PlayStart*/PlayEnd* commands from LEVEL_xx.DEF.
-    // Some chapters have multiple CAN/Delta clips; scalar compatibility
-    // fields below must never silently discard those ordered commands (#150).
+    // Authoritative ordered chapter cinematic commands from LEVEL_xx.DEF.
+    // Some chapters mix multiple CAN/Delta clips with Speaker DP2 sequences;
+    // scalar compatibility fields must never discard those commands (#150).
     std::vector<std::string> intro_videos;
     std::vector<std::string> outro_videos;
     // Legacy first/last-video consumers. Prefer the ordered vectors above for

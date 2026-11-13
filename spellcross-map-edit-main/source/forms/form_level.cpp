@@ -22300,9 +22300,9 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     if (m_main)
         m_main->m_strategicLevel = newWin;
 
-    // Queue every authored chapter intro (CAN and Delta), preserving its
-    // original order. L_06 and L_08 are not replaceable by later story clips
-    // KEFTACI/MAG; all are individual LevelInit commands (#150).
+    // Queue every authored chapter intro (CAN, Delta and Speaker DP2),
+    // preserving its original order. L_06 and L_08 are not replaceable by
+    // later story clips KEFTACI/MAG; all are LevelInit commands (#150).
     if (!lvl.intro_videos.empty())
     {
         for (const auto& clip : lvl.intro_videos)
