@@ -102,7 +102,7 @@ jobs:
           if (-not $NoVersionPrompt) { throw 'Lost internal release delegation.' }
           $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
           $header = Get-Content -Raw -LiteralPath (Join-Path $root 'spellcross-map-edit-main\source\app_version.h')
-          if ($header -notmatch '#define SPELLCROSS_RELEASE_TAG "v0.9.6"') { throw 'Build did not receive new version metadata.' }
+          if ($header -notmatch '#define SPELLCROSS_RELEASE_TAG "v0.9.7"') { throw 'Build did not receive new version metadata.' }
           if (-not $EditorRoot -or -not (Test-Path -LiteralPath (Join-Path $EditorRoot 'source\pinned.txt'))) {
               throw 'Release did not select a clean pinned editor checkout.'
           }
@@ -119,7 +119,7 @@ jobs:
           }
           $head = (& git -C $root rev-parse HEAD).Trim()
           $committed = & git -C $root show 'HEAD:spellcross-map-edit-main/source/app_version.h'
-          if (($committed -join [Environment]::NewLine) -notmatch 'SPELLCROSS_RELEASE_TAG "v0.9.6"') {
+          if (($committed -join [Environment]::NewLine) -notmatch 'SPELLCROSS_RELEASE_TAG "v0.9.7"') {
               throw 'Packaging ran before the version commit.'
           }
           Set-Content -LiteralPath $env:SPELLCROSS_TEST_PROOF -Value $head -Encoding ASCII
@@ -138,12 +138,12 @@ jobs:
           }
 
           $env:SPELLCROSS_TEST_PROOF = $proof
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.6'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.7'
           if ($LASTEXITCODE -ne 0) { throw 'Release driver failed in isolated Git integration test.' }
           $new = (& git -C $source rev-parse HEAD).Trim()
           $remote = (& git --git-dir=$origin rev-parse refs/heads/main).Trim()
-          $tag = (& git -C $source rev-list -n 1 v0.9.6).Trim()
-          $remoteTag = (& git --git-dir=$origin rev-list -n 1 refs/tags/v0.9.6).Trim()
+          $tag = (& git -C $source rev-list -n 1 v0.9.7).Trim()
+          $remoteTag = (& git --git-dir=$origin rev-list -n 1 refs/tags/v0.9.7).Trim()
           if ($new -eq $old -or $remote -ne $new -or $tag -ne $new -or $remoteTag -ne $new) {
             throw 'Version commit and tag were not pushed together to test origin.'
           }
