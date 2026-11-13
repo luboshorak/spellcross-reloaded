@@ -50,6 +50,7 @@
 #include "../strategic_unit_timer_rules.h"
 #include "../strategic_campaign_unlock_rules.h"
 #include "../strategic_buy_variant_rules.h"
+#include "../strategic_hierarchy_layout.h"
 
 namespace
 {
@@ -677,6 +678,7 @@ namespace
     static std::vector<OriginalHierarchyHitSlot> OriginalHierarchySlotsForPage(int brigadeIndex)
     {
         brigadeIndex = std::clamp(brigadeIndex, 1, 2);
+        const auto page = spellcross_strategy::HierarchyPage(brigadeIndex);
         constexpr int xUnits = 12;
         constexpr int xBattCmd = 165;
         constexpr int xRegCmd = 217;
@@ -695,7 +697,7 @@ namespace
 
         std::vector<OriginalHierarchyHitSlot> out;
         out.reserve(4 * 6 + 2 * 2 + 2);
-        const int battalionBase = (brigadeIndex - 1) * 4;
+        const int battalionBase = page.first_battalion - 1;
         auto battalionTopY = [=](int local)
         {
             const int regLocal = local / 2;
@@ -719,7 +721,7 @@ namespace
         }
         for (int rLocal = 0; rLocal < 2; ++rLocal)
         {
-            const int r = (brigadeIndex - 1) * 2 + rLocal + 1;
+            const int r = page.first_regiment + rLocal;
             const int y = regTopY + rLocal * regBlockH + regCmdOffY;
             out.push_back({wxRect(xRegCmd, y, cmdW, slotH),
                 "regiment_" + std::to_string(r) + "_commander", true});
@@ -727,9 +729,9 @@ namespace
                 "regiment_" + std::to_string(r) + "_unit", false});
         }
         out.push_back({wxRect(xBrig, brigadeY, brigW, slotH),
-            "brigade_" + std::to_string(brigadeIndex) + "_commander", true});
+            "brigade_" + std::to_string(page.brigade) + "_commander", true});
         out.push_back({wxRect(xBrig, brigadeY + slotH + pairGap, brigW, slotH),
-            "brigade_" + std::to_string(brigadeIndex) + "_unit", false});
+            "brigade_" + std::to_string(page.brigade) + "_unit", false});
         return out;
     }
 
@@ -3450,7 +3452,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             hierarchyFlatUnits.push_back(row);
         }
         constexpr int maxUnitRows = kOriginalHierarchyVisibleRows;
-        const int hierarchyMaxScroll = std::max(0, static_cast<int>(hierarchyFlatUnits.size() + m_playerCommanders.size()) + 2 - maxUnitRows);
+        const int hierarchyMaxScroll = spellcross_strategy::HierarchyPoolMaxScroll(
+            static_cast<int>(hierarchyFlatUnits.size()),
+            static_cast<int>(m_playerCommanders.size()), maxUnitRows);
         m_originalHierarchyUnitScroll = std::clamp(m_originalHierarchyUnitScroll, 0, hierarchyMaxScroll);
         m_originalScrollbarValue = &m_originalHierarchyUnitScroll;
         m_originalScrollbarMax = hierarchyMaxScroll;
@@ -3512,7 +3516,9 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                 const wxImage untAct = OriginalLoadRawIndexedTransparentZero(loader, "UNT_ACT.LZ0", 150, 22, hierarchyPal);
                 const wxImage prpAct = OriginalLoadRawIndexedTransparentZero(loader, "PRP_ACT.LZ0", 142, 89, hierarchyPal);
                 const wxImage plkAct = OriginalLoadRawIndexedTransparentZero(loader, "PLK_ACT.LZ0", 138, 67, hierarchyPal);
-                const wxImage brgAct = OriginalLoadRawIndexedTransparentZero(loader, "BRG_ACT.LZ0", 207, 114, hierarchyPal);
+                const auto& brigadeOverlay = spellcross_strategy::kBrigadeActiveOverlay;
+                const wxImage brgAct = OriginalLoadRawIndexedTransparentZero(loader, "BRG_ACT.LZ0",
+                    brigadeOverlay.width, brigadeOverlay.height, hierarchyPal);
 
                 auto commanderUidFor = [&](const std::string& id) -> uint32_t
                 {
@@ -3525,7 +3531,8 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
                     return it != m_hierarchySlotIndex.end() && m_hierarchySlots[it->second].unit_uid != 0;
                 };
 
-                const int battalionBase = (m_originalHierarchyPage - 1) * 4;
+                const auto page = spellcross_strategy::HierarchyPage(m_originalHierarchyPage);
+                const int battalionBase = page.first_battalion - 1;
                 for (int local = 0; local < 4; ++local)
                 {
                     const int b = battalionBase + local + 1;
@@ -3544,16 +3551,16 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
                 for (int local = 0; local < 2; ++local)
                 {
-                    const int r = (m_originalHierarchyPage - 1) * 2 + local + 1;
+                    const int r = page.first_regiment + local;
                     const uint32_t cmd = commanderUidFor("regiment_" + std::to_string(r) + "_commander");
                     if (cmd != 0 && IsCommanderFormationActive(cmd))
                         OriginalBlitImage(image, plkAct, 214, 86 + local * 208);
                 }
 
                 const uint32_t brigadeCmd = commanderUidFor(
-                    "brigade_" + std::to_string(m_originalHierarchyPage) + "_commander");
+                    "brigade_" + std::to_string(page.brigade) + "_commander");
                 if (brigadeCmd != 0 && IsCommanderFormationActive(brigadeCmd))
-                    OriginalBlitImage(image, brgAct, 162, 170);
+                    OriginalBlitImage(image, brgAct, brigadeOverlay.x, brigadeOverlay.y);
             }
         }
 
@@ -5519,7 +5526,9 @@ void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
                 for (size_t i = 0; i < m_playerUnits.size(); ++i)
                     if (!IsTemporaryUnitIndex(i))
                         ++totalUnitRows;
-                const int maxScroll = std::max(0, totalUnitRows + static_cast<int>(m_playerCommanders.size()) + 2 - kOriginalHierarchyVisibleRows);
+                const int maxScroll = spellcross_strategy::HierarchyPoolMaxScroll(
+                    totalUnitRows, static_cast<int>(m_playerCommanders.size()),
+                    kOriginalHierarchyVisibleRows);
                 if (maxScroll > 0)
                 {
                     m_originalHierarchyUnitScroll = std::clamp(
@@ -6831,7 +6840,9 @@ void StrategicLevelFrame::OnOriginalStrategicMouseWheel(wxMouseEvent& ev)
         for (size_t i = 0; i < m_playerUnits.size(); ++i)
             if (!IsTemporaryUnitIndex(i))
                 ++totalRows;
-        const int maxScroll = std::max(0, totalRows + static_cast<int>(m_playerCommanders.size()) + 2 - kOriginalHierarchyVisibleRows);
+        const int maxScroll = spellcross_strategy::HierarchyPoolMaxScroll(
+            totalRows, static_cast<int>(m_playerCommanders.size()),
+            kOriginalHierarchyVisibleRows);
         if (maxScroll <= 0)
             return;
         m_originalHierarchyUnitScroll = std::clamp(

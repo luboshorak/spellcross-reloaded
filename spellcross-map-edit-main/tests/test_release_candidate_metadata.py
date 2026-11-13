@@ -40,7 +40,11 @@ class ReleaseMetadataTest(unittest.TestCase):
 
     def test_release_label_and_tag(self):
         version = macro("SPELLCROSS_VERSION_STRING")
-        self.assertEqual(macro("SPELLCROSS_RELEASE_LABEL"), version.rsplit(".", 1)[0])
+        # Stable x.y.z builds use a numeric Windows-only trailing zero, while
+        # hotfix releases such as 0.9.6.1 keep their fourth component in the
+        # public label and tag as well.
+        expected_label = version[:-2] if version.endswith(".0") else version
+        self.assertEqual(macro("SPELLCROSS_RELEASE_LABEL"), expected_label)
         self.assertEqual(macro("SPELLCROSS_RELEASE_TAG"), "v" + macro("SPELLCROSS_RELEASE_LABEL"))
         self.assertIn("SPELLCROSS_RELEASE_LABEL", IDENTITY)
 

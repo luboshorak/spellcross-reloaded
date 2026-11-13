@@ -33,6 +33,8 @@ on:
       - 'spellcross-map-edit-main/source/game_controls.h'
       - 'spellcross-map-edit-main/source/forms/form_about.cpp'
       - 'spellcross-map-edit-main/source/strategic_ui_theme.h'
+      - 'spellcross-map-edit-main/source/strategic_hierarchy_layout.h'
+      - 'spellcross-map-edit-main/tests/test_strategic_hierarchy_layout.cpp'
       - 'spellcross-map-edit-main/source/game_menu_font.rc'
       - 'spellcross-map-edit-main/data/font.ttf'
       - 'spellcross-map-edit-main/source/main.cpp'
@@ -131,6 +133,11 @@ jobs:
           $boxSelectionTest = Join-Path $env:RUNNER_TEMP 'spellcross-box-selection-test.exe'
           $edgePanTest = Join-Path $env:RUNNER_TEMP 'spellcross-edge-pan-test.exe'
           $rangeInputTest = Join-Path $env:RUNNER_TEMP 'spellcross-range-input-test.exe'
+          $hierarchyLayoutTest = Join-Path $env:RUNNER_TEMP 'spellcross-hierarchy-layout-test.exe'
+          & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_strategic_hierarchy_layout.cpp "/Fe:$hierarchyLayoutTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Hierarchy layout test compilation failed' }
+          & $hierarchyLayoutTest
+          if ($LASTEXITCODE -ne 0) { throw 'Hierarchy layout test failed' }
           & cl.exe /nologo /std:c++17 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_edge_pan.cpp "/Fe:$edgePanTest"
           if ($LASTEXITCODE -ne 0) { throw 'Edge-pan test compilation failed' }
           & $edgePanTest
