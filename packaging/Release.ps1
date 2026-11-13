@@ -15,10 +15,7 @@ param(
     [switch]$PruneOldBuilds,
     [switch]$ValidateOnly,
     [switch]$NoPush,
-    [switch]$AllowNonMain,
-    [string]$PreviousStageDirectory = '',
-    [string]$PreviousVersion = '',
-    [switch]$NoPatch
+    [switch]$AllowNonMain
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -152,18 +149,6 @@ function New-PinnedEditorCheckout {
     }
     return $checkout
 }
-if (-not $ValidateOnly) {
-    if ([bool]$PreviousStageDirectory -ne [bool]$PreviousVersion) {
-        throw 'Use -PreviousStageDirectory and -PreviousVersion together.'
-    }
-    if ($NoPatch -and $PreviousStageDirectory) {
-        throw '-NoPatch cannot be combined with previous-release patch inputs.'
-    }
-    if (-not $NoPatch -and -not $PreviousStageDirectory) {
-        throw ('Patch assets are mandatory for a release. Supply -PreviousStageDirectory ' +
-            'and -PreviousVersion, or explicitly select -NoPatch only for a bootstrap/full-only release.')
-    }
-}
 Assert-GitVersionFilesClean $root
 if (-not $ValidateOnly) {
     $existingTag = @(& git -C $root tag --list $releaseTag)
@@ -283,7 +268,7 @@ try {
         if ($cleanEditorWorktree) {
             $packageParameters['EditorRoot'] = $cleanEditorWorktree
         }
-        foreach ($key in @('WxRoot','OutputDirectory','MovieSource','NoZip','NoSfx','WinRARPath','PruneOldBuilds','PreviousStageDirectory','PreviousVersion')) {
+        foreach ($key in @('WxRoot','OutputDirectory','MovieSource','NoZip','NoSfx','WinRARPath','PruneOldBuilds')) {
             if ($PSBoundParameters.ContainsKey($key)) { $packageParameters[$key] = $PSBoundParameters[$key] }
         }
         & (Join-Path $PSScriptRoot 'Build-CombinedRelease.ps1') @packageParameters
