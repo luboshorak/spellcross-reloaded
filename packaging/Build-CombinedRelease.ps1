@@ -19,6 +19,7 @@ param(
     [switch]$BuildOnly,
     [switch]$NoPush,
     [switch]$AllowNonMain,
+    [switch]$NoPatch,
     [string]$EditorRoot = ''
 )
 Set-StrictMode -Version Latest

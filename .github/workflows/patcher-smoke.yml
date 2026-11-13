@@ -6,6 +6,7 @@ on:
     paths:
       - 'packaging/Install-Patch.ps1'
       - 'packaging/New-Patch.ps1'
+      - 'packaging/Publish-Release.ps1'
       - 'spellcross-map-edit-main/source/forms/form_about.cpp'
       - 'spellcross-map-edit-main/source/main.cpp'
       - 'spellcross-map-edit-main/locales/*.lang'
@@ -32,24 +33,35 @@ jobs:
           $patch = Join-Path $base 'patch'
           New-Item -ItemType Directory -Force -Path $prev,$next,$install,$patch | Out-Null
           foreach ($dir in @($prev,$next,$install)) {
-            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'data'),(Join-Path $dir 'save'),(Join-Path $dir 'game_data\imports'),(Join-Path $dir 'DLC') | Out-Null
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'data'),(Join-Path $dir 'save'),(Join-Path $dir 'game_data\imports'),(Join-Path $dir 'DLC'),(Join-Path $dir 'updater') | Out-Null
           }
           Set-Content -Encoding ASCII -Path (Join-Path $prev 'Spellcross.exe') -Value 'old-binary'
           Set-Content -Encoding ASCII -Path (Join-Path $prev 'data\game.dat') -Value 'unchanged'
           Set-Content -Encoding ASCII -Path (Join-Path $next 'Spellcross.exe') -Value 'new-binary'
           Set-Content -Encoding ASCII -Path (Join-Path $next 'data\game.dat') -Value 'unchanged'
+          Set-Content -Encoding ASCII -Path (Join-Path $prev 'updater\Install-Patch.ps1') -Value 'old-updater'
+          Set-Content -Encoding ASCII -Path (Join-Path $next 'updater\Install-Patch.ps1') -Value 'new-updater'
           Copy-Item -LiteralPath (Join-Path $prev 'Spellcross.exe') -Destination (Join-Path $install 'Spellcross.exe')
           Copy-Item -LiteralPath (Join-Path $prev 'data\game.dat') -Destination (Join-Path $install 'data\game.dat')
+          Copy-Item -LiteralPath (Join-Path $prev 'updater\Install-Patch.ps1') -Destination (Join-Path $install 'updater\Install-Patch.ps1')
           Set-Content -Encoding ASCII -Path (Join-Path $install 'save\slot1.scsave') -Value 'save-preserved'
           Set-Content -Encoding ASCII -Path (Join-Path $install 'game_data\imports\COMMON.FS') -Value 'iso-preserved'
           Set-Content -Encoding ASCII -Path (Join-Path $install 'DLC\snowfall.dat') -Value 'dlc-preserved'
           Set-Content -Encoding ASCII -Path (Join-Path $install 'config.ini') -Value 'config-preserved'
           & .\packaging\New-Patch.ps1 -PreviousDirectory $prev -CurrentDirectory $next -FromVersion '0.9.5' -ToVersion '0.9.6' -OutputDirectory $patch
           if (-not (Test-Path -LiteralPath (Join-Path $patch 'patch-manifest.json'))) { throw 'Manifest not generated.' }
+          $generatedManifest = Get-Content -LiteralPath (Join-Path $patch 'patch-manifest.json') -Raw | ConvertFrom-Json
+          if (@($generatedManifest.files).Count -lt 2) { throw 'Patch inventory unexpectedly empty.' }
+          Copy-Item -LiteralPath (Join-Path $patch 'Spellcross_Patch_v0.9.5_to_v0.9.6.zip') -Destination (Join-Path $patch 'Spellcross_Reloaded_v0.9.6.zip')
+          $notes = Join-Path $patch 'release-notes.md'
+          Set-Content -Encoding UTF8 -Path $notes -Value 'Test release notes.'
+          & .\packaging\Publish-Release.ps1 -Version '0.9.6' -DistDirectory $patch -NotesFile $notes -ValidateOnly
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset validation failed.' }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Install-Patch.ps1 -InstallRoot $install -CurrentVersion '0.9.5' -TargetVersion '0.9.6' -LocalPatchDirectory $patch -NoRestart -NoPause
           if ($LASTEXITCODE -ne 0) { throw 'Patch installation failed.' }
           if ((Get-Content -LiteralPath (Join-Path $install 'Spellcross.exe') -Raw).Trim() -ne 'new-binary') { throw 'Executable not patched.' }
           if ((Get-Content -LiteralPath (Join-Path $install 'data\game.dat') -Raw).Trim() -ne 'unchanged') { throw 'Unchanged file corrupted.' }
+          if ((Get-Content -LiteralPath (Join-Path $install 'updater\Install-Patch.ps1') -Raw).Trim() -ne 'new-updater') { throw 'Updater was not patched.' }
           foreach ($sample in @(
             @{ Path='save\slot1.scsave'; Content='save-preserved' },
             @{ Path='game_data\imports\COMMON.FS'; Content='iso-preserved' },

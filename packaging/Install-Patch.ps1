@@ -26,7 +26,7 @@ function Assert-Path([string]$p) {
         throw "Unsafe patch path: $p"
     }
     if ($p -match '(?i)(^|/)(config\.ini|game_data|save|saves|dlc|temp|updates|\.spellcross-update[^/]*)(/|$)') { throw "Protected path in patch: $p" }
-    if ($p -notmatch '^(Spellcross\.exe|Editor/.+|data/(?!imports/).+|locales/.+|symbols/.+|third-party-licenses/.+|setup/.+|README-FIRST\.txt|BUILD-INFO\.txt|LICENSE-[^/]+\.txt|[^/]+\.dll)$') { throw "Unmanaged patch path: $p" }
+    if ($p -notmatch '^(Spellcross\.exe|Editor/.+|data/(?!imports/).+|locales/.+|symbols/.+|third-party-licenses/.+|setup/.+|updater/Install-Patch\.ps1|README-FIRST\.txt|BUILD-INFO\.txt|LICENSE-[^/]+\.txt|[^/]+\.dll)$') { throw "Unmanaged patch path: $p" }
     foreach ($segment in $p.Split('/')) {
         if ($segment -in @('.','..','') -or $segment.EndsWith('.') -or $segment.EndsWith(' ')) { throw "Unsafe filename: $p" }
     }

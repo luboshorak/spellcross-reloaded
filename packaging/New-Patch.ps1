@@ -16,7 +16,7 @@ function Assert-Version([string]$v) {
 function Is-ManagedPath([string]$p) {
     if ($p -match '(?i)(^|[\\/])(\.\.|config\.ini|game_data|save|saves|dlc|temp|updates|\.spellcross-update[^\\/]*)($|[\\/])') { return $false }
     if ($p -match '^[A-Za-z]:|^[/\\]' -or $p.Contains('..')) { return $false }
-    return ($p -match '^(Spellcross\.exe|Editor[/\\].+|data[/\\](?!imports[/\\]).+|locales[/\\].+|symbols[/\\].+|third-party-licenses[/\\].+|setup[/\\].+|README-FIRST\.txt|BUILD-INFO\.txt|LICENSE-[^/\\]+\.txt|[^/\\]+\.dll)$')
+    return ($p -match '^(Spellcross\.exe|Editor[/\\].+|data[/\\](?!imports[/\\]).+|locales[/\\].+|symbols[/\\].+|third-party-licenses[/\\].+|setup[/\\].+|updater[/\\]Install-Patch\.ps1|README-FIRST\.txt|BUILD-INFO\.txt|LICENSE-[^/\\]+\.txt|[^/\\]+\.dll)$')
 }
 function Get-Inventory([string]$root) {
     $map = @{}
@@ -33,8 +33,11 @@ function Get-Inventory([string]$root) {
 }
 Assert-Version $FromVersion
 Assert-Version $ToVersion
-$oldDir = (Resolve-Path -LiteralPath $PreviousDirectory).Path.TrimEnd('\','/')
-$newDir = (Resolve-Path -LiteralPath $CurrentDirectory).Path.TrimEnd('\','/')
+# Resolve 8.3 aliases (for example %TEMP% under Windows PowerShell) before
+# deriving relative paths. Mixing a short root with Get-ChildItem's long file
+# names otherwise produces an empty or malformed patch inventory.
+$oldDir = (Get-Item -LiteralPath (Resolve-Path -LiteralPath $PreviousDirectory).Path).FullName.TrimEnd('\','/')
+$newDir = (Get-Item -LiteralPath (Resolve-Path -LiteralPath $CurrentDirectory).Path).FullName.TrimEnd('\','/')
 if ($oldDir -eq $newDir) { throw 'Previous and current stages must differ.' }
 if (-not (Test-Path -LiteralPath (Join-Path $newDir 'Spellcross.exe') -PathType Leaf)) { throw 'New stage has no Spellcross.exe.' }
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
@@ -79,3 +82,5 @@ try {
 } finally {
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 }
+
+exit 0

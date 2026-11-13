@@ -23,18 +23,19 @@ download ONE complete ZIP/SFX release with the updater before using patches.
 
 ## Publisher workflow
 
-1. Prepare the complete normal ZIP/SFX from Build-CombinedRelease.ps1.
-2. Pass -PreviousStageDirectory and -PreviousVersion to the build script to
-   additionally create a patch between the previous staged build and the new
-   one. You can also run packaging/New-Patch.ps1 independently.
-3. Upload BOTH patch-manifest.json and the generated
-   Spellcross_Patch_vFROM_to_vTO.zip to the corresponding GitHub Release.
-4. Continue publishing the complete ZIP/SFX alongside patch files. Use exact
-   version labels from app_version.h and BUILD-INFO.txt.
+1. Prepare the complete ZIP/SFX with `-PreviousStageDirectory` and
+   `-PreviousVersion`. A normal versioned release refuses to proceed without
+   these inputs; `-NoPatch` is an explicit bootstrap/full-only exception.
+2. Test the generated patch against a copy of the previous installation.
+3. Run `packaging/Publish-Release.ps1`. It validates the full ZIP, manifest,
+   patch filename and SHA-256 before creating the release with every asset.
+4. Use exact version labels from app_version.h and BUILD-INFO.txt.
 
 Example PowerShell:
 
     .\packaging\Build-CombinedRelease.ps1 -Rebuild -PreviousStageDirectory 'D:\PreviousRelease' -PreviousVersion '0.9.6'
+
+    .\packaging\Publish-Release.ps1 -Version '0.9.7'
 
 Test on a COPY of the installed game:
 
@@ -50,9 +51,8 @@ staged on the same volume and backed up before replacement. Installation errors
 trigger rollback.
 
 Updates require a continuous chain of valid release manifests. A release with
-no patch assets is full-download only. The updater script itself is currently
-excluded from delta updates; future incompatible patch formats require a
-bootstrap migration or a new full build.
+no patch assets is full-download only. The updater script is a managed patch
+file, so fixes to it are included in the next delta as well as the full build.
 
 File replacement is per-file rather than a single atomic directory rename.
 Power loss during application is NOT yet automatically recoverable, because
