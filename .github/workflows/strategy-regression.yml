@@ -24,6 +24,7 @@ on:
       - 'spellcross-map-edit-main/source/strategic_random_attack_rules.h'
       - 'spellcross-map-edit-main/source/strategic_battle_recovery_rules.h'
       - 'spellcross-map-edit-main/source/strategic_commander_uid_rules.h'
+      - 'spellcross-map-edit-main/source/strategic_commander_experience_rules.h'
       - 'spellcross-map-edit-main/source/tactical_background_action_rules.h'
       - 'spellcross-map-edit-main/source/strategic_generated_spawn_rules.h'
       - 'spellcross-map-edit-main/source/app_version.h'
@@ -128,6 +129,12 @@ jobs:
             spellcross-map-edit-main/tests/test_strategic_commander_uid_rules.cpp \
             -o /tmp/spellcross-commander-uids-test
           /tmp/spellcross-commander-uids-test
+      - name: Compile and test original commander battles and promotions
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_strategic_commander_experience_rules.cpp \
+            -o /tmp/spellcross-commander-experience-test
+          /tmp/spellcross-commander-experience-test
       - name: Compile and test strategic hierarchy geometry
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
