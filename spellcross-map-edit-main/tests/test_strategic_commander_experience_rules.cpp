@@ -91,6 +91,6 @@ int main()
     assert(ReadOriginalCommanderBattles(save, save.size() + 1) == 0);
 
     std::cout << "PASS: retail cumulative thresholds, John rank ceiling, "
-                 "13 original save fixtures, import and legacy compatibility\\n";
+                 "13 original save fixtures, import and legacy compatibility\n";
     return 0;
 }
