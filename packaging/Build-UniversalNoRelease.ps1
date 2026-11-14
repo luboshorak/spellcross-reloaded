@@ -79,7 +79,7 @@ foreach ($part in @('major','minor','patch','build')) {
     }
     $number = 0
     if (-not [int]::TryParse($component, [ref]$number) -or $number -gt 65535) {
-        throw "Invalid Windows version component $part in $releaseTag: $component"
+        throw "Invalid Windows version component $part in ${releaseTag}: $component"
     }
     $numbers += $number
 }
@@ -146,7 +146,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 $sourceOverrideApplied = $false
 try {
     if ($SkipBuild -and $needsVersionOverride) {
-        throw "-SkipBuild cannot safely stamp the published release $releaseTag: local version metadata differs. Run the script without -SkipBuild."
+        throw "-SkipBuild cannot safely stamp the published release ${releaseTag}: local version metadata differs. Run the script without -SkipBuild."
     }
     if ($needsVersionOverride) {
         # Flag first, so even a partial write is restored by finally.
