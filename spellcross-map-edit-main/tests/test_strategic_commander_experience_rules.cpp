@@ -22,6 +22,30 @@ int main()
     using spellcross_strategy::CommanderRankForBattles;
     using spellcross_strategy::ReadOriginalCommanderBattles;
 
+    // Older JSON saves can contain zero despite officers' established
+    // First Lieutenant rank. Restore only the minimum, not campaign totals.
+    assert(spellcross_strategy::RestoreMinimumCommanderBattles(1, 0, retailRanks) == 6);
+    assert(spellcross_strategy::RestoreMinimumCommanderBattles(1, 7, retailRanks) == 7);
+    assert(spellcross_strategy::RestoreMinimumCommanderBattles(3, 0, retailRanks) == 18);
+    assert(spellcross_strategy::RestoreMinimumCommanderBattles(7, 70, retailRanks) == 70);
+
+    // A survivor matched by the existing UID-less tactical-save fallback
+    // must count as returned for its commander. A different nonzero UID
+    // must NEVER be accepted as that same company.
+    std::unordered_set<std::uint32_t> returned;
+    spellcross_strategy::RecordReturnedStrategicUnit(returned, 19, 0);
+    spellcross_strategy::RecordReturnedStrategicUnit(returned, 22, 22);
+    spellcross_strategy::RecordReturnedStrategicUnit(returned, 38, 55);
+    spellcross_strategy::RecordReturnedStrategicUnit(returned, 0, 0);
+    assert(returned.size() == 2 && returned.count(19) && returned.count(22));
+    assert(!returned.count(38) && !returned.count(0));
+
+    // The user's LEVEL_06 save has John rank 7 and first seven deployed
+    // officers at 7 battles. Three more correctly attributed deployments
+    // produce Captain at battle 10, regardless of his higher rank.
+    assert(CommanderRankForBattles(1, 7, 7, retailRanks) == 1);
+    assert(CommanderRankForBattles(1, 10, 7, retailRanks) == 2);
+
     // New officers already carry the six battles of a First Lieutenant.
     assert(InitialCommanderBattles(1, retailRanks) == 6);
     assert(InitialCommanderBattles(0, retailRanks) == 2);
