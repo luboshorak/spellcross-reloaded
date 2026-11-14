@@ -7266,9 +7266,13 @@ void MainFrame::OnMapConsoleCommand()
 
     if (cmd == "ALLDONE")
     {
-        if (!m_deployment_active && spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && spell_map->events)
+        if (!m_deployment_active && !m_mission_end_flow &&
+            spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+            spell_map->events && !spell_map->IsEnemyTurnRunning())
         {
-            // Flush pending scripted actions before the normal mission result.
+            // Scripted objective rewards may add units: pause range workers
+            // before modifying the live map, just as other tactical cheats do.
+            spell_map->HaltUnitRanging(true);
             spell_map->CompleteAllMissionObjectivesForCheat();
             if (canvas) canvas->Refresh();
         }
