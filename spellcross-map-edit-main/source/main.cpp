@@ -2379,6 +2379,7 @@ void MainFrame::ResetDeploymentUI()
     m_deployment_active = false;
     m_deployment_camera_pending = false;
     m_autoDeploymentCameraPending = false;
+    m_autoDeploymentFocusTiles.clear();
     m_deployment_selection = 0;
     m_deployment_blink_ticks = 0;
 }
@@ -2522,6 +2523,9 @@ bool MainFrame::AutoDeployUnits()
         m_deployment_units.empty() || spell_map->start.empty())
         return false;
 
+    m_autoDeploymentCameraPending = false;
+    m_autoDeploymentFocusTiles.clear();
+
     // Deduplicate authored START coordinates; leave enemy/scenario units alone.
     std::vector<MapXY> squares;
     for (const MapXY& pos : spell_map->start)
@@ -2574,6 +2578,9 @@ bool MainFrame::AutoDeployUnits()
     if (!spellcross_autodeploy::Assign(candidates, squares.size(), assigned))
         return false; // plan all positions before touching game state
 
+    std::vector<MapXY> placedPositions;
+    placedPositions.reserve(assigned.size());
+
     // Reuse the original player-placement code for ownership, IDs, AP,
     // stacking, formation updates, fog of war and HUD refresh.
     for (size_t i = 0; i < assigned.size(); ++i)
@@ -2582,10 +2589,14 @@ bool MainFrame::AutoDeployUnits()
         PlaceDeploymentUnit(squares[static_cast<size_t>(assigned[i])]);
         if (i >= m_deployment_placed.size() || !m_deployment_placed[i])
             return false;
+        placedPositions.push_back(m_deployment_units[i]->coor);
     }
     FinishDeployment(); // triggers MissionStart and the first tactical save
     if (!m_deployment_active)
     {
+        // FinishDeployment clears its unit roster, so retain the actual placed
+        // company coordinates for the initial tactical camera.
+        m_autoDeploymentFocusTiles = std::move(placedPositions);
         m_autoDeploymentCameraPending = true;
         return true;
     }
@@ -3963,13 +3974,14 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
 
 void MainFrame::CenterDeploymentOnStartSquares()
 {
-    if (!m_deployment_camera_pending || !m_deployment_active ||
+    const bool manual = m_deployment_camera_pending && m_deployment_active;
+    const bool automatic = m_autoDeploymentCameraPending && !m_deployment_active;
+    if ((!manual && !automatic) ||
         !spell_map || !spell_map->IsLoaded() || !canvas)
         return;
     const wxSize view = TacticalMapSize(canvas->GetClientSize());
     if (view.x <= 0 || view.y <= 0)
         return;
-    m_deployment_camera_pending = false;
 
     // Camera geometry from the visible viewport, not from the old map.
     spell_map->scroller.SetSurface(view.x, view.y);
@@ -3977,9 +3989,13 @@ void MainFrame::CenterDeploymentOnStartSquares()
         return;
 
     struct StartPoint { int x, y; };
+    // Manual placement uses authored START crosses; automatic placement
+    // focuses only on companies actually deployed by this operation.
+    const std::vector<MapXY>& focusTiles =
+        automatic ? m_autoDeploymentFocusTiles : spell_map->start;
     std::vector<StartPoint> starts;
-    starts.reserve(spell_map->start.size());
-    for (MapXY tile : spell_map->start)
+    starts.reserve(focusTiles.size());
+    for (MapXY tile : focusTiles)
     {
         if (tile.x < 0 || tile.y < 0 ||
             tile.x >= spell_map->x_size || tile.y >= spell_map->y_size)
@@ -4022,7 +4038,13 @@ void MainFrame::CenterDeploymentOnStartSquares()
     // Direct world coordinates avoid stale surf_x_origin in ScrollToTile.
     spell_map->scroller.SetPos(starts[best].x - view.x / 2,
         starts[best].y - view.y / 2);
-    spell_map->RenderPrepare(&spell_map->scroller);
+    if (spell_map->RenderPrepare(&spell_map->scroller) != 0)
+        return;
+    // Clear only after a successful scroll; a not-yet-sized canvas retries
+    // on its first paint, rather than losing the pending camera request.
+    m_deployment_camera_pending = false;
+    m_autoDeploymentCameraPending = false;
+    m_autoDeploymentFocusTiles.clear();
     canvas->Refresh();
 }
 
@@ -4034,7 +4056,6 @@ void MainFrame::ShowTacticalWindow()
         menu->Check(ID_OptionsAutoDeploy, spellcross_autodeploy::Enabled());
     if (m_deployment_camera_pending || m_autoDeploymentCameraPending)
         CenterDeploymentOnStartSquares();
-    m_autoDeploymentCameraPending = false;
     if (canvas)
         canvas->SetFocus();
 }
@@ -6061,7 +6082,8 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
     
     // If wxWidgets had not assigned the canvas size during Show(), perform
     // the one-time deployment camera placement on its first actual paint.
-    if (m_deployment_camera_pending && spell_map && spell_map->IsLoaded())
+    if ((m_deployment_camera_pending || m_autoDeploymentCameraPending) &&
+        spell_map && spell_map->IsLoaded())
         CenterDeploymentOnStartSquares();
 
     // render map    

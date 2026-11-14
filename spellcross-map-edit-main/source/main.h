@@ -152,6 +152,7 @@ private:
     bool m_deployment_requested = false;
     bool m_deployment_active = false;
     bool m_autoDeploymentCameraPending = false;
+    std::vector<MapXY> m_autoDeploymentFocusTiles;
     // Ordered deployment roster. The map owns only entries marked placed;
     // MainFrame owns remaining queued companies until placement/cancel.
     std::vector<MapUnit*> m_deployment_units;

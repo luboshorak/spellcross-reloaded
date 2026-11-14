@@ -33,12 +33,30 @@ class AutodeployAndAlldoneRegression(unittest.TestCase):
         autodeploy = MAIN.split("bool MainFrame::AutoDeployUnits()", 1)[1].split(
             "void MainFrame::FinishDeployment()", 1)[0]
         self.assertLess(autodeploy.index("spellcross_autodeploy::Assign("),
-                        autodeploy.index("PlaceDeploymentUnit("))
+                        autodeploy.index("        PlaceDeploymentUnit("))
         self.assertIn("FinishDeployment();", autodeploy)
-        self.assertIn("fixed->unit->isAir() == available.is_air", autodeploy)
+        self.assertIn("static_cast<bool>(fixed->unit->isAir()) == available.is_air", autodeploy)
         start = MAIN.split("void MainFrame::StartTacticalGame()", 1)[1].split(
             "bool MainFrame::IsDeploymentSquare(", 1)[0]
         self.assertIn("spellcross_autodeploy::Enabled() && !AutoDeployUnits()", start)
+
+    def test_autodeploy_camera_targets_placed_units(self):
+        deployment = MAIN.split("bool MainFrame::AutoDeployUnits()", 1)[1].split(
+            "void MainFrame::FinishDeployment()", 1)[0]
+        camera = MAIN.split("void MainFrame::CenterDeploymentOnStartSquares()", 1)[1].split(
+            "void MainFrame::ShowTacticalWindow()", 1)[0]
+        show = MAIN.split("void MainFrame::ShowTacticalWindow()", 1)[1].split(
+            "void MainFrame::HideTacticalWindow()", 1)[0]
+        paint = MAIN.split("void MainFrame::OnPaintCanvas(", 1)[1].split(
+            "// render map", 1)[0]
+
+        self.assertIn("placedPositions.push_back(m_deployment_units[i]->coor)", deployment)
+        self.assertIn("m_autoDeploymentFocusTiles = std::move(placedPositions)", deployment)
+        self.assertIn("m_autoDeploymentCameraPending && !m_deployment_active", camera)
+        self.assertIn("automatic ? m_autoDeploymentFocusTiles : spell_map->start", camera)
+        self.assertIn("m_autoDeploymentFocusTiles.clear();", camera)
+        self.assertNotIn("m_autoDeploymentCameraPending = false;", show)
+        self.assertIn("m_deployment_camera_pending || m_autoDeploymentCameraPending", paint)
 
     def test_alldone_executes_pending_event_actions(self):
         cheat = MAP.split("bool SpellMap::CompleteAllMissionObjectivesForCheat()", 1)[1].split(
