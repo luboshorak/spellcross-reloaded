@@ -3,7 +3,7 @@
 # Usage: .\packaging\Build-UniversalNoRelease.ps1 [-SkipBuild] [-Rebuild] [-WxRoot <path>] [-NoSfx] [-WinRARPath <path>]
 # Builds the local working tree, including uncommitted edits. Does not invoke
 # Release.ps1, commit, tag, push or create a GitHub release. The package version
-# is taken from the newest published GitHub Release (including prereleases).
+# is taken from the existing local app_version.h release tag (offline-safe).
 [CmdletBinding()]
 param(
     [switch]$SkipBuild,
@@ -43,32 +43,27 @@ foreach ($required in @($versionHeader, $resourceFile)) {
     }
 }
 
-# Use the most recently PUBLISHED GitHub Release, not the latest source header,
-# local Git tag, or a version entered by hand. This includes RC/prereleases.
-# Fail closed when GitHub cannot be contacted (never silently reuse an old tag).
-$repository = 'luboshorak/spellcross-reloaded'
-$releasesUrl = "https://api.github.com/repos/$repository/releases?per_page=100"
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    $releases = @(Invoke-RestMethod -Method Get -Uri $releasesUrl -TimeoutSec 30 -Headers @{
-        'Accept' = 'application/vnd.github+json'
-        'User-Agent' = 'Spellcross-Reloaded-Local-Build'
-    })
-} catch {
-    throw "Cannot retrieve published versions from $releasesUrl. No package was built: $($_.Exception.Message)"
+# Build the current local working tree with the release version already
+# defined by the project. No GitHub API, no git tag lookup, no version prompt.
+# This allows offline builds and does not change the actual build workflow.
+$localHeader = Get-Content -LiteralPath $versionHeader -Raw
+$tagMatch = [regex]::Match($localHeader,
+    '(?m)^[ \t]*#define[ \t]+SPELLCROSS_RELEASE_TAG[ \t]+"(?<tag>v[A-Za-z0-9.-]+)"[ \t]*\r?$')
+$labelMatch = [regex]::Match($localHeader,
+    '(?m)^[ \t]*#define[ \t]+SPELLCROSS_RELEASE_LABEL[ \t]+"(?<label>[A-Za-z0-9.-]+)"[ \t]*\r?$')
+if (-not $tagMatch.Success -or -not $labelMatch.Success) {
+    throw "Cannot read release version from $versionHeader."
 }
-$published = @($releases | Where-Object { $_.published_at -and -not $_.draft } |
-    Sort-Object -Property published_at -Descending)
-if ($published.Count -eq 0) {
-    throw "No published GitHub Releases found at $releasesUrl. Refusing to invent a version."
+$releaseTag = $tagMatch.Groups['tag'].Value
+if ($releaseTag -cne ('v' + $labelMatch.Groups['label'].Value)) {
+    throw "Release tag '$releaseTag' differs from local release label '$($labelMatch.Groups['label'].Value)'."
 }
-$latestRelease = $published[0]
-$releaseTag = ([string]$latestRelease.tag_name).Trim()
-$releaseUrl = [string]$latestRelease.html_url
 $versionPattern = '^v(?<major>0|[1-9][0-9]*)\.(?<minor>0|[1-9][0-9]*)\.(?<patch>0|[1-9][0-9]*)(?:\.(?<build>0|[1-9][0-9]*))?(?<suffix>-(?:RC|beta)(?:0|[1-9][0-9]*))?$'
+$versionSource = 'app_version.h'
+$releaseUrl = '(local project version)'
 $parsedVersion = [regex]::Match($releaseTag, $versionPattern)
 if (-not $parsedVersion.Success) {
-    throw "Unsupported GitHub Release tag '$releaseTag'. Expected v0.9.6, v0.9.6.5 or v0.9.6-RC1."
+    throw "Unsupported release tag '$releaseTag' in $versionHeader."
 }
 $numbers = @()
 foreach ($part in @('major','minor','patch','build')) {
@@ -86,11 +81,11 @@ foreach ($part in @('major','minor','patch','build')) {
 $releaseVersion = $numbers -join '.'
 $packageVersion = $releaseTag.Substring(1)
 Write-Host "Building local checkout as $releaseTag (Windows FileVersion $releaseVersion)" -ForegroundColor Cyan
-Write-Host "Version source: $releaseUrl" -ForegroundColor Cyan
+Write-Host "Version source: $versionSource ($releaseUrl)" -ForegroundColor Cyan
 Write-Host 'No Git commit, tag, push or GitHub Release will be created.' -ForegroundColor Cyan
 
 # Windows FileVersion/ProductVersion and displayed app version must match the
-# chosen published release. When sources are ahead of that release, temporarily
+# local release label. If source metadata is inconsistent, temporarily
 # adjust ONLY the version macros/resources, then restore byte-for-byte in finally.
 # This allows building uncommitted code without writing a version commit.
 function Set-ExactlyOneVersionValue([string]$text, [string]$pattern, [string]$value, [string]$label) {
@@ -146,7 +141,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 $sourceOverrideApplied = $false
 try {
     if ($SkipBuild -and $needsVersionOverride) {
-        throw "-SkipBuild cannot safely stamp the published release ${releaseTag}: local version metadata differs. Run the script without -SkipBuild."
+        throw "-SkipBuild cannot stamp ${releaseTag}: local version metadata differs. Run without -SkipBuild."
     }
     if ($needsVersionOverride) {
         # Flag first, so even a partial write is restored by finally.
