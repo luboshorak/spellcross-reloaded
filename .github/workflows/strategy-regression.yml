@@ -32,6 +32,7 @@ on:
       - 'spellcross-map-edit-main/source/release_version_compare.h'
       - 'spellcross-map-edit-main/source/forms/form_about.cpp'
       - 'spellcross-map-edit-main/source/main.cpp'
+      - 'spellcross-map-edit-main/source/game_autodeploy.h'
       - 'packaging/Build-CombinedRelease.ps1'
       - 'packaging/releases/**'
       - 'spellcross-map-edit-main/source/forms/form_level.cpp'
@@ -47,6 +48,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate source and localization invariants
         run: python3 -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py' -v
+      - name: Verify collision-free ground/air Autodeploy matching
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_autodeploy_rules.cpp \
+            -o /tmp/spellcross-autodeploy-test
+          /tmp/spellcross-autodeploy-test
       - name: Compile and run the real LevelLoader against original script fixtures
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \

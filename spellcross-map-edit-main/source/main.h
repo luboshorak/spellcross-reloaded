@@ -440,8 +440,8 @@ enum
     ID_OptionsDifficultyHard,
 	ID_OptionsBoxSelection,
     ID_OptionsConfineCursor,
-    ID_OptionsAutoDeploy,
-    ID_mmOpenMapEditor
+    ID_mmOpenMapEditor,
+    ID_OptionsAutoDeploy
 };
 
 
