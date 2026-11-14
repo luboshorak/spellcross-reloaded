@@ -1,6 +1,9 @@
 ﻿# Spellcross Reloaded + original map editor: clean portable x64 release.
 # Windows PowerShell 5.1+, MSVC Build Tools, wxWidgets/vcpkg x64.
-# Usage: .\packaging\Build-CombinedRelease.ps1 [-SkipBuild] [-WxRoot <path>] [-NoSfx] [-WinRARPath <path>]
+# Usage: .\packaging\Build-UniversalNoRelease.ps1 [-SkipBuild] [-Rebuild] [-WxRoot <path>] [-NoSfx] [-WinRARPath <path>]
+# Builds the local working tree, including uncommitted edits. Does not invoke
+# Release.ps1, commit, tag, push or create a GitHub release. The package version
+# is taken from the newest published GitHub Release (including prereleases).
 [CmdletBinding()]
 param(
     [switch]$SkipBuild,
@@ -17,35 +20,143 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+# The script works both from repository-root and from packaging/.
+$root = $null
+foreach ($candidate in @($PSScriptRoot, (Join-Path $PSScriptRoot '..'))) {
+    $candidatePath = (Resolve-Path -LiteralPath $candidate).Path
+    $candidateHeader = Join-Path $candidatePath 'spellcross-map-edit-main\source\app_version.h'
+    if (Test-Path -LiteralPath $candidateHeader -PathType Leaf) {
+        $root = $candidatePath
+        break
+    }
+}
+if (-not $root) {
+    throw 'Repository root not found. Put the script into the repository root or the packaging folder.'
+}
+$packagingDir = Join-Path $root 'packaging'
 $game = Join-Path $root 'spellcross-map-edit-main'
-# Keep packaging synchronized with the app and Windows version metadata.
 $versionHeader = Join-Path $game 'source\app_version.h'
-if (-not (Test-Path -LiteralPath $versionHeader -PathType Leaf)) { throw "Version header not found: $versionHeader" }
-$versionText = Get-Content -LiteralPath $versionHeader -Raw
-$versionMatch = [regex]::Match($versionText,
-    '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+(?:\.\d+)?)"\s*$')
-if (-not $versionMatch.Success) { throw "Cannot read SPELLCROSS_VERSION_STRING from $versionHeader" }
-$releaseVersion = $versionMatch.Groups[1].Value
+$resourceFile = Join-Path $game 'source\resources.rc'
+foreach ($required in @($versionHeader, $resourceFile)) {
+    if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+        throw "Release metadata file not found: $required"
+    }
+}
 
-# Windows FileVersion remains numeric, while release asset names can be RC1.
-# Verify that the source version, release label and tag all describe one build.
-$releaseLabelMatch = [regex]::Match($versionText,
-    '(?m)^\s*#define\s+SPELLCROSS_RELEASE_LABEL\s+"([A-Za-z0-9][A-Za-z0-9.-]*)"\s*$')
-$releaseTagMatch = [regex]::Match($versionText,
-    '(?m)^\s*#define\s+SPELLCROSS_RELEASE_TAG\s+"(v[A-Za-z0-9][A-Za-z0-9.-]*)"\s*$')
-$packageVersion = if ($releaseLabelMatch.Success) { $releaseLabelMatch.Groups[1].Value } else { $releaseVersion }
-$releaseTag = if ($releaseTagMatch.Success) { $releaseTagMatch.Groups[1].Value } else { 'v' + $packageVersion }
-$baseVersion = ($releaseVersion -split '\.')[0..2] -join '.'
-if ($packageVersion -ne $releaseVersion -and
-    $packageVersion -ne $baseVersion -and
-    -not $packageVersion.StartsWith($baseVersion + '-')) {
-    throw "Release label '$packageVersion' is not based on numeric version '$releaseVersion'."
+# Use the most recently PUBLISHED GitHub Release, not the latest source header,
+# local Git tag, or a version entered by hand. This includes RC/prereleases.
+# Fail closed when GitHub cannot be contacted (never silently reuse an old tag).
+$repository = 'luboshorak/spellcross-reloaded'
+$releasesUrl = "https://api.github.com/repos/$repository/releases?per_page=100"
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $releases = @(Invoke-RestMethod -Method Get -Uri $releasesUrl -TimeoutSec 30 -Headers @{
+        'Accept' = 'application/vnd.github+json'
+        'User-Agent' = 'Spellcross-Reloaded-Local-Build'
+    })
+} catch {
+    throw "Cannot retrieve published versions from $releasesUrl. No package was built: $($_.Exception.Message)"
 }
-if ($releaseTag -ne ('v' + $packageVersion)) {
-    throw "Release tag '$releaseTag' does not match release label '$packageVersion'."
+$published = @($releases | Where-Object { $_.published_at -and -not $_.draft } |
+    Sort-Object -Property published_at -Descending)
+if ($published.Count -eq 0) {
+    throw "No published GitHub Releases found at $releasesUrl. Refusing to invent a version."
 }
-Write-Host "Preparing $releaseTag (Windows FileVersion $releaseVersion)" -ForegroundColor Cyan
+$latestRelease = $published[0]
+$releaseTag = ([string]$latestRelease.tag_name).Trim()
+$releaseUrl = [string]$latestRelease.html_url
+$versionPattern = '^v(?<major>0|[1-9][0-9]*)\.(?<minor>0|[1-9][0-9]*)\.(?<patch>0|[1-9][0-9]*)(?:\.(?<build>0|[1-9][0-9]*))?(?<suffix>-(?:RC|beta)(?:0|[1-9][0-9]*))?$'
+$parsedVersion = [regex]::Match($releaseTag, $versionPattern)
+if (-not $parsedVersion.Success) {
+    throw "Unsupported GitHub Release tag '$releaseTag'. Expected v0.9.6, v0.9.6.5 or v0.9.6-RC1."
+}
+$numbers = @()
+foreach ($part in @('major','minor','patch','build')) {
+    $component = if ($part -eq 'build' -and -not $parsedVersion.Groups[$part].Success) {
+        '0'
+    } else {
+        $parsedVersion.Groups[$part].Value
+    }
+    $number = 0
+    if (-not [int]::TryParse($component, [ref]$number) -or $number -gt 65535) {
+        throw "Invalid Windows version component $part in $releaseTag: $component"
+    }
+    $numbers += $number
+}
+$releaseVersion = $numbers -join '.'
+$packageVersion = $releaseTag.Substring(1)
+Write-Host "Building local checkout as $releaseTag (Windows FileVersion $releaseVersion)" -ForegroundColor Cyan
+Write-Host "Version source: $releaseUrl" -ForegroundColor Cyan
+Write-Host 'No Git commit, tag, push or GitHub Release will be created.' -ForegroundColor Cyan
+
+# Windows FileVersion/ProductVersion and displayed app version must match the
+# chosen published release. When sources are ahead of that release, temporarily
+# adjust ONLY the version macros/resources, then restore byte-for-byte in finally.
+# This allows building uncommitted code without writing a version commit.
+function Set-ExactlyOneVersionValue([string]$text, [string]$pattern, [string]$value, [string]$label) {
+    $hits = [regex]::Matches($text, $pattern)
+    if ($hits.Count -ne 1) {
+        throw "Expected exactly one $label in source metadata, found $($hits.Count)."
+    }
+    $old = $hits[0].Groups['value']
+    return $text.Substring(0, $old.Index) + $value + $text.Substring($old.Index + $old.Length)
+}
+function Set-VersionMacro([string]$text, [string]$name, [string]$value) {
+    $pattern = '(?m)^[ \t]*#define[ \t]+' + [regex]::Escape($name) + '[ \t]+(?<value>[^\r\n]+)'
+    return Set-ExactlyOneVersionValue $text $pattern $value $name
+}
+$byteEncoding = [System.Text.Encoding]::GetEncoding(28591)
+$originalHeaderBytes = [IO.File]::ReadAllBytes($versionHeader)
+$originalResourceBytes = [IO.File]::ReadAllBytes($resourceFile)
+$originalHeaderText = $byteEncoding.GetString($originalHeaderBytes)
+$originalResourceText = $byteEncoding.GetString($originalResourceBytes)
+$patchedHeaderText = $originalHeaderText
+$patchedResourceText = $originalResourceText
+$versionMacros = [ordered]@{
+    'SPELLCROSS_VERSION_MAJOR' = [string]$numbers[0]
+    'SPELLCROSS_VERSION_MINOR' = [string]$numbers[1]
+    'SPELLCROSS_VERSION_PATCH' = [string]$numbers[2]
+    'SPELLCROSS_VERSION_BUILD' = [string]$numbers[3]
+    'SPELLCROSS_VERSION_COMMA' = ($numbers -join ',')
+    'SPELLCROSS_VERSION_STRING' = ('"' + $releaseVersion + '"')
+    'SPELLCROSS_VERSION_WSTRING' = ('L"' + $releaseVersion + '"')
+    'SPELLCROSS_RELEASE_LABEL' = ('"' + $packageVersion + '"')
+    'SPELLCROSS_RELEASE_TAG' = ('"' + $releaseTag + '"')
+}
+foreach ($name in $versionMacros.Keys) {
+    $patchedHeaderText = Set-VersionMacro $patchedHeaderText $name $versionMacros[$name]
+}
+foreach ($name in @('FileVersion','ProductVersion')) {
+    $pattern = '(?m)^[ \t]*VALUE[ \t]+"' + $name + '"[ \t]*,[ \t]*"(?<value>[0-9]+(?:\.[0-9]+){3})\\0"'
+    $patchedResourceText = Set-ExactlyOneVersionValue $patchedResourceText $pattern $releaseVersion $name
+}
+$needsVersionOverride = ($patchedHeaderText -cne $originalHeaderText -or
+    $patchedResourceText -cne $originalResourceText)
+# Capture the real working-tree state BEFORE any temporary version override
+# or generated build files can make an otherwise clean checkout appear dirty.
+$gitWorktreeAtStart = '(no git)'
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $gitStatusAtStart = @(& git -C $root status --porcelain --untracked-files=normal 2>$null)
+    if ($LASTEXITCODE -eq 0) {
+        $gitWorktreeAtStart = if ($gitStatusAtStart.Count -eq 0) { 'clean' } else { 'modified (uncommitted files may be included)' }
+    } else {
+        $gitWorktreeAtStart = '(unknown)'
+    }
+}
+$sourceOverrideApplied = $false
+try {
+    if ($SkipBuild -and $needsVersionOverride) {
+        throw "-SkipBuild cannot safely stamp the published release $releaseTag: local version metadata differs. Run the script without -SkipBuild."
+    }
+    if ($needsVersionOverride) {
+        # Flag first, so even a partial write is restored by finally.
+        $sourceOverrideApplied = $true
+        [IO.File]::WriteAllBytes($versionHeader, $byteEncoding.GetBytes($patchedHeaderText))
+        [IO.File]::WriteAllBytes($resourceFile, $byteEncoding.GetBytes($patchedResourceText))
+        # Version header changes must be reflected in ALL compiled source and RC.
+        $Rebuild = $true
+        Write-Host "Temporarily stamping $releaseTag for a full rebuild; sources will be restored." -ForegroundColor Yellow
+    }
 $editor = Join-Path $root 'external\map-editor'
 $gameProject = Join-Path $game 'source\spellcross_map_editor.vcxproj'
 $editorProject = Join-Path $editor 'source\spellcross_map_editor.vcxproj'
@@ -68,7 +179,7 @@ Assert-File (Join-Path $editor 'data\COMMON.fs')
 # SFX installer. -NoSfx disables it; -WinRARPath overrides autodetection.
 # SFX branding assets are version-independent and live in packaging\setup.
 $winrarExe = $null
-$sfxSetup = Join-Path $PSScriptRoot 'setup'
+$sfxSetup = Join-Path $packagingDir 'setup'
 $sfxIcon = Join-Path $sfxSetup 'spellcross_reloaded.ico'
 $sfxLogo = Join-Path $sfxSetup 'spellcross_sfx_logo.png'
 $sfxLogoHd = Join-Path $sfxSetup 'spellcross_sfx_logo_hd.png'
@@ -162,12 +273,12 @@ $builtFileVersion = [string]$builtVersionInfo.FileVersion
 $builtProductVersion = [string]$builtVersionInfo.ProductVersion
 if ($builtFileVersion.Trim() -ne $releaseVersion -or
     $builtProductVersion.Trim() -ne $releaseVersion) {
-    throw "Spellcross.exe version mismatch: expected $releaseVersion, got FileVersion='$builtFileVersion', ProductVersion='$builtProductVersion'. Run Build-CombinedRelease.ps1 -Rebuild before packaging."
+    throw "Spellcross.exe version mismatch: expected $releaseVersion, got FileVersion='$builtFileVersion', ProductVersion='$builtProductVersion'. Run Build-UniversalNoRelease.ps1 -Rebuild before packaging."
 }
 Write-Host "Validated executable FileVersion/ProductVersion: $releaseVersion" -ForegroundColor Green
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'dist' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
-$name = 'Spellcross-Reloaded-Win64-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+$name = 'Spellcross-Reloaded-v' + $packageVersion + '-Win64-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
 $stage = Join-Path $OutputDirectory $name
 $stageEditor = Join-Path $stage 'Editor'
 $gameData = Join-Path $stage 'data'
@@ -183,6 +294,7 @@ Copy-Required $editorExe (Join-Path $stageEditor 'spellcross_map_editor.exe')
 # release version alone is not an adequate identifier for a bugfix build.
 $gitBranch = '(no git)'
 $gitCommit = '(no git)'
+$gitWorktree = $gitWorktreeAtStart
 if (Get-Command git -ErrorAction SilentlyContinue) {
     $gitBranchCandidate = & git -C $root branch --show-current
     if ($LASTEXITCODE -eq 0 -and $gitBranchCandidate) { $gitBranch = "$gitBranchCandidate".Trim() }
@@ -193,7 +305,9 @@ $gameHash = (Get-FileHash -LiteralPath (Join-Path $stage 'Spellcross.exe') -Algo
 $pdbHash = (Get-FileHash -LiteralPath (Join-Path $stageSymbols 'Spellcross.pdb') -Algorithm SHA256).Hash
 @"
 Git branch: $gitBranch
-Git commit: $gitCommit
+Git base commit (no commit created): $gitCommit
+Git working tree: $gitWorktree
+GitHub release URL: $releaseUrl
 Game version: $releaseVersion
 Release label: $packageVersion
 Release tag: $releaseTag
@@ -202,7 +316,7 @@ Spellcross.exe SHA256: $gameHash
 Spellcross.pdb SHA256: $pdbHash
 Build UTC: $((Get-Date).ToUniversalTime().ToString('o'))
 "@ | Set-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Encoding UTF8
-Write-Host "Package provenance: $gitBranch / $gitCommit / exe SHA256 $gameHash / PDB SHA256 $pdbHash" -ForegroundColor Cyan
+Write-Host "Package provenance: $gitBranch / $gitCommit / worktree: $gitWorktree / exe SHA256 $gameHash / PDB SHA256 $pdbHash" -ForegroundColor Cyan
 
 # Whitelist project-authored support files. NEVER package retail DATA archives.
 $gameAssets = Join-Path $game 'data'
@@ -405,7 +519,7 @@ if ([bool]$PreviousStageDirectory -ne [bool]$PreviousVersion) {
     throw 'Use -PreviousStageDirectory and -PreviousVersion together to generate patch assets.'
 }
 if ($PreviousStageDirectory) {
-    & (Join-Path $PSScriptRoot 'New-Patch.ps1') `
+    & (Join-Path $packagingDir 'New-Patch.ps1') `
         -PreviousDirectory $PreviousStageDirectory `
         -CurrentDirectory $stage `
         -FromVersion $PreviousVersion `
@@ -506,5 +620,12 @@ Write-Host "Staged release: $stage; copied $($copiedDlls.Count) distinct DLLs." 
 if ($PruneOldBuilds) {
     # The release is complete. Keep 3 most recent dated staging builds.
     # Stable, versioned ZIP and EXE releases are never removed by cleanup.
-    & (Join-Path $PSScriptRoot 'Clean-OldBuilds.ps1') -DistDirectory $OutputDirectory -Keep 3 -Apply
+    & (Join-Path $packagingDir 'Clean-OldBuilds.ps1') -DistDirectory $OutputDirectory -Keep 3 -Apply
+}
+} finally {
+    if ($sourceOverrideApplied) {
+        [IO.File]::WriteAllBytes($versionHeader, $originalHeaderBytes)
+        [IO.File]::WriteAllBytes($resourceFile, $originalResourceBytes)
+        Write-Host 'Original app_version.h and resources.rc restored (no version commit).' -ForegroundColor Green
+    }
 }
