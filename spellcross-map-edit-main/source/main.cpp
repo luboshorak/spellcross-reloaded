@@ -3080,6 +3080,11 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
         spellcross_ui_locale::Tr("menu.confine_cursor", "Keep cursor inside game window"),
         spellcross_ui_locale::Tr("menu.confine_cursor_help", "Restrict the pointer to the active tactical game window; Alt+Tab releases it"));
     menuOptions->Check(ID_OptionsConfineCursor, m_confineTacticalCursor);
+    menuOptions->AppendCheckItem(ID_OptionsAutoDeploy,
+        spellcross_ui_locale::Tr("menu.autodeploy", "&Autodeploy"),
+        spellcross_ui_locale::Tr("menu.autodeploy_help",
+            "Automatically place companies on legal START squares at mission start"));
+    menuOptions->Check(ID_OptionsAutoDeploy, spellcross_autodeploy::Enabled());
 
     spellcross_window::AddFullscreen(menuOptions);
 
@@ -3226,6 +3231,11 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnOptionsScreen,this,ID_OptionsScreen);
     Bind(wxEVT_MENU,&MainFrame::OnOptionsDifficulty,this,ID_OptionsDifficultyEasy,ID_OptionsDifficultyHard);
 	Bind(wxEVT_MENU,&MainFrame::OnOptionsBoxSelection,this,ID_OptionsBoxSelection);
+    Bind(wxEVT_MENU, [this](wxCommandEvent& ev) {
+        spellcross_autodeploy::SetEnabled(ev.IsChecked());
+        if (auto* bar = spellcross_menu::Model(this))
+            bar->Check(ID_OptionsAutoDeploy, spellcross_autodeploy::Enabled());
+    }, ID_OptionsAutoDeploy);
     SyncDifficultyMenu();
 
     spell_map->SetMessageInterface(bind(&MainFrame::ShowMessage,this,placeholders::_1,placeholders::_2,placeholders::_3), bind(&MainFrame::CheckMessageState,this));    

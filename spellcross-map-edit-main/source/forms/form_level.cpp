@@ -1,6 +1,7 @@
 #include "form_level.h"
 #include "../game_menu_bar.h"
 #include "../game_controls.h"
+#include "../game_autodeploy.h"
 #include "../display_settings.h"
 #include "../strategic_ui_theme.h"
 #include "form_about.h"
@@ -2960,6 +2961,11 @@ void StrategicLevelFrame::BuildMenu()
     difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_NORMAL, spellcross_ui_locale::Tr("menu.normal", "&Normal"));
     difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_HARD, spellcross_ui_locale::Tr("menu.hard", "&Hard"));
     options->AppendSubMenu(difficulty, spellcross_ui_locale::Tr("menu.difficulty", "Game &Difficulty"));
+    options->AppendCheckItem(ID_MENU_OPTIONS_AUTODEPLOY,
+        spellcross_ui_locale::Tr("menu.autodeploy", "&Autodeploy"),
+        spellcross_ui_locale::Tr("menu.autodeploy_help",
+            "Automatically place companies on legal START squares at mission start"));
+    options->Check(ID_MENU_OPTIONS_AUTODEPLOY, spellcross_autodeploy::Enabled());
     bar->Append(options, spellcross_ui_locale::Tr("menu.options", "&Options"));
 
     // Game mode is internal campaign state, not a user-facing editor toggle.
@@ -2987,6 +2993,19 @@ void StrategicLevelFrame::BuildMenu()
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnOptionsScreen, this, ID_MENU_OPTIONS_SCREEN);
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnOptionsDifficulty, this,
         ID_MENU_OPTIONS_DIFFICULTY_EASY, ID_MENU_OPTIONS_DIFFICULTY_HARD);
+    Bind(wxEVT_MENU, [this](wxCommandEvent& ev) {
+        spellcross_autodeploy::SetEnabled(ev.IsChecked());
+        if (auto* bar = spellcross_menu::Model(this))
+            bar->Check(ID_MENU_OPTIONS_AUTODEPLOY, spellcross_autodeploy::Enabled());
+    }, ID_MENU_OPTIONS_AUTODEPLOY);
+    // The strategic frame survives a tactical battle. Refresh its checkmark
+    // after a player has changed the preference in the tactical menu.
+    Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& ev) {
+        if (ev.GetActive())
+            if (auto* bar = spellcross_menu::Model(this))
+                bar->Check(ID_MENU_OPTIONS_AUTODEPLOY, spellcross_autodeploy::Enabled());
+        ev.Skip();
+    });
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnStrategicUiCurrent, this, ID_MENU_STRATEGIC_UI_CURRENT);
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnStrategicUiOriginal, this, ID_MENU_STRATEGIC_UI_ORIGINAL);
 

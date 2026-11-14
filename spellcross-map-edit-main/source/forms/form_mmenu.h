@@ -106,4 +106,5 @@ private:
     static constexpr int ID_MMENU_OPTIONS_AUDIO  = 9901;
     static constexpr int ID_MMENU_OPTIONS_SCREEN = 9902;
     static constexpr int ID_MMENU_OPEN_EDITOR = 9903;
+    static constexpr int ID_MMENU_OPTIONS_AUTODEPLOY = 9904;
 };
