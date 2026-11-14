@@ -442,6 +442,7 @@ private:
     void LoadRanksTable();
     void LoadMissionStatsIfPresent();
     void RecomputePlayerRank();
+    void ApplyCommanderRankPromotions();
     const CommanderRankRec* FindRankRec(int rank) const;
     int FindNextRankExp(int current_rank) const;
     wxString GetRankNameCz(int rank) const;
