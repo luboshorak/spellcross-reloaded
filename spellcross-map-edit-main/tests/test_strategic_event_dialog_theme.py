@@ -11,8 +11,8 @@ class StrategicDialogThemeRegression(unittest.TestCase):
     def test_all_strategic_message_boxes_are_themed(self):
         self.assertIn('#include "../game_dialogs.h"', STRATEGIC)
         self.assertNotIn("wxMessageBox(", STRATEGIC)
-        self.assertIn("spellcross_dialog_ui::MessageBox(", STRATEGIC)
-        self.assertIn('spellcross_dialog_ui::MessageBox(text, "Event"', STRATEGIC)
+        self.assertIn("spellcross_dialog_ui::ShowThemedMessage(", STRATEGIC)
+        self.assertIn('spellcross_dialog_ui::ShowThemedMessage(text, "Event"', STRATEGIC)
 
     def test_confirmations_keep_yes_no_and_safe_defaults(self):
         self.assertIn("const bool yesNo = (style & wxYES_NO) == wxYES_NO", DIALOGS)
@@ -48,7 +48,7 @@ class StrategicDialogThemeRegression(unittest.TestCase):
         self.assertIn("m_pendingStrategicEventTexts.erase(", show)
         self.assertIn("m_strategicEventMessageActive = true;", show)
         self.assertIn("m_strategicEventMessageActive = false;", show)
-        self.assertIn("spellcross_dialog_ui::MessageBox(text,", show)
+        self.assertIn("spellcross_dialog_ui::ShowThemedMessage(text,", show)
 
 
 if __name__ == "__main__":

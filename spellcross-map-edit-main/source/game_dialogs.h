@@ -49,7 +49,7 @@ namespace spellcross_dialog_ui
     // Styled replacement for the strategic game's standard wxMessageBox calls.
     // Preserve wxMessageBox's wxYES / wxNO / wxOK result contract so changing
     // the presentation cannot alter counter-attacks or end-turn decisions.
-    inline int MessageBox(const wxString& message, const wxString& title,
+    inline int ShowThemedMessage(const wxString& message, const wxString& title,
         long style, wxWindow* parent)
     {
         wxDialog dialog(parent, wxID_ANY, title, wxDefaultPosition,
