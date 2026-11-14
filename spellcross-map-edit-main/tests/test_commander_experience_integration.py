@@ -27,10 +27,23 @@ class CommanderExperienceIntegrationTests(unittest.TestCase):
         collector = SOURCE.split(
             "StrategicLevelFrame::CollectAndApplyBattleResults(bool success)", 1
         )[1]
-        self.assertIn("deployedHosts.count(slot.assigned_unit_uid) == 0", collector)
-        self.assertIn("survivingStrategicUids.count(slot.assigned_unit_uid) == 0", collector)
+        self.assertIn("deployedStrategicUids.count(slot.assigned_unit_uid) == 0", collector)
+        self.assertIn("returnedStrategicUids.count(slot.assigned_unit_uid) == 0", collector)
         self.assertIn("!countedCommanders.insert(slot.commander_uid).second", collector)
         self.assertEqual(collector.count("commander->battles_fought = std::min("), 1)
+        self.assertIn("spellcross_strategy::RecordReturnedStrategicUnit(", collector)
+        self.assertLess(
+            collector.index("matchedSurvivors.insert(survivor);"),
+            collector.index("RemoveCommandersHostedByDeadUnits(deadStrategicUids);"),
+        )
+
+    def test_legacy_counter_minimum_migrates_safely_on_load(self):
+        self.assertIn("spellcross_strategy::RestoreMinimumCommanderBattles(", SOURCE)
+        load = SOURCE.split("m_playerCommanders = std::move(playerCmds);", 1)[1]
+        self.assertLess(
+            load.index("RestoreMinimumCommanderBattles("),
+            load.index("RestoreHierarchyAssignments(loadedHierarchy);"),
+        )
 
     def test_promotion_uses_original_threshold_and_player_rank(self):
         rank_fn = SOURCE.split("void StrategicLevelFrame::ApplyCommanderRankPromotions()", 1)[1]
