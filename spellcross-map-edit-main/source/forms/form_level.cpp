@@ -4,6 +4,7 @@
 #include "../game_autodeploy.h"
 #include "../display_settings.h"
 #include "../strategic_ui_theme.h"
+#include "../game_dialogs.h"
 #include "form_about.h"
 #include "app_identity.h"
 
@@ -2664,7 +2665,7 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
         const bool appIsExiting = main && main->IsApplicationExitInProgress();
         if (wasCurrentStrategic && !appIsExiting && !main->SaveContinueGame() && ev.CanVeto())
         {
-            wxMessageBox(spellcross_ui_locale::Tr("resume.save_failed",
+            spellcross_dialog_ui::MessageBox(spellcross_ui_locale::Tr("resume.save_failed",
                 "Could not save the current game. The game is still running."),
                 "Spellcross", wxOK | wxICON_ERROR, this);
             ev.Veto();
@@ -2730,12 +2731,12 @@ void StrategicLevelFrame::OnConsoleCommand()
     }
     else if (cmd == "AGAINAGAIN" || cmd == "ALLDONE" || cmd == "SHOWMAP")
     {
-        wxMessageBox("This command belongs to tactical combat.",
+        spellcross_dialog_ui::MessageBox("This command belongs to tactical combat.",
                      "Console", wxOK | wxICON_INFORMATION, this);
     }
     else if (!cmd.empty())
     {
-        wxMessageBox("Unknown command: " + dlg.GetValue(),
+        spellcross_dialog_ui::MessageBox("Unknown command: " + dlg.GetValue(),
                      "Console", wxOK | wxICON_WARNING, this);
     }
 }
@@ -7422,7 +7423,7 @@ bool StrategicLevelFrame::SaveStrategicGameToPath(const std::filesystem::path& p
         static_cast<int>(saved), m_turn, m_selectedTerritory);
     m_originalStrategicDirty = true;
     if (notify)
-        wxMessageBox(saved ? "Game saved." : "Save game failed.", "Save game",
+        spellcross_dialog_ui::MessageBox(saved ? "Game saved." : "Save game failed.", "Save game",
             wxOK | (saved ? wxICON_INFORMATION : wxICON_ERROR), this);
     return saved;
 }
@@ -7432,7 +7433,7 @@ void StrategicLevelFrame::SaveStrategicGameToSlot(int slot, bool notify)
     slot = std::clamp(slot, 1, 10);
     SaveStrategicGameToPath(GetStrategicSaveSlotPath(m_level, slot), false);
     if (notify)
-        wxMessageBox(wxString::Format("Saved to slot %02d.", slot), "Save game", wxOK | wxICON_INFORMATION, this);
+        spellcross_dialog_ui::MessageBox(wxString::Format("Saved to slot %02d.", slot), "Save game", wxOK | wxICON_INFORMATION, this);
 }
 
 void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
@@ -7443,7 +7444,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     if (!std::filesystem::exists(path, ec))
     {
         if (notify)
-            wxMessageBox("This slot is empty.", "Load game", wxOK | wxICON_WARNING, this);
+            spellcross_dialog_ui::MessageBox("This slot is empty.", "Load game", wxOK | wxICON_WARNING, this);
         return;
     }
 
@@ -7512,7 +7513,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
         g_unitStatePersistLoad = prevUL;
         g_researchPersistLoad = prevRL;
         if (notify)
-            wxMessageBox("Failed to load the saved game.", "Load game", wxOK | wxICON_ERROR, this);
+            spellcross_dialog_ui::MessageBox("Failed to load the saved game.", "Load game", wxOK | wxICON_ERROR, this);
         return;
     }
     g_missionFlowPersistLoad = prevMFL;
@@ -7547,7 +7548,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
                 msg << wxString::FromUTF8(loaded_level_def) << L"\n\n";
                 msg << L"Current level is:\n\n";
                 msg << wxString::FromUTF8(m_level.source_path) << L"\n";
-                wxMessageBox(msg, L"Load game", wxOK | wxICON_WARNING, this);
+                spellcross_dialog_ui::MessageBox(msg, L"Load game", wxOK | wxICON_WARNING, this);
             }
             return;
         }
@@ -7558,7 +7559,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
         if (!loader.LoadLevelDef(loaded_level_def, lvl, &err))
         {
             if (notify)
-                wxMessageBox(L"Failed to load the level DEF from this save:\n" + wxString::FromUTF8(err),
+                spellcross_dialog_ui::MessageBox(L"Failed to load the level DEF from this save:\n" + wxString::FromUTF8(err),
                     L"Load game", wxOK | wxICON_ERROR, this);
             return;
         }
@@ -7614,7 +7615,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
             g_unitStatePersistLoad = prevUL2;
             g_researchPersistLoad = prevRL2;
             if (notify)
-                wxMessageBox(L"Failed to load the saved game.", L"Load game", wxOK | wxICON_ERROR, this);
+                spellcross_dialog_ui::MessageBox(L"Failed to load the saved game.", L"Load game", wxOK | wxICON_ERROR, this);
             return;
         }
         g_hierarchyPersistLoad = prevHL2;
@@ -7672,7 +7673,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
     RefreshUI();
     m_originalStrategicDirty = true;
     if (notify)
-        wxMessageBox(wxString::Format("Loaded slot %02d.", slot), "Load game", wxOK | wxICON_INFORMATION, this);
+        spellcross_dialog_ui::MessageBox(wxString::Format("Loaded slot %02d.", slot), "Load game", wxOK | wxICON_INFORMATION, this);
 }
 
 bool StrategicLevelFrame::PromptStrategicSaveSlot(int maxSlots, bool notify)
@@ -7780,13 +7781,13 @@ void StrategicLevelFrame::OnLoadGame(wxCommandEvent&)
     {
         std::string warning;
         if (!LoadOriginalBigMapSaveFromPath(path, &warning))
-            wxMessageBox("The selected BIG_MAP.SAV could not be loaded.", "Load game", wxOK | wxICON_ERROR, this);
+            spellcross_dialog_ui::MessageBox("The selected BIG_MAP.SAV could not be loaded.", "Load game", wxOK | wxICON_ERROR, this);
         else if (!warning.empty())
-            wxMessageBox(wxString::FromUTF8(warning), "Original save imported", wxOK | wxICON_INFORMATION, this);
+            spellcross_dialog_ui::MessageBox(wxString::FromUTF8(warning), "Original save imported", wxOK | wxICON_INFORMATION, this);
     }
     else if (!LoadStrategicStateFromPath(path))
     {
-        wxMessageBox("The selected file is not a valid strategic save.", "Load game", wxOK | wxICON_ERROR, this);
+        spellcross_dialog_ui::MessageBox("The selected file is not a valid strategic save.", "Load game", wxOK | wxICON_ERROR, this);
     }
 }
 
@@ -7956,7 +7957,7 @@ void StrategicLevelFrame::OnOptionsAudio(wxCommandEvent& ev)
 {
     if (!m_spellData || !m_spellData->sounds || !m_spellData->sounds->channels || !m_spellData->midi)
     {
-        wxMessageBox("Audio system is not initialized.", "Audio", wxOK | wxICON_WARNING, this);
+        spellcross_dialog_ui::MessageBox("Audio system is not initialized.", "Audio", wxOK | wxICON_WARNING, this);
         return;
     }
 
@@ -8031,7 +8032,7 @@ bool StrategicLevelFrame::EnsureUnitCostsLoaded()
     const auto path = GetUnitsJsonPath();
     if (!LoadUnitCostsFromJson(path, m_unitCosts, &m_unitCategories, &m_unitUpgradeCosts, &m_unitReplaceCosts))
     {
-        wxMessageBox(wxString::Format("Units pricing file not found or invalid.\nExpected: %s", path.string().c_str()),
+        spellcross_dialog_ui::MessageBox(wxString::Format("Units pricing file not found or invalid.\nExpected: %s", path.string().c_str()),
             "Units pricing", wxOK | wxICON_WARNING, this);
         return false;
     }
@@ -9485,7 +9486,7 @@ void StrategicLevelFrame::OnBuyAction(wxCommandEvent&)
             const int ci = (int)(data - kBuyCmdBase);
             if (ci >= (int)m_availableCommanders.size()) return;
             if ((int)m_playerCommanders.size() >= 14) {
-                wxMessageBox("Commander limit reached (14).", "Buy", wxOK | wxICON_INFORMATION, this);
+                spellcross_dialog_ui::MessageBox("Commander limit reached (14).", "Buy", wxOK | wxICON_INFORMATION, this);
                 return;
             }
             m_playerCommanders.push_back(m_availableCommanders[(size_t)ci]);
@@ -9497,9 +9498,9 @@ void StrategicLevelFrame::OnBuyAction(wxCommandEvent&)
             if (!spellcross_strategy::IsStrategicPurchasableUnitType(tid))
                 return;
             const int cost = GetUnitBuyCost(tid);
-            if (cost <= 0) { wxMessageBox("No price defined.", "Buy", wxOK | wxICON_WARNING, this); return; }
+            if (cost <= 0) { spellcross_dialog_ui::MessageBox("No price defined.", "Buy", wxOK | wxICON_WARNING, this); return; }
             if (m_money < cost) {
-                wxMessageBox(wxString::Format("Not enough money. Need %d, have %d.", cost, m_money),
+                spellcross_dialog_ui::MessageBox(wxString::Format("Not enough money. Need %d, have %d.", cost, m_money),
                     "Buy", wxOK | wxICON_WARNING, this);
                 return;
             }
@@ -9530,7 +9531,7 @@ void StrategicLevelFrame::OnBuyAction(wxCommandEvent&)
         if (idx < 0 || idx >= (int)m_playerUnits.size()) return;
         const auto& u = m_playerUnits[idx];
         const int cost = GetUnitBuyCost(u.unit_id);
-        if (cost <= 0) { wxMessageBox("No price defined.", "Sell", wxOK | wxICON_WARNING, this); return; }
+        if (cost <= 0) { spellcross_dialog_ui::MessageBox("No price defined.", "Sell", wxOK | wxICON_WARNING, this); return; }
         if (static_cast<size_t>(idx) < m_unitStates.size() &&
             m_unitStates[idx].cooldown_turns > 0)
             return;
@@ -10519,7 +10520,7 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
 
         if (m_money < cost)
         {
-            wxMessageBox(wxString::Format("Not enough money. Need %d, have %d.", cost, m_money),
+            spellcross_dialog_ui::MessageBox(wxString::Format("Not enough money. Need %d, have %d.", cost, m_money),
                 "Recruit", wxOK | wxICON_WARNING, this);
             return;
         }
@@ -10561,7 +10562,7 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
 
             if (m_money < cost)
             {
-                wxMessageBox(wxString::Format("Not enough money. Need %d, have %d.", cost, m_money),
+                spellcross_dialog_ui::MessageBox(wxString::Format("Not enough money. Need %d, have %d.", cost, m_money),
                     "Upgrade", wxOK | wxICON_WARNING, this);
                 return;
             }
@@ -10573,7 +10574,7 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
             auto& ups = m_unitStates[m_unitsSelectedUnit].upgrades;
             if (std::find(ups.begin(), ups.end(), upgId) != ups.end())
             {
-                wxMessageBox("This upgrade is already installed on this unit.", "Upgrade", wxOK | wxICON_INFORMATION, this);
+                spellcross_dialog_ui::MessageBox("This upgrade is already installed on this unit.", "Upgrade", wxOK | wxICON_INFORMATION, this);
                 return;
             }
             const auto newDef = m_upgradeDefs.find(upgId);
@@ -10590,7 +10591,7 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
             if (!spellcross_strategy::CanQueueTechUpgrade(
                     st.cooldown_turns, st.pending_kind, st.pending_upgrade_id, slot))
             {
-                wxMessageBox("Unit unavailable or upgrade category already in progress.",
+                spellcross_dialog_ui::MessageBox("Unit unavailable or upgrade category already in progress.",
                     "Upgrade", wxOK | wxICON_INFORMATION, this);
                 return;
             }
@@ -10625,7 +10626,7 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
 
         if (m_money < cost)
         {
-            wxMessageBox(wxString::Format("Not enough money. Need %d, have %d.", cost, m_money),
+            spellcross_dialog_ui::MessageBox(wxString::Format("Not enough money. Need %d, have %d.", cost, m_money),
                 "Upgrade", wxOK | wxICON_WARNING, this);
             return;
         }
@@ -10633,7 +10634,7 @@ void StrategicLevelFrame::OnUnitsAction(wxCommandEvent&)
         wxString fromName = GetUnitDisplayName(u.unit_id);
         wxString toName = GetUnitDisplayName(toUnitId);
 
-        int result = wxMessageBox(
+        int result = spellcross_dialog_ui::MessageBox(
             wxString::Format("Re-arm %s to %s for %d credits?\nAll tech upgrades will be lost.\nReady in %d turns.",
                 fromName, toName, cost, time),
             "Re-arm", wxYES_NO | wxICON_QUESTION, this);
@@ -10692,7 +10693,7 @@ void StrategicLevelFrame::OnUnitsDisband(wxCommandEvent&)
     int cost = GetUnitBuyCost(u.unit_id);
     int refund = cost > 0 ? cost / 2 : 0;
 
-    int result = wxMessageBox(
+    int result = spellcross_dialog_ui::MessageBox(
         wxString::Format("Disband this unit for %d credits?", refund),
         "Disband", wxYES_NO | wxICON_QUESTION, this);
 
@@ -10819,7 +10820,7 @@ bool StrategicLevelFrame::CancelPendingUnitOperation(size_t unitIndex, bool askC
 
     if (askConfirmation)
     {
-        const int r = wxMessageBox(L"Zrušit úpravy objednané v tomto kole a vrátit peníze?",
+        const int r = spellcross_dialog_ui::MessageBox(L"Zrušit úpravy objednané v tomto kole a vrátit peníze?",
             L"Úprava jednotky", wxYES_NO | wxICON_QUESTION, this);
         if (r != wxYES) return false;
     }
@@ -12087,7 +12088,7 @@ bool StrategicLevelFrame::AssignCommanderToHierarchySlot(const std::string& comm
 
     if (rank < requiredRank)
     {
-        wxMessageBox(
+        spellcross_dialog_ui::MessageBox(
             wxString::Format("This commander needs at least %s for this slot.",
                 requiredRank == 6 ? "MajGen." : requiredRank == 3 ? "Maj." : "any rank"),
             "Hierarchy", wxOK | wxICON_INFORMATION, this);
@@ -12137,7 +12138,7 @@ bool StrategicLevelFrame::AssignUnitToHierarchySlot(const std::string& unitSlotI
     const int rosterIndex = FindUnitIndexByUid(unitUid);
     if (rosterIndex >= 0 && IsTemporaryUnitIndex(static_cast<size_t>(rosterIndex)))
     {
-        wxMessageBox("Support units cannot be assigned to higher combat formations.",
+        spellcross_dialog_ui::MessageBox("Support units cannot be assigned to higher combat formations.",
             "Hierarchy", wxOK | wxICON_INFORMATION, this);
         return false;
     }
@@ -12160,7 +12161,7 @@ bool StrategicLevelFrame::AssignUnitToHierarchySlot(const std::string& unitSlotI
             return false;
         if (cslot.label->GetLabel() == cslot.placeholder)
         {
-            wxMessageBox(
+            spellcross_dialog_ui::MessageBox(
                 "Assign a commander first, then choose which of their units they are part of.",
                 "Hierarchy", wxOK | wxICON_INFORMATION, this);
             return false;
@@ -12234,7 +12235,7 @@ bool StrategicLevelFrame::AssignUnitToHierarchySlot(const std::string& unitSlotI
         }
         if (!found)
         {
-            wxMessageBox(
+            spellcross_dialog_ui::MessageBox(
                 "The chosen unit is not present in this commander's subtree.\n\n"
                 "Pick one of the units already placed directly under this commander.",
                 "Hierarchy", wxOK | wxICON_INFORMATION, this);
@@ -12268,7 +12269,7 @@ bool StrategicLevelFrame::AssignUnitToHierarchySlot(const std::string& unitSlotI
             continue;
         if (other.unit_uid != 0 && other.unit_uid == unitUid)
         {
-            wxMessageBox(
+            spellcross_dialog_ui::MessageBox(
                 "This exact unit instance is already assigned elsewhere in the hierarchy.",
                 "Hierarchy", wxOK | wxICON_INFORMATION, this);
             return false;
@@ -12580,7 +12581,7 @@ void StrategicLevelFrame::ChooseUnitForHierarchySlot(const std::string& unitSlot
 
     if (!commanderPresent)
     {
-        wxMessageBox(
+        spellcross_dialog_ui::MessageBox(
             "Assign a commander first, then choose a unit for this commander.\n\n"
             "(You can still remove an already assigned unit via <none>.)",
             "Hierarchy",
@@ -12613,7 +12614,7 @@ void StrategicLevelFrame::ChooseUnitForHierarchySlot(const std::string& unitSlot
             continue;
         if (other.unit_uid != 0 && other.unit_uid == uid)
         {
-            wxMessageBox(
+            spellcross_dialog_ui::MessageBox(
                 "This exact unit instance is already assigned elsewhere in the hierarchy.",
                 "Hierarchy",
                 wxOK | wxICON_INFORMATION,
@@ -12654,7 +12655,7 @@ void StrategicLevelFrame::ChooseAssignedUnitForCommanderAssignmentSlot(const std
 
     if (cslot.label->GetLabel() == cslot.placeholder)
     {
-        wxMessageBox(
+        spellcross_dialog_ui::MessageBox(
             "Assign a commander first, then choose which of their units they are part of.",
             "Hierarchy",
             wxOK | wxICON_INFORMATION,
@@ -13244,7 +13245,7 @@ void StrategicLevelFrame::ToggleCommanderFormationForMission(uint32_t commander_
 
     if (!wasSelected && !IsCommanderFormationActive(commander_uid))
     {
-        wxMessageBox("This formation is not active yet.\n\n"
+        spellcross_dialog_ui::MessageBox("This formation is not active yet.\n\n"
             "It needs the required subordinate units/formations and a living commander assigned to one of its units in Hierarchy.",
             "Select Formation", wxOK | wxICON_INFORMATION, this);
         return;
@@ -15666,14 +15667,14 @@ void StrategicLevelFrame::OnBuyCommander(wxCommandEvent&)
 
     if ((int)m_playerCommanders.size() >= maxCommanders)
     {
-        wxMessageBox(wxString::Format("Commander limit reached (%d).", maxCommanders),
+        spellcross_dialog_ui::MessageBox(wxString::Format("Commander limit reached (%d).", maxCommanders),
             "Buy commander", wxOK | wxICON_INFORMATION, this);
         return;
     }
 
     if (m_availableCommanders.empty())
     {
-        wxMessageBox("No commanders available this turn.", "Buy commander", wxOK | wxICON_INFORMATION, this);
+        spellcross_dialog_ui::MessageBox("No commanders available this turn.", "Buy commander", wxOK | wxICON_INFORMATION, this);
         return;
     }
 
@@ -15728,7 +15729,7 @@ void StrategicLevelFrame::OnBuyUnits(wxCommandEvent&)
 {
     if (!m_spellData || !m_spellData->units)
     {
-        wxMessageBox("Units data not loaded.", "Buy units", wxOK | wxICON_WARNING, this);
+        spellcross_dialog_ui::MessageBox("Units data not loaded.", "Buy units", wxOK | wxICON_WARNING, this);
         return;
     }
     if (!EnsureUnitCostsLoaded())
@@ -15792,12 +15793,12 @@ void StrategicLevelFrame::OnBuyUnits(wxCommandEvent&)
     int sel = list->GetSelection();
     if (sel == wxNOT_FOUND || sel >= (int)unit_ids.size())
     {
-        wxMessageBox("No unit selected.", "Buy units", wxOK | wxICON_WARNING, this);
+        spellcross_dialog_ui::MessageBox("No unit selected.", "Buy units", wxOK | wxICON_WARNING, this);
         return;
     }
     if (sel >= (int)unit_costs.size() || unit_costs[sel] <= 0)
     {
-        wxMessageBox("Selected unit has no price defined.", "Buy units", wxOK | wxICON_WARNING, this);
+        spellcross_dialog_ui::MessageBox("Selected unit has no price defined.", "Buy units", wxOK | wxICON_WARNING, this);
         return;
     }
 
@@ -15806,7 +15807,7 @@ void StrategicLevelFrame::OnBuyUnits(wxCommandEvent&)
     const int totalCost = unitCost * count;
     if (m_money < totalCost)
     {
-        wxMessageBox(wxString::Format("Not enough money. Need %d, you have %d.", totalCost, m_money),
+        spellcross_dialog_ui::MessageBox(wxString::Format("Not enough money. Need %d, you have %d.", totalCost, m_money),
             "Buy units", wxOK | wxICON_WARNING, this);
         return;
     }
@@ -15861,7 +15862,7 @@ void StrategicLevelFrame::OnSellUnits(wxCommandEvent&)
 {
     if (m_playerUnits.empty())
     {
-        wxMessageBox("No units to sell.", "Sell units", wxOK | wxICON_INFORMATION, this);
+        spellcross_dialog_ui::MessageBox("No units to sell.", "Sell units", wxOK | wxICON_INFORMATION, this);
         return;
     }
     if (!EnsureUnitCostsLoaded())
@@ -15952,14 +15953,14 @@ void StrategicLevelFrame::OnSellUnits(wxCommandEvent&)
     int sel = list->GetSelection();
     if (sel == wxNOT_FOUND || sel >= (int)entries.size())
     {
-        wxMessageBox("No unit selected.", "Sell units", wxOK | wxICON_WARNING, this);
+        spellcross_dialog_ui::MessageBox("No unit selected.", "Sell units", wxOK | wxICON_WARNING, this);
         return;
     }
 
     const auto& entry = entries[sel];
     if (entry.cost <= 0)
     {
-        wxMessageBox("Selected unit has no price defined.", "Sell units", wxOK | wxICON_WARNING, this);
+        spellcross_dialog_ui::MessageBox("Selected unit has no price defined.", "Sell units", wxOK | wxICON_WARNING, this);
         return;
     }
 
@@ -16180,7 +16181,7 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 
     if (unitsForMission.empty())
     {
-        wxMessageBox("No units selected for mission.\n\n"
+        spellcross_dialog_ui::MessageBox("No units selected for mission.\n\n"
             "Select units in the Units list (click to select, Ctrl+click for multiple)\n"
             "or click a Commander to select all units under them.",
             "Launch", wxOK | wxICON_INFORMATION, this);
@@ -16233,7 +16234,7 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
             diagnostic << "Cache directory: " << wxString(cache.wstring()) << "\n";
             diagnostic << "Level DEF: " << wxString::FromUTF8(m_level.source_path) << "\n";
             diagnostic << "No matching tactical DEF or DTA found.";
-            wxMessageBox(diagnostic, "Launch", wxOK | wxICON_WARNING, this);
+            spellcross_dialog_ui::MessageBox(diagnostic, "Launch", wxOK | wxICON_WARNING, this);
             return;
         }
 
@@ -16328,7 +16329,7 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 
         if (generatedEnemyUnits.empty())
         {
-            wxMessageBox("This DTA-only territory has no counter-attack force data.",
+            spellcross_dialog_ui::MessageBox("This DTA-only territory has no counter-attack force data.",
                 "Launch", wxOK | wxICON_WARNING, this);
             return;
         }
@@ -16399,7 +16400,7 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
     if (!ok)
     {
         const wxString source = generatedDtaBattle ? wxString(dtaPath) : wxString(defPath);
-        wxMessageBox((generatedDtaBattle
+        spellcross_dialog_ui::MessageBox((generatedDtaBattle
                 ? "Generated DTA strategic battle failed\nDTA:\n"
                 : "LoadMapFromDefPath FAILED\nDEF:\n") + source,
             "Launch", wxOK | wxICON_ERROR, this);
@@ -16460,7 +16461,7 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
 
         if (!researchRunning)
         {
-            const int answer = wxMessageBox(
+            const int answer = spellcross_dialog_ui::MessageBox(
                 L"Máte přidělené body do výzkumu, ale nemáte aktivní žádný výzkumný projekt.\n\n"
                 L"Pokud kolo ukončíte, výzkumné body získané v tomto kole nebudou využity.\n\n"
                 L"Opravdu chcete ukončit kolo?",
@@ -16502,7 +16503,7 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
                     L"Na vašich územích probíhá %llu nevyřešených nepřátelských útoků.\n\n"
                     L"Ukončit kolo bez obrany? Druhá strana tato území obsadí. "
                     L"Útočící jednotky zůstanou na místě pro následné znovudobytí.", count);
-            const int answer = wxMessageBox(message,
+            const int answer = spellcross_dialog_ui::MessageBox(message,
                 english ? wxString("Unresolved enemy attack") : wxString(L"Nevyřešený nepřátelský útok"),
                 wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
             if (answer != wxYES)
@@ -16583,7 +16584,7 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
     MaybeGenerateCommanderOffer();
     if (m_availableCommanders.size() > commanderOffersBefore)
     {
-        wxMessageBox(L"Nov\u00FD d\u016Fstojn\u00EDk p\u0159i\u0161el do gener\u00E1ln\u00EDho \u0161t\u00E1bu.",
+        spellcross_dialog_ui::MessageBox(L"Nov\u00FD d\u016Fstojn\u00EDk p\u0159i\u0161el do gener\u00E1ln\u00EDho \u0161t\u00E1bu.",
             L"Gener\u00E1ln\u00ED \u0161t\u00E1b", wxOK | wxICON_INFORMATION, this);
     }
 
@@ -18306,7 +18307,7 @@ void StrategicLevelFrame::LoadPlayerStateFromPreviousLevel()
     const auto prevSave = FindPreviousLevelSavePath(m_level);
     if (prevSave.empty())
     {
-        wxMessageBox("No previous level save found.", "Continue campaign", wxOK | wxICON_WARNING, this);
+        spellcross_dialog_ui::MessageBox("No previous level save found.", "Continue campaign", wxOK | wxICON_WARNING, this);
         return;
     }
 
@@ -18364,7 +18365,7 @@ void StrategicLevelFrame::LoadPlayerStateFromPreviousLevel()
 
     if (!ok)
     {
-        wxMessageBox("Failed to load previous level save.", "Continue campaign", wxOK | wxICON_ERROR, this);
+        spellcross_dialog_ui::MessageBox("Failed to load previous level save.", "Continue campaign", wxOK | wxICON_ERROR, this);
         return;
     }
 
@@ -21398,7 +21399,7 @@ void StrategicLevelFrame::CheckCounterAttacks()
                     L"PROTIÚTOK!\n\nNepřítel útočí na území %d!\n\n"
                     L"Musíte území ubránit, jinak o něj přijdete.\nZahájit obranu?",
                     ca.territory_id);
-            int result = wxMessageBox(warning,
+            int result = spellcross_dialog_ui::MessageBox(warning,
                 english ? wxString("Counter-Attack Warning") : wxString(L"Varování před protiútokem"),
                 wxYES_NO | wxICON_EXCLAMATION, this);
 
@@ -21718,7 +21719,7 @@ void StrategicLevelFrame::ProcessLevelEvents()
             const wxString warning = english
                 ? wxString::Format("COUNTER-ATTACK!\n\nEnemy forces are attacking territory %d!\n\nDefend this territory?", target_tid)
                 : wxString::Format(L"PROTIÚTOK!\n\nNepřítel útočí na území %d!\n\nBránit toto území?", target_tid);
-            int result = wxMessageBox(warning,
+            int result = spellcross_dialog_ui::MessageBox(warning,
                 english ? wxString("Counter-Attack") : wxString(L"Protiútok"),
                 wxYES_NO | wxICON_EXCLAMATION, this);
 
@@ -22096,7 +22097,7 @@ void StrategicLevelFrame::ShowPendingStrategicEventMessages()
     {
         const wxString text = m_pendingStrategicEventTexts.front();
         m_pendingStrategicEventTexts.erase(m_pendingStrategicEventTexts.begin());
-        wxMessageBox(text, "Event", wxOK | wxICON_INFORMATION, this);
+        spellcross_dialog_ui::MessageBox(text, "Event", wxOK | wxICON_INFORMATION, this);
     }
     m_strategicEventMessageActive = false;
 }
@@ -22156,7 +22157,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     
     if (nextDef.empty())
     {
-        wxMessageBox(
+        spellcross_dialog_ui::MessageBox(
             "Congratulations!\n\nYou have completed this level!\n\n"
             "No next level is defined.",
             "Level Complete",
@@ -22208,7 +22209,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
         {
             m_pendingMission.valid = false;
             SaveStrategicState();
-            wxMessageBox(
+            spellcross_dialog_ui::MessageBox(
                 "Congratulations!\n\nYou have completed the Spellcross campaign.",
                 "Campaign Complete",
                 wxOK | wxICON_INFORMATION,
@@ -22216,7 +22217,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
             return;
         }
 
-        wxMessageBox(
+        spellcross_dialog_ui::MessageBox(
             wxString::Format("Next level DEF not found: %s", nextDef.c_str()),
             "Error",
             wxOK | wxICON_ERROR,
@@ -22230,7 +22231,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     LevelLoader loader;
     if (!loader.LoadLevelDef(defPath, lvl, &err))
     {
-        wxMessageBox(
+        spellcross_dialog_ui::MessageBox(
             wxString::Format("Failed to load next level:\n%s", err.c_str()),
             "Error",
             wxOK | wxICON_ERROR,
