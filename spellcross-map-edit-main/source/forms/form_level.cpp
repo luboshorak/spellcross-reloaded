@@ -20326,6 +20326,7 @@ void StrategicLevelFrame::ApplyCommanderRankPromotions()
         LoadRanksTable();
 
     std::vector<std::string> promotedSlots;
+    bool anyPromotion = false;
     for (auto& commander : m_playerCommanders)
     {
         // Original BIG_MAP.SAV samples show the TOTAL battle thresholds and
@@ -20336,6 +20337,7 @@ void StrategicLevelFrame::ApplyCommanderRankPromotions()
             continue;
 
         commander.rank = promotedRank;
+        anyPromotion = true;
         m_commanderRankByUid[commander.uid] = promotedRank;
         for (auto& slot : m_hierarchySlots)
         {
@@ -20349,7 +20351,7 @@ void StrategicLevelFrame::ApplyCommanderRankPromotions()
 
     for (const auto& slotId : promotedSlots)
         UpdateCommanderHierarchyLabel(slotId);
-    if (!promotedSlots.empty())
+    if (anyPromotion)
         m_originalStrategicDirty = true;
 }
 
