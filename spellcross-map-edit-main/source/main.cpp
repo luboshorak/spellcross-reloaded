@@ -34,6 +34,7 @@
 #include "iso9660_import.h"
 #include "game_menu_bar.h"
 #include "game_controls.h"
+#include "game_autodeploy.h"
 #include "game_audio_settings.h"
 #include "game_dialogs.h"
 #include <wx/slider.h>
@@ -2338,6 +2339,14 @@ void MainFrame::StartTacticalGame()
         m_deployment_blink_ticks = 0;
         spell_map->deployment_blink_visible = true;
         SelectDeploymentUnit(0);
+        if (spellcross_autodeploy::Enabled() && !AutoDeployUnits())
+        {
+            // Malformed START data must not soft-lock this battle.
+            wxMessageBox("Automatic deployment cannot place every company "
+                         "on a legal START square. Use manual deployment "
+                         "for this battle.", "Autodeploy",
+                         wxOK | wxICON_WARNING, this);
+        }
     }
     if (canvas) canvas->Refresh();
 }
@@ -2369,6 +2378,7 @@ void MainFrame::ResetDeploymentUI()
     m_deployment_requested = false;
     m_deployment_active = false;
     m_deployment_camera_pending = false;
+    m_autoDeploymentCameraPending = false;
     m_deployment_selection = 0;
     m_deployment_blink_ticks = 0;
 }
@@ -2504,6 +2514,82 @@ void MainFrame::PlaceDeploymentUnit(MapXY tile, bool swap)
             return;
         }
     SelectDeploymentUnit(selectedIndex); // last unit reports via SelectUnit
+}
+
+bool MainFrame::AutoDeployUnits()
+{
+    if (!m_deployment_active || !spell_map ||
+        m_deployment_units.empty() || spell_map->start.empty())
+        return false;
+
+    // Deduplicate authored START coordinates; leave enemy/scenario units alone.
+    std::vector<MapXY> squares;
+    for (const MapXY& pos : spell_map->start)
+    {
+        if (pos.x < 0 || pos.y < 0 ||
+            pos.x >= spell_map->x_size || pos.y >= spell_map->y_size)
+            continue;
+        if (std::none_of(squares.begin(), squares.end(),
+            [&](const MapXY& prev) { return prev.x == pos.x && prev.y == pos.y; }))
+            squares.push_back(pos);
+    }
+
+    std::vector<spellcross_autodeploy::UnitSlots> candidates;
+    candidates.reserve(m_deployment_units.size());
+    for (const MapUnit* unit : m_deployment_units)
+    {
+        if (!unit || !unit->unit)
+            return false;
+        spellcross_autodeploy::UnitSlots available;
+        available.is_air = unit->unit->isAir();
+        for (size_t i = 0; i < squares.size(); ++i)
+        {
+            const MapXY pos = squares[i];
+            const uint8_t flags = spell_map->tiles[
+                static_cast<size_t>(spell_map->ConvXY(pos))].flags;
+            // Mirror the existing manual PlaceDeploymentUnit terrain rules.
+            if (!available.is_air &&
+                !((flags == 0 || flags == 0x60 || flags == 0x90) &&
+                  (flags != 0x90 || unit->unit->isWalk()) &&
+                  (flags != 0x60 || unit->unit->isHover())))
+                continue;
+            bool blocked = false;
+            for (const MapUnit* fixed : spell_map->units)
+            {
+                if (fixed && fixed->unit &&
+                    fixed->coor.x == pos.x && fixed->coor.y == pos.y &&
+                    fixed->unit->isAir() == available.is_air)
+                {
+                    blocked = true;
+                    break;
+                }
+            }
+            if (!blocked)
+                available.allowed.push_back(i);
+        }
+        candidates.push_back(std::move(available));
+    }
+
+    std::vector<int> assigned;
+    if (!spellcross_autodeploy::Assign(candidates, squares.size(), assigned))
+        return false; // plan all positions before touching game state
+
+    // Reuse the original player-placement code for ownership, IDs, AP,
+    // stacking, formation updates, fog of war and HUD refresh.
+    for (size_t i = 0; i < assigned.size(); ++i)
+    {
+        SelectDeploymentUnit(i);
+        PlaceDeploymentUnit(squares[static_cast<size_t>(assigned[i])]);
+        if (i >= m_deployment_placed.size() || !m_deployment_placed[i])
+            return false;
+    }
+    FinishDeployment(); // triggers MissionStart and the first tactical save
+    if (!m_deployment_active)
+    {
+        m_autoDeploymentCameraPending = true;
+        return true;
+    }
+    return false;
 }
 
 void MainFrame::FinishDeployment()
@@ -2796,6 +2882,7 @@ bool MyApp::OnInit()
         // --- restore the last tactical map only when the saved path is still valid.
     // A fresh/portable config intentionally starts without one and should land
     // cleanly in the main menu instead of showing a bogus map-load error.
+    spellcross_autodeploy::SetEnabled(ini.GetBoolValue("STATE", "autodeploy", false));
     wstring map_path = char2wstring(ini.GetValue("STATE","last_map",""));
     spell_map = new SpellMap();
 	spell_map->SetBoxSelectionEnabled(
@@ -2874,6 +2961,9 @@ int MyApp::OnExit()
         ini.SetLongValue("STATE", "game_difficulty", (long)spell_map->GetGameDifficulty());
 		ini.SetBoolValue("STATE", "experimental_box_selection", spell_map->IsBoxSelectionEnabled());
     }
+
+    // User preference, deliberately independent of campaign saves.
+    ini.SetBoolValue("STATE", "autodeploy", spellcross_autodeploy::Enabled());
 
     // store sound/midi volumes
     if (spell_data && spell_data->sounds && spell_data->sounds->channels)
@@ -3930,8 +4020,11 @@ void MainFrame::ShowTacticalWindow()
 {
     Show(true);
     Raise();
-    if (m_deployment_camera_pending)
+    if (auto* menu = spellcross_menu::Model(this))
+        menu->Check(ID_OptionsAutoDeploy, spellcross_autodeploy::Enabled());
+    if (m_deployment_camera_pending || m_autoDeploymentCameraPending)
         CenterDeploymentOnStartSquares();
+    m_autoDeploymentCameraPending = false;
     if (canvas)
         canvas->SetFocus();
 }
@@ -7165,13 +7258,8 @@ void MainFrame::OnMapConsoleCommand()
     {
         if (!m_deployment_active && spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && spell_map->events)
         {
-            for (auto* evt : spell_map->events->GetEvents())
-            {
-                if (!evt) continue;
-                if (evt->is_objective && !evt->is_done)
-                    evt->is_done = true;
-            }
-            spell_map->CheckAndTriggerMissionEnd();
+            // Flush pending scripted actions before the normal mission result.
+            spell_map->CompleteAllMissionObjectivesForCheat();
             if (canvas) canvas->Refresh();
         }
     }
