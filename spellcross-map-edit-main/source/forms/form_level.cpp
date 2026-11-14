@@ -18216,11 +18216,25 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
         m_playerCommanders = std::move(playerCmds);
         m_availableCommanders = std::move(availCmds);
 
+        // Legacy Reloaded saves may store zero battles for officers already
+        // holding First Lieutenant or a higher rank. Restore ONLY the retail
+        // minimum implicit in the recorded rank (six for rank 1); campaign
+        // mission totals cannot reconstruct each officer's actual deployments.
+        if (m_ranks.empty())
+            LoadRanksTable();
+        for (auto& commander : m_playerCommanders)
+            commander.battles_fought = spellcross_strategy::RestoreMinimumCommanderBattles(
+                commander.rank, commander.battles_fought, m_ranks);
+        for (auto& commander : m_availableCommanders)
+            commander.battles_fought = spellcross_strategy::RestoreMinimumCommanderBattles(
+                commander.rank, commander.battles_fought, m_ranks);
+
         // Keep references from the first saved UID; regenerate duplicates
         // without conflating unrelated officers in full hierarchies (#156).
         NormalizeCommanderIdentities();
 
         RestoreHierarchyAssignments(loadedHierarchy);
+        ApplyCommanderRankPromotions();
 
         m_cmdGenWindowStartTurn = windowStart;
         m_cmdGenCountInWindow = genCount;
@@ -20766,39 +20780,11 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
         if (s->strategic_uid != 0)
             survivingStrategicUids.insert(s->strategic_uid);
 
-    std::unordered_set<uint32_t> deadStrategicUids;
-    for (uint32_t uid : m_pendingMission.sent_unit_uids)
-        if (uid != 0 && survivingStrategicUids.count(uid) == 0)
-            deadStrategicUids.insert(uid);
-
-    // The commander physically sits in the assigned company. If that company
-    // did not return, the commander is dead as well and disappears from both
-    // the owned commander pool and every hierarchy slot immediately.
-    RemoveCommandersHostedByDeadUnits(deadStrategicUids);
-
-    // Record one battle for each living deployed officer (by stable UID).
-    // A killed officer is removed above; only surviving hosts are eligible.
-    // Promotions are evaluated in HandleMissionResult AFTER John's EndOK XP
-    // is applied, so John's new rank ceiling is respected in the same battle.
-    const std::unordered_set<uint32_t> deployedHosts(
-        m_pendingMission.sent_unit_uids.begin(), m_pendingMission.sent_unit_uids.end());
-    std::unordered_set<uint32_t> countedCommanders;
-    for (const auto& slot : m_hierarchySlots)
-    {
-        if (slot.type != "commander" || slot.commander_uid == 0 ||
-            slot.assigned_unit_uid == 0 ||
-            deployedHosts.count(slot.assigned_unit_uid) == 0 ||
-            survivingStrategicUids.count(slot.assigned_unit_uid) == 0 ||
-            !countedCommanders.insert(slot.commander_uid).second)
-            continue;
-
-        auto commander = std::find_if(m_playerCommanders.begin(), m_playerCommanders.end(),
-            [&](const CommanderRec& c) { return c.uid == slot.commander_uid; });
-        if (commander == m_playerCommanders.end())
-            continue;
-
-        commander->battles_fought = std::min(commander->battles_fought + 1, 1000000);
-    }
+    // Tactical saves from older versions may lose strategic_uid for living
+    // units. The roster-matching loop below already pairs those survivors with
+    // their deployed company by type; use that SAME pairing for officer battle
+    // counts and deaths. Do not mark hosts dead based on tactical UIDs alone.
+    std::unordered_set<uint32_t> returnedStrategicUids = survivingStrategicUids;
 
     // New campaign launches carry an exact strategic UID into every tactical
     // company.  Use it as the primary identity so two companies of the same
@@ -20823,6 +20809,23 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
         m_unitStates.push_back(state);
     }
     RebuildRosterRowUidsFromUnitStates();
+
+    // New battle snapshots contain exact sent UIDs. Legacy battle snapshots
+    // only contain roster indices: map those to their stable roster identity
+    // so an officer can still gain a battle after a UID-less survivor returns.
+    std::unordered_set<uint32_t> deployedStrategicUids;
+    for (size_t si = 0; si < sent.size(); ++si)
+    {
+        const size_t rosterIdx = sent[si];
+        if (rosterIdx >= m_playerUnits.size())
+            continue;
+        uint32_t uid = si < m_pendingMission.sent_unit_uids.size()
+            ? m_pendingMission.sent_unit_uids[si] : 0;
+        if (uid == 0 && rosterIdx < m_unitStates.size())
+            uid = m_unitStates[rosterIdx].uid;
+        if (uid != 0)
+            deployedStrategicUids.insert(uid);
+    }
 
     std::unordered_map<int, size_t> consumedByType;
     std::unordered_set<MapUnit*> matchedSurvivors;
@@ -20874,6 +20877,13 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
         }
 
         matchedSurvivors.insert(survivor);
+        // A UID-less tactical survivor matched to this deployed roster row
+        // must also count as a returned commander host. Never credit a
+        // nonzero mismatching tactical UID.
+        const uint32_t knownStrategicUid = sentUid != 0 ? sentUid :
+            (rosterIdx < m_unitStates.size() ? m_unitStates[rosterIdx].uid : 0);
+        spellcross_strategy::RecordReturnedStrategicUnit(
+            returnedStrategicUids, knownStrategicUid, survivor->strategic_uid);
 
         // The tactical Info dialog renames this concrete company in CP895.
         // Synchronize by its roster identity, so the new name survives the
@@ -20904,6 +20914,45 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
             m_unitStates[rosterIdx].cooldown_reason = 1;
         }
     }
+
+    // Only after the exact-UID and legacy UID-less survivor matching is
+    // complete can we safely distinguish a dead commander from a survivor.
+    std::unordered_set<uint32_t> deadStrategicUids;
+    for (uint32_t uid : m_pendingMission.sent_unit_uids)
+        if (uid != 0 && returnedStrategicUids.count(uid) == 0)
+            deadStrategicUids.insert(uid);
+    RemoveCommandersHostedByDeadUnits(deadStrategicUids);
+
+    std::unordered_set<uint32_t> countedCommanders;
+    int countedBattleOfficers = 0;
+    for (const auto& slot : m_hierarchySlots)
+    {
+        if (slot.type != "commander" || slot.commander_uid == 0 ||
+            slot.assigned_unit_uid == 0 ||
+            deployedStrategicUids.count(slot.assigned_unit_uid) == 0 ||
+            returnedStrategicUids.count(slot.assigned_unit_uid) == 0 ||
+            !countedCommanders.insert(slot.commander_uid).second)
+            continue;
+
+        auto commander = std::find_if(m_playerCommanders.begin(), m_playerCommanders.end(),
+            [&](const CommanderRec& c) { return c.uid == slot.commander_uid; });
+        if (commander == m_playerCommanders.end())
+            continue;
+
+        const int previousBattles = commander->battles_fought;
+        commander->battles_fought = std::min(previousBattles + 1, 1000000);
+        ++countedBattleOfficers;
+        spellcross_diag::Log(spellcross_diag::Level::Info, "COMMANDER",
+            "Completed deployment uid=%u name=%s host_uid=%u battles=%d->%d",
+            static_cast<unsigned>(commander->uid), commander->name.c_str(),
+            static_cast<unsigned>(slot.assigned_unit_uid),
+            previousBattles, commander->battles_fought);
+    }
+    spellcross_diag::Log(spellcross_diag::Level::Info, "COMMANDER",
+        "Mission result: roster_sent=%llu returned=%llu officers_credited=%d",
+        static_cast<unsigned long long>(deployedStrategicUids.size()),
+        static_cast<unsigned long long>(returnedStrategicUids.size()),
+        countedBattleOfficers);
 
     // Remove dead concrete companies backwards so remaining indices stay valid.
     std::sort(deadIndices.begin(), deadIndices.end(), std::greater<size_t>());
