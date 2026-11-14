@@ -33,6 +33,14 @@ class StrategicDialogThemeRegression(unittest.TestCase):
         ):
             self.assertIn(expected, DIALOGS)
 
+    def test_yes_no_buttons_are_translated(self):
+        cs = (ROOT / "locales/cs.lang").read_text(encoding="utf-8")
+        en = (ROOT / "locales/en.lang").read_text(encoding="utf-8")
+        self.assertIn("dialog.yes=Ano", cs)
+        self.assertIn("dialog.no=Ne", cs)
+        self.assertIn("dialog.yes=Yes", en)
+        self.assertIn("dialog.no=No", en)
+
     def test_original_campaign_event_queue_unmodified(self):
         show = STRATEGIC.split(
             "void StrategicLevelFrame::ShowPendingStrategicEventMessages()", 1
