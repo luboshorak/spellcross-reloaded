@@ -463,13 +463,17 @@ if (Test-Path -LiteralPath $info -PathType Container) {
         }
     }
 }
-# The built-in opt-in updater ships alongside Spellcross.exe. It is not
-# launched by setup; game UI asks for consent before starting it.
-$updaterPath = Join-Path $root 'packaging\Install-Patch.ps1'
-Assert-File $updaterPath
-$stageUpdater = Join-Path $stage 'updater'
-New-Item -ItemType Directory -Force -Path $stageUpdater | Out-Null
-Copy-Required $updaterPath (Join-Path $stageUpdater 'Install-Patch.ps1')
+# The patch updater is optional for a full ZIP/SFX build. Older/local
+# checkouts may not have Install-Patch.ps1; do not fail a complete build
+# just because the separate incremental-update helper is unavailable.
+$updaterPath = Join-Path $packagingDir 'Install-Patch.ps1'
+if (Test-Path -LiteralPath $updaterPath -PathType Leaf) {
+    $stageUpdater = Join-Path $stage 'updater'
+    New-Item -ItemType Directory -Force -Path $stageUpdater | Out-Null
+    Copy-Required $updaterPath (Join-Path $stageUpdater 'Install-Patch.ps1')
+} else {
+    Write-Warning 'Optional Install-Patch.ps1 is missing. Creating the full ZIP/SFX without the in-game patch updater.'
+}
 
 # Keep the shortcut icon and SFX source artwork under setup\ in releases.
 # The desktop shortcut icon is resolved relative to the user's chosen folder.
@@ -514,7 +518,11 @@ if ([bool]$PreviousStageDirectory -ne [bool]$PreviousVersion) {
     throw 'Use -PreviousStageDirectory and -PreviousVersion together to generate patch assets.'
 }
 if ($PreviousStageDirectory) {
-    & (Join-Path $packagingDir 'New-Patch.ps1') `
+    $patchScript = Join-Path $packagingDir 'New-Patch.ps1'
+    if (-not (Test-Path -LiteralPath $patchScript -PathType Leaf)) {
+        throw 'Delta patch generation requires packaging\New-Patch.ps1, which is missing. Run without -PreviousStageDirectory and -PreviousVersion to create a full ZIP/SFX.'
+    }
+    & $patchScript `
         -PreviousDirectory $PreviousStageDirectory `
         -CurrentDirectory $stage `
         -FromVersion $PreviousVersion `
@@ -613,9 +621,14 @@ Shortcut=D,Spellcross.exe,,Spellcross Reloaded,Spellcross Reloaded,setup\spellcr
 }
 Write-Host "Staged release: $stage; copied $($copiedDlls.Count) distinct DLLs." -ForegroundColor Green
 if ($PruneOldBuilds) {
-    # The release is complete. Keep 3 most recent dated staging builds.
-    # Stable, versioned ZIP and EXE releases are never removed by cleanup.
-    & (Join-Path $packagingDir 'Clean-OldBuilds.ps1') -DistDirectory $OutputDirectory -Keep 3 -Apply
+    # Keep the latest three staging folders when the optional cleanup helper
+    # exists. A missing helper must not invalidate completed ZIP/SFX output.
+    $cleanupScript = Join-Path $packagingDir 'Clean-OldBuilds.ps1'
+    if (Test-Path -LiteralPath $cleanupScript -PathType Leaf) {
+        & $cleanupScript -DistDirectory $OutputDirectory -Keep 3 -Apply
+    } else {
+        Write-Warning 'Optional Clean-OldBuilds.ps1 is missing; generated ZIP/SFX files are preserved, and old staging folders were not pruned.'
+    }
 }
 } finally {
     if ($sourceOverrideApplied) {
