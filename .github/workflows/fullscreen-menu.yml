@@ -4,6 +4,9 @@ on:
     branches: [main, feature/fullscreen-menu, experimental-features]
   pull_request:
     paths:
+      # This job runs the entire Python regression suite: changes to tests
+      # must rerun it even if no source file listed below changed.
+      - 'spellcross-map-edit-main/tests/test_*.py'
       - 'spellcross-map-edit-main/source/tactical_zoom.h'
       - 'spellcross-map-edit-main/source/tactical_edge_pan.h'
       - 'spellcross-map-edit-main/source/tactical_range_input.h'

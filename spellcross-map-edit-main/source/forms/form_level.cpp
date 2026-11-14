@@ -48,6 +48,7 @@
 #include "../strategic_mission_flow.h"
 #include "../strategic_battle_recovery_rules.h"
 #include "../strategic_commander_uid_rules.h"
+#include "../strategic_commander_experience_rules.h"
 #include "../strategic_random_attack_rules.h"
 #include "../strategic_unit_timer_rules.h"
 #include "../strategic_campaign_unlock_rules.h"
@@ -15646,12 +15647,15 @@ void StrategicLevelFrame::MaybeGenerateCommanderOffer()
     if (name.empty())
         name = m_commanderNames[(size_t)(std::rand() % (int)m_commanderNames.size())];
 
-    // Original manual/data: newly offered commanders always arrive as
-    // nadporucik / 1st Lieutenant. Their later promotions use the
-    // actions_required column from HODNOSTI.DEF.
+    // A retail recruit is already a First Lieutenant (rank 1) and carries
+    // that rank's starting battle count: 6 with unmodified HODNOSTI.DEF.
+    // The HODNOSTI thresholds are cumulative; starting at zero would make
+    // the first promotion take longer than in retail.
+    LoadRanksTable();
     CommanderRec rec;
     rec.name = name;
     rec.rank = 1;
+    rec.battles_fought = spellcross_strategy::InitialCommanderBattles(rec.rank, m_ranks);
 
     m_availableCommanders.push_back(rec);
     m_cmdGenCountInWindow += 1;
@@ -17963,6 +17967,7 @@ bool StrategicLevelFrame::LoadOriginalBigMapSaveFromPath(
         commander.uid = static_cast<uint32_t>(slot + 1);
         commander.name = name;
         commander.rank = static_cast<int>(raw[off + 34]);
+        commander.battles_fought = spellcross_strategy::ReadOriginalCommanderBattles(raw, off);
         maxCommanderUid = std::max(maxCommanderUid, commander.uid);
         m_commanderRankByUid[commander.uid] = commander.rank;
         m_playerCommanders.push_back(commander);
@@ -20315,6 +20320,41 @@ void StrategicLevelFrame::RecomputePlayerRank()
     m_player.rank = best;
 }
 
+void StrategicLevelFrame::ApplyCommanderRankPromotions()
+{
+    if (m_ranks.empty())
+        LoadRanksTable();
+
+    std::vector<std::string> promotedSlots;
+    bool anyPromotion = false;
+    for (auto& commander : m_playerCommanders)
+    {
+        // Original BIG_MAP.SAV samples show the TOTAL battle thresholds and
+        // never let a subordinate reach John's current rank.
+        const int promotedRank = spellcross_strategy::CommanderRankForBattles(
+            commander.rank, commander.battles_fought, m_player.rank, m_ranks);
+        if (promotedRank == commander.rank)
+            continue;
+
+        commander.rank = promotedRank;
+        anyPromotion = true;
+        m_commanderRankByUid[commander.uid] = promotedRank;
+        for (auto& slot : m_hierarchySlots)
+        {
+            if (slot.type == "commander" && slot.commander_uid == commander.uid)
+            {
+                slot.rank = promotedRank;
+                promotedSlots.push_back(slot.id);
+            }
+        }
+    }
+
+    for (const auto& slotId : promotedSlots)
+        UpdateCommanderHierarchyLabel(slotId);
+    if (anyPromotion)
+        m_originalStrategicDirty = true;
+}
+
 const StrategicLevelFrame::CommanderRankRec* StrategicLevelFrame::FindRankRec(int rank) const
 {
     for (const auto& r : m_ranks)
@@ -20499,6 +20539,10 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
         m_money += money_award;
         m_player.experience += xp_award;
         RecomputePlayerRank();
+        // Recheck ALL officers when John is promoted: a veteran whose own
+        // battle count already qualified can finally pass the old rank cap,
+        // even if his host company did not participate in this battle.
+        ApplyCommanderRankPromotions();
 
         // Play end_ok_video if defined
         if (mission && !mission->end_ok_video.empty() && mission->end_ok_video != "none")
@@ -20608,6 +20652,9 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
     else
     {
         m_stats.missions_failed++;
+        // A survived deployment counts even when the mission was not won.
+        // No EndOK experience is added to John on this path.
+        ApplyCommanderRankPromotions();
 
         // Play end_bad_video if defined
         if (mission && !mission->end_bad_video.empty() && mission->end_bad_video != "none")
@@ -20729,15 +20776,13 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
     // the owned commander pool and every hierarchy slot immediately.
     RemoveCommandersHostedByDeadUnits(deadStrategicUids);
 
-    // Subordinate commanders progress by deployments, independently of John's
-    // strategic XP. HODNOSTI.DEF's actions_required is the number of battles
-    // to advance FROM the current commander rank.
-    if (m_ranks.empty())
-        LoadRanksTable();
+    // Record one battle for each living deployed officer (by stable UID).
+    // A killed officer is removed above; only surviving hosts are eligible.
+    // Promotions are evaluated in HandleMissionResult AFTER John's EndOK XP
+    // is applied, so John's new rank ceiling is respected in the same battle.
     const std::unordered_set<uint32_t> deployedHosts(
         m_pendingMission.sent_unit_uids.begin(), m_pendingMission.sent_unit_uids.end());
     std::unordered_set<uint32_t> countedCommanders;
-    std::vector<std::string> promotedSlots;
     for (const auto& slot : m_hierarchySlots)
     {
         if (slot.type != "commander" || slot.commander_uid == 0 ||
@@ -20753,30 +20798,7 @@ StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults
             continue;
 
         commander->battles_fought = std::min(commander->battles_fought + 1, 1000000);
-        const int previousRank = commander->rank;
-        while (const CommanderRankRec* currentRank = FindRankRec(commander->rank))
-        {
-            if (currentRank->actions_required <= 0 ||
-                commander->battles_fought < currentRank->actions_required ||
-                !FindRankRec(commander->rank + 1))
-                break;
-            ++commander->rank;
-        }
-        if (commander->rank != previousRank)
-        {
-            m_commanderRankByUid[commander->uid] = commander->rank;
-            for (auto& assigned : m_hierarchySlots)
-            {
-                if (assigned.type == "commander" && assigned.commander_uid == commander->uid)
-                {
-                    assigned.rank = commander->rank;
-                    promotedSlots.push_back(assigned.id);
-                }
-            }
-        }
     }
-    for (const auto& id : promotedSlots)
-        UpdateCommanderHierarchyLabel(id);
 
     // New campaign launches carry an exact strategic UID into every tactical
     // company.  Use it as the primary identity so two companies of the same

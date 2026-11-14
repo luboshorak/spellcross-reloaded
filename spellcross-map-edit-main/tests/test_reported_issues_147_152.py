@@ -49,9 +49,27 @@ class ReportedIssuesRegression(unittest.TestCase):
         self.assertIn("survivingStrategicUids.count(slot.assigned_unit_uid)", battle)
         self.assertIn("countedCommanders.insert(slot.commander_uid)", battle)
         self.assertIn("commander->battles_fought", battle)
-        self.assertIn("currentRank->actions_required", battle)
-        self.assertIn("FindRankRec(commander->rank + 1)", battle)
-        self.assertIn("UpdateCommanderHierarchyLabel(id)", battle)
+        # Retail thresholds are cumulative. Promotions moved to a shared
+        # calculator and happen after John's EndOK strategic XP is applied.
+        promotion = STRATEGY.split(
+            "void StrategicLevelFrame::ApplyCommanderRankPromotions()", 1
+        )[1].split(
+            "const StrategicLevelFrame::CommanderRankRec* StrategicLevelFrame::FindRankRec", 1
+        )[0]
+        rules = (ROOT / "strategic_commander_experience_rules.h").read_text(
+            encoding="utf-8"
+        )
+        result_handler = STRATEGY.split(
+            "void StrategicLevelFrame::HandleMissionResult(", 1
+        )[1].split(
+            "StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults", 1
+        )[0]
+        self.assertIn("spellcross_strategy::CommanderRankForBattles(", promotion)
+        self.assertIn("commander.battles_fought, m_player.rank, m_ranks", promotion)
+        self.assertIn("record.actions_required", rules)
+        self.assertIn("record.rank <= maximumNewRank", rules)
+        self.assertIn("ApplyCommanderRankPromotions();", result_handler)
+        self.assertIn("UpdateCommanderHierarchyLabel(slotId)", promotion)
 
     def test_149_damaged_wall_never_spawns_with_zero_hit_points(self):
         init = MAP.split("void MapSprite::SetL1(", 1)[1].split(
