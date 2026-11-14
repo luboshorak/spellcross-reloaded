@@ -45,9 +45,10 @@ class ReportedIssuesRegression(unittest.TestCase):
             "StrategicLevelFrame::LossBlock StrategicLevelFrame::CollectAndApplyBattleResults(", 1
         )[1].split("// Mission-created allied units", 1)[0]
         self.assertIn("RemoveCommandersHostedByDeadUnits(deadStrategicUids);", battle)
-        self.assertIn("deployedHosts.count(slot.assigned_unit_uid)", battle)
-        self.assertIn("survivingStrategicUids.count(slot.assigned_unit_uid)", battle)
+        self.assertIn("deployedStrategicUids.count(slot.assigned_unit_uid)", battle)
+        self.assertIn("returnedStrategicUids.count(slot.assigned_unit_uid)", battle)
         self.assertIn("countedCommanders.insert(slot.commander_uid)", battle)
+        self.assertIn("spellcross_strategy::RecordReturnedStrategicUnit(", battle)
         self.assertIn("commander->battles_fought", battle)
         # Retail thresholds are cumulative. Promotions moved to a shared
         # calculator and happen after John's EndOK strategic XP is applied.
