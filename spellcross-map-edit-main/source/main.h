@@ -151,6 +151,8 @@ private:
     // Pre-battle placement belongs to gameplay, not the removed map editor.
     bool m_deployment_requested = false;
     bool m_deployment_active = false;
+    bool m_autoDeploymentCameraPending = false;
+    std::vector<MapXY> m_autoDeploymentFocusTiles;
     // Ordered deployment roster. The map owns only entries marked placed;
     // MainFrame owns remaining queued companies until placement/cancel.
     std::vector<MapUnit*> m_deployment_units;
@@ -161,6 +163,7 @@ private:
     void SelectDeploymentUnit(size_t index);
     void PlaceDeploymentUnit(MapXY tile, bool swap = false);
     void FinishDeployment();
+    bool AutoDeployUnits();
     void CenterDeploymentOnStartSquares();
     bool m_deployment_camera_pending = false;
     bool IsDeploymentSquare(const MapXY& tile) const;
@@ -438,7 +441,8 @@ enum
     ID_OptionsDifficultyHard,
 	ID_OptionsBoxSelection,
     ID_OptionsConfineCursor,
-    ID_mmOpenMapEditor
+    ID_mmOpenMapEditor,
+    ID_OptionsAutoDeploy
 };
 
 

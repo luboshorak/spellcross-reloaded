@@ -34,6 +34,7 @@
 #include "iso9660_import.h"
 #include "game_menu_bar.h"
 #include "game_controls.h"
+#include "game_autodeploy.h"
 #include "game_audio_settings.h"
 #include "game_dialogs.h"
 #include <wx/slider.h>
@@ -2338,6 +2339,14 @@ void MainFrame::StartTacticalGame()
         m_deployment_blink_ticks = 0;
         spell_map->deployment_blink_visible = true;
         SelectDeploymentUnit(0);
+        if (spellcross_autodeploy::Enabled() && !AutoDeployUnits())
+        {
+            // Malformed START data must not soft-lock this battle.
+            wxMessageBox("Automatic deployment cannot place every company "
+                         "on a legal START square. Use manual deployment "
+                         "for this battle.", "Autodeploy",
+                         wxOK | wxICON_WARNING, this);
+        }
     }
     if (canvas) canvas->Refresh();
 }
@@ -2369,6 +2378,8 @@ void MainFrame::ResetDeploymentUI()
     m_deployment_requested = false;
     m_deployment_active = false;
     m_deployment_camera_pending = false;
+    m_autoDeploymentCameraPending = false;
+    m_autoDeploymentFocusTiles.clear();
     m_deployment_selection = 0;
     m_deployment_blink_ticks = 0;
 }
@@ -2504,6 +2515,92 @@ void MainFrame::PlaceDeploymentUnit(MapXY tile, bool swap)
             return;
         }
     SelectDeploymentUnit(selectedIndex); // last unit reports via SelectUnit
+}
+
+bool MainFrame::AutoDeployUnits()
+{
+    if (!m_deployment_active || !spell_map ||
+        m_deployment_units.empty() || spell_map->start.empty())
+        return false;
+
+    m_autoDeploymentCameraPending = false;
+    m_autoDeploymentFocusTiles.clear();
+
+    // Deduplicate authored START coordinates; leave enemy/scenario units alone.
+    std::vector<MapXY> squares;
+    for (const MapXY& pos : spell_map->start)
+    {
+        if (pos.x < 0 || pos.y < 0 ||
+            pos.x >= spell_map->x_size || pos.y >= spell_map->y_size)
+            continue;
+        if (std::none_of(squares.begin(), squares.end(),
+            [&](const MapXY& prev) { return prev.x == pos.x && prev.y == pos.y; }))
+            squares.push_back(pos);
+    }
+
+    std::vector<spellcross_autodeploy::UnitSlots> candidates;
+    candidates.reserve(m_deployment_units.size());
+    for (const MapUnit* unit : m_deployment_units)
+    {
+        if (!unit || !unit->unit)
+            return false;
+        spellcross_autodeploy::UnitSlots available;
+        available.is_air = unit->unit->isAir();
+        for (size_t i = 0; i < squares.size(); ++i)
+        {
+            const MapXY pos = squares[i];
+            const uint8_t flags = spell_map->tiles[
+                static_cast<size_t>(spell_map->ConvXY(pos.x, pos.y))].flags;
+            // Mirror the existing manual PlaceDeploymentUnit terrain rules.
+            if (!available.is_air &&
+                !((flags == 0 || flags == 0x60 || flags == 0x90) &&
+                  (flags != 0x90 || unit->unit->isWalk()) &&
+                  (flags != 0x60 || unit->unit->isHover())))
+                continue;
+            bool blocked = false;
+            for (const MapUnit* fixed : spell_map->units)
+            {
+                if (fixed && fixed->unit &&
+                    fixed->coor.x == pos.x && fixed->coor.y == pos.y &&
+                    static_cast<bool>(fixed->unit->isAir()) == available.is_air)
+                {
+                    blocked = true;
+                    break;
+                }
+            }
+            if (!blocked)
+                available.allowed.push_back(i);
+        }
+        candidates.push_back(std::move(available));
+    }
+
+    std::vector<int> assigned;
+    if (!spellcross_autodeploy::Assign(candidates, squares.size(), assigned))
+        return false; // plan all positions before touching game state
+
+    std::vector<MapXY> placedPositions;
+    placedPositions.reserve(assigned.size());
+
+    // Reuse the original player-placement code for ownership, IDs, AP,
+    // stacking, formation updates, fog of war and HUD refresh.
+    for (size_t i = 0; i < assigned.size(); ++i)
+    {
+        SelectDeploymentUnit(i);
+        PlaceDeploymentUnit(squares[static_cast<size_t>(assigned[i])]);
+        if (i >= m_deployment_placed.size() || !m_deployment_placed[i])
+            return false;
+        placedPositions.push_back(m_deployment_units[i]->coor);
+    }
+    FinishDeployment(); // triggers MissionStart and the first tactical save
+    if (!m_deployment_active)
+    {
+        // FinishDeployment clears its unit roster, so retain the actual placed
+        // company coordinates for the initial tactical camera.
+        m_autoDeploymentFocusTiles = std::move(placedPositions);
+        m_autoDeploymentCameraPending = true;
+        return true;
+    }
+    return false;
 }
 
 void MainFrame::FinishDeployment()
@@ -2796,6 +2893,7 @@ bool MyApp::OnInit()
         // --- restore the last tactical map only when the saved path is still valid.
     // A fresh/portable config intentionally starts without one and should land
     // cleanly in the main menu instead of showing a bogus map-load error.
+    spellcross_autodeploy::SetEnabled(ini.GetBoolValue("STATE", "autodeploy", false));
     wstring map_path = char2wstring(ini.GetValue("STATE","last_map",""));
     spell_map = new SpellMap();
 	spell_map->SetBoxSelectionEnabled(
@@ -2874,6 +2972,9 @@ int MyApp::OnExit()
         ini.SetLongValue("STATE", "game_difficulty", (long)spell_map->GetGameDifficulty());
 		ini.SetBoolValue("STATE", "experimental_box_selection", spell_map->IsBoxSelectionEnabled());
     }
+
+    // User preference, deliberately independent of campaign saves.
+    ini.SetBoolValue("STATE", "autodeploy", spellcross_autodeploy::Enabled());
 
     // store sound/midi volumes
     if (spell_data && spell_data->sounds && spell_data->sounds->channels)
@@ -2990,6 +3091,11 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
         spellcross_ui_locale::Tr("menu.confine_cursor", "Keep cursor inside game window"),
         spellcross_ui_locale::Tr("menu.confine_cursor_help", "Restrict the pointer to the active tactical game window; Alt+Tab releases it"));
     menuOptions->Check(ID_OptionsConfineCursor, m_confineTacticalCursor);
+    menuOptions->AppendCheckItem(ID_OptionsAutoDeploy,
+        spellcross_ui_locale::Tr("menu.autodeploy", "&Autodeploy"),
+        spellcross_ui_locale::Tr("menu.autodeploy_help",
+            "Automatically place companies on legal START squares at mission start"));
+    menuOptions->Check(ID_OptionsAutoDeploy, spellcross_autodeploy::Enabled());
 
     spellcross_window::AddFullscreen(menuOptions);
 
@@ -3136,6 +3242,11 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnOptionsScreen,this,ID_OptionsScreen);
     Bind(wxEVT_MENU,&MainFrame::OnOptionsDifficulty,this,ID_OptionsDifficultyEasy,ID_OptionsDifficultyHard);
 	Bind(wxEVT_MENU,&MainFrame::OnOptionsBoxSelection,this,ID_OptionsBoxSelection);
+    Bind(wxEVT_MENU, [this](wxCommandEvent& ev) {
+        spellcross_autodeploy::SetEnabled(ev.IsChecked());
+        if (auto* bar = spellcross_menu::Model(this))
+            bar->Check(ID_OptionsAutoDeploy, spellcross_autodeploy::Enabled());
+    }, ID_OptionsAutoDeploy);
     SyncDifficultyMenu();
 
     spell_map->SetMessageInterface(bind(&MainFrame::ShowMessage,this,placeholders::_1,placeholders::_2,placeholders::_3), bind(&MainFrame::CheckMessageState,this));    
@@ -3863,13 +3974,14 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
 
 void MainFrame::CenterDeploymentOnStartSquares()
 {
-    if (!m_deployment_camera_pending || !m_deployment_active ||
+    const bool manual = m_deployment_camera_pending && m_deployment_active;
+    const bool automatic = m_autoDeploymentCameraPending && !m_deployment_active;
+    if ((!manual && !automatic) ||
         !spell_map || !spell_map->IsLoaded() || !canvas)
         return;
     const wxSize view = TacticalMapSize(canvas->GetClientSize());
     if (view.x <= 0 || view.y <= 0)
         return;
-    m_deployment_camera_pending = false;
 
     // Camera geometry from the visible viewport, not from the old map.
     spell_map->scroller.SetSurface(view.x, view.y);
@@ -3877,9 +3989,13 @@ void MainFrame::CenterDeploymentOnStartSquares()
         return;
 
     struct StartPoint { int x, y; };
+    // Manual placement uses authored START crosses; automatic placement
+    // focuses only on companies actually deployed by this operation.
+    const std::vector<MapXY>& focusTiles =
+        automatic ? m_autoDeploymentFocusTiles : spell_map->start;
     std::vector<StartPoint> starts;
-    starts.reserve(spell_map->start.size());
-    for (MapXY tile : spell_map->start)
+    starts.reserve(focusTiles.size());
+    for (MapXY tile : focusTiles)
     {
         if (tile.x < 0 || tile.y < 0 ||
             tile.x >= spell_map->x_size || tile.y >= spell_map->y_size)
@@ -3922,7 +4038,13 @@ void MainFrame::CenterDeploymentOnStartSquares()
     // Direct world coordinates avoid stale surf_x_origin in ScrollToTile.
     spell_map->scroller.SetPos(starts[best].x - view.x / 2,
         starts[best].y - view.y / 2);
-    spell_map->RenderPrepare(&spell_map->scroller);
+    if (spell_map->RenderPrepare(&spell_map->scroller) != 0)
+        return;
+    // Clear only after a successful scroll; a not-yet-sized canvas retries
+    // on its first paint, rather than losing the pending camera request.
+    m_deployment_camera_pending = false;
+    m_autoDeploymentCameraPending = false;
+    m_autoDeploymentFocusTiles.clear();
     canvas->Refresh();
 }
 
@@ -3930,7 +4052,9 @@ void MainFrame::ShowTacticalWindow()
 {
     Show(true);
     Raise();
-    if (m_deployment_camera_pending)
+    if (auto* menu = spellcross_menu::Model(this))
+        menu->Check(ID_OptionsAutoDeploy, spellcross_autodeploy::Enabled());
+    if (m_deployment_camera_pending || m_autoDeploymentCameraPending)
         CenterDeploymentOnStartSquares();
     if (canvas)
         canvas->SetFocus();
@@ -5958,7 +6082,8 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
     
     // If wxWidgets had not assigned the canvas size during Show(), perform
     // the one-time deployment camera placement on its first actual paint.
-    if (m_deployment_camera_pending && spell_map && spell_map->IsLoaded())
+    if ((m_deployment_camera_pending || m_autoDeploymentCameraPending) &&
+        spell_map && spell_map->IsLoaded())
         CenterDeploymentOnStartSquares();
 
     // render map    
@@ -7163,15 +7288,14 @@ void MainFrame::OnMapConsoleCommand()
 
     if (cmd == "ALLDONE")
     {
-        if (!m_deployment_active && spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && spell_map->events)
+        if (!m_deployment_active && !m_mission_end_flow &&
+            spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+            spell_map->events && !spell_map->IsEnemyTurnRunning())
         {
-            for (auto* evt : spell_map->events->GetEvents())
-            {
-                if (!evt) continue;
-                if (evt->is_objective && !evt->is_done)
-                    evt->is_done = true;
-            }
-            spell_map->CheckAndTriggerMissionEnd();
+            // Scripted objective rewards may add units: pause range workers
+            // before modifying the live map, just as other tactical cheats do.
+            spell_map->HaltUnitRanging(true);
+            spell_map->CompleteAllMissionObjectivesForCheat();
             if (canvas) canvas->Refresh();
         }
     }

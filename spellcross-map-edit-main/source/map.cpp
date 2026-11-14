@@ -871,6 +871,34 @@ bool SpellMap::AreAllObjectivesDone() const
 	return any_objective; // pokud nejsou objectives, neskončíme automaticky
 }
 
+// Console-only shortcut: keep the normal mission completion/progression path.
+bool SpellMap::CompleteAllMissionObjectivesForCheat()
+{
+    if (!isGameMode() || !events || m_mission_end_fired || m_mission_end_shown)
+        return false;
+
+    SpellMapEventsList pending;
+    for (auto* evt : events->GetEvents())
+    {
+        if (!evt || !evt->is_objective)
+            continue;
+        evt->is_done = true;
+        evt->objective_notified = true;
+        // Avoid modal intermediate text, but preserve story/recruited units.
+        for (auto& message : evt->texts)
+            message.is_done = true;
+        if (evt->HasPendingActions())
+            pending.push_back(evt);
+    }
+    // Process queued unit spawns via the existing PlaceUnit/RelinkUnits path.
+    // is_done alone is insufficient while HasPendingActions() is still true.
+    if (!pending.empty())
+        ProcEventsList(pending);
+
+    CheckAndTriggerMissionEnd();
+    return AreAllObjectivesDone();
+}
+
 void SpellMap::CheckObjectiveNotifications()
 {
 	if (!isGameMode())

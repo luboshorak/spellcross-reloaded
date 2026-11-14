@@ -574,6 +574,7 @@ public:
 		void SetMissionLossStats(const MissionLossStats& stats) { m_mission_losses = stats; }
 		void RecordMissionLoss(const MapUnit* unit);
 		bool AreAllObjectivesDone() const;
+		bool CompleteAllMissionObjectivesForCheat();
 		void CheckAndTriggerMissionEnd();
 		void CheckObjectiveNotifications();
 

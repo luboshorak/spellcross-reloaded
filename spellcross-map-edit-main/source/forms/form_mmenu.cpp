@@ -1,6 +1,7 @@
 #include "form_mmenu.h"
 #include "../game_menu_bar.h"
 #include "../game_controls.h"
+#include "../game_autodeploy.h"
 #include "../game_audio_settings.h"
 #include "../game_dialogs.h"
 #include "form_about.h"
@@ -281,6 +282,11 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     auto* optMenu = new wxMenu();
     optMenu->Append(ID_MMENU_OPTIONS_AUDIO, spellcross_ui_locale::Tr("menu.home.audio", "&Audio...\tCtrl+A"));
     optMenu->Append(ID_MMENU_OPTIONS_SCREEN, spellcross_ui_locale::Tr("menu.home.screen", "&Screen...\tCtrl+S"));
+    optMenu->AppendCheckItem(ID_MMENU_OPTIONS_AUTODEPLOY,
+        spellcross_ui_locale::Tr("menu.autodeploy", "&Autodeploy"),
+        spellcross_ui_locale::Tr("menu.autodeploy_help",
+            "Automatically place companies on legal START squares at mission start"));
+    optMenu->Check(ID_MMENU_OPTIONS_AUTODEPLOY, spellcross_autodeploy::Enabled());
     spellcross_window::AddFullscreen(optMenu);
     bar->Append(optMenu, spellcross_ui_locale::Tr("menu.options", "&Options"));
     auto* editorMenu = new wxMenu();
@@ -295,6 +301,11 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     }, wxID_ABOUT);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsAudio, this, ID_MMENU_OPTIONS_AUDIO);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsScreen, this, ID_MMENU_OPTIONS_SCREEN);
+    form->Bind(wxEVT_MENU, [menuFrame = form](wxCommandEvent& ev) {
+        spellcross_autodeploy::SetEnabled(ev.IsChecked());
+        if (auto* bar = spellcross_menu::Model(menuFrame))
+            bar->Check(ID_MMENU_OPTIONS_AUTODEPLOY, spellcross_autodeploy::Enabled());
+    }, ID_MMENU_OPTIONS_AUTODEPLOY);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOpenEditor, this, ID_MMENU_OPEN_EDITOR);
 
     LayoutMenuItems(wxSize(640, 480));

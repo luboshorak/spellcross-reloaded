@@ -46,6 +46,53 @@ namespace spellcross_dialog_ui
         return dialog.ShowModal();
     }
 
+    // Styled replacement for the strategic game's standard wxMessageBox calls.
+    // Preserve wxMessageBox's wxYES / wxNO / wxOK result contract so changing
+    // the presentation cannot alter counter-attacks or end-turn decisions.
+    inline int ShowThemedMessage(const wxString& message, const wxString& title,
+        long style, wxWindow* parent)
+    {
+        wxDialog dialog(parent, wxID_ANY, title, wxDefaultPosition,
+            wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+        auto* layout = new wxBoxSizer(wxVERTICAL);
+        auto* label = new wxStaticText(&dialog, wxID_ANY, message);
+        label->Wrap(dialog.FromDIP(540));
+        layout->Add(label, 0, wxEXPAND | wxALL, dialog.FromDIP(16));
+
+        const bool yesNo = (style & wxYES_NO) == wxYES_NO;
+        if (yesNo)
+        {
+            layout->Add(ActionRow(&dialog, wxID_YES,
+                spellcross_ui_locale::Tr("dialog.yes", "Yes"), wxID_NO,
+                spellcross_ui_locale::Tr("dialog.no", "No"),
+                (style & wxNO_DEFAULT) != 0),
+                0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, dialog.FromDIP(16));
+        }
+        else
+        {
+            auto* row = new wxBoxSizer(wxHORIZONTAL);
+            row->AddStretchSpacer();
+            auto* ok = new spellcross_strategic_ui::Button(&dialog, wxID_OK,
+                spellcross_ui_locale::Tr("dialog.ok", "OK"));
+            row->Add(ok);
+            layout->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
+                dialog.FromDIP(16));
+            ok->Bind(wxEVT_BUTTON, [&dialog](wxCommandEvent&) {
+                dialog.EndModal(wxID_OK);
+            });
+            ok->SetDefault();
+            dialog.SetEscapeId(wxID_OK);
+        }
+
+        dialog.SetSizerAndFit(layout);
+        spellcross_strategic_ui::Apply(&dialog);
+        dialog.SetMinSize(wxSize(dialog.FromDIP(420), dialog.FromDIP(150)));
+        dialog.GetSizer()->Fit(&dialog);
+        dialog.CentreOnParent();
+        const int result = dialog.ShowModal();
+        return yesNo ? (result == wxID_YES ? wxYES : wxNO) : wxOK;
+    }
+
     inline bool PromptText(wxWindow* parent, const wxString& title,
         const wxString& question, wxString& value)
     {
