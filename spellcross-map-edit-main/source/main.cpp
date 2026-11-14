@@ -2546,7 +2546,7 @@ bool MainFrame::AutoDeployUnits()
         {
             const MapXY pos = squares[i];
             const uint8_t flags = spell_map->tiles[
-                static_cast<size_t>(spell_map->ConvXY(pos))].flags;
+                static_cast<size_t>(spell_map->ConvXY(pos.x, pos.y))].flags;
             // Mirror the existing manual PlaceDeploymentUnit terrain rules.
             if (!available.is_air &&
                 !((flags == 0 || flags == 0x60 || flags == 0x90) &&
@@ -2558,7 +2558,7 @@ bool MainFrame::AutoDeployUnits()
             {
                 if (fixed && fixed->unit &&
                     fixed->coor.x == pos.x && fixed->coor.y == pos.y &&
-                    fixed->unit->isAir() == available.is_air)
+                    static_cast<bool>(fixed->unit->isAir()) == available.is_air)
                 {
                     blocked = true;
                     break;
