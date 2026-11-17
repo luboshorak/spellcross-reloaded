@@ -53,9 +53,41 @@ must not be 'fixed' by forcing level-monotonic stats.
 Before this patch the strategic and tactical code duplicated the retail
 bonus numbers. Both now use one shared table and tactical Info names the
 active formation modifier separately. This guards against numerical
-drift between screens. An exact comparison of Divac1's saved units
-still requires downloading the three issue-attached JSON saves, which
-were unavailable through the connected GitHub file interface.
+drift between screens. A player-provided `slot_09.json` snapshot (2026-11-16 13:49:10,
+turn 11, Czech ISO) has since been analyzed **locally**. This is the
+late chapter-9 state for #173/#174, not necessarily the earlier
+snapshot originally attached to #172. To respect the reporter, the
+complete save is not checked into this public repository.
+
+The save has owned territories `[1,2,3,9,11,8,12]`, triggered
+events `[0,1,2,4,11,12,15,16]`, neither research 135 nor 136
+completed, and Event(13) absent. The retail research prerequisites
+therefore both evaluate available, but the final research gate remains
+closed. At research output 66/turn and cost 48 per key, each key can
+complete in one allocated turn when selected (barring other in-game
+constraints). After both complete, Event(13) should open territory 4.
+
+The same save contains **13 MLRS** (retail unit ID 28), with levels
+5–8. All have identical `Upgrade(2)`, an engine-only upgrade
+(`Move(1)`, no Attack/Defence change), and are placed in fully
+populated battalions/regiments/brigades with living assigned officers.
+Retail `JEDNOTKY.DEF` (EN) gives MLRS base armored attack 15 and
+defence 8. For a *fully participating* brigade, expected values are:
+
+| MLRS XP level | Armored attack | Defence |
+|---|---:|---:|
+| 5 | 21 | 14 |
+| 6 | 22 | 15 |
+| 7 | 23 | 15 |
+| 8 | 23 | 16 |
+
+This snapshot exhibits **no XP-inversion among MLRS at equal formation
+and upgrade status**. Notably, every MLRS is on cooldown (mostly 1
+turn, one on 2 turns); the saved strategic hierarchy does **not**
+guarantee a brigade bonus in the next battle unless its constituent
+units are actually deployed. This is a comparison with EN retail
+values; the full Czech retail binary/content and separate #172 save
+were not available for direct cross-verification.
 
 ## Regression coverage
 
