@@ -403,6 +403,12 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 }
                 continue;
             }
+            if (cmd == "WaitForResearch" && !args.empty()) {
+                for (auto& s : args) {
+                    int v = 0; if (parse_int(s, v)) curEvent.wait_for_research.push_back(v);
+                }
+                continue;
+            }
             if (cmd == "RunEvents" && !args.empty()) {
                 for (auto& s : args) {
                     int v = 0; if (parse_int(s, v)) curEvent.run_events.push_back(v);

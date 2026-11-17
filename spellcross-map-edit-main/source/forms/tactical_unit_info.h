@@ -406,6 +406,19 @@ private:
         add(wxString(czech ? L"   Vzdušné j.: " : L"   Air: ") + attack(MapUnit::TARGET_TYPE::AIR));
         add(wxString(czech ? L"   Zdi a objekty: " : L"   Objects: ") +
             attack(MapUnit::TARGET_TYPE::OBJECT));
+        // A lower-experience company in a higher active formation can have
+        // stronger final stats (retail BONUSES.DEF + FORMACIE.DEF). Explain
+        // the formation component explicitly instead of making it look like
+        // a misapplied commander/experience bonus.
+        if (!unit->is_enemy && unit->formation_level > 0)
+        {
+            AppendWrapped(m_statsLines,
+                wxString::Format(
+                    czech ? L"Bonus formace: +%d útok, +%d obrana"
+                          : L"Formation bonus: +%d attack, +%d defence",
+                    unit->formation_attack_bonus, unit->formation_defence_bonus),
+                kTextW);
+        }
         add(czech ? L"Velitelé:" : L"Commanders:");
         // Original dossier lists each hosted officer's actual rank and name.
         // Fetch the identities from the current strategic hierarchy rather
