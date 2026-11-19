@@ -25,6 +25,7 @@ int main()
              " Territory(1,none,m03_01,mus05)\n"
              " Territory(3,none,m03_03,mus05)\n"
              " Territory(4,m03_04a,m03_04,mus05)\n"
+             " SetSpecialTerritory(4)\n"
              "}\n"
              "Mission(M03_04A) {\n"
              " Time(5)\n"
@@ -49,6 +50,9 @@ int main()
     assert(loaded);
     assert(level.start_territory == 1);
     assert(level.territories.size() == 3);
+    assert(!level.territories[0].is_special);
+    assert(!level.territories[1].is_special);
+    assert(level.territories[2].id == 4 && level.territories[2].is_special);
     assert(level.missions.size() == 1);
     const auto& mission = level.missions.front();
     assert(mission.name == "M03_04A");

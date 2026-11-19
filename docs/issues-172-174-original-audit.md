@@ -23,6 +23,12 @@ Verified against **retail** `COMMON.FS`:
 - `LEVEL_09.DEF` `Event(13)` has `WaitForResearch(135,136)`,
   `SetPlayersTerritory(4)` and `SetResearchFlag(115)`.
   The mission chain culminates at `End(13)`.
+- **Follow-up (2026-11-19):** retail `LEVEL_09.DEF` also declares
+  `SetSpecialTerritory(4)`. Its `M09_04A.DEF` is a 169-byte
+  `MissionParameters`-only file without `MissionData`. Sector 4
+  is *awarded by script*, never a tactical conquest or defence map.
+  The original executable/COMMON.FS includes full `M09_13A.DEF`
+  with `MissionData`, the genuine final battle.
 - The supplied EN `COMMON.FS` contains `M09_13.DTA` and
   `M09_13A.DEF`. Missing-data warnings on the CZ installation
   were reported but that Czech archive was not supplied here.
@@ -32,6 +38,14 @@ research `ORconnections` only checked completed research, never the
 Special flags that scripted events grant; those flag mutations on
 `m_level` were not persisted in JSON (triggered event IDs are).
 An already-visible final territory was incorrectly attackable.
+A subsequent user screenshot exposed a second bug: `SetSpecialTerritory(4)`
+was ignored by the LevelLoader, so clicking Attack on sector 4 (before or
+after research-awarded ownership) tried to open a MissionParameters-only
+DEF, raising `MissionData section not found`. The follow-up patch now
+parses Special territory IDs (regardless of statement order), disables
+manual attacks there via the shared launch gate (native UI and handler),
+and excludes them from scripted/random enemy counterattacks, retiring
+invalid legacy attack records without surrendering a scripted sector.
 
 Fix: preserve `WaitForResearch` as an ALL-completed condition; calculate
 effective Special flags from *persisted* triggered event IDs; distinguish
