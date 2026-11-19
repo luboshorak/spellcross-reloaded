@@ -36,7 +36,10 @@ int main()
              "Event(0) {\n AbsTime(-1)\n EventText(MSG0014)\n}\n"
              "Event(5) {\n ChangeMission(5,M03_05B)\n}\n"
              "Event(6) {\n Time(2)\n EventText(E03_0006)\n}\n"
-             "Event(9) {\n AbsTime(9)\n Army(61,61)\n}\n";
+             "Event(9) {\n AbsTime(9)\n Army(61,61)\n}\n"
+             // LEVEL_09: two research projects gate the way to its End(13).
+             "Event(13) {\n WaitForResearch(135,136)\n"
+             " SetPlayersTerritory(4)\n SetResearchFlag(115)\n}\n";
     }
 
     LevelData level;
@@ -54,11 +57,14 @@ int main()
     assert(mission.end_bad_event == 5);
     assert(mission.end_bad_mission == "M03_04B");
 
-    assert(level.events.size() == 4);
+    assert(level.events.size() == 5);
     assert(level.events[0].abs_time && level.events[0].time_value == -1);
     assert(!level.events[1].abs_time && level.events[1].time_value == -1);
     assert(!level.events[2].abs_time && level.events[2].time_value == 2);
     assert(level.events[3].abs_time && level.events[3].time_value == 9);
     assert(level.events[3].armies.size() == 1);
+    assert((level.events[4].wait_for_research == std::vector<int>{135, 136}));
+    assert(level.events[4].set_player_territory == 4);
+    assert((level.events[4].research_flags == std::vector<int>{115}));
     return 0;
 }

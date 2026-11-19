@@ -14,6 +14,7 @@
 #include "tactical_zoom.h"
 #include "tactical_navigation_rules.h"
 #include "tactical_background_action_rules.h"
+#include "strategic_formation_bonus_rules.h"
 #include "display_settings.h"
 #include "spellcross.h"
 #include "fs_archive.h"
@@ -13338,24 +13339,14 @@ void SpellMap::RecalculateTacticalFormations()
 		const int r = (b - 1) / 2 + 1;
 		const int br = (b - 1) / 4 + 1;
 		int level = 0;
-		int attack = 0;
-		int defence = 0;
-		if (battalion_active[(size_t)b])
-		{
-			level = 1; attack = 1; defence = 1;
-		}
-		if (regiment_active[(size_t)r])
-		{
-			level = 2; attack = 2; defence = 1;
-		}
-		if (brigade_active[(size_t)br])
-		{
-			level = 3; attack = 4; defence = 3;
-		}
+		if (battalion_active[(size_t)b]) level = 1;
+		if (regiment_active[(size_t)r]) level = 2;
+		if (brigade_active[(size_t)br]) level = 3;
+		const auto bonus = spellcross_strategy::FormationBonusForLevel(level);
 
 		u->formation_level = level;
-		u->formation_attack_bonus = attack;
-		u->formation_defence_bonus = defence;
+		u->formation_attack_bonus = bonus.attack;
+		u->formation_defence_bonus = bonus.defence;
 		u->commander_id = level > 0 ? b : 0;
 		u->is_commander = u->formation_commander_mask != 0 ? 1 : 0;
 	}

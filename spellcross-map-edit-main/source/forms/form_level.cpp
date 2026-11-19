@@ -52,6 +52,8 @@
 #include "../strategic_random_attack_rules.h"
 #include "../strategic_unit_timer_rules.h"
 #include "../strategic_campaign_unlock_rules.h"
+#include "../strategic_research_event_rules.h"
+#include "../strategic_formation_bonus_rules.h"
 #include "../strategic_buy_variant_rules.h"
 #include "../strategic_hierarchy_layout.h"
 
@@ -13166,24 +13168,14 @@ StrategicLevelFrame::HierarchyBattleMeta StrategicLevelFrame::GetHierarchyBattle
         return commanderHostParticipates("brigade_" + std::to_string(br) + "_commander", units, host);
     };
 
-    if (battalionActive(battalion))
-    {
-        meta.formation_level = 1;
-        meta.attack_bonus = 1;
-        meta.defence_bonus = 1;
-    }
-    if (regimentActive(regiment))
-    {
-        meta.formation_level = 2;
-        meta.attack_bonus = 2;
-        meta.defence_bonus = 1;
-    }
-    if (brigadeActive(brigade))
-    {
-        meta.formation_level = 3;
-        meta.attack_bonus = 4;
-        meta.defence_bonus = 3;
-    }
+    // Highest *active* formation wins; levels do not stack. Keep this in
+    // sync with tactical recalculation through the shared retail bonus table.
+    if (battalionActive(battalion)) meta.formation_level = 1;
+    if (regimentActive(regiment)) meta.formation_level = 2;
+    if (brigadeActive(brigade)) meta.formation_level = 3;
+    const auto bonus = spellcross_strategy::FormationBonusForLevel(meta.formation_level);
+    meta.attack_bonus = bonus.attack;
+    meta.defence_bonus = bonus.defence;
 
     meta.carries_commander = meta.commander_host_mask != 0;
     return meta;
@@ -14529,10 +14521,17 @@ void StrategicLevelFrame::EnsureResearchLoaded()
 
 bool StrategicLevelFrame::IsResearchUnlocked(const ResearchItem& item) const
 {
-    if (item.prerequisites.empty()) return true;
-    for (int pre : item.prerequisites)
-        if (m_researchCompleted.count(pre) > 0) return true;
-    return false;
+    // RESEARCH.DEF ORconnections can reference either an ordinary completed
+    // research project OR a Special flag emitted by a LEVEL event. In LEVEL_09,
+    // Item(135) needs flag 138 and Item(136) needs flag 139. Special records
+    // are not selectable projects and must not be inserted into completed.
+    //
+    // Derive flags from persisted triggered-event IDs as well as LevelInit:
+    // v0.9.6.6 saves do not persist mutations of m_level.research_flags.
+    const auto flags = spellcross_strategy::EffectiveResearchFlags(
+        m_level.research_flags, m_level.events, m_triggeredLevelEvents);
+    return spellcross_strategy::AnyResearchPrerequisiteUnlocked(
+        item.prerequisites, m_researchCompleted, flags);
 }
 
 bool StrategicLevelFrame::IsResearchAvailable(const ResearchItem& item) const
@@ -16570,7 +16569,16 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
     ApplyResourceTickEndTurn();
 
 
+    const auto completedResearchBefore = m_researchCompleted.size();
     ApplyResearchTickEndTurn();
+    // Research-gated chapter events must run when the last prerequisite
+    // finishes, not wait for a second strategic turn. Already-triggered
+    // events are idempotently skipped by ProcessLevelEvents().
+    if (m_researchCompleted.size() != completedResearchBefore)
+    {
+        ProcessLevelEvents();
+        CheckTimeouts();
+    }
 
     // Pools may have depleted this turn. Clamp the next-turn research allocation
     // only after the current turn's research points have been applied.
@@ -21244,6 +21252,15 @@ bool StrategicLevelFrame::CanLaunchTerritoryBattle(int territoryId) const
         [territoryId](const LevelTerritory& territory) { return territory.id == territoryId; });
     if (!exists)
         return false;
+
+    // LEVEL_09's WaitForResearch(135,136) -> SetPlayersTerritory(4)
+    // guards the way to End(13). Do not offer the final battle while the
+    // research gate remains closed, even if the sector is visually adjacent.
+    if (territoryId == m_level.end_territory &&
+        !spellcross_strategy::FinalTerritoryResearchGateSatisfied(
+            m_level.events, m_researchCompleted))
+        return false;
+
     const bool owned = std::find(m_ownedTerritories.begin(), m_ownedTerritories.end(),
         territoryId) != m_ownedTerritories.end();
     if (!owned)
@@ -21530,7 +21547,7 @@ void StrategicLevelFrame::ProcessLevelEvents()
             // remain driven by WaitForTerritories.
             if (m_activatedEvents.count(evt.id) != 0)
                 should_fire = true;
-            else if (!evt.wait_for_territories.empty())
+            else if (!evt.wait_for_territories.empty() || !evt.wait_for_research.empty())
             {
                 bool all_owned = true;
                 for (int tid : evt.wait_for_territories)
@@ -21561,6 +21578,13 @@ void StrategicLevelFrame::ProcessLevelEvents()
             if (!all_owned)
                 should_fire = false;
         }
+
+        // WaitForResearch is an AND condition, unlike RESEARCH.DEF's
+        // ORconnections. A completed Special flag only unlocks a research
+        // project; it does not count as completion of that project.
+        if (should_fire && !spellcross_strategy::AllResearchCompleted(
+                evt.wait_for_research, m_researchCompleted))
+            should_fire = false;
 
         if (should_fire)
             to_trigger.push_back(evt.id);
@@ -21864,6 +21888,16 @@ void StrategicLevelFrame::ShowBriefing(int territory_id)
         if (!found && !fallbackToken.empty() && to_lower(token) != to_lower(fallbackToken))
             try_append_single_text(info, m_spellData ? m_spellData->texts : nullptr,
                 texts_dir, fallbackToken, "", english ? "Briefing" : "Instrukce", false, false);
+    }
+
+    if (m_gameModeEnabled && territory_id == m_level.end_territory &&
+        !spellcross_strategy::FinalTerritoryResearchGateSatisfied(
+            m_level.events, m_researchCompleted))
+    {
+        const wxString notice = english
+            ? wxString("This territory is not accessible yet. Complete the required research before launching an attack.")
+            : wxString(L"Toto území zatím není přístupné. Před útokem nejdříve dokončete požadované výzkumy.");
+        info = notice + (info.IsEmpty() ? wxString() : wxString(L"\n\n") + info);
     }
 
     if (info.IsEmpty())

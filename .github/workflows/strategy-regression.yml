@@ -87,6 +87,12 @@ jobs:
             spellcross-map-edit-main/tests/test_random_counterattack_rules.cpp \
             -o /tmp/spellcross-random-counterattack-test
           /tmp/spellcross-random-counterattack-test
+      - name: Compile and test retail research keys and formation bonuses
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_reported_issues_172_174.cpp \
+            -o /tmp/spellcross-issues-172-174-test
+          /tmp/spellcross-issues-172-174-test
       - name: Compile and test campaign unit purchase unlock rules
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \

@@ -84,6 +84,10 @@ struct LevelEvent {
     // WaitForTerritories(11,12) - event only fires after these territories are conquered
     std::vector<int> wait_for_territories;
 
+    // WaitForResearch(135,136) - ALL listed research projects must be completed.
+    // LEVEL_09 uses this to open the route to the final mission.
+    std::vector<int> wait_for_research;
+
     // RunEvents(5,6,7,8) - trigger these events when this event fires
     std::vector<int> run_events;
 
