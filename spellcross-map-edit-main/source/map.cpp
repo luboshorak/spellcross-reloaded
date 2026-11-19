@@ -1942,8 +1942,9 @@ int SpellMap::SetGameMode(int new_mode)
 
 		ReleaseMap();
 		ResumeUnitRanging(false);
-		// Original difficulty normalizes low Other Side experience against the
-		// current Alliance average once a unit enters the battle.
+		// Stand-alone missions already have Alliance companies at this point.
+		// Campaign deployment queues them until FinishDeployment(), so a second
+		// pass is required there (issue #171).
 		ApplyDifficultyEnemyExperience();
 		// Re-link objective trigger units (TransportUnit/SaveUnit/DestroyUnit etc.)
 		events->ResetEvents();
@@ -2083,6 +2084,16 @@ void SpellMap::ApplyDifficultyEnemyExperience()
 {
 	for(auto* u : units)
 		AdjustEnemyExperienceForDifficulty(u);
+}
+
+void SpellMap::FinalizeEnemyDifficultyAfterDeployment()
+{
+	// Do not adjust a cancelled/partial deployment, or reroll a resumed battle.
+	// The per-unit difficulty_adjusted flag keeps scripted veterans intact and
+	// prevents a second random roll for already adjusted enemies.
+	if(!game_mode || deployment_mode)
+		return;
+	ApplyDifficultyEnemyExperience();
 }
 
 // returns path to DEF file or DTA file if DEF was not used

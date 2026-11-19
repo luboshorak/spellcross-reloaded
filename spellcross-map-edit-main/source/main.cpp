@@ -2626,6 +2626,12 @@ void MainFrame::FinishDeployment()
     m_deployment_units.clear();
     m_deployment_placed.clear();
 
+    // Issue #171: SetGameMode(1) ran before any queued Alliance companies
+    // were on the map, so its enemy XP normalization had no friendly roster
+    // to average. Run the original difficulty rule now that deployment is
+    // complete, BEFORE SaveInitial captures the starting battlefield state.
+    spell_map->FinalizeEnemyDifficultyAfterDeployment();
+
     // The first real battlefield state is captured only after every unit
     // has been placed; mission AI/events can start from this point onward.
     if (spell_map->saves) spell_map->saves->SaveInitial();
