@@ -21248,9 +21248,16 @@ bool StrategicLevelFrame::CanLaunchTerritoryBattle(int territoryId) const
         m_visibleTerritory[territoryId] == 0)
         return false;
 
-    const bool exists = std::any_of(m_level.territories.begin(), m_level.territories.end(),
-        [territoryId](const LevelTerritory& territory) { return territory.id == territoryId; });
-    if (!exists)
+    const auto territory = std::find_if(m_level.territories.begin(), m_level.territories.end(),
+        [territoryId](const LevelTerritory& candidate) { return candidate.id == territoryId; });
+    if (territory == m_level.territories.end())
+        return false;
+
+    // SetSpecialTerritory(4) in retail LEVEL_09 marks a non-combat sector:
+    // Event(13) grants it automatically after both keys are researched.
+    // Never launch M09_04A.DEF (MissionParameters only, no MissionData),
+    // even on an old save with a spurious counterattack on this sector.
+    if (territory->is_special)
         return false;
 
     // LEVEL_09's WaitForResearch(135,136) -> SetPlayersTerritory(4)
@@ -21366,8 +21373,8 @@ void StrategicLevelFrame::ProcessRandomCounterAttack()
         const auto territory = std::find_if(
             m_level.territories.begin(), m_level.territories.end(),
             [target](const LevelTerritory& t) { return t.id == target; });
-        if (territory == m_level.territories.end())
-            continue;
+        if (territory == m_level.territories.end() || territory->is_special)
+            continue; // Script-controlled non-combat sectors cannot be attacked.
         if (std::any_of(m_counterAttacks.begin(), m_counterAttacks.end(),
                 [target](const CounterAttackState& attack) {
                     return attack.territory_id == target && !attack.completed;
@@ -21430,6 +21437,18 @@ void StrategicLevelFrame::CheckCounterAttacks()
 
     for (auto& ca : m_counterAttacks)
     {
+        // Old saves may contain invalid attacks against a
+        // SetSpecialTerritory sector that has no playable combat map.
+        // Retire them without surrendering the script-awarded territory.
+        const auto special = std::find_if(m_level.territories.begin(), m_level.territories.end(),
+            [&ca](const LevelTerritory& t) {
+                return t.id == ca.territory_id && t.is_special;
+            });
+        if (special != m_level.territories.end())
+        {
+            ca.completed = true;
+            continue;
+        }
         if (ca.triggered || ca.completed)
             continue;
 
@@ -21656,8 +21675,9 @@ void StrategicLevelFrame::ProcessLevelEvents()
                         }) &&
                     (frontLine.empty() || frontLine.count(id) != 0) &&
                     std::find_if(m_level.territories.begin(), m_level.territories.end(),
-                        [id](const LevelTerritory& t) { return t.id == id; })
-                        != m_level.territories.end())
+                        [id](const LevelTerritory& t) {
+                            return t.id == id && !t.is_special;
+                        }) != m_level.territories.end())
                     eligible.push_back(id);
             if (eligible.empty())
             {

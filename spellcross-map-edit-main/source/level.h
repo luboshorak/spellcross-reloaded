@@ -28,6 +28,9 @@ struct LevelTerritory {
     int strategic_y = 0;
     // Finální území (LASTTERT) - ikona zkřížených mečů
     bool is_final = false;
+    // Original SetSpecialTerritory(id): script-controlled, non-combat territory.
+    // LEVEL_09 territory 4 is awarded by Event(13), not conquered in battle.
+    bool is_special = false;
 
     // Video při dobytí území
     std::string conquest_video;

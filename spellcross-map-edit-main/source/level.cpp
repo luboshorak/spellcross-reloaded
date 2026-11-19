@@ -143,6 +143,8 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
 
     std::string raw;
     int lineNo = 0;
+    // Preserve SetSpecialTerritory even if a mod declares it before Territory().
+    std::vector<int> specialTerritoryIds;
 
     while (std::getline(f, raw)) {
         lineNo++;
@@ -227,6 +229,12 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 t.mission = args[2];
                 t.music = args[3];
                 out.territories.push_back(t);
+                continue;
+            }
+            if (cmd == "SetSpecialTerritory" && args.size() >= 1) {
+                int tid = 0;
+                if (parse_int(args[0], tid) && tid > 0)
+                    specialTerritoryIds.push_back(tid);
                 continue;
             }
             if (cmd == "DefineStrategicPoints" && args.size() >= 3) {
@@ -452,6 +460,12 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
     if (ctx == Ctx::Event) flush_event();
 
     // --- Post-parse linkage ---
+
+    // Original retail SetSpecialTerritory(4) is not a battle objective:
+    // LEVEL_09 awards this territory via Event(13) after both key researches.
+    for (auto& t : out.territories)
+        t.is_special = std::find(specialTerritoryIds.begin(), specialTerritoryIds.end(),
+            t.id) != specialTerritoryIds.end();
 
     // Mark the end territory as final (LASTTERT)
     if (out.end_territory > 0)

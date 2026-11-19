@@ -29,6 +29,23 @@ class OriginalIssues172174(unittest.TestCase):
         self.assertLess(section.index(gate), section.index("if (!owned)"))
         self.assertIn("Toto území zatím není přístupné.", STRATEGY)
 
+    def test_174_scripted_noncombat_sector_cannot_launch_or_be_attacked(self):
+        # LEVEL_09 retail marks territory 4 with SetSpecialTerritory(4).
+        # The event after both keys awards it without running M09_04A.DEF.
+        self.assertIn('cmd == "SetSpecialTerritory"', LEVEL)
+        self.assertIn("t.is_special = std::find(specialTerritoryIds.begin()", LEVEL)
+        start = STRATEGY.index("bool StrategicLevelFrame::CanLaunchTerritoryBattle(")
+        end = STRATEGY.index("void StrategicLevelFrame::SurrenderCounterAttack(", start)
+        section = STRATEGY[start:end]
+        self.assertLess(section.index("if (territory->is_special)"),
+                        section.index("if (!owned)"))
+        # Cover native button, wxWidgets launch path and both enemy-AI attack
+        # producers; script-granted sector must not have a normal combat map.
+        self.assertIn("!CanLaunchTerritoryBattle(m_selectedTerritory)", STRATEGY)
+        self.assertIn("if (territory == m_level.territories.end() || territory->is_special)", STRATEGY)
+        self.assertIn("return t.id == id && !t.is_special;", STRATEGY)
+        self.assertIn("ca.completed = true;", STRATEGY)
+
     def test_172_stat_formula_consistent_in_strategic_and_tactical(self):
         self.assertIn("FormationBonusForLevel(meta.formation_level)", STRATEGY)
         self.assertIn("FormationBonusForLevel(level)", TACTICAL)
