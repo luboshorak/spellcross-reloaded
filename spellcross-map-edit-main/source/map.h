@@ -947,6 +947,9 @@ public:
 		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
 		bool CanSavePausedBattle() const;
 		void SetGameDifficulty(GameDifficulty difficulty);
+		// Re-evaluate enemy ranks once all Alliance companies have been deployed.
+		// This must run before the first tactical save, not during incomplete placement.
+		void FinalizeEnemyDifficultyAfterDeployment();
 		GameDifficulty GetGameDifficulty() const { return game_difficulty; };
 		int GetTacticalSaveLimit() const;
 		void Close();
