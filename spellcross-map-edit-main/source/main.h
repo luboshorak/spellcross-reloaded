@@ -119,6 +119,9 @@ public:
     void PlayNextStrategicCutscene();
     void OnStrategicCutsceneClosed(wxCloseEvent& ev);
     bool HasPendingStrategicCutscenes() const;
+    // The original final chapter has no LEVEL_11. Finish it only AFTER the
+    // authored mission/chapter ending video queue has drained (#181).
+    void CompleteCampaignAfterCutscenes();
 
     // Window-flow helpers: only one game layer is interactable at a time.
     void ShowMainMenuWindow();
@@ -153,6 +156,7 @@ private:
     std::vector<std::string> m_strategicCutsceneQueue;
     bool m_strategicCutsceneScheduled = false;
     bool m_strategicCutscenePlaying = false;
+    bool m_campaignCompletionPending = false;
 
     // Pre-battle placement belongs to gameplay, not the removed map editor.
     bool m_deployment_requested = false;
