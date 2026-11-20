@@ -59,6 +59,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install GUI test dependencies
         run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev xvfb
+      - name: Syntax-check tactical mission result UI with wxWidgets
+        run: |
+          c++ -std=c++17 -fsyntax-only $(wx-config --cxxflags) \
+            -Ispellcross-map-edit-main/source \
+            spellcross-map-edit-main/source/main.cpp
       - name: Check source and localization regressions
         run: python3 -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py'
       - name: Verify tactical zoom geometry and wheel input
