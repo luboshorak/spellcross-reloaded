@@ -22419,6 +22419,15 @@ void StrategicLevelFrame::AdvanceToNextLevel()
 
     newWin->NormalizeCommanderIdentities();
 
+    // #180: Formation membership is campaign state, not chapter state.
+    // Rebuild it from the previous frame's UID-based slots after all permanent
+    // companies, new chapter reinforcements and commanders have been normalized.
+    // RestoreHierarchyAssignments() resolves existing unit/commander UIDs and
+    // silently skips temporary companies removed at chapter transition.
+    // Do this BEFORE the first destination save and before the next mission
+    // snapshots its tactical formation bonuses.
+    newWin->RestoreHierarchyAssignments(CaptureHierarchyAssignments());
+
     // Transfer the chapter first, but do not fire its introduction events
     // while the completed level's outro and the new intro are queued.
     // Event(0)/AbsTime(1) reinforcements and scripted attacks are delivered
