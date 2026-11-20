@@ -74,37 +74,28 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
     const fs::path requested(entry_name);
     const std::string ext = UpperAscii(requested.extension().string());
     const std::string stem = UpperAscii(requested.stem().string());
+    const bool czechEdition = spell_data->GetTextLanguage() == SpellLang::CZE;
 
     std::vector<std::wstring> archive_candidates;
     if (ext == ".DP2")
     {
         archive_candidates.push_back((fs::path(spell_data->cd_data_path) / "SPEAKER.FS").wstring());
         archive_candidates.push_back((fs::path(spell_data->data_path) / "SPEAKER.FS").wstring());
-        archive_candidates.push_back((fs::path("temp") / "SPEAKER.FS").wstring());
+        if (czechEdition)
+            archive_candidates.push_back((fs::path("temp") / "SPEAKER.FS").wstring());
     }
     else
     {
         archive_candidates.push_back((fs::path(spell_data->cd_data_path) / "MOVIE.FS").wstring());
         archive_candidates.push_back((fs::path(spell_data->data_path) / "MOVIE.FS").wstring());
-        archive_candidates.push_back((fs::path("temp") / "MOVIE.FS").wstring());
-        archive_candidates.push_back((fs::path("temp") / "MOVIE" / "MOVIE.FS").wstring());
-        archive_candidates.push_back(fs::path("MOVIE.FS").wstring());
-    }
-
-    std::wstring archive_path;
-    for (const auto& c : archive_candidates)
-    {
-        std::error_code ec;
-        if (fs::exists(c, ec))
+        // "temp" may contain another edition's unpacked game data. Never
+        // silently play Czech cutscenes in an EN/PL/IT campaign.
+        if (czechEdition)
         {
-            archive_path = c;
-            break;
+            archive_candidates.push_back((fs::path("temp") / "MOVIE.FS").wstring());
+            archive_candidates.push_back((fs::path("temp") / "MOVIE" / "MOVIE.FS").wstring());
+            archive_candidates.push_back(fs::path("MOVIE.FS").wstring());
         }
-    }
-    if (archive_path.empty())
-    {
-        error = "source MOVIE.FS/SPEAKER.FS archive not found";
-        return false;
     }
 
     std::vector<std::string> entries;
@@ -112,44 +103,66 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
         entries.push_back(requested.filename().string());
     else if (ext == ".SMK")
     {
-        // EN-style level definitions may name Maslan's SMK conversion.  If the
-        // fallback pack is absent, try the corresponding original CZ entry.
-        entries.push_back(stem + ".CAN");
-        entries.push_back(stem + ".DPK");
+        // Old script/conversion names can refer to original archive movies.
+        // EN/PL/IT DPK is natively decoded; Czech CAN is a different codec.
+        if (czechEdition)
+        {
+            entries.push_back(stem + ".CAN");
+            entries.push_back(stem + ".DPK");
+        }
+        else
+        {
+            entries.push_back(stem + ".DPK");
+            entries.push_back(stem + ".CAN");
+        }
     }
 
     if (entries.empty())
     {
-        error = "unsupported legacy video extension";
+        error = "unsupported original video extension";
         return false;
     }
 
-    try
+    bool foundArchive = false;
+    std::string lastError;
+    // Do NOT stop at the first existing archive. Different editions may ship
+    // SPEAKER and MOVIE independently, and the first archive may not contain
+    // the requested entry. Try every explicitly configured source in order.
+    for (const auto& path : archive_candidates)
     {
-        // Loading every entry of MOVIE.FS/SPEAKER.FS for each queued clip can
-        // stall chapter transitions for many seconds. Parse the directory now
-        // and let SpellVideo request only the selected video and audio entries.
-        FSarchive fs(archive_path, FSarchive::Options::NO_LOAD);
-        for (const auto& entry : entries)
+        std::error_code ec;
+        if (path.empty() || !fs::exists(path, ec) || ec)
+            continue;
+        foundArchive = true;
+        try
         {
-            try
+            FSarchive archive(path, FSarchive::Options::NO_LOAD);
+            for (const auto& entry : entries)
             {
-                out_video = new SpellVideo(&fs, entry);
-                wxLogDebug("[VIDEO] original archive: %s (requested %s)", entry.c_str(), entry_name.c_str());
-                return true;
-            }
-            catch (const std::exception& ex)
-            {
-                delete out_video;
-                out_video = nullptr;
-                error = ex.what();
+                try
+                {
+                    out_video = new SpellVideo(&archive, entry);
+                    wxLogDebug("[VIDEO] original edition movie: %s (%s)",
+                        entry.c_str(), entry_name.c_str());
+                    return true;
+                }
+                catch (const std::exception& ex)
+                {
+                    delete out_video;
+                    out_video = nullptr;
+                    lastError = ex.what();
+                }
             }
         }
+        catch (const std::exception& ex)
+        {
+            lastError = ex.what();
+        }
     }
-    catch (const std::exception& ex)
-    {
-        error = ex.what();
-    }
+
+    error = !foundArchive
+        ? "selected edition MOVIE.FS/SPEAKER.FS archive not found"
+        : "requested clip absent/undecodable in selected edition archives: " + lastError;
     return false;
 }
 }
@@ -230,7 +243,12 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     const std::string entry_name = requested.filename().string();
     const std::string ext = UpperAscii(requested.extension().string());
     const std::string stem = requested.stem().string();
-    const fs::path fallback_path = FindBundledMovieFallback(spell_data, stem);
+    const bool czechEdition = spell_data &&
+        spell_data->GetTextLanguage() == SpellLang::CZE;
+    // These transcodes are Czech-only. Other editions never look for them:
+    // their own DPK/DP2/CAN files must come from the selected retail archives.
+    const fs::path fallback_path = czechEdition
+        ? FindBundledMovieFallback(spell_data, stem) : fs::path{};
 
     // The CZ CAN picture codec is the one format the restoration decoder does
     // not understand.  Maslan captured those sequences from the CZ game and
@@ -263,9 +281,16 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
 
     if (!m_video && !use_fallback)
     {
-        throw runtime_error(string_format("Loading video file \"%s\" failed (%s)%s%s",
+        if (!czechEdition)
+            throw runtime_error(string_format(
+                "Cannot load original %s edition movie \"%s\" (%s). "
+                "Check the selected retail MOVIE.FS/SPEAKER.FS sources.",
+                spell_data->GetTextLanguage() == SpellLang::ENG ? "EN" : "non-CZ",
+                entry_name.c_str(), legacy_error.c_str()));
+        throw runtime_error(string_format(
+            "Loading Czech video file \"%s\" failed (%s)%s%s",
             entry_name.c_str(), legacy_error.c_str(),
-            fallback_path.empty() ? "; no bundled fallback " : "; fallback exists but cannot be used on this platform: ",
+            fallback_path.empty() ? "; no CZ fallback " : "; CZ fallback unusable on this platform: ",
             fallback_path.empty() ? (UpperAscii(stem) + ".mp4").c_str() : fallback_path.string().c_str()));
     }
 
