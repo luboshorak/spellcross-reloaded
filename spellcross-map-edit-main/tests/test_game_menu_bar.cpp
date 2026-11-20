@@ -1,6 +1,8 @@
 // Run with a display server, e.g. xvfb-run -a ./test_game_menu_bar.
 #include "../source/game_controls.h"
 #include "../source/strategic_ui_theme.h"
+#include "../source/game_dialogs.h"
+#include <wx/modalhook.h>
 #include <stdexcept>
 #include <fstream>
 
@@ -26,6 +28,44 @@ public:
         const bool result = wxFrame::ShowFullScreen(show, style);
         m_transition = false;
         return result;
+    }
+};
+
+// The actual modal layout must remain usable for chapter-long narratives,
+// not just pass source-level checks. This runs on wxGTK and native MSW.
+struct ChapterNarrativeHook final : wxModalDialogHook
+{
+    wxString expected;
+    int seen = 0;
+
+    explicit ChapterNarrativeHook(const wxString& value) : expected(value) {}
+
+    int Enter(wxDialog* dialog) override
+    {
+        if (dialog->GetTitle() != "Level 09 narrative")
+            return wxID_NONE;
+
+        ++seen;
+        const wxSize viewport = wxDisplay(dialog->GetParent()).GetClientArea().GetSize();
+        const wxSize window = dialog->GetSize();
+        if (window.x > viewport.x || window.y > viewport.y)
+            throw std::runtime_error("Long chapter narrative exceeds the display");
+
+        wxTextCtrl* scroll = nullptr;
+        wxButton* ok = nullptr;
+        for (auto* child : dialog->GetChildren())
+        {
+            if (auto* text = dynamic_cast<wxTextCtrl*>(child)) scroll = text;
+            if (auto* button = dynamic_cast<wxButton*>(child)) ok = button;
+        }
+        if (!scroll || !ok || scroll->GetValue() != expected)
+            throw std::runtime_error("Level 09 story lost text or the OK button");
+        if ((scroll->GetWindowStyleFlag() & (wxTE_READONLY | wxTE_MULTILINE)) !=
+            (wxTE_READONLY | wxTE_MULTILINE))
+            throw std::runtime_error("Story is not a read-only scrollable text view");
+        if (scroll->GetRect().GetBottom() > ok->GetRect().GetTop())
+            throw std::runtime_error("Story text overlaps its confirmation button");
+        return wxID_OK; // Close this test-only modal without user interaction.
     }
 };
 
@@ -135,6 +175,19 @@ public:
             wxCommandEvent controls(wxEVT_MENU, spellcross_help::ControlsId());
             frames[0]->GetEventHandler()->ProcessEvent(controls);
             Check(helpOpened, "Controls menu did not open the styled modal guide");
+            // #178: reproduce the very long chapter-09 event text using the
+            // real game dialog, then assert the full text and button are visible.
+            wxString longStory;
+            for (int i = 0; i < 100; ++i)
+                longStory += "After level nine the dragon and sword narrative continues. ";
+            ChapterNarrativeHook storyHook(longStory);
+            storyHook.Register();
+            const int storyResult = spellcross_dialog_ui::ShowThemedMessage(
+                longStory, "Level 09 narrative", wxOK | wxICON_INFORMATION, frames[0]);
+            storyHook.Unregister();
+            Check(storyResult == wxOK && storyHook.seen == 1,
+                "Chapter-09 story did not preserve OK/close behavior");
+
             // A representative strategic page exercises the production theme
             // without requiring commercial campaign data.
             {
