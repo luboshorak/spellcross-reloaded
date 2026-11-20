@@ -4888,6 +4888,7 @@ void MainFrame::ShowMissionResultOverlay()
     m_mission_result_visible = true;
     m_mission_result_stage = MissionResultStage::Debrief;
     m_mission_debrief_scroll_line = 0;
+    m_mission_debrief_dragging = false;
     m_mission_debrief_lines.clear();
     if (m_mission_end_req.text && spell_data && spell_data->font)
     {
@@ -4937,6 +4938,7 @@ void MainFrame::DismissMissionResultOverlay()
         }
 
         m_mission_result_stage = MissionResultStage::Statistics;
+        m_mission_debrief_dragging = false;
         m_mission_result_input_guard = 2;
         if (canvas)
         {
@@ -6791,6 +6793,7 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
                         m_mission_debrief_scroll_line =
                             spellcross_mission_debrief::ScrollFromTrack(
                                 py - barY, layout);
+                        m_mission_debrief_dragging = true;
                         canvas->Refresh(false);
                         return; // track click scrolls, never skips the page
                     }
@@ -6827,6 +6830,11 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
 
 void MainFrame::OnCanvasLMouseUp(wxMouseEvent& event)
 {
+    if (m_mission_debrief_dragging)
+    {
+        m_mission_debrief_dragging = false;
+        return;
+    }
 	if (!m_boxSelectPending)
 		return;
 
@@ -7051,6 +7059,7 @@ void MainFrame::OnCanvasMouseEnter(wxMouseEvent& event)
 
 void MainFrame::OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent&)
 {
+    m_mission_debrief_dragging = false;
     ResetTransientTacticalPointerState("native-mouse-capture-lost");
     if (spell_map && spell_map->IsLoaded())
         spell_map->scroller.Idle();
@@ -7075,6 +7084,36 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 // on canvas mouse move
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
+    if (m_mission_result_visible)
+    {
+        // The debrief is modal. Dragging its scrollbar cannot move/select
+        // tactical units underneath the panel.
+        if (m_mission_debrief_dragging && event.LeftIsDown() &&
+            m_mission_result_stage == MissionResultStage::Debrief &&
+            spell_data && spell_data->font && canvas)
+        {
+            const auto layout = spellcross_mission_debrief::Compute(
+                spell_data->font->GetHeight() + 1,
+                static_cast<int>(m_mission_debrief_lines.size()));
+            const wxSize cs = canvas->GetClientSize();
+            const double scale = (std::min)(cs.x / 640.0, cs.y / 480.0);
+            if (scale > 0.0 && layout.max_scroll_line > 0)
+            {
+                const int oy = (cs.y - static_cast<int>(
+                    std::lround(480.0 * scale))) / 2;
+                const int y = static_cast<int>((event.GetY() - oy) / scale);
+                const int trackY = layout.panel_y +
+                    spellcross_mission_debrief::ScrollbarY;
+                m_mission_debrief_scroll_line =
+                    spellcross_mission_debrief::ScrollFromTrack(
+                        y - trackY, layout);
+                canvas->Refresh(false);
+            }
+        }
+        else if (!event.LeftIsDown())
+            m_mission_debrief_dragging = false;
+        return;
+    }
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
     // Let the matching wxEVT_*_UP finish before the watchdog treats
     // a released right button as an orphaned camera drag.
