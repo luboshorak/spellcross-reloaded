@@ -64,7 +64,17 @@ class TacticalMissionDebriefRegression(unittest.TestCase):
             "void MainFrame::OnCanvasLMouseUp(", 1
         )[0]
         self.assertIn("spellcross_mission_debrief::ScrollFromTrack(", click)
+        self.assertIn("m_mission_debrief_dragging = true", click)
         self.assertIn("DismissMissionResultOverlay()", click)
+        movement = MAIN.split("void MainFrame::OnCanvasMouseMove(", 1)[1].split(
+            "void MainFrame::OnCanvasMouseWheel(", 1
+        )[0] if "void MainFrame::OnCanvasMouseWheel(" in MAIN.split(
+            "void MainFrame::OnCanvasMouseMove(", 1
+        )[1] else MAIN.split("void MainFrame::OnCanvasMouseMove(", 1)[1]
+        self.assertIn("if (m_mission_result_visible)", movement)
+        self.assertIn("m_mission_debrief_dragging && event.LeftIsDown()", movement)
+        self.assertIn("spellcross_mission_debrief::ScrollFromTrack(", movement)
+
 
 
 if __name__ == "__main__":
