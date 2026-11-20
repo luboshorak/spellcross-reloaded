@@ -5251,7 +5251,26 @@ void MainFrame::PlayCutsceneFromStrategic(const std::string& video_entry_name)
 bool MainFrame::HasPendingStrategicCutscenes() const
 {
     return m_strategicCutscenePlaying || m_strategicCutsceneScheduled ||
-        !m_strategicCutsceneQueue.empty();
+        !m_strategicCutsceneQueue.empty() || m_campaignCompletionPending;
+}
+
+void MainFrame::CompleteCampaignAfterCutscenes()
+{
+    if (m_campaignCompletionPending)
+        return;
+
+    // #181: final LEVEL_10 completion is a different destination from an
+    // ordinary chapter. Keep the parent strategic frame alive until every
+    // original cutscene has finished; do not reopen its exhausted territory map.
+    m_campaignCompletionPending = true;
+    if (!m_strategicCutscenePlaying && !m_strategicCutsceneScheduled)
+    {
+        m_strategicCutsceneScheduled = true;
+        CallAfter([this]() {
+            m_strategicCutsceneScheduled = false;
+            PlayNextStrategicCutscene();
+        });
+    }
 }
 
 void MainFrame::PlayNextStrategicCutscene()
@@ -5288,6 +5307,38 @@ void MainFrame::PlayNextStrategicCutscene()
             // Continue with the following queued clip rather than abandoning
             // the transition with both gameplay windows hidden.
         }
+    }
+
+    // The final chapter has no LEVEL_11.DEF. Once its entire ordered outro
+    // queue has completed, show congratulations and return to the MAIN menu,
+    // never the inert LEVEL_10 strategic territory map (#181).
+    if (m_campaignCompletionPending)
+    {
+        m_campaignCompletionPending = false;
+        HideTacticalWindow();
+
+        if (m_strategicLevel)
+        {
+            m_strategicLevel->Show();
+            m_strategicLevel->Raise();
+        }
+        wxWindow* owner = m_strategicLevel
+            ? static_cast<wxWindow*>(m_strategicLevel)
+            : static_cast<wxWindow*>(this);
+        spellcross_dialog_ui::ShowThemedMessage(
+            "Congratulations!\n\nYou have completed the Spellcross campaign.",
+            "Campaign Complete", wxOK | wxICON_INFORMATION, owner);
+
+        if (m_strategicLevel)
+        {
+            auto* finished = m_strategicLevel;
+            m_strategicLevel = nullptr;
+            finished->Hide();
+            finished->Destroy();
+        }
+        m_mainMenuReturnToTactical = false;
+        ShowMainMenuWindow();
+        return;
     }
 
     // Only the final clip returns to the new/current strategic frame.
@@ -5903,7 +5954,7 @@ void MainFrame::OpenStrategicAndLoadNext()
         // HandleMissionResult may have called AdvanceToNextLevel() which
         // replaced m_strategicLevel with a new window (already shown).
         // Show/Raise the current strategic level (whichever it is now).
-        if (m_strategicLevel)
+        if (m_strategicLevel && !m_campaignCompletionPending)
         {
             HideTacticalWindow();
             m_strategicLevel->Show();
