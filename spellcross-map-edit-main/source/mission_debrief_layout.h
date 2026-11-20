@@ -12,7 +12,7 @@ namespace spellcross_mission_debrief
     constexpr int PanelWidth = 488;      // wider than the original 408
     constexpr int PanelX = (CanvasWidth - PanelWidth) / 2;
     constexpr int PanelY = 92;           // below M_ACCOMP / M_FAILED banner
-    constexpr int PanelBottom = 414;     // reserve the tactical HUD at bottom
+    constexpr int PanelBottom = 400;     // finish above the tactical HUD (starts near y=410)
     constexpr int MinPanelHeight = 74;
     constexpr int TextX = 32;
     constexpr int TextY = 18;
