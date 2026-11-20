@@ -165,6 +165,7 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
         : "requested clip absent/undecodable in selected edition archives: " + lastError;
     return false;
 }
+}
 
 #ifdef _WIN32
 class FormVideoMfCallback final : public IMFPMediaPlayerCallback
