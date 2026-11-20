@@ -22332,13 +22332,14 @@ void StrategicLevelFrame::AdvanceToNextLevel()
         // not a broken installation.
         if (currentNumber == 10 && requestedNumber == 11)
         {
+            // The finale has no successor DEF. The authored mission ending and
+            // all LevelInit outro clips were queued above. The old code opened
+            // a modal congratulations box NOW, before they could play, and
+            // returned to an exhausted strategic map with nowhere to go.
             m_pendingMission.valid = false;
             SaveStrategicState();
-            spellcross_dialog_ui::ShowThemedMessage(
-                "Congratulations!\n\nYou have completed the Spellcross campaign.",
-                "Campaign Complete",
-                wxOK | wxICON_INFORMATION,
-                this);
+            if (m_main)
+                m_main->CompleteCampaignAfterCutscenes();
             return;
         }
 
