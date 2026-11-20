@@ -18,8 +18,9 @@ VIDEO = (ROOT / "forms/form_video_box.cpp").read_text(encoding="utf-8")
 class ReportedIssuesRegression(unittest.TestCase):
     def test_150_legacy_video_opens_archive_lazily(self):
         self.assertIn(
-            "FSarchive fs(archive_path, FSarchive::Options::NO_LOAD);", VIDEO
+            "FSarchive archive(path, FSarchive::Options::NO_LOAD);", VIDEO
         )
+        self.assertIn("for (const auto& path : archive_candidates)", VIDEO)
 
     def test_151_long_mission_briefing_has_independent_scroll_state(self):
         render = STRATEGY.split(
