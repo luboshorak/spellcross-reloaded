@@ -37,6 +37,7 @@
 #include "game_autodeploy.h"
 #include "game_audio_settings.h"
 #include "game_dialogs.h"
+#include "mission_debrief_layout.h"
 #include <wx/slider.h>
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
@@ -4886,6 +4887,20 @@ void MainFrame::ShowMissionResultOverlay()
     m_mission_result_stats = spell_map ? spell_map->GetMissionLossStats() : SpellMap::MissionLossStats{};
     m_mission_result_visible = true;
     m_mission_result_stage = MissionResultStage::Debrief;
+    m_mission_debrief_scroll_line = 0;
+    m_mission_debrief_dragging = false;
+    m_mission_debrief_lines.clear();
+    if (m_mission_end_req.text && spell_data && spell_data->font)
+    {
+        const auto chunks = m_mission_end_req.text->WordWrap(
+            spell_data->font, spellcross_mission_debrief::TextWidth);
+        for (const auto& line : chunks)
+            m_mission_debrief_lines.emplace_back(line.text);
+    }
+    if (m_mission_debrief_lines.empty())
+        m_mission_debrief_lines.push_back(m_mission_end_req.success
+            ? spellcross_ui_locale::Tr("result.debrief_success", "Mission accomplished.")
+            : spellcross_ui_locale::Tr("result.debrief_failed", "Mission failed."));
     // Two timer ticks are enough to get past the input event that triggered the
     // final objective/death.  This makes the result page a real modal step
     // instead of allowing a click-through straight into Strategic Level.
@@ -4923,6 +4938,7 @@ void MainFrame::DismissMissionResultOverlay()
         }
 
         m_mission_result_stage = MissionResultStage::Statistics;
+        m_mission_debrief_dragging = false;
         m_mission_result_input_guard = 2;
         if (canvas)
         {
@@ -4994,40 +5010,19 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
         // graphics used by Spellcross (RAM2ROH/RAM2HORZ/RAM2VERT).  Keeping it
         // inside the canvas makes this page deterministic after save/load and
         // prevents the old child-window click-through race.
-        wxString debrief;
-        if (m_mission_end_req.text)
-            debrief = wxString(m_mission_end_req.text->text.c_str());
-        if (debrief.empty())
-            debrief = m_mission_end_req.success ? spellcross_ui_locale::Tr("result.debrief_success", "Mission accomplished.") : spellcross_ui_locale::Tr("result.debrief_failed", "Mission failed.");
-
-        // Match the original post-mission debrief placement: a fixed framed
-        // message box directly under the banner.  The earlier restoration sized
-        // and positioned the box dynamically near the bottom of the screen,
-        // which made the frame drift down/right compared to DOS and changed
-        // from mission to mission depending on wrapped line count.
-        const int panelW = 408;
-        const int innerW = 344;
-        const int panelX = 116;
-        const int panelY = 92;
-
-        const auto chunks = m_mission_end_req.text
-            ? m_mission_end_req.text->WordWrap(spell_data->font, innerW)
-            : SpellTextChunks{};
-        std::vector<wxString> lines;
-        if (!chunks.empty())
-        {
-            lines.reserve(chunks.size());
-            for (const auto& c : chunks)
-                if (!c.text.empty()) lines.emplace_back(c.text);
-        }
-        else
-        {
-            // Fallback is short; keep it as one centered line.
-            lines.push_back(debrief);
-        }
-
-        const int lineH = std::max(1, spell_data->font->GetHeight()) + 1;
-        const int panelH = std::max(74, 32 + (int)lines.size() * lineH);
+        // Stay inside the 640x480 tactical viewport. The old panelH was
+        // 32 + ALL wrapped lines * lineH, making the level-09 narration
+        // overlap the HUD and continue beyond the visible screen (#178).
+        const int lineH = (std::max)(1, spell_data->font->GetHeight()) + 1;
+        const auto layout = spellcross_mission_debrief::Compute(
+            lineH, static_cast<int>(m_mission_debrief_lines.size()));
+        const int panelW = layout.panel_width;
+        const int panelH = layout.panel_height;
+        const int panelX = layout.panel_x;
+        const int panelY = layout.panel_y;
+        const int innerW = layout.text_width;
+        const int firstLine = spellcross_mission_debrief::ClampScroll(
+            m_mission_debrief_scroll_line, layout);
 
         // Recreate the original message-box background from the already
         // rendered battlefield and run it through the same dark palette filter
@@ -5105,12 +5100,44 @@ void MainFrame::DrawMissionResultOverlay(wxDC& dc)
             drawNativePanel(corn, panelW - cw, panelH - ch);
         }
 
-        const int textY = 18;
-        for (size_t i = 0; i < lines.size(); ++i)
+        // Draw only the visible page, never off-canvas rows; all original
+        // text stays in m_mission_debrief_lines for wheel/keyboard scrolling.
+        for (int i = 0; i < layout.visible_lines; ++i)
         {
-            wxBitmap lineBmp = MakeSpellTextBitmap(spell_data->font, lines[i], text, innerW, true);
+            const wxString& line = m_mission_debrief_lines[firstLine + i];
+            if (line.empty()) continue; // preserve authored paragraph breaks
+            wxBitmap lineBmp = MakeSpellTextBitmap(
+                spell_data->font, line, text, innerW, true);
             if (lineBmp.IsOk())
-                mem.DrawBitmap(lineBmp, 32, textY + (int)i * lineH, true);
+                mem.DrawBitmap(lineBmp, spellcross_mission_debrief::TextX,
+                    spellcross_mission_debrief::TextY + i * lineH, true);
+        }
+
+        if (layout.max_scroll_line > 0)
+        {
+            // An unobtrusive scrollbar inside the right frame margin.
+            // Clicking the track jumps to that section; dragging the mouse
+            // wheel / using PgUp/PgDn, arrows, Home/End also scrolls.
+            const int trackH = layout.ScrollbarHeight();
+            const int barX = spellcross_mission_debrief::ScrollbarX;
+            const int barY = spellcross_mission_debrief::ScrollbarY;
+            const int thumbH = (std::min)(trackH, (std::max)(12,
+                trackH * layout.visible_lines / layout.total_lines));
+            const int thumbY = barY + (trackH - thumbH) *
+                firstLine / layout.max_scroll_line;
+            mem.SetPen(wxPen(wxColour(96, 104, 91)));
+            mem.SetBrush(wxBrush(wxColour(20, 29, 21)));
+            mem.DrawRectangle(barX, barY, 8, trackH);
+            mem.SetPen(wxPen(wxColour(190, 193, 174)));
+            mem.SetBrush(wxBrush(wxColour(141, 151, 133)));
+            mem.DrawRectangle(barX + 1, thumbY, 6, thumbH);
+
+            wxBitmap indicator = MakeSpellTextBitmap(spell_data->font,
+                wxString::Format("%d/%d", firstLine + 1, layout.total_lines),
+                text, 94, true);
+            if (indicator.IsOk())
+                mem.DrawBitmap(indicator, (panelW - 94) / 2,
+                    panelH - spellcross_mission_debrief::FooterHeight + 4, true);
         }
         mem.SelectObject(wxNullBitmap);
         panel.SetMask(new wxMask(panel, maskColour));
@@ -6737,7 +6764,43 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
 {
     if (m_mission_end_flow)
     {
-        if (m_mission_result_visible && event.LeftDown()) DismissMissionResultOverlay();
+        if (m_mission_result_visible && event.LeftDown())
+        {
+            if (m_mission_result_stage == MissionResultStage::Debrief &&
+                spell_data && spell_data->font && canvas)
+            {
+                const auto layout = spellcross_mission_debrief::Compute(
+                    spell_data->font->GetHeight() + 1,
+                    static_cast<int>(m_mission_debrief_lines.size()));
+                const wxSize cs = canvas->GetClientSize();
+                const double scale = (std::min)(
+                    cs.x / 640.0, cs.y / 480.0);
+                if (layout.max_scroll_line > 0 && scale > 0.0)
+                {
+                    const int ox = (cs.x - static_cast<int>(
+                        std::lround(640.0 * scale))) / 2;
+                    const int oy = (cs.y - static_cast<int>(
+                        std::lround(480.0 * scale))) / 2;
+                    const int px = static_cast<int>((event.GetX() - ox) / scale);
+                    const int py = static_cast<int>((event.GetY() - oy) / scale);
+                    const int barX = layout.panel_x +
+                        spellcross_mission_debrief::ScrollbarX;
+                    const int barY = layout.panel_y +
+                        spellcross_mission_debrief::ScrollbarY;
+                    if (px >= barX - 5 && px < barX + 15 &&
+                        py >= barY && py <= barY + layout.ScrollbarHeight())
+                    {
+                        m_mission_debrief_scroll_line =
+                            spellcross_mission_debrief::ScrollFromTrack(
+                                py - barY, layout);
+                        m_mission_debrief_dragging = true;
+                        canvas->Refresh(false);
+                        return; // track click scrolls, never skips the page
+                    }
+                }
+            }
+            DismissMissionResultOverlay(); // original click-to-continue
+        }
         return;
     }
 	if (!event.LeftDown())
@@ -6767,6 +6830,11 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
 
 void MainFrame::OnCanvasLMouseUp(wxMouseEvent& event)
 {
+    if (m_mission_debrief_dragging)
+    {
+        m_mission_debrief_dragging = false;
+        return;
+    }
 	if (!m_boxSelectPending)
 		return;
 
@@ -6991,6 +7059,7 @@ void MainFrame::OnCanvasMouseEnter(wxMouseEvent& event)
 
 void MainFrame::OnCanvasMouseCaptureLost(wxMouseCaptureLostEvent&)
 {
+    m_mission_debrief_dragging = false;
     ResetTransientTacticalPointerState("native-mouse-capture-lost");
     if (spell_map && spell_map->IsLoaded())
         spell_map->scroller.Idle();
@@ -7015,6 +7084,36 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
 // on canvas mouse move
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 {
+    if (m_mission_result_visible)
+    {
+        // The debrief is modal. Dragging its scrollbar cannot move/select
+        // tactical units underneath the panel.
+        if (m_mission_debrief_dragging && event.LeftIsDown() &&
+            m_mission_result_stage == MissionResultStage::Debrief &&
+            spell_data && spell_data->font && canvas)
+        {
+            const auto layout = spellcross_mission_debrief::Compute(
+                spell_data->font->GetHeight() + 1,
+                static_cast<int>(m_mission_debrief_lines.size()));
+            const wxSize cs = canvas->GetClientSize();
+            const double scale = (std::min)(cs.x / 640.0, cs.y / 480.0);
+            if (scale > 0.0 && layout.max_scroll_line > 0)
+            {
+                const int oy = (cs.y - static_cast<int>(
+                    std::lround(480.0 * scale))) / 2;
+                const int y = static_cast<int>((event.GetY() - oy) / scale);
+                const int trackY = layout.panel_y +
+                    spellcross_mission_debrief::ScrollbarY;
+                m_mission_debrief_scroll_line =
+                    spellcross_mission_debrief::ScrollFromTrack(
+                        y - trackY, layout);
+                canvas->Refresh(false);
+            }
+        }
+        else if (!event.LeftIsDown())
+            m_mission_debrief_dragging = false;
+        return;
+    }
     if (!spell_map || !spell_map->IsLoaded() || inUnitOptions()) return;
     // Let the matching wxEVT_*_UP finish before the watchdog treats
     // a released right button as an orphaned camera drag.
@@ -7087,6 +7186,29 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 // on canvas wheel
 void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
 {
+    if (m_mission_result_visible)
+    {
+        // The result is painted in the tactical canvas, not a wx dialog.
+        // Intercept the wheel before the tactical zoom/HUD guard (#178).
+        if (m_mission_result_stage == MissionResultStage::Debrief &&
+            spell_data && spell_data->font &&
+            event.GetWheelAxis() == wxMOUSE_WHEEL_VERTICAL &&
+            event.GetWheelDelta() > 0)
+        {
+            const auto layout = spellcross_mission_debrief::Compute(
+                spell_data->font->GetHeight() + 1,
+                static_cast<int>(m_mission_debrief_lines.size()));
+            const int notches = (std::max)(1,
+                std::abs(event.GetWheelRotation()) / event.GetWheelDelta());
+            const int direction = event.GetWheelRotation() > 0 ? -1 : 1;
+            m_mission_debrief_scroll_line =
+                spellcross_mission_debrief::ClampScroll(
+                    m_mission_debrief_scroll_line + direction * 3 * notches,
+                    layout);
+            if (canvas) canvas->Refresh(false);
+        }
+        return; // never zoom the battlefield under a result overlay
+    }
     if (!spell_map || !spell_map->IsLoaded() || !event.GetWheelDelta())
         return;
     if (!spell_map->isGameMode())
@@ -7124,6 +7246,40 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
 // on canvas key down
 void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
 {
+    if (m_mission_result_visible)
+    {
+        // Keep the original mission-result modal state. Navigation keys read
+        // the full narrative; Enter advances only as the original click did.
+        const int resultKey = event.GetKeyCode();
+        if (m_mission_result_stage == MissionResultStage::Debrief &&
+            spell_data && spell_data->font)
+        {
+            const auto layout = spellcross_mission_debrief::Compute(
+                spell_data->font->GetHeight() + 1,
+                static_cast<int>(m_mission_debrief_lines.size()));
+            int next = m_mission_debrief_scroll_line;
+            switch (resultKey)
+            {
+            case WXK_UP:       --next; break;
+            case WXK_DOWN:     ++next; break;
+            case WXK_PAGEUP:   next -= spellcross_mission_debrief::PageStep(layout); break;
+            case WXK_PAGEDOWN: next += spellcross_mission_debrief::PageStep(layout); break;
+            case WXK_HOME:     next = 0; break;
+            case WXK_END:      next = layout.max_scroll_line; break;
+            default: break;
+            }
+            next = spellcross_mission_debrief::ClampScroll(next, layout);
+            if (next != m_mission_debrief_scroll_line)
+            {
+                m_mission_debrief_scroll_line = next;
+                if (canvas) canvas->Refresh(false);
+                return;
+            }
+        }
+        if (resultKey == WXK_RETURN || resultKey == WXK_NUMPAD_ENTER)
+            DismissMissionResultOverlay();
+        return; // Escape / gameplay shortcuts must not activate behind overlay
+    }
     if(!spell_map)
     {
         event.Skip();

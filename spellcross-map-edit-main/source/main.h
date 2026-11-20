@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <string>
 #include <chrono>
+#include <vector>
 
 
 
@@ -87,6 +88,11 @@ public:
     // disappear before wxWidgets has painted a single frame.
     int m_mission_result_input_guard = 0;
     SpellMap::MissionLossStats m_mission_result_stats;
+    // Word-wrapped once when a mission result appears, not on every paint.
+    // Only the visible slice is drawn inside the bounded RAM2* frame (#178).
+    std::vector<wxString> m_mission_debrief_lines;
+    int m_mission_debrief_scroll_line = 0;
+    bool m_mission_debrief_dragging = false;
 
     // Snapshot of mission-created persistent Alliance companies captured at the
     // exact mission-end tick.  The tactical simulation must not be allowed to

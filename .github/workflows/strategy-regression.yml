@@ -55,6 +55,12 @@ jobs:
             spellcross-map-edit-main/tests/test_autodeploy_rules.cpp \
             -o /tmp/spellcross-autodeploy-test
           /tmp/spellcross-autodeploy-test
+      - name: Verify tactical mission-result frame stays visible (#178)
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_mission_debrief_layout.cpp \
+            -o /tmp/spellcross-debrief-layout-test
+          /tmp/spellcross-debrief-layout-test
       - name: Compile and run the real LevelLoader against original script fixtures
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
