@@ -6762,7 +6762,42 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
 {
     if (m_mission_end_flow)
     {
-        if (m_mission_result_visible && event.LeftDown()) DismissMissionResultOverlay();
+        if (m_mission_result_visible && event.LeftDown())
+        {
+            if (m_mission_result_stage == MissionResultStage::Debrief &&
+                spell_data && spell_data->font && canvas)
+            {
+                const auto layout = spellcross_mission_debrief::Compute(
+                    spell_data->font->GetHeight() + 1,
+                    static_cast<int>(m_mission_debrief_lines.size()));
+                const wxSize cs = canvas->GetClientSize();
+                const double scale = (std::min)(
+                    cs.x / 640.0, cs.y / 480.0);
+                if (layout.max_scroll_line > 0 && scale > 0.0)
+                {
+                    const int ox = (cs.x - static_cast<int>(
+                        std::lround(640.0 * scale))) / 2;
+                    const int oy = (cs.y - static_cast<int>(
+                        std::lround(480.0 * scale))) / 2;
+                    const int px = static_cast<int>((event.GetX() - ox) / scale);
+                    const int py = static_cast<int>((event.GetY() - oy) / scale);
+                    const int barX = layout.panel_x +
+                        spellcross_mission_debrief::ScrollbarX;
+                    const int barY = layout.panel_y +
+                        spellcross_mission_debrief::ScrollbarY;
+                    if (px >= barX - 5 && px < barX + 15 &&
+                        py >= barY && py <= barY + layout.ScrollbarHeight())
+                    {
+                        m_mission_debrief_scroll_line =
+                            spellcross_mission_debrief::ScrollFromTrack(
+                                py - barY, layout);
+                        canvas->Refresh(false);
+                        return; // track click scrolls, never skips the page
+                    }
+                }
+            }
+            DismissMissionResultOverlay(); // original click-to-continue
+        }
         return;
     }
 	if (!event.LeftDown())
@@ -7112,6 +7147,29 @@ void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
 // on canvas wheel
 void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
 {
+    if (m_mission_result_visible)
+    {
+        // The result is painted in the tactical canvas, not a wx dialog.
+        // Intercept the wheel before the tactical zoom/HUD guard (#178).
+        if (m_mission_result_stage == MissionResultStage::Debrief &&
+            spell_data && spell_data->font &&
+            event.GetWheelAxis() == wxMOUSE_WHEEL_VERTICAL &&
+            event.GetWheelDelta() > 0)
+        {
+            const auto layout = spellcross_mission_debrief::Compute(
+                spell_data->font->GetHeight() + 1,
+                static_cast<int>(m_mission_debrief_lines.size()));
+            const int notches = (std::max)(1,
+                std::abs(event.GetWheelRotation()) / event.GetWheelDelta());
+            const int direction = event.GetWheelRotation() > 0 ? -1 : 1;
+            m_mission_debrief_scroll_line =
+                spellcross_mission_debrief::ClampScroll(
+                    m_mission_debrief_scroll_line + direction * 3 * notches,
+                    layout);
+            if (canvas) canvas->Refresh(false);
+        }
+        return; // never zoom the battlefield under a result overlay
+    }
     if (!spell_map || !spell_map->IsLoaded() || !event.GetWheelDelta())
         return;
     if (!spell_map->isGameMode())
@@ -7149,6 +7207,40 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
 // on canvas key down
 void MainFrame::OnCanvasKeyDown(wxKeyEvent& event)
 {
+    if (m_mission_result_visible)
+    {
+        // Keep the original mission-result modal state. Navigation keys read
+        // the full narrative; Enter advances only as the original click did.
+        const int resultKey = event.GetKeyCode();
+        if (m_mission_result_stage == MissionResultStage::Debrief &&
+            spell_data && spell_data->font)
+        {
+            const auto layout = spellcross_mission_debrief::Compute(
+                spell_data->font->GetHeight() + 1,
+                static_cast<int>(m_mission_debrief_lines.size()));
+            int next = m_mission_debrief_scroll_line;
+            switch (resultKey)
+            {
+            case WXK_UP:       --next; break;
+            case WXK_DOWN:     ++next; break;
+            case WXK_PAGEUP:   next -= spellcross_mission_debrief::PageStep(layout); break;
+            case WXK_PAGEDOWN: next += spellcross_mission_debrief::PageStep(layout); break;
+            case WXK_HOME:     next = 0; break;
+            case WXK_END:      next = layout.max_scroll_line; break;
+            default: break;
+            }
+            next = spellcross_mission_debrief::ClampScroll(next, layout);
+            if (next != m_mission_debrief_scroll_line)
+            {
+                m_mission_debrief_scroll_line = next;
+                if (canvas) canvas->Refresh(false);
+                return;
+            }
+        }
+        if (resultKey == WXK_RETURN || resultKey == WXK_NUMPAD_ENTER)
+            DismissMissionResultOverlay();
+        return; // Escape / gameplay shortcuts must not activate behind overlay
+    }
     if(!spell_map)
     {
         event.Skip();
