@@ -16198,10 +16198,18 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 
     if (unitsForMission.empty())
     {
-        spellcross_dialog_ui::ShowThemedMessage("No units selected for mission.\n\n"
-            "Select units in the Units list (click to select, Ctrl+click for multiple)\n"
-            "or click a Commander to select all units under them.",
-            "Launch", wxOK | wxICON_INFORMATION, this);
+        const wxString message =
+            spellcross_ui_locale::Tr("strategic.launch.no_units",
+                "No units selected for mission.") +
+            "\n\n" +
+            spellcross_ui_locale::Tr("strategic.launch.select_units",
+                "Select units in the Units list (click to select, Ctrl+click for multiple)") +
+            "\n" +
+            spellcross_ui_locale::Tr("strategic.launch.select_commander",
+                "or click a Commander to select all units under them.");
+        spellcross_dialog_ui::ShowThemedMessage(message,
+            spellcross_ui_locale::Tr("strategic.launch.title", "Launch"),
+            wxOK | wxICON_INFORMATION, this);
         return;
     }
 
@@ -16245,13 +16253,21 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 
             const std::filesystem::path cache = std::filesystem::path(GetStableBaseDir()) / "temp" / "COMMON";
             wxString diagnostic;
-            diagnostic << "Mission: " << wxString::FromUTF8(token) << "\n";
-            diagnostic << "Expected terrain: " << wxString::FromUTF8(expected) << "\n";
-            diagnostic << "Build: v" SPELLCROSS_VERSION_STRING "\n";
-            diagnostic << "Cache directory: " << wxString(cache.wstring()) << "\n";
-            diagnostic << "Level DEF: " << wxString::FromUTF8(m_level.source_path) << "\n";
-            diagnostic << "No matching tactical DEF or DTA found.";
-            spellcross_dialog_ui::ShowThemedMessage(diagnostic, "Launch", wxOK | wxICON_WARNING, this);
+            diagnostic << spellcross_ui_locale::Tr("strategic.launch.mission", "Mission:")
+                << " " << wxString::FromUTF8(token) << "\n";
+            diagnostic << spellcross_ui_locale::Tr("strategic.launch.expected_terrain", "Expected terrain:")
+                << " " << wxString::FromUTF8(expected) << "\n";
+            diagnostic << spellcross_ui_locale::Tr("strategic.launch.build", "Build:")
+                << " v" SPELLCROSS_VERSION_STRING "\n";
+            diagnostic << spellcross_ui_locale::Tr("strategic.launch.cache_directory", "Cache directory:")
+                << " " << wxString(cache.wstring()) << "\n";
+            diagnostic << spellcross_ui_locale::Tr("strategic.launch.level_def", "Level DEF:")
+                << " " << wxString::FromUTF8(m_level.source_path) << "\n";
+            diagnostic << spellcross_ui_locale::Tr("strategic.launch.map_not_found",
+                "No matching tactical DEF or DTA found.");
+            spellcross_dialog_ui::ShowThemedMessage(diagnostic,
+                spellcross_ui_locale::Tr("strategic.launch.title", "Launch"),
+                wxOK | wxICON_WARNING, this);
             return;
         }
 
@@ -16346,8 +16362,11 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 
         if (generatedEnemyUnits.empty())
         {
-            spellcross_dialog_ui::ShowThemedMessage("This DTA-only territory has no counter-attack force data.",
-                "Launch", wxOK | wxICON_WARNING, this);
+            spellcross_dialog_ui::ShowThemedMessage(
+                spellcross_ui_locale::Tr("strategic.launch.no_counterattack_force",
+                    "This DTA-only territory has no counter-attack force data."),
+                spellcross_ui_locale::Tr("strategic.launch.title", "Launch"),
+                wxOK | wxICON_WARNING, this);
             return;
         }
     }
@@ -16417,10 +16436,14 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
     if (!ok)
     {
         const wxString source = generatedDtaBattle ? wxString(dtaPath) : wxString(defPath);
-        spellcross_dialog_ui::ShowThemedMessage((generatedDtaBattle
-                ? "Generated DTA strategic battle failed\nDTA:\n"
-                : "LoadMapFromDefPath FAILED\nDEF:\n") + source,
-            "Launch", wxOK | wxICON_ERROR, this);
+        const wxString failure = generatedDtaBattle
+            ? spellcross_ui_locale::Tr("strategic.launch.generated_dta_failed",
+                "Generated DTA strategic battle failed") + "\nDTA:\n"
+            : spellcross_ui_locale::Tr("strategic.launch.def_load_failed",
+                "LoadMapFromDefPath FAILED") + "\nDEF:\n";
+        spellcross_dialog_ui::ShowThemedMessage(failure + source,
+            spellcross_ui_locale::Tr("strategic.launch.title", "Launch"),
+            wxOK | wxICON_ERROR, this);
         // No tactical mission was launched; do not leave a valid pending
         // result that could be applied to a later, unrelated map.
         spellcross_diag::Log(spellcross_diag::Level::Error, "STRATEGY",
@@ -16618,8 +16641,11 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
     MaybeGenerateCommanderOffer();
     if (m_availableCommanders.size() > commanderOffersBefore)
     {
-        spellcross_dialog_ui::ShowThemedMessage(L"Nov\u00FD d\u016Fstojn\u00EDk p\u0159i\u0161el do gener\u00E1ln\u00EDho \u0161t\u00E1bu.",
-            L"Gener\u00E1ln\u00ED \u0161t\u00E1b", wxOK | wxICON_INFORMATION, this);
+        spellcross_dialog_ui::ShowThemedMessage(
+            spellcross_ui_locale::Tr("strategic.commander_arrived.message",
+                "A new officer has arrived at headquarters."),
+            spellcross_ui_locale::Tr("strategic.commander_arrived.title", "Headquarters"),
+            wxOK | wxICON_INFORMATION, this);
     }
 
     SaveStrategicState();

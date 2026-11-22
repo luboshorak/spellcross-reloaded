@@ -92,10 +92,18 @@ class LocalizationCatalogTests(unittest.TestCase):
             "strategic.territory_resource_summary",
             "strategic.owned_resource_summary",
             "strategic.resource_ratio_summary",
+            "strategic.launch.no_units",
+            "strategic.launch.select_units",
+            "strategic.launch.select_commander",
+            "strategic.launch.title",
+            "strategic.commander_arrived.message",
+            "strategic.commander_arrived.title",
         ):
             self.assertIn(f'spellcross_ui_locale::Tr("{key}"', source)
         self.assertNotIn('L"Máte přidělené body do výzkumu', source)
         self.assertNotIn('L"Zrušit úpravy objednané', source)
+        self.assertNotIn('ShowThemedMessage("No units selected for mission.', source)
+        self.assertNotIn('ShowThemedMessage(L"Nov\\u00FD d\\u016Fstojn\\u00EDk', source)
 
     def test_menu_fallbacks_use_real_cpp_tab_escapes(self):
         source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
