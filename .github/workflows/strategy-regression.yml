@@ -32,6 +32,7 @@ on:
       - 'spellcross-map-edit-main/source/strategic_commander_uid_rules.h'
       - 'spellcross-map-edit-main/source/strategic_commander_experience_rules.h'
       - 'spellcross-map-edit-main/source/tactical_background_action_rules.h'
+      - 'spellcross-map-edit-main/source/tactical_reaction_fire_rules.h'
       - 'spellcross-map-edit-main/source/strategic_generated_spawn_rules.h'
       - 'spellcross-map-edit-main/source/app_version.h'
       - 'spellcross-map-edit-main/source/app_identity.h'
@@ -144,6 +145,12 @@ jobs:
             spellcross-map-edit-main/tests/test_tactical_background_action_rules.cpp \
             -o /tmp/spellcross-tactical-background-action-test
           /tmp/spellcross-tactical-background-action-test
+      - name: Compile and test team-wide tactical reaction contact (#188)
+        run: |
+          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_tactical_reaction_fire_rules.cpp \
+            -o /tmp/spellcross-tactical-reaction-sight-test
+          /tmp/spellcross-tactical-reaction-sight-test
       - name: Compile and test retail-generated DTA enemy placements
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
