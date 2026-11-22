@@ -14,6 +14,7 @@
 #include "tactical_zoom.h"
 #include "tactical_navigation_rules.h"
 #include "tactical_background_action_rules.h"
+#include "tactical_reaction_fire_rules.h"
 #include "strategic_formation_bonus_rules.h"
 #include "display_settings.h"
 #include "spellcross.h"
@@ -10313,6 +10314,21 @@ bool SpellMap::EnemyTurnStep()
     return false;
 }
 
+// Does the defending SIDE currently see this tile? Original EN SPELCROS.EXE
+// tests side-level tile contact at 0x1D690/0x28890, while 0x9BE32 checks the
+// reacting shooter's legal FIRE range (0x62562), not its personal sight.
+// Reconstruct both sides' combined sight from their living observers. The
+// rendering fog-of-war map is Alliance-only and must not be used for OS sight.
+static bool ReactionSideHasSight(SpellMap* map, bool observer_is_enemy, MapXY pos)
+{
+    if (!map || !map->unit_view || !pos.IsSelected())
+        return false;
+    if (pos.x < 0 || pos.y < 0 || pos.x >= map->x_size || pos.y >= map->y_size)
+        return false;
+    return spellcross_tactical::SideHasSight(map->units, observer_is_enemy,
+        [&](MapUnit* observer) { return map->unit_view->HasDirectSight(observer, pos); });
+}
+
 // Original Spellcross initiative used for defensive fire.
 // SPELCROS.EXE reads JEDNOTKY.DEF byte +0x45 (our SpellUnitRec::res3), adds the
 // zero-based experience rank (0..11), then adds a random value 0..5 for each
@@ -10327,11 +10343,9 @@ int SpellMap::GetReactionInitiative(const MapUnit* unit) const
 }
 
 // Check defensive/opportunity fire after ONE movement step.
-// The original executable calls its reaction-candidate routine from movement
-// processing (for both sides), not after an ordinary attack.  A defender is a
-// candidate only when the mover has just entered that defender's direct sight,
-// the mover is simultaneously inside the defender's legal fire area, and the
-// defender still has AP for at least one shot.
+// Original EN SPELCROS.EXE triggers on NEW SIDE-WIDE CONTACT, then selects
+// eligible shooters based on weapon range/AP/initiative. A spotter may reveal
+// the target for an artillery unit that cannot personally see it.
 void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
 {
     if (!moving_unit || moving_unit->isDead() || !moving_unit->unit)
@@ -10340,6 +10354,15 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
     // Never overlap two reaction sequences. Movement is paused while the first
     // sequence is being animated and resumes after selection is restored.
     if (!reaction_fire_queue.empty() || reaction_fire_active)
+        return;
+
+    // New visibility for the defending side is the trigger, not new sight
+    // for any particular gun. This is symmetric for Alliance and Other Side.
+    const bool defending_is_enemy = !moving_unit->is_enemy;
+    const bool seen_now = ReactionSideHasSight(this, defending_is_enemy, moving_unit->coor);
+    const bool seen_before = previous_pos.IsSelected() &&
+        ReactionSideHasSight(this, defending_is_enemy, previous_pos);
+    if (!spellcross_tactical::EntersSideSight(seen_now, seen_before))
         return;
 
     struct Candidate
@@ -10365,18 +10388,9 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
         if (!shooter->unit->canAttack(moving_unit->unit))
             continue;
 
-        // Opportunity fire is a contact event: entering already-visible range
-        // later does not retrigger it.  Teleport movement passes an invalid old
-        // position, which intentionally means "previously unseen".
-        const bool seen_now = unit_view->HasDirectSight(shooter, moving_unit->coor);
-        if (!seen_now)
-            continue;
-        if (previous_pos.IsSelected() && unit_view->HasDirectSight(shooter, previous_pos))
-            continue;
-
-        // Use the normal attack-range calculator as the authoritative weapon
-        // legality/LOS/slope/min-range check.  Direct sight above is separate
-        // because indirect weapons may fire farther than they can personally see.
+        // The side-wide contact above can come from another friendly spotter.
+        // This shooter's normal attack area still controls range, direct-fire
+        // line of sight, indirect minimum range, terrain/slope restrictions.
         unit_view->CalcAttackRange(shooter, true);
         const int target_mxy = ConvXY(moving_unit->coor);
         if (target_mxy < 0 || target_mxy >= (int)shooter->attack_map.size() || !shooter->attack_map[target_mxy])
@@ -10436,7 +10450,10 @@ bool SpellMap::ProcessReactionFire()
             continue;
         if (!entry.shooter->unit->canAttack(entry.target->unit))
             continue;
-        if (!unit_view->HasDirectSight(entry.shooter, entry.target->coor))
+        // The reacting shooter's personal sight is NOT required for
+        // indirect fire. Retain shared visibility while the queued attack
+        // starts, even when a different ally provides the spot.
+        if (!ReactionSideHasSight(this, entry.shooter->is_enemy, entry.target->coor))
             continue;
 
         unit_view->CalcAttackRange(entry.shooter, true);

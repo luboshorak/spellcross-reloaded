@@ -11,13 +11,18 @@ as **defensive or opportunity fire**, not as an automatic counter-attack after
 being attacked. `SpellMap::CheckReactionFire` is evaluated after each movement
 step for both factions. An ordinary attack by itself does not trigger it.
 
-A defender can fire only when the moving enemy has just crossed from outside
-to inside that defender's **direct sight**, is also in the defender's legal
-weapon area, and the defender wins an initiative roll. Consequently artillery
-is not hard-disabled, but its long indirect range does not help it qualify: it
-still needs its own direct sight of the moving unit. Commando has high base
-initiative and commonly has a strong multi-shot priority, so its observed
-behavior follows the current rules rather than a special Commando exception.
+Defensive fire is triggered when the mover **newly enters the combined
+visibility of the defending side** (Alliance or Other Side). Individual
+defenders then need a legal weapon shot, action points, and a successful
+initiative contest. A spotter can provide contact for artillery even when the
+gun itself cannot see the mover. Commando has high base initiative and often
+wins the multi-shot priority, without any hard-coded special preference.
+
+This distinction was corrected in Reloaded after disassembling the original
+English `SPELCROS.EXE`: movement checks side-level visibility flags at
+`0x1D690–0x1D6C9` / `0x28890–0x288B8`, while its reaction candidate
+routine `0x9BE32` calls weapon-range test `0x62562`, not the separate
+personal-sight test `0x625BE`.
 
 ## Trigger and eligibility
 
@@ -28,17 +33,20 @@ The current implementation in `source/map.cpp` follows this sequence:
 2. The engine considers every live unit on the opposing side.
 3. A prospective defender must be active, idle, able to attack the mover's
    unit class, and have enough action points for at least one shot.
-4. The mover must be in the defender's direct sight at the new tile and must
-   not have been in that same defender's direct sight at the previous tile.
-   Remaining visible while moving therefore does not repeatedly retrigger
-   defensive fire.
-5. The ordinary attack-range calculation must accept the target tile. This
-   preserves weapon range, line of fire, terrain/slope restrictions and the
-   minimum range of indirect weapons.
+4. Compare the previous and current tiles against **the defending side's
+   combined visibility**. A previously unseen tile becoming visible is a
+   contact; movement between already visible tiles does not repeatedly trigger
+   another volley. A friendly scout or radar can supply that visibility.
+5. The prospective shooter must have the target in its legal **weapon attack
+   area**. Direct-fire weapons require their normal line of fire; indirect
+   artillery can use another unit's observation while still respecting its
+   maximum/minimum range and any terrain/slope restrictions.
 6. The defender must win the initiative contest below. A tie is a failure.
 
 The check is symmetric: Alliance units may interrupt Other Side movement and
-Other Side units may interrupt Alliance movement. Once a volley starts, the
+Other Side units may interrupt Alliance movement. Team visibility is evaluated
+for the corresponding defending faction, not from the player's fog-of-war
+presentation buffer for both sides. Once a volley starts, the
 mover is paused, the queued shots are animated and paid from the defenders'
 normal action points, and the interrupted movement resumes if the mover
 survives.
@@ -52,8 +60,11 @@ initiative score = JEDNOTKY.DEF byte 0x45 + (experience level - 1)
 roll             = initiative score + random integer from 0 through 5
 ```
 
-The defender fires only when its roll is **strictly greater** than the mover's
-roll. Each side receives its own independent random value. Experience levels
+In the normal initiative branch, the defender fires only when its roll is
+**strictly greater** than the mover's roll. The original EN executable also
+contains a conditional path that skips these rolls, whose prerequisite flags
+are not fully decoded; Reloaded currently uses the standard contest. Each
+side receives its own independent random value. Experience levels
 are stored as 1 through 12, so their initiative contribution is 0 through 11.
 
 If `D` is the defender's initiative score minus the mover's score, the chance
@@ -98,32 +109,39 @@ slightly higher. Equal priority is currently resolved by unit ID (the higher
 ID is consumed first); that is an implementation detail, not a documented
 retail rule.
 
-## Why artillery appears never to react
+## Artillery and friendly spotters
 
-Indirect fire does not borrow sight from another unit for this trigger. Light
-artillery and MLRS have direct sight 4 but weapon ranges 10 and 14. They can
-therefore perform defensive fire only when all of the following coincide:
+**Artillery does not need to personally spot the mover.** A scout, another
+friendly unit, or appropriate radar visibility can establish *new* contact
+for the whole defending side. Artillery may react if:
 
-- the enemy has just entered the artillery unit's own direct sight;
-- the enemy is at least three map-distance units away, because indirect fire
-  cannot target ground units at distance 2 or less;
-- the normal attack map permits the shot, including the no-slope restriction;
-- action points for a shot remain;
-- the artillery wins its initiative roll (base 4 plus experience rank).
+- the enemy has just entered the defending side's **combined current sight**;
+- its own weapon can legally attack that tile (for indirect ground fire,
+  beyond the two-tile minimum and within maximum range);
+- its terrain/slope firing rules permit a shot;
+- it has enough AP and wins the applicable initiative check.
 
-For a ground target this leaves only a narrow contact band near the edge of
-the artillery's direct sight, before initiative is even rolled. An enemy that
-was already visible on the preceding tile does not create another chance.
-The observed rarity is therefore expected. The code does **not** contain a
-blanket `artillery cannot react` condition.
+The original contact check is shared across the faction; it is not performed
+independently for each gun. If the enemy was already visible to *any* ally
+at the previous position, simply approaching the artillery will not trigger
+another volley. Artillery's relatively low initiative still reduces its
+chances, but the previous Reloaded-only requirement for **personal direct
+sight** was a real restriction and has now been removed.
+
+Its sight value of 4 in the unit data is still relevant for *acting as a
+spotter*, not as a hard cap on its reaction-fire range.
 
 ## Evidence boundary and remaining verification
 
-The initiative field and formula are documented in the current source as
-recovered from `SPELCROS.EXE`; the current trigger also models the recovered
-movement-time contact behavior. The exact multi-candidate priority is expressly
-a Reloaded close equivalent (`attack * shots`), not a demonstrated byte-for-byte
-reconstruction of the DOS selection routine.
+The original EN executable's movement sites inspect side-level contact flags;
+the reaction collector validates the gun's fire range rather than personal
+sight. Reloaded now reconstructs combined visibility by checking living
+observers of the defending side (including both factions separately), then
+checks the individual shooter's weapon area and initiative. This is consistent
+with the recovered original, though a per-tile DOSBox parity trace is still
+outstanding. The exact multi-candidate priority remains a Reloaded close
+equivalent (`attack * shots`) rather than a byte-for-byte reconstruction of
+the DOS selection routine. See the [deep EN executable analysis](Spellcross_reaction_fire_original_vs_reloaded_2026-11-22.md).
 
 This page is a static review of current `main` plus the supplied CZ/EN unit
 records. It does not claim a new DOSBox trace or interactive parity test.
@@ -132,8 +150,9 @@ Useful follow-up scenarios are:
 1. Fix both random seeds and move identical units across a defender's sight
    boundary in retail and Reloaded.
 2. Repeat with equal initiative, a +4 Commando advantage and a +6 advantage.
-3. Place Light artillery and MLRS at distances 2, 3, 4 and 5, including a
-   slope, and verify exactly where a candidate is created.
+3. Test Light artillery and MLRS with a **separate forward scout** revealing
+   a mover beyond the gun's own sight, at distances 2, 3, 4, 5 and 10;
+   repeat on slopes and when the target was already visible on the prior tile.
 4. Provide two or more successful defenders with different attack/shot totals
    and recover the retail selection order rather than assuming Reloaded's
    priority formula is exact.

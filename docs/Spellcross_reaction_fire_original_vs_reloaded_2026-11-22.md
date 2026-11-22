@@ -1,7 +1,19 @@
 # Spellcross — reakční palba: hlubší porovnání originálu a Reloaded
 
 **Datum analýzy:** 22. 11. 2026  
-**Závěr:** Základ mechaniky Reloaded odpovídá původní hře. Předchozí označení „aproximace“ se týká především přesného **výběru a pořadí střelců**, nikoli vymyšlené mechaniky. Některé okrajové výsledky se mohou lišit. Zjištěné rozdíly samy o sobě nejsou důkazem závady, která vyžaduje opravu.
+**Závěr (doplněný po následné kontrole):** Hlavní princip mechaniky Reloaded odpovídá původní hře. Dodatečný rozbor odhalil **jednu konkrétní chybu v podmínce kontaktu**: remake dříve vyžadoval vlastní přímý dohled každého střelce, zatímco originál používá **sdílenou viditelnost obráncovy strany** a následně samostatně ověřuje dostřel zbraně. Tento bod byl cíleně opraven; ostatní rozdíly v pořadí střelců a RNG zůstávají zdokumentovanými odlišnostmi.
+
+## Dodatek: původní podmínka viditelnosti a oprava Reloaded
+
+Původní závěr v sekci 2, že konkrétní obránce musí mít na novém poli **vlastní přímý dohled**, byl nesprávný. Následná kontrola EN binárky ukázala:
+
+- Pohybová větev na **`0x1D690–0x1D6C9`** a obdobná větev **`0x28890–0x288B8`** testují stav viditelnosti starého a nového pole v mapových příznacích jedné strany; teprve při novém kontaktu volají sběr obránců `0x9BE32`.
+- Sběr obránců volá na **`0x9C012`** (a ve zvláštní větvi **`0x9C04F`**) funkci **`0x62562`**, která testuje legální dosah střelby; nikoli samostatnou funkci **`0x625BE`** pro dohled konkrétní jednotky.
+- **Dělostřelectvo proto může reagovat na cíl nově odhalený předsunutou spojeneckou jednotkou**, i mimo vlastní dohled děla, pokud ostatní podmínky palby platí. Nejde o neomezenou palbu na již dříve viditelné cíle.
+
+**Oprava v Reloaded:** `SpellMap::CheckReactionFire` nyní vyhodnocuje nově vzniklý kontakt z kombinovaného přímého dohledu živých jednotek *bránící se strany*; střelec se pak kontroluje podle `CalcAttackRange`, dostupných AP, typu cíle a iniciativy. `ProcessReactionFire` již nevyžaduje vlastní `HasDirectSight` reagujícího střelce. Sdílená viditelnost se přepočítává symetricky pro Alianci i Other Side, nikoli z hráčského bufferu zamlžení pro obě strany.
+
+To je **cílená oprava konkrétního rozdílu od originálu**, ne změna zásady výběru střelců nebo RNG. Stále zbývá runtime porovnání DOS a Reloaded na shodném scénáři.
 
 ## 1. Rozsah, podklady a míra jistoty
 
@@ -19,7 +31,7 @@ Značky důkazů v textu: **PROKÁZÁNO** = přímo viditelná instrukční sekv
 
 Udržování akčních bodů, obranná střelba při kontaktu během pohybu, legální cíl zbraně a rozhodnutí iniciativou odpovídají konstrukci původního Spellcrossu. Není důvod předělávat reakční palbu na „odvetný výstřel po každém zásahu“.
 
-Reloaded při vstupu pohybující se jednotky na nové pole zavolá `SpellMap::CheckReactionFire`. Ověří nepřátelskou stranu, živého a aktivního obránce, dostupné útoky, vlastní přímý dohled, dosah zbraně a iniciativu. Obranné výstřely jsou standardní útoky s odpočtem AP. Hráč i Other Side používají společnou reakční logiku.
+Reloaded po jednom kroku pohybující se jednotky zavolá `SpellMap::CheckReactionFire`. Nejprve kontroluje **nové odhalení pro celou stranu obránce**; pak u jednotlivých střelců ověří nepřátelskou stranu, živého a aktivního obránce, dostupné útoky, **legální dosah zbraně (ne osobní dohled)** a iniciativu. Obranné výstřely jsou standardní útoky s odpočtem AP. Hráč i Other Side používají společnou reakční logiku.
 
 Původní `SPELCROS.EXE` skutečně obsahuje rutinu sběru kandidátů **`0x9BE32`**. Je volána na čtyřech místech kódových větví pohybu: **`0x1D6C9`, `0x1DC9A`, `0x288B8`, `0x28D07`**. Rutina prochází protilehlou skupinu až 50 slotů a výsledkem je seznam jednotek pro obrannou palbu. **PROKÁZÁNO.** Podrobné přiřazení všech čtyř větví konkrétním variantám pohybu (včetně teleportu) ještě není úplně hotové.
 
@@ -136,7 +148,7 @@ Ve skutečném pseudonáhodném proudu mohou vznikat drobné statistické odchyl
 
 ### 5.1 Co lze doložit v Reloaded
 
-- **Obyčejný krok:** `SpellMap::Tick` po dokončení kroku aktualizuje jednotky, viditelnost a skriptované události a volá `CheckReactionFire(unit, this_pos)` (okolo řádku **14147** v `map.cpp`).
+- **Obyčejný krok:** `SpellMap::Tick` po dokončení kroku aktualizuje jednotky, viditelnost a skriptované události a volá `CheckReactionFire(unit, this_pos)`. Nový kontakt se posuzuje podle sdíleného dohledu *bránící se strany*, nikoli jen podle dohledu střelce.
 - **Teleport:** po dokončení příletu/přemístění `TELEPORT_OUT` je voláno `CheckReactionFire(unit, MapXY())` (okolo řádku **14026**). Neplatná předchozí pozice zde znamená, že podmínka „na předchozím poli byl už vidět“ je záměrně vynechána.
 - **Přerušení:** reakční fronta se vyřizuje před dalším krokem nepřátelského tahu v `Tick` (okolo řádku **13620**); střelba probíhá přes standardní útok, pohybující se jednotka je po sekvenci obnovena, pokud přežije.
 - **Bezpečnost:** před každým zpožděným výstřelem `ProcessReactionFire` znovu ověřuje živé jednotky, AP, aktivitu, zaměstnanost, vlastní přímý dohled i legální dostřel. To je žádoucí pro plynulé animace a prevenci zaseknutí.
@@ -144,7 +156,7 @@ Ve skutečném pseudonáhodném proudu mohou vznikat drobné statistické odchyl
 
 ### 5.2 Co ukazuje původní binárka
 
-V originálu jsou **čtyři skutečné call site** rutiny `0x9BE32` napojené na kód pohybu. Před nimi jsou testy mapových příznaků/kontaktu; po návratu se podle počtu získaných kandidátů nastavují stavové příznaky přerušení. To podporuje model „kontakt při pohybu → obranná reakce“, nikoli libovolný automatický protiútok po zásahu.
+V originálu jsou **čtyři skutečné call site** rutiny `0x9BE32` napojené na kód pohybu. Před nimi jsou testy **sdílených mapových příznaků viditelnosti strany** (viz adresy `0x1D690` a `0x28890`); po návratu se podle počtu kandidátů nastavují stavové příznaky přerušení. Jednotliví střelci následně procházejí testem legálního dostřelu `0x62562`, nikoli vlastního dohledu `0x625BE`. To dokládá model „nový kontakt pro stranu při pohybu → obranná reakce“, nikoli libovolný automatický protiútok po zásahu.
 
 **Z této samotné disassemblace ale ještě neplyne**, že všechny čtyři větve představují právě normální krok a teleport pro obě strany. Nemáme dokončené pojmenování datových příznaků ani snímkový průběh DOS hry. Není proto poctivé tvrdit, že originální teleport vždy vytváří nový kontakt, nebo že určitě nevytváří.
 
@@ -173,11 +185,12 @@ Pokud ani po teleportu obránce nemá AP, nemá přímý dohled, cíl není v le
 | „První střelec: použitá aproximace“ | Originál **opravdu násobí efekt útoku počtem střel**. Reloaded respektuje základní vzorec, zjednodušuje odhad efektu a předem fixuje pořadí. | **Podstatně vysvětleno; omezené rozdíly doloženy** |
 | „RNG není identický s DOS“ | Originál volá vlastní funkci `0x575DC`, dvakrát s mezí 6; originál losuje nejprve za pohybující se jednotku, Reloaded za obránce. | **Doložená technická odlišnost, ne prokázaná chyba vyvážení** |
 | „Teleportace/časování neověřeno“ | Zkontrolován stavový automat remaku a čtyři call site originálu. Kritický test je teleport z viditelného na viditelné. | **Neprokázaná odlišnost; vymezena přesná hranice testu** |
+| „Dělo musí nepřítele samo nově spatřit“ | **Opraveno.** Originál testuje novou sdílenou viditelnost celé strany, pak samostatně dostřel děla. Stejně nyní postupuje Reloaded. | **Prokázaný rozdíl a cílená oprava** |
 | „Iniciativa vždy rozhodne“ | Originál má i podmíněnou větev bez dvojice RNG volání; její stavové předpoklady zatím nejsou zcela dekódované. | **Nově zjištěná nuance, nelze zatím portovat** |
 
 ## 7. Doporučení pro projekt
 
-**Nenavrhuji nyní měnit reakční palbu.** Ze současných poznatků plyne, že základní algoritmus Reloaded věrně respektuje účel a hlavní vzorec originálu. Úpravy naslepo by mohly být horší než současný stabilní a srozumitelný mechanismus.
+**Jedinou odhalenou odchylku ve sdílené viditelnosti jsme cíleně opravili.** Ostatní zkoumané body (priorita, RNG, teleport a speciální stavová větev) nepředstavují prokázanou závadu vyžadující preventivní zásah. Další změny naslepo by mohly být horší než současný mechanismus.
 
 Pokud bude cílem *striktní mechanická shoda*, doporučuji následující pořadí výzkumu (nejde o povinné opravy):
 
@@ -193,6 +206,9 @@ Pokud bude cílem *striktní mechanická shoda*, doporučuji následující poř
 
 | Adresa | Úloha / důkaz |
 | --- | --- |
+| `0x1D690–0x1D6C9`, `0x28890–0x288B8` | Test nového kontaktu ve sdílených příznacích mapy a volání sběru obránců |
+| `0x62562` | Kontrola dostřelu zbraně volaná z reakční rutiny `0x9C012` / `0x9C04F` |
+| `0x625BE` | Odlišná kontrola vlastní viditelnosti jednotky; v těchto větvích reakční rutiny se nevolá |
 | `0x575DC` | Původní omezený RNG, návrat `0..limit-1` pomocí zbytku po dělení |
 | `0x9BE32` | Sběr kandidátů na obrannou palbu |
 | `0x9BFBD–0x9BFEF` | Iniciativa, dvě volání `RNG(6)`, striktní porovnání |
@@ -221,4 +237,4 @@ Pokud bude cílem *striktní mechanická shoda*, doporučuji následující poř
 
 ---
 
-**Konečný verdikt:** **Reloaded se v hlavním principu obranné palby nemýlí.** Podrobnější kontrola prokázala, že originál používá stejný typ prioritizace (`účinnost × počet střel`), stejné náhodné rozmezí iniciativy a stejnou zásadní podmínku striktní výhry obránce. Technické rozdíly existují především v projekci účinnosti, čase přepočtu priority, vyřešení shod a RNG posloupnosti. U teleportace nebyla chyba prokázána. Pokud se neprojeví konkrétní reprodukovatelný problém, **nezasahovat do stabilního stavu hry**.
+**Konečný verdikt (po doplnění):** Základ obranné palby Reloaded odpovídá originálu, ale jedna předchozí podmínka byla chybná: vyžadovali jsme vlastní dohled každého reagujícího střelce, což původní EN algoritmus **nevyžaduje**. Oprava nyní využívá nově získanou viditelnost celé obráncovy strany a samostatně kontroluje legální dostřel jednotlivých zbraní. Ostatní rozdíly v odhadu účinku, volbě pořadí, RNG a teleportaci zůstávají dokumentované a bez dodatečného ověření nebudou měněny.

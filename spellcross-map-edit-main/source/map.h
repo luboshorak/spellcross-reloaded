@@ -384,8 +384,8 @@ public:
 		bool MovePanickedEnemy(MapUnit* unit);
 		static bool IsUnitBusy(const MapUnit* unit);
 		// Original Spellcross defensive/opportunity fire. Either side may react
-		// when a moving opponent enters previously unseen direct sight while the
-		// defender still has enough AP for at least one shot.
+		// when a moving opponent enters the defending side's combined sight.
+		// The shooter itself still needs a legal weapon shot and sufficient AP.
 		struct ReactionFireEntry { MapUnit* shooter; MapUnit* target; int priority = 0; };
 		std::vector<ReactionFireEntry> reaction_fire_queue;
 		bool reaction_fire_active = false;
