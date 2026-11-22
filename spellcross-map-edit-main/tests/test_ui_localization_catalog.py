@@ -78,6 +78,25 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertNotIn('L"Koupit"', source)
         self.assertNotIn(r'L"P\u011Bchota"', source)
 
+    def test_generated_strategy_dialogs_follow_selected_language(self):
+        source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")
+        for key in (
+            "strategic.research_without_project.allocated",
+            "strategic.research_without_project.lost",
+            "strategic.research_without_project.confirm",
+            "strategic.research_without_project.title",
+            "strategic.unit_change_cancel.message",
+            "strategic.unit_change_cancel.title",
+            "strategic.research_allocation_caption",
+            "strategic.strategic_points",
+            "strategic.territory_resource_summary",
+            "strategic.owned_resource_summary",
+            "strategic.resource_ratio_summary",
+        ):
+            self.assertIn(f'spellcross_ui_locale::Tr("{key}"', source)
+        self.assertNotIn('L"Máte přidělené body do výzkumu', source)
+        self.assertNotIn('L"Zrušit úpravy objednané', source)
+
     def test_menu_fallbacks_use_real_cpp_tab_escapes(self):
         source = (ROOT / "source" / "main.cpp").read_text(encoding="utf-8")
         menu_lines = [

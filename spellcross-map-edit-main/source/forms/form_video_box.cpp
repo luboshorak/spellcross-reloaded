@@ -103,8 +103,9 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
         entries.push_back(requested.filename().string());
     else if (ext == ".SMK")
     {
-        // Old script/conversion names can refer to original archive movies.
-        // EN/PL/IT DPK is natively decoded; Czech CAN is a different codec.
+        // EN/PL/IT retail archives contain real SMK2 movies under exactly the
+        // scripted name. Older converted data sets may still use DPK/CAN.
+        entries.push_back(requested.filename().string());
         if (czechEdition)
         {
             entries.push_back(stem + ".CAN");
@@ -246,7 +247,7 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     const bool czechEdition = spell_data &&
         spell_data->GetTextLanguage() == SpellLang::CZE;
     // These transcodes are Czech-only. Other editions never look for them:
-    // their own DPK/DP2/CAN files must come from the selected retail archives.
+    // their own SMK/DPK/DP2/CAN files must come from the selected retail archives.
     const fs::path fallback_path = czechEdition
         ? FindBundledMovieFallback(spell_data, stem) : fs::path{};
 
@@ -616,7 +617,7 @@ void FormVideoBox::OnPaintTab(wxPaintEvent& event)
 
         // render 24bit RGB data to raw bmp buffer		
         uint8_t *buf = m_video->GetFrame(m_frame_id);
-        uint8_t *pal = m_video->GetPalette();
+        uint8_t *pal = m_video->GetPalette(m_frame_id);
         wxNativePixelData pdata(*m_frame);
         wxNativePixelData::Iterator p(pdata);
         p.OffsetY(pdata,corn->y_size);

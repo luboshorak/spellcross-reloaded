@@ -7,6 +7,12 @@ on:
       - 'spellcross-map-edit-main/source/startup_log.h'
       - 'spellcross-map-edit-main/source/spell_language.h'
       - 'spellcross-map-edit-main/source/spellcross.cpp'
+      - 'spellcross-map-edit-main/source/spell_video.cpp'
+      - 'spellcross-map-edit-main/source/spell_video.h'
+      - 'spellcross-map-edit-main/source/smacker_video_decoder.cpp'
+      - 'spellcross-map-edit-main/source/smacker_video_decoder.h'
+      - 'spellcross-map-edit-main/source/spellcross_map_editor.vcxproj'
+      - 'third_party/libsmacker/**'
       - 'spellcross-map-edit-main/source/forms/form_loader.cpp'
       - 'spellcross-map-edit-main/source/forms/form_video_box.cpp'
       - 'spellcross-map-edit-main/locales/**'
@@ -49,6 +55,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate source and localization invariants
         run: python3 -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py' -v
+      - name: Compile and test native Smacker movie decoding
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -pedantic -Ithird_party/libsmacker \
+            -c third_party/libsmacker/smacker.c -o /tmp/libsmacker.o
+          c++ -std=c++17 -O2 -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_smacker_decoder.cpp \
+            spellcross-map-edit-main/source/smacker_video_decoder.cpp \
+            /tmp/libsmacker.o -o /tmp/spellcross-smacker-decoder-test
+          /tmp/spellcross-smacker-decoder-test
       - name: Verify collision-free ground/air Autodeploy matching
         run: |
           c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \

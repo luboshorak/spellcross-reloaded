@@ -4,6 +4,8 @@ import unittest
 
 SOURCE = (Path(__file__).resolve().parents[1] /
           "source/forms/form_video_box.cpp").read_text(encoding="utf-8")
+VIDEO = (Path(__file__).resolve().parents[1] /
+         "source/spell_video.cpp").read_text(encoding="utf-8")
 
 
 class NativeEditionVideoRegression(unittest.TestCase):
@@ -31,6 +33,10 @@ class NativeEditionVideoRegression(unittest.TestCase):
         self.assertIn("if (czechEdition)", lookup)
         self.assertIn('entries.push_back(stem + ".DPK")', lookup)
         self.assertIn('entries.push_back(stem + ".CAN")', lookup)
+        self.assertIn('entries.push_back(requested.filename().string())', lookup)
+        smk = lookup.split('else if (ext == ".SMK")', 1)[1]
+        self.assertLess(smk.index('entries.push_back(requested.filename().string())'),
+                        smk.index('entries.push_back(stem + ".DPK")'))
         self.assertLess(lookup.index('entries.push_back(stem + ".DPK")', lookup.index('else\n        {')),
                         len(lookup))
         self.assertNotIn("std::wstring archive_path;", lookup)
@@ -42,6 +48,11 @@ class NativeEditionVideoRegression(unittest.TestCase):
         )[0]
         self.assertIn('(ext == ".CAN" || ext == ".SMK") && !fallback_path.empty()', constructor)
         self.assertIn('TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error)', constructor)
+
+    def test_real_smk_decoder_is_wired_into_archive_playback(self):
+        self.assertIn('else if(ext == ".SMK" && DecodeSMK(v_data, v_size))', VIDEO)
+        self.assertIn('DecodeSmackerVideo(data, static_cast<size_t>(len), decoded, error)', VIDEO)
+        self.assertIn('frame_palettes = std::move(decoded.palettes)', VIDEO)
 
 
 if __name__ == "__main__":

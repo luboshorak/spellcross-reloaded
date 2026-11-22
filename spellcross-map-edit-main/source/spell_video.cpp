@@ -10,10 +10,12 @@
 #include "other.h"
 #include "LZ_spell.h"
 #include "riff_loader.h"
+#include "smacker_video_decoder.h"
 
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
+#include <cstdio>
 #include <limits>
 #include <stdexcept>
 
@@ -64,6 +66,12 @@ SpellVideoResources::SpellVideoResources(std::vector<std::wstring> folders)
 
 		// scan for DP2 videos
 		list = fs->GetFileNames("*.DP2");
+		for(auto& vid: list)
+			vid_list.emplace_back(vid,fs);
+		fs_used += static_cast<int>(list.size());
+
+		// EN/PL/IT retail movies use Smacker v2 directly.
+		list = fs->GetFileNames("*.SMK");
 		for(auto& vid: list)
 			vid_list.emplace_back(vid,fs);
 		fs_used += static_cast<int>(list.size());
@@ -154,6 +162,10 @@ SpellVideo::SpellVideo(std::wstring path)
 			throw runtime_error("Decoding DP2 video file failed!");
 		}
 	}
+	else if(ext == ".SMK" && DecodeSMK(data.data(), video_size))
+	{
+		throw runtime_error("Decoding SMK video file failed!");
+	}
 }
 
 // load video file from FS archive
@@ -197,6 +209,32 @@ SpellVideo::SpellVideo(FSarchive* fs,std::string name)
 			throw runtime_error("Decoding DP2 video file failed!");
 		}
 	}
+	else if(ext == ".SMK" && DecodeSMK(v_data, v_size))
+	{
+		throw runtime_error("Decoding SMK video file failed!");
+	}
+}
+
+int SpellVideo::DecodeSMK(uint8_t* data, int len)
+{
+	SmackerDecodedVideo decoded;
+	std::string error;
+	if(len <= 0 || !DecodeSmackerVideo(data, static_cast<size_t>(len), decoded, error))
+		return(1);
+
+	type = SpellVideoType::SMK;
+	x_size = decoded.width;
+	y_size = decoded.height;
+	fps = decoded.fps;
+	frames = std::move(decoded.frames);
+	frame_palettes = std::move(decoded.palettes);
+	audio.channels = decoded.audio_channels;
+	audio.fs = decoded.audio_rate;
+	audio.data = std::move(decoded.audio_samples);
+	audio.samples = audio.channels > 0
+		? static_cast<int>(audio.data.size() / static_cast<size_t>(audio.channels)) : 0;
+	std::snprintf(audio.name, sizeof(audio.name), "%s", "stream");
+	return(frames.empty() || frame_palettes.size() != frames.size() || audio.samples <= 0);
 }
 
 int SpellVideo::DecodeCAN(uint8_t* data,int len)
@@ -635,8 +673,14 @@ int SpellVideo::GetFrameID(double time)
 	return(id);
 }
 
-uint8_t* SpellVideo::GetPalette()
+uint8_t* SpellVideo::GetPalette(int frame_id)
 {
+	if(type == SpellVideoType::SMK && !frame_palettes.empty())
+	{
+		const size_t index = frame_id < 0 ? 0 :
+			(std::min)(static_cast<size_t>(frame_id), frame_palettes.size() - 1);
+		return(frame_palettes[index].data());
+	}
 	return(&pal[0][0]);
 }
 

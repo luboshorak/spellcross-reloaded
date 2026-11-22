@@ -49,6 +49,7 @@
     <ClCompile Include="RtAudio.cpp" />
     <ClCompile Include="spell_filter.cpp" />
     <ClCompile Include="spell_midi.cpp" />
+    <ClCompile Include="smacker_video_decoder.cpp" />
     <ClCompile Include="spell_texts.cpp" />
     <ClCompile Include="spell_graphics.cpp" />
     <ClCompile Include="spellcross.cpp" />
@@ -60,6 +61,10 @@
     <ClCompile Include="spell_units.cpp" />
     <ClCompile Include="spell_video.cpp" />
     <ClCompile Include="sprites.cpp" />
+    <ClCompile Include="..\..\third_party\libsmacker\smacker.c">
+      <!-- Keep upstream source unmodified; its bounded tree-index conversions are intentional. -->
+      <DisableSpecificWarnings>4267;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cxxmidi\converters.hpp" />
@@ -104,6 +109,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="riff_loader.h" />
     <ClInclude Include="spell_midi.h" />
+    <ClInclude Include="smacker_video_decoder.h" />
     <ClInclude Include="spell_video.h" />
     <ClInclude Include="spell_filter.h" />
     <ClInclude Include="spell_texts.h" />
@@ -130,6 +136,8 @@
     <ClInclude Include="spell_sound.h" />
     <ClInclude Include="spell_units.h" />
     <ClInclude Include="sprites.h" />
+    <ClInclude Include="..\..\third_party\libsmacker\smacker.h" />
+    <ClInclude Include="..\..\third_party\libsmacker\smk_malloc.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resources.rc" />
