@@ -98,4 +98,15 @@ namespace spellcross_tactical
             return MagotarDecision::Land;
         return MagotarDecision::None;
     }
+    // Reloaded safeguard: if the group comparator would reverse its advice
+    // immediately after a morph, neither form has a stable advantage. Keep
+    // the current form instead of paying AP for a landing/take-off loop.
+    // This is a stability correction, NOT a claim of byte-exact DOS AI parity.
+    inline MagotarDecision NonOscillatingMagotarAction(
+        int typeId, int currentPreference, int projectedPreference)
+    {
+        return currentPreference == projectedPreference
+            ? OriginalMagotarAction(typeId, currentPreference)
+            : MagotarDecision::None;
+    }
 }

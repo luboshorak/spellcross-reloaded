@@ -9932,6 +9932,11 @@ bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
         (type != 47 || !enemy->unit->isActionTakeOff()))
         return false;
 
+    SpellUnitRec* nextType =
+        spelldata->units->GetUnit(enemy->unit->action_params[2]);
+    if (!nextType || !nextType->gr_base)
+        return false;
+
     // Find the Alliance group that is actually engaging this enemy group.
     // Original 0x9c867 filters both sides by AI tactical-group identifiers.
     MapUnit* observed = GetUnit(group.target_unit_id);
@@ -9973,48 +9978,95 @@ bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
     if (enemies.empty())
         enemies.push_back(enemy);
 
-    auto estimatedEffect = [](MapUnit* shooter, MapUnit* target) -> int
+    // Estimate BOTH combat forms before transforming. The old calculation
+    // used only the current type: landing could reverse the recommendation
+    // and lead to an immediate (and expensive) take-off without an attack.
+    // Project using the original unit definitions, never morph live units
+    // just for scoring: the range worker can inspect them concurrently.
+    auto estimatedEffect = [&](MapUnit* shooter, MapUnit* target,
+                               SpellUnitRec* projectedMagotar) -> int
     {
-        if (!shooter || !target || !shooter->unit || !target->unit ||
-            !shooter->unit->canAttack(target->unit))
+        if (!shooter || !target || !shooter->unit || !target->unit)
             return 0;
-        return spellcross_tactical::OriginalEstimatedHitChance(
-            shooter->GetAttack(target), target->GetDefence());
-    };
-
-    spellcross_tactical::TacticalGroupFormEffect strength;
-    for (MapUnit* ally : allied)
-    {
-        if (!ally || !ally->unit || ally->isDead())
-            continue;
-        const bool air = ally->unit->isAir();
-        if (air) ++strength.airUnits;
-        else ++strength.groundUnits;
-        for (MapUnit* foe : enemies)
+        SpellUnitRec* sourceType = shooter == enemy ? projectedMagotar : shooter->unit;
+        SpellUnitRec* targetType = target == enemy ? projectedMagotar : target->unit;
+        if (!sourceType || !targetType || !sourceType->canAttack(targetType))
+            return 0;
+        const MapUnit::TARGET_TYPE targetKind = targetType->isAir()
+            ? MapUnit::TARGET_TYPE::AIR
+            : (targetType->isArmored() ? MapUnit::TARGET_TYPE::ARMOR
+                                       : MapUnit::TARGET_TYPE::LIGHT);
+        int attack = 0;
+        if (shooter == enemy)
         {
-            const int attack = (std::max)(0, estimatedEffect(ally, foe));
-            const int retaliation = (std::max)(0, estimatedEffect(foe, ally));
-            if (air)
+            // Equivalent to GetAttack(kind), with projected sourceType.
+            const int baseAttack = targetKind == MapUnit::TARGET_TYPE::AIR
+                ? sourceType->attack_air
+                : (targetKind == MapUnit::TARGET_TYPE::ARMOR
+                    ? sourceType->attack_armored : sourceType->attack_light);
+            if (baseAttack <= 0)
+                return 0;
+            attack = baseAttack + shooter->formation_attack_bonus +
+                shooter->upgrade_attack_bonus;
+            if (sourceType->bonuses)
+                attack += sourceType->bonuses->GetBonus(shooter->experience_level)->attack;
+        }
+        else
+            attack = shooter->GetAttack(targetKind);
+
+        int defence = target->GetDefence();
+        if (target == enemy)
+        {
+            // Equivalent to GetDefence(), with projected targetType.
+            defence = targetType->defence;
+            if (defence > 0)
             {
-                strength.airAttack += attack;
-                strength.airRetaliation += retaliation;
-            }
-            else
-            {
-                strength.groundAttack += attack;
-                strength.groundRetaliation += retaliation;
+                defence += target->formation_defence_bonus +
+                    target->upgrade_defence_bonus;
+                if (targetType->bonuses)
+                    defence += targetType->bonuses->GetBonus(target->experience_level)->defence;
             }
         }
-    }
-
+        return spellcross_tactical::OriginalEstimatedHitChance(attack, defence);
+    };
+    auto formEffect = [&](SpellUnitRec* projectedMagotar)
+    {
+        spellcross_tactical::TacticalGroupFormEffect effect;
+        for (MapUnit* ally : allied)
+        {
+            if (!ally || !ally->unit || ally->isDead())
+                continue;
+            const bool air = ally->unit->isAir();
+            if (air) ++effect.airUnits;
+            else ++effect.groundUnits;
+            for (MapUnit* foe : enemies)
+            {
+                const int attack = (std::max)(0, estimatedEffect(
+                    ally, foe, projectedMagotar));
+                const int retaliation = (std::max)(0, estimatedEffect(
+                    foe, ally, projectedMagotar));
+                if (air)
+                {
+                    effect.airAttack += attack;
+                    effect.airRetaliation += retaliation;
+                }
+                else
+                {
+                    effect.groundAttack += attack;
+                    effect.groundRetaliation += retaliation;
+                }
+            }
+        }
+        return effect;
+    };
+    const auto strength = formEffect(enemy->unit);
+    const auto projectedStrength = formEffect(nextType);
     const int preference = spellcross_tactical::OriginalFormPreference(strength);
-    const auto action = spellcross_tactical::OriginalMagotarAction(type, preference);
+    const int projectedPreference =
+        spellcross_tactical::OriginalFormPreference(projectedStrength);
+    const auto action = spellcross_tactical::NonOscillatingMagotarAction(
+        type, preference, projectedPreference);
     if (action == spellcross_tactical::MagotarDecision::None)
-        return false;
-
-    SpellUnitRec* nextType =
-        spelldata->units->GetUnit(enemy->unit->action_params[2]);
-    if (!nextType || !nextType->gr_base)
         return false;
 
     // 0x9cdae: current cell first; otherwise seek an accessible unoccupied
@@ -10114,9 +10166,9 @@ bool SpellMap::TryEnemyMagotarStance(MapUnit* enemy, AITacticalGroup& group)
     enemy->ResetTurnsCounter();
     enemy->was_moved = true;
     spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
-        "Magotar DOS action id=%d type=%d form=%d preference=%d "
+        "Magotar DOS action id=%d type=%d form=%d preference=%d projected=%d "
         "air=%d/%d ground=%d/%d at=(%d,%d)",
-        enemy->id, type, nextType->type_id, preference,
+        enemy->id, type, nextType->type_id, preference, projectedPreference,
         strength.airAttack, strength.airRetaliation,
         strength.groundAttack, strength.groundRetaliation,
         enemy->coor.x, enemy->coor.y);

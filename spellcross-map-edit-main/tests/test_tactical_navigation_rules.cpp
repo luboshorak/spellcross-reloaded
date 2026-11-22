@@ -66,4 +66,12 @@ int main()
     assert(OriginalMagotarAction(48,1) == MagotarDecision::None);
     assert(OriginalMagotarAction(7,1) == MagotarDecision::None);
     assert(OriginalMagotarAction(8,2) == MagotarDecision::None);
+    // Veto a morph if its projected combat score would reverse the decision.
+    assert(NonOscillatingMagotarAction(48,2,2) == MagotarDecision::Land);
+    assert(NonOscillatingMagotarAction(47,1,1) == MagotarDecision::TakeOff);
+    assert(NonOscillatingMagotarAction(48,2,1) == MagotarDecision::None);
+    assert(NonOscillatingMagotarAction(47,1,2) == MagotarDecision::None);
+    assert(NonOscillatingMagotarAction(48,1,2) == MagotarDecision::None);
+    assert(NonOscillatingMagotarAction(47,2,1) == MagotarDecision::None);
+    assert(NonOscillatingMagotarAction(8,2,2) == MagotarDecision::None);
 }
