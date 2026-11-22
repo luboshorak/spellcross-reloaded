@@ -20,6 +20,7 @@ This is the entry point for developers and researchers working on the **current 
 
 ## Existing focused documentation (retained)
 
+- [Tactical reaction fire and initiative (issue #188)](issue-188-tactical-reaction-fire.md) — movement-time trigger, initiative probability, candidate priority, and why artillery rarely reacts while Commando often fires first.
 - [Commander casualty information](commander-death-notifications.md) — original language tokens, queueing and save behavior.
 - [Health indicators, unit activity icons and slope firing](restoration-health-status-terrain.md) — measured native geometry and original executable evidence.
 - [Runtime crash diagnostics](runtime-crash-diagnostics.md) — bounded rotating `debug.log` and incident collection.
