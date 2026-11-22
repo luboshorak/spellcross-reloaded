@@ -12,6 +12,7 @@ LOCALES = ROOT / "locales"
 SOURCES = [
     ROOT / "source" / "game_controls.h",
     ROOT / "source" / "main.cpp",
+    ROOT / "source" / "forms" / "form_about.cpp",
     ROOT / "source" / "forms" / "form_level.cpp",
     ROOT / "source" / "forms" / "form_mmenu.cpp",
 ]
@@ -57,6 +58,14 @@ class LocalizationCatalogTests(unittest.TestCase):
         self.assertIn('SetLanguage(englishRetailEdition ? "en" : "cs")', helper)
         self.assertIn("state.english.find(key)", helper)
         self.assertIn("englishFallback", helper)
+
+    def test_about_window_keeps_divac1_beta_test_credit(self):
+        source = (ROOT / "source" / "forms" / "form_about.cpp").read_text(encoding="utf-8")
+        self.assertIn('Tr("about.special_thanks", "Special thanks")', source)
+        self.assertIn('Tr("about.special_thanks_divac1",', source)
+        for lang in ("en", "cs"):
+            entries = catalog(lang)
+            self.assertIn("Divac1", entries["about.special_thanks_divac1"])
 
     def test_native_buy_screen_uses_translations(self):
         source = (ROOT / "source" / "forms" / "form_level.cpp").read_text(encoding="utf-8")

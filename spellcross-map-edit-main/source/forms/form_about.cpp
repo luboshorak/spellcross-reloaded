@@ -160,6 +160,20 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     projectBox->Add(projectButtons, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
     contentSizer->Add(projectBox, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
 
+    // Special thanks ----------------------------------------------------------
+    auto* thanksBox = new wxBoxSizer(wxVERTICAL);
+    auto* thanksHeading = new wxStaticText(content, wxID_ANY,
+        Tr("about.special_thanks", "Special thanks"));
+    thanksHeading->SetFont(projectFont);
+    thanksHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
+    thanksBox->Add(thanksHeading, 0, wxLEFT | wxTOP | wxBOTTOM, FromDIP(9));
+    auto* thanksText = new wxStaticText(content, wxID_ANY,
+        Tr("about.special_thanks_divac1",
+            "Divac1 for thorough beta testing and detailed feedback."));
+    thanksText->Wrap(590);
+    thanksBox->Add(thanksText, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 10);
+    contentSizer->Add(thanksBox, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
+
     // Update section -----------------------------------------------------------
     auto* updateBox = new wxBoxSizer(wxVERTICAL);
     auto* updateHeading = new wxStaticText(content, wxID_ANY, Tr("updates.title", "Updates"));
@@ -214,6 +228,7 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     version->SetForegroundColour(spellcross_strategic_ui::Inactive());
     header->Refresh();
     projectHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
+    thanksHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
     updateHeading->SetForegroundColour(spellcross_strategic_ui::Heading());
     Layout();
     if (GetSize().GetWidth() < 680)
