@@ -4,7 +4,7 @@
 
 Despite its historic filename, [`spellcross-map-edit-main/source/spellcross_map_editor.vcxproj`](../spellcross-map-edit-main/source/spellcross_map_editor.vcxproj) compiles the **game** as `Spellcross.exe` for x64. Its `ClCompile` list includes `main.cpp`, `map.cpp`, `spellcross.cpp`, `forms/form_level.cpp` and the other C++ engine modules. The **standalone editor** is a separate pinned Git submodule in `external/map-editor` (`.gitmodules`), compiled using that submodule's project. Both are packaged by `packaging/Build-CombinedRelease.ps1`.
 
-The game project specifies MSVC `PlatformToolset=v145` and x64 `LanguageStandard=stdcpp17`, uses wxWidgets headers and libraries under the `wxwin` property, links Windows `dsound.lib` / `winmm.lib` and includes the vendored `RtAudio` and `cxxmidi` sources. Windows multimedia/Media Foundation is used by `forms/form_video_box.cpp`. No CMake build was found for the native game.
+The game project specifies MSVC `PlatformToolset=v145` and x64 `LanguageStandard=stdcpp17`, uses wxWidgets headers and libraries under the `wxwin` property, links Windows `dsound.lib` / `winmm.lib` and includes the vendored `RtAudio`, `cxxmidi` and LGPL-2.1-or-later `libsmacker` sources. Windows multimedia/Media Foundation is used by `forms/form_video_box.cpp` for Czech MP4 fallbacks; original EN/PL/IT SMK2 movies are decoded by libsmacker. No CMake build was found for the native game.
 
 ## Requirements
 

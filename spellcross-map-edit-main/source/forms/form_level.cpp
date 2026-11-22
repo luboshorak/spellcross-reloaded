@@ -10823,8 +10823,11 @@ bool StrategicLevelFrame::CancelPendingUnitOperation(size_t unitIndex, bool askC
 
     if (askConfirmation)
     {
-        const int r = spellcross_dialog_ui::ShowThemedMessage(L"Zrušit úpravy objednané v tomto kole a vrátit peníze?",
-            L"Úprava jednotky", wxYES_NO | wxICON_QUESTION, this);
+        const int r = spellcross_dialog_ui::ShowThemedMessage(
+            spellcross_ui_locale::Tr("strategic.unit_change_cancel.message",
+                "Cancel the unit changes ordered this turn and refund the money?"),
+            spellcross_ui_locale::Tr("strategic.unit_change_cancel.title", "Unit changes"),
+            wxYES_NO | wxICON_QUESTION, this);
         if (r != wxYES) return false;
     }
 
@@ -13831,14 +13834,16 @@ void StrategicLevelFrame::BuildResourcesPage()
     auto* us = new wxBoxSizer(wxVERTICAL);
 
     // Header label (shows selected territory or global summary)
-    m_resourcesSelectedLabel = new wxStaticText(under, wxID_ANY, "Resources");
+    m_resourcesSelectedLabel = new wxStaticText(under, wxID_ANY,
+        spellcross_ui_locale::Tr("strategic.resources", "Resources"));
     m_resourcesSelectedLabel->SetFont(m_fontHeading);
     us->Add(m_resourcesSelectedLabel, 0, wxLEFT | wxRIGHT | wxTOP, 8);
 
     // Global allocation row
     auto* allocRow = new wxBoxSizer(wxHORIZONTAL);
 
-    auto* allocCaption = new wxStaticText(under, wxID_ANY, "Research allocation:");
+    auto* allocCaption = new wxStaticText(under, wxID_ANY,
+        spellcross_ui_locale::Tr("strategic.research_allocation_caption", "Research allocation:"));
     allocCaption->SetFont(m_fontText);
     allocRow->Add(allocCaption, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
 
@@ -13847,7 +13852,9 @@ void StrategicLevelFrame::BuildResourcesPage()
     m_resourcesSlider->SetMinSize(wxSize(-1, 40));
     allocRow->Add(m_resourcesSlider, 1, wxALIGN_CENTER_VERTICAL | wxEXPAND);
 
-    m_resourcesRatioLabel = new wxStaticText(under, wxID_ANY, "Money: 20  Research: 0");
+    m_resourcesRatioLabel = new wxStaticText(under, wxID_ANY,
+        wxString::Format(spellcross_ui_locale::Tr("strategic.resource_ratio",
+            "Money: %d  Research: %d"), 20, 0));
     m_resourcesRatioLabel->SetFont(m_fontText);
     allocRow->Add(m_resourcesRatioLabel, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 12);
     us->Add(allocRow, 0, wxALL | wxEXPAND, 8);
@@ -13857,10 +13864,14 @@ void StrategicLevelFrame::BuildResourcesPage()
         wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_HRULES | wxLC_NO_SORT_HEADER);
     m_resourcesTable->SetFont(m_fontText);
     m_resourcesTable->SetMinSize(wxSize(1, 1));
-    m_resourcesTable->InsertColumn(0, "Territory", wxLIST_FORMAT_LEFT, -1);
-    m_resourcesTable->InsertColumn(1, "Strategic points", wxLIST_FORMAT_CENTER, -1);
-    m_resourcesTable->InsertColumn(2, "SB / turn", wxLIST_FORMAT_CENTER, -1);
-    m_resourcesTable->InsertColumn(3, "Turns left", wxLIST_FORMAT_CENTER, -1);
+    m_resourcesTable->InsertColumn(0,
+        spellcross_ui_locale::Tr("strategic.territory", "Territory"), wxLIST_FORMAT_LEFT, -1);
+    m_resourcesTable->InsertColumn(1,
+        spellcross_ui_locale::Tr("strategic.strategic_points", "Strategic points"), wxLIST_FORMAT_CENTER, -1);
+    m_resourcesTable->InsertColumn(2,
+        spellcross_ui_locale::Tr("strategic.sb_per_turn", "SB / turn"), wxLIST_FORMAT_CENTER, -1);
+    m_resourcesTable->InsertColumn(3,
+        spellcross_ui_locale::Tr("strategic.turns_left", "Turns left"), wxLIST_FORMAT_CENTER, -1);
     // Stretch columns after first layout
     m_resourcesTable->Bind(wxEVT_SIZE, [this](wxSizeEvent& ev)
         {
@@ -13958,13 +13969,15 @@ void StrategicLevelFrame::RefreshResourcesPage()
             const int rounds = st.incomePerTurn > 0
                 ? (st.remaining + st.incomePerTurn - 1) / st.incomePerTurn : 0;
             m_resourcesSelectedLabel->SetLabel(
-                wxString::Format("Territory T%02d  -  %d SB/turn, %d turns (%d/%d SB)",
+                wxString::Format(spellcross_ui_locale::Tr("strategic.territory_resource_summary",
+                    "Territory T%02d - %d SB/turn, %d turns (%d/%d SB)"),
                     m_selectedTerritory, st.incomePerTurn, rounds, st.remaining, st.total));
         }
         else
         {
             m_resourcesSelectedLabel->SetLabel(
-                wxString::Format("Owned territories: %d  -  %d SB/turn",
+                wxString::Format(spellcross_ui_locale::Tr("strategic.owned_resource_summary",
+                    "Owned territories: %d - %d SB/turn"),
                     (int)m_ownedTerritories.size(), totalIncome));
         }
     }
@@ -13977,7 +13990,8 @@ void StrategicLevelFrame::RefreshResourcesPage()
     }
     if (m_resourcesRatioLabel)
         m_resourcesRatioLabel->SetLabel(
-            wxString::Format("Money: %d  Research: %d  (total SB: %d)", M, R, totalIncome));
+            wxString::Format(spellcross_ui_locale::Tr("strategic.resource_ratio_summary",
+                "Money: %d  Research: %d  (total SB: %d)"), M, R, totalIncome));
 
     if (m_resourcesTable)
     {
@@ -16464,11 +16478,19 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
 
         if (!researchRunning)
         {
+            const wxString warning =
+                spellcross_ui_locale::Tr("strategic.research_without_project.allocated",
+                    "You have allocated strategic points to research, but no research project is active.") +
+                "\n\n" +
+                spellcross_ui_locale::Tr("strategic.research_without_project.lost",
+                    "Research points generated this turn will be lost if you end the turn.") +
+                "\n\n" +
+                spellcross_ui_locale::Tr("strategic.research_without_project.confirm",
+                    "End the turn anyway?");
             const int answer = spellcross_dialog_ui::ShowThemedMessage(
-                L"Máte přidělené body do výzkumu, ale nemáte aktivní žádný výzkumný projekt.\n\n"
-                L"Pokud kolo ukončíte, výzkumné body získané v tomto kole nebudou využity.\n\n"
-                L"Opravdu chcete ukončit kolo?",
-                L"Výzkum",
+                warning,
+                spellcross_ui_locale::Tr("strategic.research_without_project.title",
+                    "Research allocation"),
                 wxYES_NO | wxNO_DEFAULT | wxICON_WARNING,
                 this);
             if (answer != wxYES)

@@ -372,6 +372,9 @@ Copy-DllImports (Join-Path $stageEditor 'spellcross_map_editor.exe') $stageEdito
 
 Copy-Required (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE-Reloaded.txt')
 Copy-Required (Join-Path $editor 'LICENSE') (Join-Path $stage 'LICENSE-Map-Editor.txt')
+$licenseDir = Join-Path $stage 'third-party-licenses'
+New-Item -ItemType Directory -Path $licenseDir -Force | Out-Null
+Copy-Required (Join-Path $root 'third_party\libsmacker\COPYING') (Join-Path $licenseDir 'libsmacker-LGPL-2.1.txt')
 $wxLicense = Join-Path $WxRoot 'share\wxwidgets\copyright'
 if (Test-Path -LiteralPath $wxLicense -PathType Leaf) {
     $licenseDir = Join-Path $stage 'third-party-licenses'
