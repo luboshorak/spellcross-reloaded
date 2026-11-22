@@ -90,7 +90,13 @@ class OriginalTacticalNavigationWiring(unittest.TestCase):
             "bool SpellMap::EnemyTurnStep()", 1
         )[0]
         self.assertIn("OriginalFormPreference(strength)", code)
-        self.assertIn("OriginalMagotarAction(type, preference)", code)
+        self.assertIn("NonOscillatingMagotarAction(", code)
+        self.assertIn("const auto projectedStrength = formEffect(nextType);", code)
+        self.assertIn("OriginalFormPreference(projectedStrength)", code)
+        self.assertIn("shooter == enemy ? projectedMagotar : shooter->unit", code)
+        self.assertIn("target == enemy ? projectedMagotar : target->unit", code)
+        self.assertLess(code.index("const auto projectedStrength = formEffect(nextType)"),
+                        code.index("enemy->action_points -= enemy->unit->action_ap;"))
         self.assertIn("BuildAllianceClusters()", code)
         self.assertIn("path.back().g_cost", code)
         self.assertIn("StartMove_NoRangeCheck(enemy, cheapestSite)", code)
