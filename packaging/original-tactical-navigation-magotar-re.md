@@ -86,6 +86,25 @@ The game uses Watcom x86 and original `JEDNOTKY.DEF` records of 207 bytes.
   original list-building/route-cost calculation remain **unverified**.
   Do **not** claim byte-exact Magotar AI parity until those are traced.
 
+## Reloaded flight/landing oscillation guard (2026-11-22)
+
+The original group-based AIR vs GROUND form comparison remains the reference.
+Reloaded previously estimated both categories against the Magotar's **current**
+unit record. Since types 47 and 48 have different combat stats, simply landing
+could reverse the next comparison, causing immediate take-off with another AP
+charge and no attack between them.
+
+Reloaded now projects the same group comparison using *both* the current
+and proposed Magotar records, without changing live map/unit state. If the
+proposed morph would itself reverse the tactical recommendation, the special
+action is skipped. When the preference is stable, the existing legal landing
+site checks, movement costs, native animations, and action AP charges apply.
+
+This is a guard against an observable Reloaded regression, not evidence of
+byte-exact original DOS action scheduling. Gameplay comparison in CZ and EN
+remains required, especially with mixed air/ground formations, low AP and
+blocked landing tiles.
+
 ## Outstanding validation
 
 1. The original `0x746FF` movement mask and the separate `0x169a3` /
