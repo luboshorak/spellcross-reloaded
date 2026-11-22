@@ -234,7 +234,7 @@ int File::Load(std::wstring path)
 
     if(!file.is_open()) {
 #ifndef CXXMIDI_QUIET
-        std::cerr << "CxxMidi: couldn't open: " << path.c_str() << std::endl;
+        std::wcerr << L"CxxMidi: couldn't open: " << path << std::endl;
 #endif
         return(1);
     }

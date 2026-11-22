@@ -60,130 +60,130 @@ jobs:
         run: |
           cc -std=c11 -O2 -Wall -Wextra -pedantic -Ithird_party/libsmacker \
             -c third_party/libsmacker/smacker.c -o /tmp/libsmacker.o
-          c++ -std=c++17 -O2 -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O2 -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_smacker_decoder.cpp \
             spellcross-map-edit-main/source/smacker_video_decoder.cpp \
             /tmp/libsmacker.o -o /tmp/spellcross-smacker-decoder-test
           /tmp/spellcross-smacker-decoder-test
       - name: Verify collision-free ground/air Autodeploy matching
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_autodeploy_rules.cpp \
             -o /tmp/spellcross-autodeploy-test
           /tmp/spellcross-autodeploy-test
       - name: Verify tactical mission-result frame stays visible (#178)
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_mission_debrief_layout.cpp \
             -o /tmp/spellcross-debrief-layout-test
           /tmp/spellcross-debrief-layout-test
       - name: Compile and run the real LevelLoader against original script fixtures
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_original_level_events.cpp \
             spellcross-map-edit-main/source/level.cpp \
             -o /tmp/spellcross-level-event-regression
           /tmp/spellcross-level-event-regression
       - name: Compile and test original ordered chapter cinematic commands
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_level_video_playlist.cpp \
             spellcross-map-edit-main/source/level.cpp \
             -o /tmp/spellcross-level-video-playlist-test
           /tmp/spellcross-level-video-playlist-test
       - name: Compile and test retail territory countdown freeze
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_original_strategy_deadlines.cpp \
             -o /tmp/spellcross-strategy-deadline-regression
           /tmp/spellcross-strategy-deadline-regression
       - name: Compile and test original chapter 3 mission-stage lifecycle
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_original_strategy_mission_flow.cpp \
             -o /tmp/spellcross-original-mission-flow-test
           /tmp/spellcross-original-mission-flow-test
       - name: Compile and test original random counterattack rules
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_random_counterattack_rules.cpp \
             -o /tmp/spellcross-random-counterattack-test
           /tmp/spellcross-random-counterattack-test
       - name: Compile and test retail research keys and formation bonuses
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_reported_issues_172_174.cpp \
             -o /tmp/spellcross-issues-172-174-test
           /tmp/spellcross-issues-172-174-test
       - name: Compile and test campaign unit purchase unlock rules
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_campaign_unit_unlock.cpp \
             -o /tmp/spellcross-campaign-unit-unlock-test
           /tmp/spellcross-campaign-unit-unlock-test
       - name: Compile and test release version and RC ordering
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_release_version_compare.cpp \
             -o /tmp/spellcross-release-version-test
           /tmp/spellcross-release-version-test
       - name: Compile and test shared unit availability timer
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_unit_availability.cpp \
             -o /tmp/spellcross-unit-availability-test
           /tmp/spellcross-unit-availability-test
       - name: Compile and test post-battle wounded recovery
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_battle_recovery_rules.cpp \
             -o /tmp/spellcross-battle-recovery-test
           /tmp/spellcross-battle-recovery-test
       - name: Compile and test tactical deselection and group action scheduler
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_tactical_background_action_rules.cpp \
             -o /tmp/spellcross-tactical-background-action-test
           /tmp/spellcross-tactical-background-action-test
       - name: Compile and test team-wide tactical reaction contact (#188)
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_tactical_reaction_fire_rules.cpp \
             -o /tmp/spellcross-tactical-reaction-sight-test
           /tmp/spellcross-tactical-reaction-sight-test
       - name: Compile and test retail-generated DTA enemy placements
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_strategic_generated_spawn_rules.cpp \
             -o /tmp/spellcross-generated-spawns-test
           /tmp/spellcross-generated-spawns-test
       - name: Compile and test stable commander identities
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_strategic_commander_uid_rules.cpp \
             -o /tmp/spellcross-commander-uids-test
           /tmp/spellcross-commander-uids-test
       - name: Compile and test original commander battles and promotions
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_strategic_commander_experience_rules.cpp \
             -o /tmp/spellcross-commander-experience-test
           /tmp/spellcross-commander-experience-test
       - name: Compile and test strategic hierarchy geometry
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_strategic_hierarchy_layout.cpp \
             -o /tmp/spellcross-hierarchy-layout-test
           /tmp/spellcross-hierarchy-layout-test
       - name: Compile and test single-member and multi-member health display
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
             spellcross-map-edit-main/tests/test_unit_health_display.cpp \
             -o /tmp/spellcross-unit-health-display-test
           /tmp/spellcross-unit-health-display-test
       - name: Compile and test startup log durability and concurrency
         run: |
-          c++ -std=c++17 -O0 -g -Wall -Wextra -pedantic -pthread \
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic -pthread \
             spellcross-map-edit-main/tests/test_startup_log.cpp \
             -o /tmp/spellcross-startup-log-test
           /tmp/spellcross-startup-log-test "$(mktemp -d)"

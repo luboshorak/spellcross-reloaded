@@ -2,7 +2,7 @@
 
 ## What is present (not an invented style guide)
 
-The C++ application is a mixture of inherited Spellcross Map Editor code and newer restoration code. The MSVC project uses C++17 and Windows/wxWidgets. Inherited methods often return `int` status codes and accept pointers; newer helpers use `bool`, `std::vector`, `std::filesystem`, `std::atomic` and enums. File names and class names are historically mixed (e.g. `spellcross_map_editor.vcxproj` builds `Spellcross.exe`). Do **not** assume a universal formatter, naming rule or architecture boundary that the code does not enforce.
+The C++ application is a mixture of inherited Spellcross Map Editor code and newer restoration code. The MSVC x64 game project targets C++23 (MSVC 14.52+) and Windows/wxWidgets. The standalone editor's compiler settings are independent. Inherited methods often return `int` status codes and accept pointers; newer helpers use `bool`, `std::vector`, `std::filesystem`, `std::atomic` and enums. File names and class names are historically mixed (e.g. `spellcross_map_editor.vcxproj` builds `Spellcross.exe`). Do **not** assume a universal formatter, naming rule or architecture boundary that the code does not enforce.
 
 The repository's explicit restoration policy is [`packaging/restoration-development-principles.md`](../packaging/restoration-development-principles.md): prove original behavior where possible, label inference, prefer observable fidelity, preserve compatibility, fix crashes and avoid speculative game-balance changes.
 
