@@ -427,6 +427,22 @@ static bool scsave_read_unit(std::istream& is, uint32_t version, SpellMap* map, 
 	u->azimuth_turret = azim_tur;
 	u->frame = frame;
 
+	// The save stores the deployed radar flag and frame, but not the transient
+	// in_animation pointer. A deployed radar is drawn from gr_action's final
+	// animation frame, not gr_base's folded static sprite. Reattach that
+	// resource after a disk load without replaying the action or spending AP.
+	// Keep the saved azimuth: while deployed it is already in the action
+	// animation's coordinate system (OnHUDradarToggle).
+	if (u->radar_up && u->unit && u->unit->isActionToggleRadar() &&
+		u->unit->gr_action && u->unit->gr_action->anim.frames > 0)
+	{
+		u->in_animation = u->unit->gr_action;
+		u->frame_stop = u->unit->action_fsu_frames > 0
+			? (std::min)(u->unit->action_fsu_frames, u->in_animation->anim.frames)
+			: u->in_animation->anim.frames;
+		u->frame = u->frame_stop - 1;
+	}
+
 	u->spec_type = MapUnitTypeFromString(spec_s);
 	u->behave = MapUnitTypeFromString(beh_s);
 
