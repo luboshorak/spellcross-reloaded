@@ -33,6 +33,13 @@ class TestEnhancedReactionFireWiring(unittest.TestCase):
         code = source("source/main.cpp")
         self.assertIn('ini.GetLongValue("STATE", "reaction_fire_mode", 1)', code)
         self.assertIn('ini.SetLongValue("STATE", "reaction_fire_mode",', code)
+        # A saved value of 0 is still an explicit Original selection.
+        self.assertIn('ini.GetLongValue("STATE", "reaction_fire_mode", 1) == 1 ?', code)
+        self.assertIn('spellcross_tactical::ReactionFireMode::Original);', code)
+        header = source("source/map.h")
+        self.assertIn('spellcross_tactical::ReactionFireMode reaction_fire_mode =\\n'
+                      '            spellcross_tactical::ReactionFireMode::Enhanced;',
+                      header)
         self.assertIn("OnOptionsReactionFire", code)
         for file in ("source/forms/form_mmenu.cpp", "source/forms/form_level.cpp"):
             with self.subTest(file=file):
