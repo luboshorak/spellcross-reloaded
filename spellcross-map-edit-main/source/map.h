@@ -29,6 +29,7 @@
 #include "spell_hud_buttons.h"
 #include "spell_map_event.h"
 #include "tactical_box_selection.h"
+#include "tactical_reaction_fire_mode.h"
 
 #include "wx/dcbuffer.h"
 
@@ -388,6 +389,9 @@ public:
 		// The shooter itself still needs a legal weapon shot and sufficient AP.
 		struct ReactionFireEntry { MapUnit* shooter; MapUnit* target; int priority = 0; };
 		std::vector<ReactionFireEntry> reaction_fire_queue;
+        spellcross_tactical::ReactionFireMode reaction_fire_mode =
+            spellcross_tactical::ReactionFireMode::Original;
+        spellcross_tactical::EnhancedReactionAttempts enhanced_reaction_attempts;
 		bool reaction_fire_active = false;
 		MapUnit* reaction_fire_restore_selection = nullptr;
 		void CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos);
@@ -947,6 +951,15 @@ public:
 		bool IsEnemyTurnRunning() const { return enemy_turn_running; }
 		bool CanSavePausedBattle() const;
 		void SetGameDifficulty(GameDifficulty difficulty);
+        void SetReactionFireMode(spellcross_tactical::ReactionFireMode mode)
+        {
+            reaction_fire_mode = mode;
+            enhanced_reaction_attempts.Clear();
+        }
+        spellcross_tactical::ReactionFireMode GetReactionFireMode() const
+        {
+            return reaction_fire_mode;
+        }
 		// Re-evaluate enemy ranks once all Alliance companies have been deployed.
 		// This must run before the first tactical save, not during incomplete placement.
 		void FinalizeEnemyDifficultyAfterDeployment();
