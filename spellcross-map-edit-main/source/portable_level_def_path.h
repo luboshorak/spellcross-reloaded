@@ -6,6 +6,7 @@
 #include <cctype>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace spellcross_save
 {
