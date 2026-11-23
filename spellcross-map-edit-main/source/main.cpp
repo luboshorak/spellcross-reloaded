@@ -4265,7 +4265,7 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
         // LEVEL_03.DEF as a scripted mission, so the old mission-only scan fails.
         std::string mission = ctx.mission_token;
         if (mission.empty() && spell_map->IsLoaded())
-            mission = spellcross_save::PortableStem(spell_map->map_path);
+            mission = spellcross_save::PortableStem(std::filesystem::path(spell_map->map_path).filename().string());
         const std::string expectedLevel = spellcross_save::ExpectedLevelDefName(
             ctx.level_def_path, mission);
         const fs::path dataRoot(spell_data->spell_data_root);
