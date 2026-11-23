@@ -2908,7 +2908,7 @@ bool MyApp::OnInit()
     wstring map_path = char2wstring(ini.GetValue("STATE","last_map",""));
     spell_map = new SpellMap();
     spell_map->SetReactionFireMode(
-        ini.GetLongValue("STATE", "reaction_fire_mode", 0) == 1 ?
+        ini.GetLongValue("STATE", "reaction_fire_mode", 1) == 1 ?
         spellcross_tactical::ReactionFireMode::Enhanced :
         spellcross_tactical::ReactionFireMode::Original);
 	spell_map->SetBoxSelectionEnabled(

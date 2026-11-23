@@ -3,12 +3,12 @@
 The Options menu now contains **Defensive fire → Original / Enhanced** in
 the main menu, strategic view, and tactical view (CZ and EN).
 
-- **Original** (default, including existing installations with no new setting):
+- **Original** (optional retail-compatible mode):
   identical to the original English DOS game. All units on a faction share a
   first-contact visibility trigger. If a Hummer or radar spots a Wolf rider
   before any Commando is in firing range, no later reaction is triggered merely
   by entering that Commando's range.
-- **Enhanced**: scouting, radar, fog and side-wide shared visibility are
+- **Enhanced** (default for new installations): scouting, radar, fog and side-wide shared visibility are
   unchanged. Once an enemy moving unit is spotted, each defending company
   gets its **one** reaction-fire initiative contest at the first movement
   step where its weapon can legally fire on that enemy (provided it has AP
@@ -28,14 +28,18 @@ rather than excluding spotters.
 
 The preference is stored in `config.ini` under
 `[STATE] reaction_fire_mode=0|1` and saved at normal game shutdown, just like
-the difficulty setting. It is intentionally **not serialized into tactical or
+the difficulty setting. If the key is absent, **Enhanced** (1) is selected.
+An explicit saved **Original** (0) is respected: an update never silently
+changes a player's previously selected mode. Players who want Enhanced on
+an existing installation with `reaction_fire_mode=0` can select it in Options
+once, then exit normally to save the choice. It is intentionally **not serialized into tactical or
 strategic saves**, so an old save can be used to compare both modes. Switching
 modes resets only the temporary per-phase attempt ledger, not AP, tactical
 units, visibility or save data.
 
 ## Repro for Divac1 issue #197
 
-1. Build `feature/enhanced-reaction-fire-options` with the English retail data.
+1. Build the latest game (including this mode) with the English retail data.
 2. Load the original Divac1 save, kill the injured Magotar with the distant
    Commando, end turn, heal the wounded Commando in the subsequent quiet player
    phase, end turn. Keep the Hummer at its original position.

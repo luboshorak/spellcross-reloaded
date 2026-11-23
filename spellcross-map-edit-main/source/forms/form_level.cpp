@@ -7966,7 +7966,7 @@ void StrategicLevelFrame::SyncReactionFireModeMenu()
     if (!bar)
         return;
     const auto mode = m_main ? m_main->GetReactionFireMode() :
-        spellcross_tactical::ReactionFireMode::Original;
+        spellcross_tactical::ReactionFireMode::Enhanced;
     bar->Check(ID_MENU_OPTIONS_REACTION_ORIGINAL,
         mode == spellcross_tactical::ReactionFireMode::Original);
     bar->Check(ID_MENU_OPTIONS_REACTION_ENHANCED,

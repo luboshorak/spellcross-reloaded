@@ -390,7 +390,7 @@ public:
 		struct ReactionFireEntry { MapUnit* shooter; MapUnit* target; int priority = 0; };
 		std::vector<ReactionFireEntry> reaction_fire_queue;
         spellcross_tactical::ReactionFireMode reaction_fire_mode =
-            spellcross_tactical::ReactionFireMode::Original;
+            spellcross_tactical::ReactionFireMode::Enhanced;
         spellcross_tactical::EnhancedReactionAttempts enhanced_reaction_attempts;
 		bool reaction_fire_active = false;
 		MapUnit* reaction_fire_restore_selection = nullptr;
