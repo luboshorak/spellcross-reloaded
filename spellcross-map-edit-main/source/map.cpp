@@ -10642,29 +10642,75 @@ bool SpellMap::ProcessReactionFire()
         auto entry = reaction_fire_queue.back();
         reaction_fire_queue.pop_back();
 
+        // An entry can have been invalidated by a prior shot; check membership
+        // before accessing a target pointer for optional diagnostics.
+        const bool trace = _ptr_in_units_list(units, entry.target) &&
+            TraceWolfRiderReaction(entry.target);
+        if (trace)
+            spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                "DEQUEUE target=%d shooter_present=%d target_alive=%d remaining=%llu",
+                entry.target->id, (int)_ptr_in_units_list(units, entry.shooter),
+                (int)!entry.target->isDead(), (unsigned long long)reaction_fire_queue.size());
+
         if (!_ptr_in_units_list(units, entry.shooter) || entry.shooter->isDead())
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "DROP reason=shooter_missing_or_dead");
             continue;
+        }
         if (!_ptr_in_units_list(units, entry.target) || entry.target->isDead())
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "DROP shooter=%d reason=target_missing_or_dead", entry.shooter->id);
             continue;
+        }
         // Contact-time eligibility can change between volley animations.
         // Never overwrite another action or fire from a deactivated unit.
         if (!entry.shooter->unit || !entry.target->unit ||
             !entry.shooter->isActive() || IsUnitBusy(entry.shooter))
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "DROP shooter=%d reason=unit_missing_inactive_or_busy", entry.shooter->id);
             continue;
+        }
         if (entry.shooter->GetFireCount() <= 0)
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "DROP shooter=%d reason=no_remaining_shots ap=%d",
+                    entry.shooter->id, entry.shooter->action_points);
             continue;
+        }
         if (!entry.shooter->unit->canAttack(entry.target->unit))
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "DROP shooter=%d reason=cannot_attack_target_type", entry.shooter->id);
             continue;
+        }
         // The reacting shooter's personal sight is NOT required for
         // indirect fire. Retain shared visibility while the queued attack
         // starts, even when a different ally provides the spot.
         if (!ReactionSideHasSight(this, entry.shooter->is_enemy, entry.target->coor))
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "DROP shooter=%d reason=target_no_longer_visible", entry.shooter->id);
             continue;
+        }
 
         unit_view->CalcAttackRange(entry.shooter, true);
         const int target_mxy = ConvXY(entry.target->coor);
         if (target_mxy < 0 || target_mxy >= (int)entry.shooter->attack_map.size() || !entry.shooter->attack_map[target_mxy])
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "DROP shooter=%d reason=target_no_longer_in_attack_map", entry.shooter->id);
             continue;
+        }
 
         // Save the unit whose movement was interrupted only once; subsequent
         // shots must not replace it with the previous reaction shooter.
@@ -10684,8 +10730,14 @@ bool SpellMap::ProcessReactionFire()
             spellcross_diag::Log(spellcross_diag::Level::Info, "COMBAT",
                 "Reaction fire shooter=%d target=%d",
                 entry.shooter->id, entry.target->id);
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "FIRED shooter=%d target=%d", entry.shooter->id, entry.target->id);
             return true;
         }
+        if (trace)
+            spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                "DROP shooter=%d reason=StartAttack_NoHUD_rejected", entry.shooter->id);
     }
     return false;
 }
