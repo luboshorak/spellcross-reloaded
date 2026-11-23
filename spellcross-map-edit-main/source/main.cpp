@@ -71,6 +71,7 @@
 #include "runtime_diagnostics.h"
 #include "strategic_generated_spawn_rules.h"
 #include "strategic_battle_recovery_rules.h"
+#include "portable_level_def_path.h"
 
 #include "level.h"
 #include <wx/filedlg.h>
@@ -445,6 +446,8 @@ namespace
     {
         namespace fs = std::filesystem;
         fs::path temp_common = fs::current_path() / "temp" / "COMMON";
+        const fs::path exe_common = fs::path(wxStandardPaths::Get().GetExecutablePath().ToStdWstring())
+            .parent_path() / "temp" / "COMMON";
 
         const std::vector<std::filesystem::path> candidates = {
             root,
@@ -453,6 +456,7 @@ namespace
             root / "DATA" / "COMMON",
             root / "CD",
             root / "DATA" / "CD",
+            exe_common,
             temp_common,
         };
 
@@ -1739,7 +1743,7 @@ static std::filesystem::path ResolveStrategicLevelDefForSave(
             return exact;
         ec.clear();
 
-        const std::string filename = exact.filename().string();
+        const std::string filename = spellcross_save::PortableFileName(savedDef);
         if (!filename.empty())
         {
             const fs::path root = spellData ? fs::path(spellData->spell_data_root) : fs::path();
@@ -4255,20 +4259,33 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
     if (hasEmbeddedContext && ctx.present && !ctx.strategic_state_json.empty())
     {
         namespace fs = std::filesystem;
-        fs::path levelDef(ctx.level_def_path);
-        std::error_code ec;
-
-        if (!fs::exists(levelDef, ec))
+        // Always resolve the chapter in the CURRENT installation. The author
+        // may have installed another version under a completely different
+        // Windows/Linux directory. A generated R0303 mission is not listed in
+        // LEVEL_03.DEF as a scripted mission, so the old mission-only scan fails.
+        std::string mission = ctx.mission_token;
+        if (mission.empty() && spell_map->IsLoaded())
+            mission = spellcross_save::PortableStem(spell_map->map_path);
+        const std::string expectedLevel = spellcross_save::ExpectedLevelDefName(
+            ctx.level_def_path, mission);
+        const fs::path dataRoot(spell_data->spell_data_root);
+        fs::path levelDef;
+        if (!expectedLevel.empty())
+            levelDef = FindSpellDataFile(dataRoot, expectedLevel);
+        if (levelDef.empty() && expectedLevel.empty() && !mission.empty())
         {
-            // Saves may move between installs/machines. Recover the canonical
-            // LEVEL_XX.DEF from the mission token rather than trusting an old
-            // absolute path.
-            std::string mission = ctx.mission_token;
-            if (mission.empty() && spell_map->IsLoaded())
-                mission = fs::path(spell_map->map_path).stem().string();
+            // Compatibility for custom/legacy mission names without a
+            // canonical chapter filename in the saved context.
             const std::string found = FindLevelDefContainingMission(mission, spell_data);
             if (!found.empty())
                 levelDef = fs::path(found);
+        }
+        if (levelDef.empty())
+        {
+            const std::string wanted = expectedLevel.empty() ? "(unknown chapter)" : expectedLevel;
+            wxLogWarning("Battle save contains strategic context, but %s could not be located in the current Spellcross data.",
+                wxString::FromUTF8(wanted.c_str()));
+            return false;
         }
 
         LevelData lvl;
