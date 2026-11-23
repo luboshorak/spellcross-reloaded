@@ -145,6 +145,12 @@ jobs:
             spellcross-map-edit-main/tests/test_tactical_background_action_rules.cpp \
             -o /tmp/spellcross-tactical-background-action-test
           /tmp/spellcross-tactical-background-action-test
+      - name: Compile and test portable tactical save chapter recovery
+        run: |
+          c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
+            spellcross-map-edit-main/tests/test_portable_level_def_path.cpp \
+            -o /tmp/spellcross-portable-chapter-test
+          /tmp/spellcross-portable-chapter-test
       - name: Compile and test team-wide tactical reaction contact (#188)
         run: |
           c++ -std=c++23 -O0 -g -Wall -Wextra -pedantic \
