@@ -2907,6 +2907,10 @@ bool MyApp::OnInit()
     spellcross_autodeploy::SetEnabled(ini.GetBoolValue("STATE", "autodeploy", false));
     wstring map_path = char2wstring(ini.GetValue("STATE","last_map",""));
     spell_map = new SpellMap();
+    spell_map->SetReactionFireMode(
+        ini.GetLongValue("STATE", "reaction_fire_mode", 0) == 1 ?
+        spellcross_tactical::ReactionFireMode::Enhanced :
+        spellcross_tactical::ReactionFireMode::Original);
 	spell_map->SetBoxSelectionEnabled(
 		ini.GetBoolValue("STATE", "experimental_box_selection",
 			spellcross_tactical::BOX_SELECTION_ENABLED_BY_DEFAULT));
@@ -2981,6 +2985,8 @@ int MyApp::OnExit()
     {
         ini.SetValue("STATE","last_map",wstring2string(spell_map->GetTopPath()).c_str());
         ini.SetLongValue("STATE", "game_difficulty", (long)spell_map->GetGameDifficulty());
+        ini.SetLongValue("STATE", "reaction_fire_mode",
+            (long)spell_map->GetReactionFireMode());
 		ini.SetBoolValue("STATE", "experimental_box_selection", spell_map->IsBoxSelectionEnabled());
     }
 
@@ -3094,6 +3100,15 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuDifficulty->AppendRadioItem(ID_OptionsDifficultyNormal, spellcross_ui_locale::Tr("menu.normal", "&Normal"));
     menuDifficulty->AppendRadioItem(ID_OptionsDifficultyHard, spellcross_ui_locale::Tr("menu.hard", "&Hard"));
     menuOptions->AppendSubMenu(menuDifficulty, spellcross_ui_locale::Tr("menu.difficulty", "Game &Difficulty"));
+    auto* menuReaction = new wxMenu;
+    menuReaction->AppendRadioItem(ID_OptionsReactionOriginal,
+        spellcross_ui_locale::Tr("menu.reaction_original", "&Original"));
+    menuReaction->AppendRadioItem(ID_OptionsReactionEnhanced,
+        spellcross_ui_locale::Tr("menu.reaction_enhanced", "&Enhanced"));
+    menuOptions->AppendSubMenu(menuReaction,
+        spellcross_ui_locale::Tr("menu.reaction_fire", "Defensive &fire"),
+        spellcross_ui_locale::Tr("menu.reaction_fire_help",
+            "Original: first shared contact. Enhanced: one initiative chance per eligible shooter when the target first enters legal firing range."));
 	menuOptions->AppendCheckItem(ID_OptionsBoxSelection,
 		spellcross_ui_locale::Tr("menu.box_selection", "Drag-select unit &groups"),
 		spellcross_ui_locale::Tr("menu.box_selection_help", "Enable temporary unit groups selected by dragging the left mouse button"));
@@ -3252,6 +3267,13 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnOptionsAudio,this,ID_OptionsAudio);
     Bind(wxEVT_MENU,&MainFrame::OnOptionsScreen,this,ID_OptionsScreen);
     Bind(wxEVT_MENU,&MainFrame::OnOptionsDifficulty,this,ID_OptionsDifficultyEasy,ID_OptionsDifficultyHard);
+    Bind(wxEVT_MENU,&MainFrame::OnOptionsReactionFire,this,
+        ID_OptionsReactionOriginal, ID_OptionsReactionEnhanced);
+    SyncReactionFireModeMenu();
+    Bind(wxEVT_MENU, [this](wxActivateEvent& event) {
+        if (event.GetActive()) SyncReactionFireModeMenu();
+        event.Skip();
+    });
 	Bind(wxEVT_MENU,&MainFrame::OnOptionsBoxSelection,this,ID_OptionsBoxSelection);
     Bind(wxEVT_MENU, [this](wxCommandEvent& ev) {
         spellcross_autodeploy::SetEnabled(ev.IsChecked());
@@ -3422,6 +3444,37 @@ void MainFrame::OnOptionsDifficulty(wxCommandEvent& event)
     if(event.GetId() == ID_OptionsDifficultyEasy) d = SpellMap::GameDifficulty::EASY;
     else if(event.GetId() == ID_OptionsDifficultyHard) d = SpellMap::GameDifficulty::HARD;
     SetGameDifficulty(d);
+}
+
+void MainFrame::SyncReactionFireModeMenu()
+{
+    if (!spell_map)
+        return;
+    if (auto* menu = spellcross_menu::Model(this))
+    {
+        menu->Check(ID_OptionsReactionOriginal,
+            spell_map->GetReactionFireMode() == spellcross_tactical::ReactionFireMode::Original);
+        menu->Check(ID_OptionsReactionEnhanced,
+            spell_map->GetReactionFireMode() == spellcross_tactical::ReactionFireMode::Enhanced);
+    }
+}
+
+void MainFrame::SetReactionFireMode(spellcross_tactical::ReactionFireMode mode)
+{
+    if (!spell_map)
+        return;
+    spell_map->SetReactionFireMode(mode);
+    SyncReactionFireModeMenu();
+    spellcross_diag::Log(spellcross_diag::Level::Info, "OPTIONS",
+        "Reaction fire mode=%s", mode == spellcross_tactical::ReactionFireMode::Enhanced ?
+        "Enhanced" : "Original");
+}
+
+void MainFrame::OnOptionsReactionFire(wxCommandEvent& event)
+{
+    SetReactionFireMode(event.GetId() == ID_OptionsReactionEnhanced ?
+        spellcross_tactical::ReactionFireMode::Enhanced :
+        spellcross_tactical::ReactionFireMode::Original);
 }
 
 void MainFrame::OnOptionsBoxSelection(wxCommandEvent& event)
