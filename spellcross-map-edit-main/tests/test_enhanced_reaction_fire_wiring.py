@@ -29,9 +29,9 @@ class TestEnhancedReactionFireWiring(unittest.TestCase):
                 block = code.split("void SpellMap::" + name + "(", 1)[1][:850]
                 self.assertIn("enhanced_reaction_attempts.Clear()", block)
 
-    def test_preference_is_opt_in_and_persisted(self):
+    def test_enhanced_is_default_and_preference_is_persisted(self):
         code = source("source/main.cpp")
-        self.assertIn('ini.GetLongValue("STATE", "reaction_fire_mode", 0)', code)
+        self.assertIn('ini.GetLongValue("STATE", "reaction_fire_mode", 1)', code)
         self.assertIn('ini.SetLongValue("STATE", "reaction_fire_mode",', code)
         self.assertIn("OnOptionsReactionFire", code)
         for file in ("source/forms/form_mmenu.cpp", "source/forms/form_level.cpp"):
