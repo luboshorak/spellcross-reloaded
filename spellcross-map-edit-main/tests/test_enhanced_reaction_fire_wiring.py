@@ -37,7 +37,7 @@ class TestEnhancedReactionFireWiring(unittest.TestCase):
         self.assertIn('ini.GetLongValue("STATE", "reaction_fire_mode", 1) == 1 ?', code)
         self.assertIn('spellcross_tactical::ReactionFireMode::Original);', code)
         header = source("source/map.h")
-        self.assertIn('spellcross_tactical::ReactionFireMode reaction_fire_mode =\\n'
+        self.assertIn('spellcross_tactical::ReactionFireMode reaction_fire_mode =\n'
                       '            spellcross_tactical::ReactionFireMode::Enhanced;',
                       header)
         self.assertIn("OnOptionsReactionFire", code)
