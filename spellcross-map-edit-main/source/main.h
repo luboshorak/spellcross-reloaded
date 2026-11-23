@@ -78,7 +78,7 @@ public:
     spellcross_tactical::ReactionFireMode GetReactionFireMode() const
     {
         return spell_map ? spell_map->GetReactionFireMode() :
-            spellcross_tactical::ReactionFireMode::Original;
+            spellcross_tactical::ReactionFireMode::Enhanced;
     }
 
     bool m_mission_end_flow = false;
