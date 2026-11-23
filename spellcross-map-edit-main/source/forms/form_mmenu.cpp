@@ -287,6 +287,18 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
         spellcross_ui_locale::Tr("menu.autodeploy_help",
             "Automatically place companies on legal START squares at mission start"));
     optMenu->Check(ID_MMENU_OPTIONS_AUTODEPLOY, spellcross_autodeploy::Enabled());
+    auto* reaction = new wxMenu();
+    reaction->AppendRadioItem(ID_MMENU_OPTIONS_REACTION_ORIGINAL,
+        spellcross_ui_locale::Tr("menu.reaction_original", "&Original"));
+    reaction->AppendRadioItem(ID_MMENU_OPTIONS_REACTION_ENHANCED,
+        spellcross_ui_locale::Tr("menu.reaction_enhanced", "&Enhanced"));
+    optMenu->AppendSubMenu(reaction,
+        spellcross_ui_locale::Tr("menu.reaction_fire", "Defensive &fire"),
+        spellcross_ui_locale::Tr("menu.reaction_fire_help",
+            "Original: shared first contact. Enhanced: first legal firing opportunity per shooter."));
+    reaction->Check(m_spell_map &&
+        m_spell_map->GetReactionFireMode() == spellcross_tactical::ReactionFireMode::Enhanced ?
+        ID_MMENU_OPTIONS_REACTION_ENHANCED : ID_MMENU_OPTIONS_REACTION_ORIGINAL, true);
     spellcross_window::AddFullscreen(optMenu);
     bar->Append(optMenu, spellcross_ui_locale::Tr("menu.options", "&Options"));
     auto* editorMenu = new wxMenu();
@@ -301,6 +313,22 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     }, wxID_ABOUT);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsAudio, this, ID_MMENU_OPTIONS_AUDIO);
     form->Bind(wxEVT_MENU, &FormMainMenu::OnOptionsScreen, this, ID_MMENU_OPTIONS_SCREEN);
+    form->Bind(wxEVT_MENU, [this](wxCommandEvent& ev) {
+        if (m_spell_map)
+            m_spell_map->SetReactionFireMode(
+                ev.GetId() == ID_MMENU_OPTIONS_REACTION_ENHANCED ?
+                spellcross_tactical::ReactionFireMode::Enhanced :
+                spellcross_tactical::ReactionFireMode::Original);
+        if (auto* bar = spellcross_menu::Model(form))
+        {
+            bar->Check(ID_MMENU_OPTIONS_REACTION_ORIGINAL,
+                m_spell_map && m_spell_map->GetReactionFireMode() ==
+                    spellcross_tactical::ReactionFireMode::Original);
+            bar->Check(ID_MMENU_OPTIONS_REACTION_ENHANCED,
+                m_spell_map && m_spell_map->GetReactionFireMode() ==
+                    spellcross_tactical::ReactionFireMode::Enhanced);
+        }
+    }, ID_MMENU_OPTIONS_REACTION_ORIGINAL, ID_MMENU_OPTIONS_REACTION_ENHANCED);
     form->Bind(wxEVT_MENU, [menuFrame = form](wxCommandEvent& ev) {
         spellcross_autodeploy::SetEnabled(ev.IsChecked());
         if (auto* bar = spellcross_menu::Model(menuFrame))
