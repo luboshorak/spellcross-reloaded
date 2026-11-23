@@ -2130,6 +2130,7 @@ int SpellMap::IsLoaded()
 // cleanup MAP data
 void SpellMap::Close()
 {
+    enhanced_reaction_attempts.Clear();
 	// Stop asynchronous range/view workers BEFORE taking the map mutex.
 	// The old order held map_lock while waiting for workers to become idle,
 	// which is exactly the wrong shutdown ordering if a worker (now or after a
@@ -9533,6 +9534,9 @@ void SpellMap::StartEnemyTurn()
 {
     if (enemy_turn_running)
         return;
+    // Each faction phase grants at most one Enhanced initiative attempt per
+    // moving/shooting pair; start the new enemy phase with a fresh ledger.
+    enhanced_reaction_attempts.Clear();
     spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
         "Enemy turn starting; total_units=%llu",
         static_cast<unsigned long long>(units.size()));
@@ -9607,6 +9611,8 @@ void SpellMap::StartEnemyTurn()
 
 void SpellMap::EndEnemyTurn()
 {
+    // Start the player phase with fresh enemy-defender opportunities.
+    enhanced_reaction_attempts.Clear();
 	spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
 		"Enemy turn completed; processed=%llu remaining_units=%llu",
 		static_cast<unsigned long long>(enemy_turn_idx),
@@ -10430,7 +10436,13 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
     const bool seen_now = ReactionSideHasSight(this, defending_is_enemy, moving_unit->coor);
     const bool seen_before = previous_pos.IsSelected() &&
         ReactionSideHasSight(this, defending_is_enemy, previous_pos);
-    if (!spellcross_tactical::EntersSideSight(seen_now, seen_before))
+    const bool enhanced = reaction_fire_mode ==
+        spellcross_tactical::ReactionFireMode::Enhanced;
+    // Original preserves the retail side-wide first-contact gate exactly.
+    // Enhanced keeps shared spotting but defers each shooter's *one* chance
+    // until it first has a legal weapon shot, even after earlier visibility.
+    if (enhanced ? !seen_now :
+        !spellcross_tactical::EntersSideSight(seen_now, seen_before))
         return;
 
     struct Candidate
@@ -10447,6 +10459,8 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
             continue;
         if (shooter->is_enemy == moving_unit->is_enemy)
             continue;
+        if (enhanced && enhanced_reaction_attempts.Has(moving_unit->id, shooter->id))
+            continue;
         if (!shooter->isActive() || IsUnitBusy(shooter))
             continue;
 
@@ -10462,6 +10476,12 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
         unit_view->CalcAttackRange(shooter, true);
         const int target_mxy = ConvXY(moving_unit->coor);
         if (target_mxy < 0 || target_mxy >= (int)shooter->attack_map.size() || !shooter->attack_map[target_mxy])
+            continue;
+
+        // Record at the FIRST legal firing opportunity, irrespective of whether
+        // the initiative contest is won. Otherwise a missed roll would be
+        // re-tried on every subsequent movement tile.
+        if (enhanced && !enhanced_reaction_attempts.Mark(moving_unit->id, shooter->id))
             continue;
 
         // Original surprise/initiative contest:
