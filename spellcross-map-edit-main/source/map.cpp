@@ -36,6 +36,7 @@
 #include <random>
 #include <chrono>
 #include <climits>
+#include <cstdlib>
 #include <filesystem>
 #include <cwctype>
 
@@ -10414,15 +10415,37 @@ int SpellMap::GetReactionInitiative(const MapUnit* unit) const
 // Original EN SPELCROS.EXE triggers on NEW SIDE-WIDE CONTACT, then selects
 // eligible shooters based on weapon range/AP/initiative. A spotter may reveal
 // the target for an artillery unit that cannot personally see it.
+// Opt-in investigation of #197. This is deliberately NOT part of game logic:
+// no extra rand() calls, no altered contact/eligibility conditions, and no
+// movement or AP mutations. Trace only EN/CZ Wolf riders (JEDNOTKY.DEF index 61).
+static bool TraceWolfRiderReaction(const MapUnit* moving_unit)
+{
+    const char* flag = std::getenv("SPELLCROSS_TRACE_REACTION");
+    return flag && flag[0] == '1' && flag[1] == '\0' &&
+        moving_unit && moving_unit->is_enemy && moving_unit->unit &&
+        moving_unit->unit->type_id == 61;
+}
+
 void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
 {
     if (!moving_unit || moving_unit->isDead() || !moving_unit->unit)
         return;
 
+    const bool trace = TraceWolfRiderReaction(moving_unit);
+
     // Never overlap two reaction sequences. Movement is paused while the first
     // sequence is being animated and resumes after selection is restored.
     if (!reaction_fire_queue.empty() || reaction_fire_active)
+    {
+        if (trace)
+            spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                "SKIP_BUSY mover=%d from=(%d,%d) to=(%d,%d) active=%d queued=%llu",
+                moving_unit->id, previous_pos.x, previous_pos.y,
+                moving_unit->coor.x, moving_unit->coor.y,
+                (int)reaction_fire_active,
+                (unsigned long long)reaction_fire_queue.size());
         return;
+    }
 
     // New visibility for the defending side is the trigger, not new sight
     // for any particular gun. This is symmetric for Alliance and Other Side.
@@ -10430,8 +10453,65 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
     const bool seen_now = ReactionSideHasSight(this, defending_is_enemy, moving_unit->coor);
     const bool seen_before = previous_pos.IsSelected() &&
         ReactionSideHasSight(this, defending_is_enemy, previous_pos);
-    if (!spellcross_tactical::EntersSideSight(seen_now, seen_before))
+    const bool new_contact = spellcross_tactical::EntersSideSight(seen_now, seen_before);
+
+    if (trace)
+    {
+        spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+            "STEP mover=%d type=%d lvl=%d from=(%d,%d) to=(%d,%d) seen_before=%d seen_now=%d new_contact=%d",
+            moving_unit->id, moving_unit->unit->type_id, moving_unit->experience_level,
+            previous_pos.x, previous_pos.y, moving_unit->coor.x, moving_unit->coor.y,
+            (int)seen_before, (int)seen_now, (int)new_contact);
+
+        // Name the units supplying combined sight (the actual triggering rule).
+        // This extra ray calculation happens only for the opted-in debug run.
+        int spotters = 0;
+        for (auto* observer : units)
+        {
+            if (!observer || observer->isDead() || !observer->unit ||
+                observer->is_enemy != defending_is_enemy)
+                continue;
+            const bool current_sight = unit_view->HasDirectSight(observer, moving_unit->coor);
+            const bool previous_sight = previous_pos.IsSelected() &&
+                unit_view->HasDirectSight(observer, previous_pos);
+            if (current_sight || previous_sight)
+            {
+                ++spotters;
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "SPOTTER observer=%d type=%d lvl=%d sight_range=%d current=%d previous=%d dist=%.2f",
+                    observer->id, observer->unit->type_id, observer->experience_level,
+                    observer->unit->sdir, (int)current_sight, (int)previous_sight,
+                    observer->coor.Distance(moving_unit->coor));
+            }
+        }
+        if (!spotters)
+            spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197", "SPOTTER none");
+    }
+
+    if (!new_contact)
+    {
+        if (trace)
+        {
+            spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                "NO_TRIGGER reason=%s; no shooter eligibility/initiative rolls will run",
+                seen_now ? "already_seen_before" : "not_visible_to_side");
+            // Approximate range/AP snapshot, NOT an extra attack-map calculation.
+            // It exposes the situation where a scout spots a target before guns
+            // are in range, and the later range entry never fires again.
+            for (auto* shooter : units)
+            {
+                if (!shooter || shooter->isDead() || !shooter->unit ||
+                    shooter->is_enemy == moving_unit->is_enemy)
+                    continue;
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "NO_TRIGGER_SHOOTER id=%d type=%d lvl=%d ap=%d shots=%d dist=%.2f nominal_range=%d",
+                    shooter->id, shooter->unit->type_id, shooter->experience_level,
+                    shooter->action_points, shooter->GetFireCount(),
+                    shooter->coor.Distance(moving_unit->coor), shooter->GetFireRange());
+            }
+        }
         return;
+    }
 
     struct Candidate
     {
@@ -10444,17 +10524,47 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
     for (auto* shooter : units)
     {
         if (!shooter || shooter == moving_unit || shooter->isDead() || !shooter->unit)
+        {
+            if (trace && shooter && shooter != moving_unit &&
+                shooter->is_enemy != moving_unit->is_enemy)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "REJECT shooter=%d reason=dead_or_missing_unit", shooter->id);
             continue;
+        }
         if (shooter->is_enemy == moving_unit->is_enemy)
             continue;
-        if (!shooter->isActive() || IsUnitBusy(shooter))
+        if (!shooter->isActive())
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "REJECT shooter=%d reason=not_active ap=%d", shooter->id, shooter->action_points);
             continue;
+        }
+        if (IsUnitBusy(shooter))
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "REJECT shooter=%d reason=busy ap=%d", shooter->id, shooter->action_points);
+            continue;
+        }
 
         const int shots = shooter->GetFireCount();
         if (shots <= 0)
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "REJECT shooter=%d type=%d lvl=%d reason=no_shots ap=%d shot_cost=%d",
+                    shooter->id, shooter->unit->type_id, shooter->experience_level,
+                    shooter->action_points, shooter->GetAPperFire());
             continue;
+        }
         if (!shooter->unit->canAttack(moving_unit->unit))
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "REJECT shooter=%d reason=cannot_attack_type", shooter->id);
             continue;
+        }
 
         // The side-wide contact above can come from another friendly spotter.
         // This shooter's normal attack area still controls range, direct-fire
@@ -10462,13 +10572,30 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
         unit_view->CalcAttackRange(shooter, true);
         const int target_mxy = ConvXY(moving_unit->coor);
         if (target_mxy < 0 || target_mxy >= (int)shooter->attack_map.size() || !shooter->attack_map[target_mxy])
+        {
+            if (trace)
+                spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                    "REJECT shooter=%d type=%d lvl=%d reason=outside_legal_attack_map ap=%d shots=%d dist=%.2f nominal_range=%d",
+                    shooter->id, shooter->unit->type_id, shooter->experience_level,
+                    shooter->action_points, shots,
+                    shooter->coor.Distance(moving_unit->coor), shooter->GetFireRange());
             continue;
+        }
 
         // Original surprise/initiative contest:
         //   (base initiative + experience rank + random 0..5)
-        // Defender fires only on a strict win.
-        const int defender_roll = GetReactionInitiative(shooter) + (rand() % 6);
-        const int mover_roll = GetReactionInitiative(moving_unit) + (rand() % 6);
+        // Defender fires only on a strict win. The existing two RNG calls
+        // stay exactly where they were; tracing only reports their results.
+        const int defender_base = GetReactionInitiative(shooter);
+        const int mover_base = GetReactionInitiative(moving_unit);
+        const int defender_roll = defender_base + (rand() % 6);
+        const int mover_roll = mover_base + (rand() % 6);
+        if (trace)
+            spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+                "ROLL shooter=%d type=%d lvl=%d ap=%d shots=%d def_base=%d def_roll=%d mover_base=%d mover_roll=%d pass=%d",
+                shooter->id, shooter->unit->type_id, shooter->experience_level,
+                shooter->action_points, shots, defender_base, defender_roll, mover_base, mover_roll,
+                (int)(defender_roll > mover_roll));
         if (defender_roll <= mover_roll)
             continue;
 
@@ -10480,7 +10607,11 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
     }
 
     if (candidates.empty())
+    {
+        if (trace)
+            spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197", "RESULT no_candidates");
         return;
+    }
 
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b)
     {
@@ -10495,6 +10626,12 @@ void SpellMap::CheckReactionFire(MapUnit* moving_unit, MapXY previous_pos)
     for (const auto& c : candidates)
         for (int shot = 0; shot < c.shots; ++shot)
             reaction_fire_queue.push_back({ c.shooter, moving_unit, c.priority });
+
+    if (trace)
+        spellcross_diag::Log(spellcross_diag::Level::Info, "REACTION197",
+            "RESULT candidates=%llu queued_shots=%llu",
+            (unsigned long long)candidates.size(),
+            (unsigned long long)reaction_fire_queue.size());
 }
 
 // Process one defensive-fire shot. Returns true if an attack animation started.
