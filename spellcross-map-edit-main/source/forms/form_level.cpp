@@ -2966,6 +2966,15 @@ void StrategicLevelFrame::BuildMenu()
     difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_NORMAL, spellcross_ui_locale::Tr("menu.normal", "&Normal"));
     difficulty->AppendRadioItem(ID_MENU_OPTIONS_DIFFICULTY_HARD, spellcross_ui_locale::Tr("menu.hard", "&Hard"));
     options->AppendSubMenu(difficulty, spellcross_ui_locale::Tr("menu.difficulty", "Game &Difficulty"));
+    auto* reaction = new wxMenu();
+    reaction->AppendRadioItem(ID_MENU_OPTIONS_REACTION_ORIGINAL,
+        spellcross_ui_locale::Tr("menu.reaction_original", "&Original"));
+    reaction->AppendRadioItem(ID_MENU_OPTIONS_REACTION_ENHANCED,
+        spellcross_ui_locale::Tr("menu.reaction_enhanced", "&Enhanced"));
+    options->AppendSubMenu(reaction,
+        spellcross_ui_locale::Tr("menu.reaction_fire", "Defensive &fire"),
+        spellcross_ui_locale::Tr("menu.reaction_fire_help",
+            "Original: first shared contact. Enhanced: first legal firing opportunity per shooter."));
     options->AppendCheckItem(ID_MENU_OPTIONS_AUTODEPLOY,
         spellcross_ui_locale::Tr("menu.autodeploy", "&Autodeploy"),
         spellcross_ui_locale::Tr("menu.autodeploy_help",
@@ -2991,6 +3000,7 @@ void StrategicLevelFrame::BuildMenu()
         dialog.ShowModal();
     }, wxID_ABOUT);
     SyncDifficultyMenu();
+    SyncReactionFireModeMenu();
 
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnSaveGame, this, ID_MENU_SAVE_GAME);
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnLoadGame, this, ID_MENU_LOAD_GAME);
@@ -2998,6 +3008,8 @@ void StrategicLevelFrame::BuildMenu()
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnOptionsScreen, this, ID_MENU_OPTIONS_SCREEN);
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnOptionsDifficulty, this,
         ID_MENU_OPTIONS_DIFFICULTY_EASY, ID_MENU_OPTIONS_DIFFICULTY_HARD);
+    Bind(wxEVT_MENU, &StrategicLevelFrame::OnOptionsReactionFire, this,
+        ID_MENU_OPTIONS_REACTION_ORIGINAL, ID_MENU_OPTIONS_REACTION_ENHANCED);
     Bind(wxEVT_MENU, [this](wxCommandEvent& ev) {
         spellcross_autodeploy::SetEnabled(ev.IsChecked());
         if (auto* bar = spellcross_menu::Model(this))
@@ -3007,8 +3019,11 @@ void StrategicLevelFrame::BuildMenu()
     // after a player has changed the preference in the tactical menu.
     Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& ev) {
         if (ev.GetActive())
+        {
             if (auto* bar = spellcross_menu::Model(this))
                 bar->Check(ID_MENU_OPTIONS_AUTODEPLOY, spellcross_autodeploy::Enabled());
+            SyncReactionFireModeMenu();
+        }
         ev.Skip();
     });
     Bind(wxEVT_MENU, &StrategicLevelFrame::OnStrategicUiCurrent, this, ID_MENU_STRATEGIC_UI_CURRENT);
@@ -7943,6 +7958,29 @@ void StrategicLevelFrame::SyncDifficultyMenu()
         spellcross_menu::Model(this)->Check(ID_MENU_OPTIONS_DIFFICULTY_NORMAL, d == (int)SpellMap::GameDifficulty::NORMAL);
     if(spellcross_menu::Model(this)->FindItem(ID_MENU_OPTIONS_DIFFICULTY_HARD))
         spellcross_menu::Model(this)->Check(ID_MENU_OPTIONS_DIFFICULTY_HARD, d == (int)SpellMap::GameDifficulty::HARD);
+}
+
+void StrategicLevelFrame::SyncReactionFireModeMenu()
+{
+    auto* bar = spellcross_menu::Model(this);
+    if (!bar)
+        return;
+    const auto mode = m_main ? m_main->GetReactionFireMode() :
+        spellcross_tactical::ReactionFireMode::Original;
+    bar->Check(ID_MENU_OPTIONS_REACTION_ORIGINAL,
+        mode == spellcross_tactical::ReactionFireMode::Original);
+    bar->Check(ID_MENU_OPTIONS_REACTION_ENHANCED,
+        mode == spellcross_tactical::ReactionFireMode::Enhanced);
+}
+
+void StrategicLevelFrame::OnOptionsReactionFire(wxCommandEvent& ev)
+{
+    if (!m_main)
+        return;
+    m_main->SetReactionFireMode(ev.GetId() == ID_MENU_OPTIONS_REACTION_ENHANCED ?
+        spellcross_tactical::ReactionFireMode::Enhanced :
+        spellcross_tactical::ReactionFireMode::Original);
+    SyncReactionFireModeMenu();
 }
 
 void StrategicLevelFrame::OnOptionsDifficulty(wxCommandEvent& ev)
