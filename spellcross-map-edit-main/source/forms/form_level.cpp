@@ -47,6 +47,7 @@
 #include "../strategic_countdown_rules.h"
 #include "../strategic_mission_flow.h"
 #include "../strategic_battle_recovery_rules.h"
+#include "../portable_level_def_path.h"
 #include "../strategic_commander_uid_rules.h"
 #include "../strategic_commander_experience_rules.h"
 #include "../strategic_random_attack_rules.h"
@@ -18246,8 +18247,8 @@ bool StrategicLevelFrame::LoadStrategicStateFromPath(const std::filesystem::path
     {
         if (m_main) m_main->SetGameDifficulty((SpellMap::GameDifficulty)std::clamp(loadedDifficulty, 0, 2));
         // Validate that this save matches current level (compare stem)
-        const std::string curStem = to_lower(std::filesystem::path(m_level.source_path).stem().string());
-        const std::string saveStem = to_lower(std::filesystem::path(level_def).stem().string());
+        const std::string curStem = spellcross_save::PortableStem(m_level.source_path);
+        const std::string saveStem = spellcross_save::PortableStem(level_def);
 
         if (!curStem.empty() && !saveStem.empty() && curStem != saveStem)
         {
