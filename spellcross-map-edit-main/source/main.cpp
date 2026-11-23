@@ -3270,7 +3270,7 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnOptionsReactionFire,this,
         ID_OptionsReactionOriginal, ID_OptionsReactionEnhanced);
     SyncReactionFireModeMenu();
-    Bind(wxEVT_MENU, [this](wxActivateEvent& event) {
+    Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
         if (event.GetActive()) SyncReactionFireModeMenu();
         event.Skip();
     });
