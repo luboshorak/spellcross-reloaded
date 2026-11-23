@@ -74,6 +74,12 @@ public:
     SpellMap* GetSpellMap() const { return spell_map; }
     SpellMap::GameDifficulty GetGameDifficulty() const { return spell_map ? spell_map->GetGameDifficulty() : SpellMap::GameDifficulty::NORMAL; }
     void SetGameDifficulty(SpellMap::GameDifficulty difficulty);
+    void SetReactionFireMode(spellcross_tactical::ReactionFireMode mode);
+    spellcross_tactical::ReactionFireMode GetReactionFireMode() const
+    {
+        return spell_map ? spell_map->GetReactionFireMode() :
+            spellcross_tactical::ReactionFireMode::Original;
+    }
 
     bool m_mission_end_flow = false;
     SpellMap::MissionEndRequest m_mission_end_req;
@@ -235,6 +241,8 @@ private:
     void OnOptionsAudio(wxCommandEvent& event);
     void OnOptionsScreen(wxCommandEvent& event);
     void OnOptionsDifficulty(wxCommandEvent& event);
+    void OnOptionsReactionFire(wxCommandEvent& event);
+    void SyncReactionFireModeMenu();
 	void OnOptionsBoxSelection(wxCommandEvent& event);
     void SyncDifficultyMenu();
 
@@ -449,6 +457,8 @@ enum
     ID_OptionsDifficultyEasy,
     ID_OptionsDifficultyNormal,
     ID_OptionsDifficultyHard,
+    ID_OptionsReactionOriginal,
+    ID_OptionsReactionEnhanced,
 	ID_OptionsBoxSelection,
     ID_OptionsConfineCursor,
     ID_mmOpenMapEditor,

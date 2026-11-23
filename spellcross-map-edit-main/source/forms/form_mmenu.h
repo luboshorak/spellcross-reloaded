@@ -107,4 +107,6 @@ private:
     static constexpr int ID_MMENU_OPTIONS_SCREEN = 9902;
     static constexpr int ID_MMENU_OPEN_EDITOR = 9903;
     static constexpr int ID_MMENU_OPTIONS_AUTODEPLOY = 9904;
+    static constexpr int ID_MMENU_OPTIONS_REACTION_ORIGINAL = 9905;
+    static constexpr int ID_MMENU_OPTIONS_REACTION_ENHANCED = 9906;
 };
