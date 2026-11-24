@@ -11676,19 +11676,24 @@ SpellBtnHUD* SpellMap::CreateHUDbutton(SpellGraphicItem* glyph, t_xypos& hud_pos
 			glyph->Render(surf[sid], &surf[sid][x_size * y_size], x_size, 0, (sid == 2) * 2, disabled_glyph);
 	}
 
+	// HUD controls are separate wxWidgets bitmaps, not part of the map's RGB output.
+	// Use the same NightMission transform for idle, hover and pressed states.
+	spellcross_night::Palette night_button_palette;
+	const auto* button_palette = spellcross_night::SelectPalette(terrain->pal, night_button_palette, params.is_night);
+
 	// try to find old button with matching position so we can override it
 	SpellBtnHUD* btn = NULL;
 	for (auto& cbtn : hud_buttons)
 		if (cbtn->PositionMatch(x_pos, y_pos, x_size, y_size))
 		{
 			btn = cbtn;
-			btn->Make(x_pos, y_pos, x_size, y_size, (uint8_t*)terrain->pal, surf[0], surf[1], surf[2], action_id, cb_press, cb_hover);
+			btn->Make(x_pos, y_pos, x_size, y_size, &button_palette[0][0], surf[0], surf[1], surf[2], action_id, cb_press, cb_hover);
 			break;
 		}
 	if (!btn)
 	{
 		// create new button if not existed before
-		btn = new SpellBtnHUD(x_pos, y_pos, x_size, y_size, (uint8_t*)terrain->pal, surf[0], surf[1], surf[2], action_id, cb_press, cb_hover);
+		btn = new SpellBtnHUD(x_pos, y_pos, x_size, y_size, &button_palette[0][0], surf[0], surf[1], surf[2], action_id, cb_press, cb_hover);
 		hud_buttons.push_back(btn);
 	}
 

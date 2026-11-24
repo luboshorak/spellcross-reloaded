@@ -36,7 +36,7 @@ int SpellBtnHUD::PositionMatch(int x_pos,int y_pos,int x_size,int y_size)
 
 // make new button object
 int SpellBtnHUD::Make(int x_pos,int y_pos,int x_size,int y_size,
-	uint8_t* pal,uint8_t* pic_idle,uint8_t* pic_hover,uint8_t* pic_press,
+	const uint8_t* pal,uint8_t* pic_idle,uint8_t* pic_hover,uint8_t* pic_press,
 	int action_id,std::function<void(void)> cb_press,std::function<void(void)> cb_hover)
 {
 	bmp_idle = NULL;
@@ -88,7 +88,7 @@ int SpellBtnHUD::Make(int x_pos,int y_pos,int x_size,int y_size,
 }
 
 SpellBtnHUD::SpellBtnHUD(int x_pos,int y_pos,int x_size,int y_size,
-	uint8_t* pal,uint8_t* pic_idle,uint8_t* pic_hover,uint8_t* pic_press,
+	const uint8_t* pal,uint8_t* pic_idle,uint8_t* pic_hover,uint8_t* pic_press,
 	int action_id, std::function<void(void)> cb_press,std::function<void(void)> cb_hover)
 {	
 	Make(x_pos, y_pos, x_size, y_size,
