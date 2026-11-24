@@ -22,10 +22,10 @@ public:
 
 	~SpellBtnHUD();
 	SpellBtnHUD(int x_pos, int y_pos, int x_size, int y_size, 
-		uint8_t *pal, uint8_t *pic_idle,uint8_t* pic_hover,uint8_t *pic_press,
+		const uint8_t *pal, uint8_t *pic_idle,uint8_t* pic_hover,uint8_t *pic_press,
 		int action_id=0, std::function<void(void)> cb_press=NULL,std::function<void(void)> cb_hover=NULL);
 	int Make(int x_pos,int y_pos,int x_size,int y_size,
-		uint8_t* pal,uint8_t* pic_idle,uint8_t* pic_hover,uint8_t* pic_press,
+		const uint8_t* pal,uint8_t* pic_idle,uint8_t* pic_hover,uint8_t* pic_press,
 		int action_id=0,std::function<void(void)> cb_press=NULL,std::function<void(void)> cb_hover=NULL);
 	int PositionMatch(int x_pos,int y_pos,int x_size,int y_size);
 	void Invalidate();
