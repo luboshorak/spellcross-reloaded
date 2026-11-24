@@ -33,6 +33,7 @@
 #endif
 #include "iso9660_import.h"
 #include "game_menu_bar.h"
+#include "menu_video_names.h"
 #include "game_controls.h"
 #include "game_autodeploy.h"
 #include "game_audio_settings.h"
@@ -4875,10 +4876,12 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 if (!FindWindowById(ID_VIDEO_BOX_WIN) && spell_data)
                 {
                     try {
-                        form_video_box = new FormVideoBox(canvas, ID_VIDEO_BOX_WIN, spell_data, "CREDITS.DPK", 2);
+                        const bool czech = spell_data->GetTextLanguage() == SpellLang::CZE;
+                        form_video_box = new FormVideoBox(canvas, ID_VIDEO_BOX_WIN, spell_data,
+                            spellcross_menu_video::Credits(czech), 2);
                         m_reopen_mmenu_after_video = true;
-                    } catch (const std::exception&) {
-                        wxMessageBox("Cannot play CREDITS.DPK (video not found).", "Credits", wxOK | wxICON_WARNING, this);
+                    } catch (const std::exception& ex) {
+                        wxMessageBox(wxString::FromUTF8(ex.what()), "Credits", wxOK | wxICON_WARNING, this);
                         HideTacticalWindow();
                         ShowMainMenuWindow();
                     }
@@ -4891,10 +4894,12 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 if (!FindWindowById(ID_VIDEO_BOX_WIN) && spell_data)
                 {
                     try {
-                        form_video_box = new FormVideoBox(canvas, ID_VIDEO_BOX_WIN, spell_data, "INTRO.CAN", 2);
+                        const bool czech = spell_data->GetTextLanguage() == SpellLang::CZE;
+                        form_video_box = new FormVideoBox(canvas, ID_VIDEO_BOX_WIN, spell_data,
+                            spellcross_menu_video::Intro(czech), 2);
                         m_reopen_mmenu_after_video = true;
-                    } catch (const std::exception&) {
-                        wxMessageBox("Cannot play INTRO.CAN (video not found).", "Intro", wxOK | wxICON_WARNING, this);
+                    } catch (const std::exception& ex) {
+                        wxMessageBox(wxString::FromUTF8(ex.what()), "Intro", wxOK | wxICON_WARNING, this);
                         HideTacticalWindow();
                         ShowMainMenuWindow();
                     }
