@@ -8,6 +8,7 @@
 //=============================================================================
 
 #include "map.h"
+#include "pnm_frame_rules.h"
 #include "runtime_diagnostics.h"
 #include "unit_health_display.h"
 #include "destructible_health.h"
@@ -855,8 +856,8 @@ MapLayer4::MapLayer4(AnimPNM* pnm, int x_pos, int y_pos, int x_ofs, int y_ofs, i
 	this->frame_limit = 0;
 	if (pnm)
 	{
-		this->frame_ofs = frame_ofs;
-		this->frame_limit = (frame_limit < 0) ? (pnm->frames.size()) : (frame_limit);
+		this->frame_limit = pnm_frame_rules::limit(frame_limit, pnm->frames.size());
+		this->frame_ofs = pnm_frame_rules::normalize(frame_ofs, this->frame_limit);
 	}
 }
 MapLayer4::~MapLayer4()
@@ -4475,7 +4476,7 @@ int SpellMap::SetBuffer(AnimL1* anm)
 // set buffer content to PNM
 int SpellMap::SetBuffer(AnimPNM* pnm, int x_ofs, int y_ofs)
 {
-	if (!pnm)
+	if (!pnm || pnm->frames.empty())
 		return(1);
 
 	ClearBuffer();
@@ -6150,7 +6151,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			int y_elev = tiles[mxy].elev;
 
 			// get sprite
-			Sprite* frame = pnm->anim->frames[pnm->frame_ofs];
+			Sprite* frame = pnm->anim ? pnm_frame_rules::get(pnm->anim->frames, pnm->frame_ofs) : nullptr;
+			if (!frame)
+				continue;
 
 			// render sprite
 			int mxx = (pnm->x_pos - xs_ofs) * 80 + pnm->x_ofs + ((((pnm->y_pos - ys_ofs * 2) & 1) != 0) ? 0 : 40);
@@ -6266,8 +6269,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 						// render selection pointer for selected unit
 						if (unit_selection && unit_selection == unit)
 						{
-							Sprite* frame = pnm_sipka.anim->frames[pnm_sipka.frame_ofs];
-							frame->Render(pic, pic_end, mxx, myy + top_y_ofs - pnm_sipka.anim->y_max - 8, pic_x_size, filter);
+							Sprite* frame = pnm_sipka.anim ? pnm_frame_rules::get(pnm_sipka.anim->frames, pnm_sipka.frame_ofs) : nullptr;
+							if (frame)
+								frame->Render(pic, pic_end, mxx, myy + top_y_ofs - pnm_sipka.anim->y_max - 8, pic_x_size, filter);
 						}
 					}
 					else
@@ -13666,15 +13670,13 @@ int SpellMap::Tick()
 		{
 			MapLayer4* pnm = &L4[k];
 			// cycle through frames
-			pnm->frame_ofs++;
-			if (pnm->frame_ofs >= pnm->frame_limit)
-				pnm->frame_ofs = 0;
+			const int limit = pnm_frame_rules::limit(pnm->frame_limit, pnm->anim ? pnm->anim->frames.size() : 0);
+			pnm->frame_ofs = pnm_frame_rules::advance(pnm->frame_ofs, limit);
 		}
 
 		// animate unit pointer
-		pnm_sipka.frame_ofs++;
-		if (pnm_sipka.frame_ofs >= pnm_sipka.frame_limit)
-			pnm_sipka.frame_ofs = 0;
+		const int pointer_limit = pnm_frame_rules::limit(pnm_sipka.frame_limit, pnm_sipka.anim ? pnm_sipka.anim->frames.size() : 0);
+		pnm_sipka.frame_ofs = pnm_frame_rules::advance(pnm_sipka.frame_ofs, pointer_limit);
 
 		update = true;
 
