@@ -8,6 +8,7 @@
 //=============================================================================
 
 #include "map.h"
+#include "night_palette.h"
 #include "pnm_frame_rules.h"
 #include "runtime_diagnostics.h"
 #include "unit_health_display.h"
@@ -6735,6 +6736,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		screen_width, &cursor, cursor_unit, screen_width, screen_height, hud_buttons_cb);
 
 
+	// Snapshot the mission flag while the map is still locked.
+	const bool is_night = params.is_night;
 	// unlock stuff while rendering
 	unit_view->ResultLock(false);
 	unit_range->ResultLock(false);
@@ -6756,6 +6759,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             for (int c = 0; c < 3; ++c)
                 pal[k][c] = lookup[c][pal[k][c]];
     }
+
+    // Keep the live palette intact (including water cycling and display settings).
+    // NightMission affects the final indexed tactical surface, not shared assets.
+    spellcross_night::Palette night_palette;
+    const auto* output_pal = spellcross_night::SelectPalette(pal, night_palette, is_night);
 
     wxNativePixelData data(bmp);
     if (!data)
@@ -6780,10 +6788,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             for (int x = 0; x < physical_width; ++x)
             {
                 const auto& sample = horizontal[x];
-                const auto* p00 = pal[row0[sample.first]];
-                const auto* p10 = pal[row0[sample.second]];
-                const auto* p01 = pal[row1[sample.first]];
-                const auto* p11 = pal[row1[sample.second]];
+                const auto* p00 = output_pal[row0[sample.first]];
+                const auto* p10 = output_pal[row0[sample.second]];
+                const auto* p01 = output_pal[row1[sample.first]];
+                const auto* p11 = output_pal[row1[sample.second]];
                 for (int channel = 2; channel >= 0; --channel)
                     *scan++ = spellcross_display::BlendBilinear(
                         p00[channel], p10[channel], p01[channel], p11[channel],
@@ -6802,7 +6810,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             const uint8_t* source = &screen_pixels[static_cast<size_t>(sourceY) * screen_width];
             for (int x = 0; x < physical_width; ++x)
             {
-                const auto* rgb = pal[source[(x * 100) / display_scale_percent]];
+                const auto* rgb = output_pal[source[(x * 100) / display_scale_percent]];
                 *scan++ = rgb[2];
                 *scan++ = rgb[1];
                 *scan++ = rgb[0];
