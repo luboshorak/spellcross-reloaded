@@ -353,3 +353,25 @@ updates.launch_failed_continue=Stahování nebo spuštění instalátoru se nezd
 updates.dont_ask=Příště tuto nabídku nezobrazovat
 updates.download_title=Stahování Spellcross Reloaded
 updates.downloading=Stahuji kompletní instalátor...
+
+# Tactical information overlay
+menu.tactical_info=Taktické informace (I)
+tactical_info.title=TAKTICKÉ HLÁŠENÍ
+tactical_info.deployment=Rozmístění jednotek
+tactical_info.enemy_phase=Tah Other Side
+tactical_info.own_phase=Tah Aliance
+tactical_info.friendly=Aktivní oddíly
+tactical_info.ready=Oddíly s AB
+tactical_info.destroyed=Zničené oddíly OS
+tactical_info.lost=Ztracené oddíly Aliance
+tactical_info.enemy=Nepřítel
+tactical_info.ally=Aliance
+tactical_info.strength=Síla
+tactical_info.wounded=Ranění
+tactical_info.ap=AB
+tactical_info.shots=Útoky
+tactical_info.morale=Morálka
+tactical_info.dig=Zakopání
+tactical_info.hint=Najeď na viditelný oddíl
+help.key.tactical_info=I / Shift+I
+help.action.tactical_info=Přepne taktický panel / grafické info nad jednotkami.
