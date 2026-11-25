@@ -157,10 +157,10 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     projectBox->Add(projectHeading, 0, wxLEFT | wxTOP | wxBOTTOM, FromDIP(9));
     auto* grid = new wxFlexGridSizer(2, 8, 12);
     grid->AddGrowableCol(1, 1);
-    AddInfoRow(content, grid, Tr("about.author", "Author"), wxString::FromUTF8(spellcross_attribution::Copyright));
+    AddInfoRow(content, grid, Tr("about.author", "Project author"), wxString::FromUTF8(spellcross_attribution::Copyright));
     AddInfoRow(content, grid, Tr("about.version", "Version"), spellcross_app::VersionLabel());
     AddInfoRow(content, grid, Tr("about.repository", "Repository"), wxString::FromUTF8(spellcross_attribution::Url));
-    auto* attribution = AddInfoRow(content, grid, Tr("about.based_on", "Based on"), wxString::FromUTF8(spellcross_attribution::Phrase));
+    auto* attribution = AddInfoRow(content, grid, Tr("about.based_on", "Attribution"), wxString::FromUTF8(spellcross_attribution::Phrase));
     attribution->Wrap(470);
     AddInfoRow(content, grid, Tr("about.license", "License"), wxString::FromUTF8(spellcross_attribution::License));
     auto* libraryCredits = AddInfoRow(content, grid, "LGPL",

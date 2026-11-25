@@ -7,6 +7,12 @@ on:
       - 'packaging/Build-CombinedRelease.ps1'
       - 'packaging/Build-UniversalNoRelease.ps1'
       - 'packaging/Publish-Release.ps1'
+      - 'packaging/Add-DistributionLicenses.ps1'
+      - 'packaging/SOURCE-AND-RELINKING.txt'
+      - 'LICENSE'
+      - 'LICENSES/**'
+      - 'LICENSING.md'
+      - 'spellcross-map-edit-main/tests/test_project_attribution.py'
       - 'spellcross-map-edit-main/source/app_version.h'
       - 'spellcross-map-edit-main/source/resources.rc'
       - 'spellcross-map-edit-main/tests/test_release_candidate_metadata.py'
@@ -18,6 +24,12 @@ on:
       - 'packaging/Build-CombinedRelease.ps1'
       - 'packaging/Build-UniversalNoRelease.ps1'
       - 'packaging/Publish-Release.ps1'
+      - 'packaging/Add-DistributionLicenses.ps1'
+      - 'packaging/SOURCE-AND-RELINKING.txt'
+      - 'LICENSE'
+      - 'LICENSES/**'
+      - 'LICENSING.md'
+      - 'spellcross-map-edit-main/tests/test_project_attribution.py'
       - 'spellcross-map-edit-main/source/app_version.h'
       - 'spellcross-map-edit-main/source/resources.rc'
       - 'spellcross-map-edit-main/tests/test_release_candidate_metadata.py'
@@ -276,4 +288,35 @@ jobs:
           python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_release_candidate_metadata.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Regression metadata tests failed.' }
           Assert-Clean
+          $global:LASTEXITCODE = 0
+
+  distribution-license-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Exercise source and license staging
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'spellcross-license-fixture'
+          New-Item -ItemType Directory -Force -Path (Join-Path $stage 'data'),(Join-Path $stage 'locales'),(Join-Path $stage 'Editor\data') | Out-Null
+          Set-Content -LiteralPath (Join-Path $stage 'data\fixture.txt') -Value 'support data'
+          Set-Content -LiteralPath (Join-Path $stage 'locales\fixture.lang') -Value 'test=value'
+          Set-Content -LiteralPath (Join-Path $stage 'Editor\data\fixture.txt') -Value 'editor support data'
+          Set-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Value 'test build'
+          & .\packaging\Add-DistributionLicenses.ps1 -Root (Get-Location).Path -EditorRoot (Join-Path (Get-Location).Path 'external\map-editor') -Stage $stage -WxRoot $stage
+          foreach ($file in @('SOURCE-CODE.zip','SOURCE-AND-RELINKING.txt','NOTICE.md','AUTHORS.md','LICENSING.md','LICENSES\MIT-Maslan.txt','third-party-licenses\libsmacker-LGPL-2.1.txt','third-party-licenses\XMIDI-LGPL-2.0.txt','third-party-licenses\RtAudio.txt','third-party-licenses\SimpleIni.txt','third-party-licenses\cxxmidi.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $stage $file) -PathType Leaf)) { throw "Missing distribution item: $file" }
+          }
+          $source = Join-Path $stage 'extracted-source'
+          Expand-Archive -LiteralPath (Join-Path $stage 'SOURCE-CODE.zip') -DestinationPath $source
+          foreach ($file in @('LICENSE','LICENSES\MIT-legacy.txt','spellcross-map-edit-main\source\project_attribution.h','spellcross-map-edit-main\source\spellcross_map_editor.vcxproj','spellcross-map-edit-main\source\cxxmidi\guts\cvt_xmi2mid.hpp','external\map-editor\source\spellcross_map_editor.vcxproj','external\map-editor\LICENSE','third_party\libsmacker\smacker.c','third_party\libsmacker\COPYING','packaging\Build-CombinedRelease.ps1','SOURCE-AND-RELINKING.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $source $file) -PathType Leaf)) { throw "Missing corresponding source: $file" }
+          }
+          if ((Get-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Raw) -notmatch 'Corresponding source ZIP SHA256: [0-9A-F]{64}') {
+            throw 'Missing corresponding source hash.'
+          }
+          if (Test-Path -LiteralPath (Join-Path $source 'spellcross-map-edit-main\source\spellcross_ui_coordinate_catalog')) { throw 'Raw resource catalog was bundled.' }
           $global:LASTEXITCODE = 0
