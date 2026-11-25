@@ -62,7 +62,7 @@ information. Crash diagnostics are never automatically uploaded.
 
 ## Verification and operational notes
 
-The regression test `spellcross-map-edit-main/tests/test_runtime_diagnostics.cpp`
+The regression test `spellcross-remaster-main/tests/test_runtime_diagnostics.cpp`
 simulates an unhandled access violation and verifies the report, access
 address, stack, rotating previous report, build fingerprint and minidump.
 The Windows job in `.github/workflows/fullscreen-menu.yml` compiles and runs

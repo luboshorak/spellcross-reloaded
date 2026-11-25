@@ -2,7 +2,7 @@
 
 ## Tactical: actual frame path
 
-`MainFrame::OnPaintCanvas` ([`source/main.cpp`](../spellcross-map-edit-main/source/main.cpp)) owns the wx paint event and calls `SpellMap::Render(m_buffer, ..., TacticalZoomPercent(), display_scale)`, then draws the resulting bitmap and optional mission-result overlay. `SpellMap::Render` is in [`source/map.cpp`](../spellcross-map-edit-main/source/map.cpp). Tactical graphics are primarily **palette-indexed 8-bit software composition** followed by conversion to a wx RGB bitmap, not GPU layers.
+`MainFrame::OnPaintCanvas` ([`source/main.cpp`](../spellcross-remaster-main/source/main.cpp)) owns the wx paint event and calls `SpellMap::Render(m_buffer, ..., TacticalZoomPercent(), display_scale)`, then draws the resulting bitmap and optional mission-result overlay. `SpellMap::Render` is in [`source/map.cpp`](../spellcross-remaster-main/source/map.cpp). Tactical graphics are primarily **palette-indexed 8-bit software composition** followed by conversion to a wx RGB bitmap, not GPU layers.
 
 The following is the source-order sequence in `SpellMap::Render` (conditional on visibility flags and mode):
 
@@ -45,7 +45,7 @@ flowchart LR
 
 ## Original strategic graphics: two explicit passes
 
-`StrategicOriginalRenderer` ([`source/strategic_original_renderer.cpp`](../spellcross-map-edit-main/source/strategic_original_renderer.cpp)) accepts an `AssetLoader` callback, decoded original resource bytes and view state. Its `RenderStrategicMap`, `RenderHierarchy`, `RenderUnits`, `RenderBuy`, `RenderResearch`, `RenderInfo`, `RenderResources`, `RenderStats` and `RenderOptions` compose a **640×480 RGB image** from native `VM*_FULL`, `LEVEL`, `HMLA`, `SB_BG*`, `SB_BAR*` and other retail assets.
+`StrategicOriginalRenderer` ([`source/strategic_original_renderer.cpp`](../spellcross-remaster-main/source/strategic_original_renderer.cpp)) accepts an `AssetLoader` callback, decoded original resource bytes and view state. Its `RenderStrategicMap`, `RenderHierarchy`, `RenderUnits`, `RenderBuy`, `RenderResearch`, `RenderInfo`, `RenderResources`, `RenderStats` and `RenderOptions` compose a **640×480 RGB image** from native `VM*_FULL`, `LEVEL`, `HMLA`, `SB_BG*`, `SB_BAR*` and other retail assets.
 
 `StrategicLevelFrame::RefreshOriginalStrategicView` (`source/forms/form_level.cpp`) supplies current territory visibility and asset loading (prefer live `COMMON.FS`, then extracted directories), calls the static renderer, and overlays live texts, company states, amounts, buttons and toolbar graphics. `OnOriginalStrategicPaint` scales/centers the cached bitmap; `OnOriginalStrategicLeftDown/RightDown/MouseWheel` remap mouse input into native 640×480 coordinates.
 

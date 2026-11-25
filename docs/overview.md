@@ -2,7 +2,7 @@
 
 ## Purpose
 
-[`README.md`](../README.md) describes Spellcross Reloaded as an open-source, fan-made restoration of the 1997 tactical/strategic game for modern Windows. The native application reuses the original game's assets and campaign definitions rather than distributing commercial data: entry point `MyApp::OnInit` ([`source/main.cpp`](../spellcross-map-edit-main/source/main.cpp)); original-data owner `SpellData` ([`source/spellcross.h`](../spellcross-map-edit-main/source/spellcross.h), [`source/spellcross.cpp`](../spellcross-map-edit-main/source/spellcross.cpp)).
+[`README.md`](../README.md) describes Spellcross Reloaded as an open-source, fan-made restoration of the 1997 tactical/strategic game for modern Windows. The native application reuses the original game's assets and campaign definitions rather than distributing commercial data: entry point `MyApp::OnInit` ([`source/main.cpp`](../spellcross-remaster-main/source/main.cpp)); original-data owner `SpellData` ([`source/spellcross.h`](../spellcross-remaster-main/source/spellcross.h), [`source/spellcross.cpp`](../spellcross-remaster-main/source/spellcross.cpp)).
 
 `Spellcross.exe` has **two modes of play**: strategic chapters where the player manages territory/companies/research, and tactical missions on an isometric tile map. A separate map editor is available through the `external/map-editor` Git submodule and launch glue in `MainFrame::LaunchStandaloneMapEditor` (`source/main.cpp`).
 
@@ -10,10 +10,10 @@
 
 | Location | Role | Principal entry |
 | --- | --- | --- |
-| `spellcross-map-edit-main/source/` | C++17 wxWidgets Windows game, shared asset/model/renderer code | `wxIMPLEMENT_APP(MyApp)`, `MyApp::OnInit` in `main.cpp` |
-| `spellcross-map-edit-main/data/` | Source-bundled auxiliary assets, units metadata, menu images, fallback-video manifest | `SpellData` and `packaging/Build-CombinedRelease.ps1` |
-| `spellcross-map-edit-main/locales/` | Reloaded-authored UI translations only | `spellcross_ui_locale::Tr` in `source/spell_ui_locale.h` |
-| `spellcross-map-edit-main/tests/` | Python source-level checks and C++ isolated/integration tests | `.github/workflows/*.yml` |
+| `spellcross-remaster-main/source/` | C++17 wxWidgets Windows game, shared asset/model/renderer code | `wxIMPLEMENT_APP(MyApp)`, `MyApp::OnInit` in `main.cpp` |
+| `spellcross-remaster-main/data/` | Source-bundled auxiliary assets, units metadata, menu images, fallback-video manifest | `SpellData` and `packaging/Build-CombinedRelease.ps1` |
+| `spellcross-remaster-main/locales/` | Reloaded-authored UI translations only | `spellcross_ui_locale::Tr` in `source/spell_ui_locale.h` |
+| `spellcross-remaster-main/tests/` | Python source-level checks and C++ isolated/integration tests | `.github/workflows/*.yml` |
 | `docs/archive/regressions/` | Historical issue-specific tactical/strategic regression notes | Existing `*.md` files |
 | `external/map-editor/` | Independently built editor repository (Git submodule) | Editor `source/spellcross_map_editor.vcxproj` after submodule init |
 | `packaging/` | Release packaging, audit notes, versioned release notes | `Build-CombinedRelease.ps1` |

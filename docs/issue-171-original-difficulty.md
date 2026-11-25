@@ -59,7 +59,7 @@ but **before** `SaveInitial()` and `MissionStartEvent()`. This:
 
 ## Regression
 
-Run `python3 -m unittest discover -s spellcross-map-edit-main/tests -p
+Run `python3 -m unittest discover -s spellcross-remaster-main/tests -p
 'test_issue_171_difficulty_deployment.py' -v`.
 
 The test compiles the **actual three production methods** with small test
