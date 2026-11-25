@@ -5790,7 +5790,12 @@ void MainFrame::OnTimer(wxTimerEvent& event)
 
     try
     {
-        if (spell_map->Tick())
+        const bool enemyPhaseBefore = spell_map->IsEnemyTurnRunning();
+        const int roundBefore = spell_map->GetTacticalRound();
+        const bool changed = spell_map->Tick();
+        if (changed || (m_tacticalInfoVisible &&
+            (enemyPhaseBefore != spell_map->IsEnemyTurnRunning() ||
+             roundBefore != spell_map->GetTacticalRound())))
             canvas->Refresh();
     }
     catch (const std::exception& ex)
@@ -6315,7 +6320,7 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     const wxColour friendly(143, 194, 118), enemy(209, 137, 107);
     const wxColour gold(208, 190, 116), steel(102, 117, 91);
     const wxColour background(17, 29, 17), dark(9, 17, 10);
-    const int summaryH = 2 * pad + line * 6 + FromDIP(5);
+    const int summaryH = 2 * pad + line * 7 + FromDIP(5);
     if (size.x < width + pad * 2 || size.y < summaryH + FromDIP(140))
         return;
 
@@ -6380,15 +6385,19 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     pair(round < 0 ? tr("tactical_info.relative_round", "Round since load") :
         tr("tactical_info.round", "Round"), wxString::Format("%d", shownRound),
         y + pad + 2 * line, gold);
+    pair(round < 0 ? tr("tactical_info.relative_turns", "Turns since load") :
+        tr("tactical_info.completed_turns", "Completed turns"),
+        wxString::Format("%d", (std::max)(0, shownRound - 1) + (enemyPhase ? 1 : 0)),
+        y + pad + 3 * line, normal);
     pair(tr("tactical_info.destroyed", "Enemy companies lost"),
         wxString::Format("%d", losses.enemy_light + losses.enemy_heavy + losses.enemy_air),
-        y + pad + 3 * line, friendly);
+        y + pad + 4 * line, friendly);
     pair(tr("tactical_info.lost", "Own companies lost"),
         wxString::Format("%d", losses.alliance_light + losses.alliance_heavy + losses.alliance_air),
-        y + pad + 4 * line, enemy);
+        y + pad + 5 * line, enemy);
     pair(tr("tactical_info.ready_fire", "Ready / can fire / all"),
         wxString::Format("%d / %d / %d", ready, fireReady, own),
-        y + pad + 5 * line, normal);
+        y + pad + 6 * line, normal);
     const int barY = y + summaryH - pad;
     dc.SetPen(*wxTRANSPARENT_PEN);
     dc.SetBrush(wxBrush(dark));
@@ -6479,10 +6488,19 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     }
     else if (visible && tileIndex >= 0 && static_cast<size_t>(tileIndex) < spell_map->tiles.size())
     {
-        const int cardH = 2 * pad + 3 * line;
+        const int cardH = 2 * pad + 4 * line;
         if (availableH < cardH) return;
         frame(cardY, cardH);
         header(tr("tactical_info.terrain", "TERRAIN"), cardY, muted);
+        const auto& ground = spell_map->tiles[tileIndex];
+        const int flags = ground.L1 ? ground.L1->GetFlags() : 0;
+        const wxString terrain = ground.flags == 0x90 ? tr("tactical_info.forest", "Forest") :
+            ground.flags == 0x70 ? tr("tactical_info.bridge", "Bridge") :
+            ground.flags != 0 ? tr("tactical_info.obstacle", "Obstacle") :
+            (flags & Sprite::IS_DIRT_ROAD) ? tr("tactical_info.dirt_road", "Dirt road") :
+            (flags & Sprite::IS_ROAD) ? tr("tactical_info.road", "Road") :
+            tr("tactical_info.open_ground", "Open ground");
+        drawText(terrain, x + pad, cardY + pad + 3 * line, inner, normal);
         pair(tr("tactical_info.position", "Position"),
             wxString::Format("%d / %d", tile.x, tile.y), cardY + pad + line, normal);
         pair(tr("tactical_info.elevation", "Elevation"),
