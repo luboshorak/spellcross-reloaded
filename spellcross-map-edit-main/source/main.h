@@ -86,6 +86,9 @@ public:
     enum class MissionResultStage { None, Debrief, Statistics };
     MissionResultStage m_mission_result_stage = MissionResultStage::None;
     bool m_mission_result_visible = false;
+    bool m_tacticalInfoVisible = false;
+    void ToggleTacticalInfoPanel();
+    void DrawTacticalInfoPanel(wxDC& dc);
     // A mission can finish while a normal tactical message is still closing.
     // Defer showing the result overlay until the canvas is unobstructed.
     bool m_mission_result_pending_show = false;
@@ -462,7 +465,8 @@ enum
 	ID_OptionsBoxSelection,
     ID_OptionsConfineCursor,
     ID_mmOpenMapEditor,
-    ID_OptionsAutoDeploy
+    ID_OptionsAutoDeploy,
+    ID_TacticalInfoPanel
 };
 
 
