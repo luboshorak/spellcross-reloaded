@@ -15,12 +15,12 @@
 #include "resource.h"
 #endif
 
-// All three game windows share a session display preference.
+// All three game windows share a display preference restored at startup.
 namespace spellcross_window
 {
     inline bool& Fullscreen()
     {
-        static bool enabled = false;
+        static bool enabled = true;
         return enabled;
     }
 
