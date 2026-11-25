@@ -6621,7 +6621,7 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
         u->unit->bonuses && u->unit->cnt > 0 && u->GetMaxAP() > 0)
     {
         std::vector<uint8_t> indexed(static_cast<size_t>(pw) * ph, 0);
-        u->RenderPreview(indexed.data(), indexed.data() + indexed.size(), pw);
+        u->RenderPreview(indexed.data(), indexed.data() + indexed.size(), pw, false);
         wxImage image(pw, ph, false);
         if (image.IsOk())
         {
@@ -6633,6 +6633,50 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
             }
             dc.DrawBitmap(wxBitmap(image.Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST)),
                 cardX, yy, false);
+
+            // Scale only positions, never the font. Use exactly the same font
+            // as the surrounding tactical report, fitting it down only when
+            // a very small viewport leaves insufficient room for a number.
+            const auto sx = [&](int v) { return cardX + static_cast<int>(
+                std::lround(static_cast<double>(v) * drawW / pw)); };
+            const auto sy = [&](int v) { return yy + static_cast<int>(
+                std::lround(static_cast<double>(v) * drawH / ph)); };
+            auto cardText = [&](wxString value, int left, int top, int right,
+                                int bottom, const wxColour& colour, bool centered) {
+                const int xx = sx(left), ty = sy(top);
+                const int w = sx(right) - xx, h = sy(bottom) - ty;
+                if (w <= 0 || h <= 0) return;
+                wxFont fitted = font;
+                dc.SetFont(fitted);
+                while (fitted.GetPointSize() > 6 &&
+                    (dc.GetCharHeight() > h || (!centered && dc.GetTextExtent(value).x > w)))
+                {
+                    fitted.SetPointSize(fitted.GetPointSize() - 1);
+                    dc.SetFont(fitted);
+                }
+                while (!value.empty() && dc.GetTextExtent(value).x > w)
+                    value.RemoveLast();
+                if (!value.empty() && dc.GetCharHeight() <= h)
+                {
+                    const wxSize extent = dc.GetTextExtent(value);
+                    const int tx = centered ? xx + (w - extent.x) / 2 : xx;
+                    const int textY = ty + (h - extent.y) / 2;
+                    dc.SetTextForeground(wxColour(0, 0, 0));
+                    dc.DrawText(value, tx + 1, textY + 1);
+                    dc.SetTextForeground(colour);
+                    dc.DrawText(value, tx, textY);
+                }
+                dc.SetFont(font);
+            };
+            const wxString name(char2wstringCP895(
+                u->name.empty() ? u->unit->name : u->name.c_str()));
+            cardText(name, 4, 3, pw - 4, 19, u->is_enemy ? hostile : green, true);
+            cardText(wxString::Format("%02.0f", u->morale), 6, 49, 28, 65, amber, false);
+            cardText(wxString::Format("%02d", u->GetAP()), 30, 49, 52, 65, blue, false);
+            cardText(wxString::Format("%02d", u->wounded), 60, 22, 82, 36, amber, false);
+            cardText(wxString::Format("%02d", u->man), 60, 36, 82, 50,
+                u->is_enemy ? hostile : green, false);
+            cardText(wxString::Format("%02d", u->unit->cnt), 60, 50, 82, 65, light, false);
         }
     }
     else
