@@ -275,7 +275,7 @@ public:
 	MissionEndRequest m_mission_end_req;
 	bool m_mission_end_fired = false;   // jednorázová pojistka: mission end už byl vyvolán
 	MissionLossStats m_mission_losses; // accumulated before dead units are physically removed
-	int m_tactical_round = 1; // 0 means unknown in a legacy tactical save
+	int m_tactical_round = 1; // negative = relative round since loading a legacy save
 	std::unique_ptr<SpellTextRec> m_mission_end_fallback_text; // fallback text if not found in data
 
 	// MissionStartText pending display (shown on first available Tick after video etc.)
@@ -578,7 +578,7 @@ public:
 		MissionLossStats GetRecordedMissionLossStats() const { return m_mission_losses; }
 		void SetMissionLossStats(const MissionLossStats& stats) { m_mission_losses = stats; }
 		int GetTacticalRound() const { return m_tactical_round; }
-		void SetTacticalRound(int round) { m_tactical_round = round > 0 ? round : 0; }
+		void SetTacticalRound(int round) { m_tactical_round = round != 0 && round >= -2147483647 ? round : -1; }
 		void RecordMissionLoss(const MapUnit* unit);
 		bool AreAllObjectivesDone() const;
 		bool CompleteAllMissionObjectivesForCheat();
