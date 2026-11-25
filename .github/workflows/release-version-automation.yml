@@ -7,6 +7,9 @@ on:
       - 'packaging/Build-CombinedRelease.ps1'
       - 'packaging/Build-UniversalNoRelease.ps1'
       - 'packaging/Publish-Release.ps1'
+      - 'spellcross-map-edit-main/source/app_version.h'
+      - 'spellcross-map-edit-main/source/resources.rc'
+      - 'spellcross-map-edit-main/tests/test_release_candidate_metadata.py'
       - 'packaging/README.md'
       - '.github/workflows/release-version-automation.yml'
   pull_request:
@@ -15,6 +18,9 @@ on:
       - 'packaging/Build-CombinedRelease.ps1'
       - 'packaging/Build-UniversalNoRelease.ps1'
       - 'packaging/Publish-Release.ps1'
+      - 'spellcross-map-edit-main/source/app_version.h'
+      - 'spellcross-map-edit-main/source/resources.rc'
+      - 'spellcross-map-edit-main/tests/test_release_candidate_metadata.py'
       - '.github/workflows/release-version-automation.yml'
   workflow_dispatch:
 
@@ -90,6 +96,25 @@ jobs:
           foreach ($file in @('app_version.h','resources.rc')) {
             Copy-Item -LiteralPath (Join-Path 'spellcross-map-edit-main\source' $file) -Destination (Join-Path (Join-Path $source 'spellcross-map-edit-main\source') $file)
           }
+          # Derive test versions from the checked-out metadata, not from a
+          # release number that becomes stale on the next version bump.
+          $currentHeader = Get-Content -Raw -LiteralPath (Join-Path $source 'spellcross-map-edit-main\source\app_version.h')
+          $match = [regex]::Match($currentHeader, '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+\.\d+)"')
+          if (-not $match.Success) { throw 'Could not read current version for CI fixture.' }
+          function Next-TestVersion([string]$version) {
+            $parts = @($version.Split('.') | ForEach-Object { [int]$_ })
+            for ($i = 3; $i -ge 0; $i--) {
+              if ($parts[$i] -lt 65535) {
+                $parts[$i]++
+                return ($parts -join '.')
+              }
+              $parts[$i] = 0
+            }
+            throw 'No higher Windows file version is available.'
+          }
+          $testVersion = Next-TestVersion $match.Groups[1].Value
+          $testTag = 'v' + $testVersion
+          $env:SPELLCROSS_TEST_TAG = $testTag
           # Fake only the compiler/packer; exercise the REAL release driver and
           # REAL git commit/tag/atomic-push against a private test origin.
           @'
@@ -104,7 +129,8 @@ jobs:
           if (-not $NoVersionPrompt) { throw 'Lost internal release delegation.' }
           $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
           $header = Get-Content -Raw -LiteralPath (Join-Path $root 'spellcross-map-edit-main\source\app_version.h')
-          if ($header -notmatch '#define SPELLCROSS_RELEASE_TAG "v0.9.7"') { throw 'Build did not receive new version metadata.' }
+          $expectedTag = [regex]::Escape('SPELLCROSS_RELEASE_TAG "' + $env:SPELLCROSS_TEST_TAG + '"')
+          if ($header -notmatch $expectedTag) { throw 'Build did not receive new version metadata.' }
           if (-not $EditorRoot -or -not (Test-Path -LiteralPath (Join-Path $EditorRoot 'source\pinned.txt'))) {
               throw 'Release did not select a clean pinned editor checkout.'
           }
@@ -113,6 +139,9 @@ jobs:
           }
           if ($BuildOnly) {
               if (-not $Rebuild -or $SkipBuild) { throw 'Compile phase arguments incorrect.' }
+              if ($env:SPELLCROSS_TEST_FAIL_BUILD -eq 'yes') {
+                  throw 'CI intentional compiler failure after version injection.'
+              }
               $env:SPELLCROSS_TEST_COMPILED = 'yes'
               return
           }
@@ -121,7 +150,7 @@ jobs:
           }
           $head = (& git -C $root rev-parse HEAD).Trim()
           $committed = & git -C $root show 'HEAD:spellcross-map-edit-main/source/app_version.h'
-          if (($committed -join [Environment]::NewLine) -notmatch 'SPELLCROSS_RELEASE_TAG "v0.9.7"') {
+          if (($committed -join [Environment]::NewLine) -notmatch $expectedTag) {
               throw 'Packaging ran before the version commit.'
           }
           Set-Content -LiteralPath $env:SPELLCROSS_TEST_PROOF -Value $head -Encoding ASCII
@@ -140,12 +169,12 @@ jobs:
           }
 
           $env:SPELLCROSS_TEST_PROOF = $proof
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version '0.9.7'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version $testVersion
           if ($LASTEXITCODE -ne 0) { throw 'Release driver failed in isolated Git integration test.' }
           $new = (& git -C $source rev-parse HEAD).Trim()
           $remote = (& git --git-dir=$origin rev-parse refs/heads/main).Trim()
-          $tag = (& git -C $source rev-list -n 1 v0.9.7).Trim()
-          $remoteTag = (& git --git-dir=$origin rev-list -n 1 refs/tags/v0.9.7).Trim()
+          $tag = (& git -C $source rev-list -n 1 $testTag).Trim()
+          $remoteTag = (& git --git-dir=$origin rev-list -n 1 ("refs/tags/" + $testTag)).Trim()
           if ($new -eq $old -or $remote -ne $new -or $tag -ne $new -or $remoteTag -ne $new) {
             throw 'Version commit and tag were not pushed together to test origin.'
           }
@@ -157,6 +186,38 @@ jobs:
           if (@(& git -C $source status --porcelain --ignore-submodules=dirty).Count -gt 0) {
             throw 'Versioned checkout contains unexpected modifications besides the editor.'
           }
+          # Exercise rollback in the same valid Git fixture. The stub fails
+          # only AFTER verifying the injected version and clean pinned editor.
+          $fixtureHeader = Join-Path $source 'spellcross-map-edit-main\source\app_version.h'
+          $fixtureRc = Join-Path $source 'spellcross-map-edit-main\source\resources.rc'
+          $headerBefore = (Get-FileHash -LiteralPath $fixtureHeader -Algorithm SHA256).Hash
+          $rcBefore = (Get-FileHash -LiteralPath $fixtureRc -Algorithm SHA256).Hash
+          $failedVersion = Next-TestVersion $testVersion
+          $failedTag = 'v' + $failedVersion
+          $env:SPELLCROSS_TEST_TAG = $failedTag
+          $env:SPELLCROSS_TEST_FAIL_BUILD = 'yes'
+          $previousPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'packaging\Release.ps1') -Version $failedVersion -NoPush 2>&1
+            $exitCode = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $previousPreference
+            Remove-Item Env:\SPELLCROSS_TEST_FAIL_BUILD -ErrorAction SilentlyContinue
+          }
+          if ($exitCode -eq 0 -or (($output -join ' ') -notmatch 'CI intentional compiler failure after version injection')) {
+            throw "Expected failure after metadata injection: $($output -join '; ')"
+          }
+          if ((Get-FileHash -LiteralPath $fixtureHeader -Algorithm SHA256).Hash -ne $headerBefore -or
+              (Get-FileHash -LiteralPath $fixtureRc -Algorithm SHA256).Hash -ne $rcBefore) {
+            throw 'Failed compilation did not restore metadata byte-for-byte.'
+          }
+          if ((& git -C $source rev-parse HEAD).Trim() -ne $new -or
+              @(& git -C $source tag --list $failedTag).Count -ne 0 -or
+              @(& git -C $source status --porcelain --ignore-submodules=dirty).Count -ne 0) {
+            throw 'Failed compilation changed Git HEAD, tags or tracked files.'
+          }
+          Remove-Item Env:\SPELLCROSS_TEST_TAG -ErrorAction SilentlyContinue
           Remove-Item Env:\SPELLCROSS_TEST_PROOF -ErrorAction SilentlyContinue
           Remove-Item Env:\SPELLCROSS_TEST_COMPILED -ErrorAction SilentlyContinue
           $global:LASTEXITCODE = 0
@@ -210,19 +271,6 @@ jobs:
             if ($exitCode -eq 0) { throw "Accepted invalid version: $bad" }
             Assert-Clean
           }
-
-          # Deliberately fail AFTER injecting the version into both files:
-          # a nonexistent wxWidgets root must abort the native packager.
-          $previousPreference = $ErrorActionPreference
-          $ErrorActionPreference = 'Continue'
-          try {
-            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\Release.ps1 -Version 0.9.7 -WxRoot 'Q:\missing-wx-root' -NoSfx -NoPush -AllowNonMain 2>&1
-            $exitCode = $LASTEXITCODE
-          } finally {
-            $ErrorActionPreference = $previousPreference
-          }
-          if ($exitCode -eq 0) { throw 'Expected missing-dependency failure.' }
-          Assert-Clean
 
           # Legacy source checks must keep passing after the version override.
           python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_release_candidate_metadata.py' -v
