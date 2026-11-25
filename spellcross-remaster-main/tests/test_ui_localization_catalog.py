@@ -1,6 +1,6 @@
 """Checks that Reloaded UI catalogs stay complete as the interface grows.
 
-Run from any directory: python spellcross-map-edit-main/tests/test_ui_localization_catalog.py
+Run from any directory: python spellcross-remaster-main/tests/test_ui_localization_catalog.py
 No commercial game files or third-party packages are needed.
 """
 from pathlib import Path
@@ -144,7 +144,7 @@ class LocalizationCatalogTests(unittest.TestCase):
     def test_catalogs_resolve_from_release_and_development_roots(self):
         helper = (ROOT / "source" / "spell_ui_locale.h").read_text(encoding="utf-8")
         self.assertIn('dir / "locales"', helper)
-        self.assertIn('dir / "spellcross-map-edit-main" / "locales"', helper)
+        self.assertIn('dir / "spellcross-remaster-main" / "locales"', helper)
         self.assertIn("addParents(exe.parent_path())", helper)
         self.assertIn("addParents(cwd)", helper)
 
