@@ -88,6 +88,9 @@ public:
     bool m_mission_result_visible = false;
     bool m_tacticalInfoVisible = false;
     wxRect m_tacticalInfoHealRect;
+    wxRect m_tacticalInfoScrollRect;
+    int m_tacticalInfoScrollOffset = 0;
+    int m_tacticalInfoScrollMax = 0;
     int m_tacticalInfoHealUnitId = -1;
     bool CanHealTacticalInfoUnit(MapUnit* unit);
     void ToggleTacticalInfoPanel();
