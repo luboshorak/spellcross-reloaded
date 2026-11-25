@@ -2,16 +2,14 @@
 
 Build the usual game from this branch and start it normally using original
 Czech game data. Native CAN is enabled by default on this isolated branch.
-To disable the experiment for comparison, close the game and set
-`$env:SPELLCROSS_EXPERIMENTAL_CAN = "0"` in PowerShell before starting the
-executable from that shell. Remove the variable to restore native playback.
-
-With the experiment enabled the Czech CAN/SMK resolver tries original archive
-entries before MP4. If native decoding fails, the existing Czech MP4
-fallback remains available on Windows. For a definitive native test,
-temporarily move all matching MP4 fallbacks out of the search paths.
-Debug logs distinguish experimental CAN picture playback and fallback.
-Non-CAN DPK, DP2 and SMK decoding algorithms are unchanged.
+Bundled MP4 playback is deliberately disabled in this branch by the
+`allowMp4Fallback = false` constant in `source/forms/form_video_box.cpp`.
+Even if the MP4 files are installed, the game cannot choose them. Native
+decode failures are reported rather than silently using the transcodes.
+Setting `SPELLCROSS_EXPERIMENTAL_CAN=0` disables the CAN picture decoder,
+but does not reenable MP4 playback. Non-CAN DPK, DP2 and SMK decoding
+algorithms are unchanged. To restore MP4 playback for comparison, set
+`allowMp4Fallback = true` and rebuild.
 
 The decoder implements LZSS, 4x4 blocks, indexed palette lookup and 8-bit
 mono PCM at 11025 Hz. The palette transform row = intensity * 4 and the
