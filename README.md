@@ -67,4 +67,4 @@ Spellcross Reloaded is an independent fan project, **not an official Cauldron re
 
 The project builds on the work of **Stanislav Mašláň**, author of the original open-source [Spellcross Map Editor](https://github.com/smaslan/spellcross-map-edit), and the contributors to this restoration.
 
-The project's source code is available under the [MIT License](./LICENSE). **That license does not cover the original Spellcross game data, graphics, music, sound, video or trademarks**, which remain the property of their respective rights holders.
+Project creator and restoration maintainer: **Luboš Horák**. The project-owned Covered Code is licensed under the [Common Public Attribution License 1.0](./LICENSE), with required visible attribution in derivative applications. Inherited MIT code and third-party components retain their licenses; prior MIT grants remain valid. See [licensing scope](./LICENSING.md), [authors](./AUTHORS.md) and [third-party notices](./THIRD_PARTY_NOTICES.md). **These licenses do not cover the original Spellcross game data, graphics, music, sound, video or trademarks**, which remain the property of their respective rights holders.

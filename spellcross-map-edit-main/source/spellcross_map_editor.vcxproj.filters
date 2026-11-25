@@ -306,6 +306,9 @@
     <ClInclude Include="app_identity.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="project_attribution.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="app_version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
