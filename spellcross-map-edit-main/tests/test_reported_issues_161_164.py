@@ -25,9 +25,12 @@ class ReportedIssues161164Tests(unittest.TestCase):
         start = MAIN.index("void MainFrame::OnTimer(")
         timer = MAIN[start:]
         video_guard = timer.index("if (form_video_box || HasPendingStrategicCutscenes())")
-        tick = timer.index("if (spell_map->Tick())")
+        # Check the actual call, regardless of how the redraw result is used.
+        tick = timer.index("spell_map->Tick()")
         self.assertLess(video_guard, tick)
         self.assertIn("if (m_mission_end_flow)", timer[video_guard:tick])
+        self.assertIn("return;", timer[video_guard:tick])
+        self.assertEqual(timer.split("void MainFrame::", 1)[1].split("\nvoid MainFrame::", 1)[0].count("spell_map->Tick()"), 1)
 
     def test_163_l5_is_the_primary_enemy_spawn_source(self):
         generated = MAIN.split("bool MainFrame::LoadGeneratedStrategicBattleFromDtaPath(", 1)[1].split(
