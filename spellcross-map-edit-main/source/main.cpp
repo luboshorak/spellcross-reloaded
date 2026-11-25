@@ -2807,6 +2807,10 @@ bool MyApp::OnInit()
         }
     }
 
+    // Restore the shared mode before creating any game window. Existing
+    // configs without this key start fullscreen just like a fresh install.
+    spellcross_window::Fullscreen() = ini.GetBoolValue("STATE", "fullscreen", true);
+
     // The game owns its pixel scale (100/125%) independently of Windows DPI.
     // Keep the PerMonitorV2 manifest enabled and restore all display options
     // before creating the map, main menu or strategic windows.
@@ -3014,6 +3018,7 @@ int MyApp::OnExit()
 
     // Persist display settings outside campaign saves: same visual preferences
     // apply on every tactical map and strategic chapter.
+    ini.SetBoolValue("STATE", "fullscreen", spellcross_window::Fullscreen());
     const auto& screen = spellcross_display::Current();
     ini.SetLongValue("STATE", "display_scale", screen.scale_percent);
     ini.SetBoolValue("STATE", "display_smoothing", screen.smooth_scaling);
