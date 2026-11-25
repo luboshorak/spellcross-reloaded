@@ -6292,7 +6292,10 @@ void MainFrame::ToggleTacticalInfoPanel()
 {
     if (spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
         !inSubForm() && !m_mission_end_flow && !m_mission_result_visible)
+    {
         m_tacticalInfoVisible = !m_tacticalInfoVisible;
+        m_tacticalInfoScrollOffset = 0;
+    }
     // The custom menu owns the model; the frame has no native menu bar.
     if (auto* menu = spellcross_menu::Model(this))
         menu->Check(ID_TacticalInfoPanel, m_tacticalInfoVisible);
@@ -6321,13 +6324,24 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     const auto tr = [](const char* key, const char* fallback) {
         return spellcross_ui_locale::Tr(key, fallback);
     };
-    const int pad = FromDIP(9), gap = FromDIP(4);
+    const int pad = FromDIP(9), gap = FromDIP(3);
     const int width = (std::min)(FromDIP(285), size.x / 2);
     const int inner = width - 2 * pad;
     if (width < FromDIP(240)) return;
     const int x = size.x - width - pad, y = pad;
-    const int availableH = size.y - y - FromDIP(140);
-    wxFont font = spellcross_menu::MenuFont();
+    // Use the actual upper edge of the original HUD below the report.
+    int hudTop = size.y;
+    for (int px = spellcross_display::ToLogical(x);
+         px <= spellcross_display::ToLogical(x + width - 1); ++px)
+    {
+        const int top = spellcross_display::ToDevice(spell_map->GetHUDtop(px));
+        if (top > 0) hudTop = (std::min)(hudTop, top);
+    }
+    const int availableH = hudTop - y - pad;
+    const wxFont font = GetToolBar() && GetToolBar()->GetFont().IsOk() ?
+        GetToolBar()->GetFont() : spellcross_menu::MenuFont();
+    dc.SetFont(font);
+    dc.SetBackgroundMode(wxTRANSPARENT);
     const wxColour green(94, 238, 43), light(227, 243, 205);
     const wxColour label(174, 205, 145), amber(255, 211, 76);
     const wxColour hostile(255, 122, 78), blue(100, 205, 244);
@@ -6338,38 +6352,25 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     const bool hasPreview = preview && preview->x_size > 0 && preview->y_size > 0;
     const int pw = hasPreview ? preview->x_size : 144;
     const int ph = hasPreview ? preview->y_size : 77;
-    // Fill almost the entire inner width, retaining the original card aspect
-    // ratio and pixel-art scaling. On short windows, fit the card to the
-    // remaining height rather than allowing it to overlap the bottom HUD.
-    const int targetW = inner - 2 * FromDIP(2);
-    if (targetW <= 0) return;
-    const int targetH = (std::max)(1, static_cast<int>(
-        std::lround(static_cast<double>(targetW) * ph / pw)));
-    int drawW = targetW, drawH = targetH;
-    int line = 0, headH = 0, metricH = 0, height = 0, fixedH = 0;
-    for (int pt = 12; pt >= 8; --pt)
-    {
-        font.SetPointSize(pt);
-        dc.SetFont(font);
-        line = dc.GetCharHeight() + FromDIP(2);
-        headH = line + gap;
-        metricH = line * 2 + gap;
-        fixedH = 2 * pad + 3 * headH + 2 * metricH +
-            18 * line + 9 * gap + FromDIP(7);
-        height = fixedH + drawH;
-        if (height <= availableH) break;
-    }
-    if (height > availableH)
-    {
-        const int budget = availableH - fixedH;
-        if (budget < FromDIP(36)) return;
-        drawW = (std::min)(targetW, budget * pw / ph);
-        if (drawW <= 0) return;
-        drawH = (std::max)(1, static_cast<int>(
-            std::lround(static_cast<double>(drawW) * ph / pw)));
-        height = fixedH + drawH;
-        if (height > availableH) return;
-    }
+    // Never reduce the menu font or the card to squeeze more information
+    // into a short window. Scroll the content instead, keeping the title fixed.
+    const int drawW = inner - 2 * FromDIP(2);
+    if (drawW <= 0) return;
+    const int drawH = (std::max)(1, static_cast<int>(
+        std::lround(static_cast<double>(drawW) * ph / pw)));
+    const int line = dc.GetCharHeight() + FromDIP(1);
+    const int headH = line + gap;
+    const int metricH = line * 2 + gap;
+    const int contentHeight = 2 * pad + 3 * headH + 2 * metricH +
+        18 * line + 9 * gap + FromDIP(7) + drawH;
+    const int height = (std::min)(contentHeight, availableH);
+    if (height < 2 * pad + headH + gap + 3 * line) return;
+    m_tacticalInfoScrollRect = wxRect(x, y, width, height);
+    m_tacticalInfoScrollMax = (std::max)(0, contentHeight - height);
+    m_tacticalInfoScrollOffset = std::clamp(m_tacticalInfoScrollOffset, 0, m_tacticalInfoScrollMax);
+    const int contentTop = y + pad + headH + gap;
+    const int contentBottom = y + height - pad;
+    const wxRect contentClip(x + pad, contentTop, inner, contentBottom - contentTop);
 
     auto fill = [&](int xx, int yy, int w, int h, const wxColour& colour) {
         dc.SetPen(*wxTRANSPARENT_PEN);
@@ -6424,6 +6425,8 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     text("[I]", x + width - pad - FromDIP(6) - dc.GetTextExtent("[I]").x,
         yy + gap / 2, inner - FromDIP(6), light);
     yy += headH + gap;
+    dc.SetClippingRegion(contentClip);
+    yy -= m_tacticalInfoScrollOffset;
     const auto missionPath = std::filesystem::path(spell_map->GetTopPath());
     const wxString mission(missionPath.stem().wstring());
     wxString level = "--";
@@ -6490,7 +6493,6 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
         text(name, xx + gap, top + gap / 2, cellW - 2 * gap, label);
         wxFont number = font;
         number.SetWeight(wxFONTWEIGHT_BOLD);
-        number.SetPointSize(font.GetPointSize() + 1);
         dc.SetFont(number);
         text(wxString::Format("%d", value), xx + gap, top + line,
             cellW - 2 * gap, colour);
@@ -6634,9 +6636,8 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
             dc.DrawBitmap(wxBitmap(image.Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST)),
                 cardX, yy, false);
 
-            // Scale only positions, never the font. Use exactly the same font
-            // as the surrounding tactical report, fitting it down only when
-            // a very small viewport leaves insufficient room for a number.
+            // The original artwork is scaled, but every glyph is drawn at
+            // the exact menu font size, regardless of card or viewport size.
             const auto sx = [&](int v) { return cardX + static_cast<int>(
                 std::lround(static_cast<double>(v) * drawW / pw)); };
             const auto sy = [&](int v) { return yy + static_cast<int>(
@@ -6646,27 +6647,22 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
                 const int xx = sx(left), ty = sy(top);
                 const int w = sx(right) - xx, h = sy(bottom) - ty;
                 if (w <= 0 || h <= 0) return;
-                wxFont fitted = font;
-                dc.SetFont(fitted);
-                while (fitted.GetPointSize() > 6 &&
-                    (dc.GetCharHeight() > h || (!centered && dc.GetTextExtent(value).x > w)))
-                {
-                    fitted.SetPointSize(fitted.GetPointSize() - 1);
-                    dc.SetFont(fitted);
-                }
-                while (!value.empty() && dc.GetTextExtent(value).x > w)
-                    value.RemoveLast();
-                if (!value.empty() && dc.GetCharHeight() <= h)
-                {
-                    const wxSize extent = dc.GetTextExtent(value);
-                    const int tx = centered ? xx + (w - extent.x) / 2 : xx;
-                    const int textY = ty + (h - extent.y) / 2;
-                    dc.SetTextForeground(wxColour(0, 0, 0));
-                    dc.DrawText(value, tx + 1, textY + 1);
-                    dc.SetTextForeground(colour);
-                    dc.DrawText(value, tx, textY);
-                }
                 dc.SetFont(font);
+                // Only a long company name may be abbreviated; never
+                // truncate numeric values or shrink their glyphs.
+                if (centered && dc.GetTextExtent(value).x > w)
+                {
+                    while (!value.empty() && dc.GetTextExtent(value + "...").x > w)
+                        value.RemoveLast();
+                    value += "...";
+                }
+                const wxSize extent = dc.GetTextExtent(value);
+                const int tx = centered ? xx + (w - extent.x) / 2 : xx;
+                const int textY = ty + (h - extent.y) / 2;
+                dc.SetTextForeground(wxColour(0, 0, 0));
+                dc.DrawText(value, tx + 1, textY + 1);
+                dc.SetTextForeground(colour);
+                dc.DrawText(value, tx, textY);
             };
             const wxString name(char2wstringCP895(
                 u->name.empty() ? u->unit->name : u->name.c_str()));
@@ -6732,7 +6728,8 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
             const bool canHeal = CanHealTacticalInfoUnit(u);
             const int buttonY = yy + 7 * line;
             m_tacticalInfoHealRect = wxRect(x + pad, buttonY, inner, line);
-            m_tacticalInfoHealUnitId = canHeal ? u->id : -1;
+            m_tacticalInfoHealRect.Intersect(contentClip);
+            m_tacticalInfoHealUnitId = canHeal && !m_tacticalInfoHealRect.IsEmpty() ? u->id : -1;
             fill(x + pad, buttonY, inner, line, canHeal ? wxColour(25, 61, 12) : inset);
             stroke(x + pad, buttonY, inner, line, canHeal ? green : shadow);
             const wxString caption = canHeal ? tr("tactical_info.heal", "Heal / repair (all AP)") :
@@ -6765,12 +6762,27 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     else
         text(tr("tactical_info.no_terrain", "No visible terrain"),
             x + pad, yy, inner, label);
+    dc.DestroyClippingRegion();
+    if (m_tacticalInfoScrollMax > 0)
+    {
+        const int trackW = FromDIP(3);
+        const int trackX = x + width - FromDIP(6);
+        const int trackH = contentClip.height;
+        const int thumbH = (std::min)(trackH, (std::max)(FromDIP(18),
+            trackH * trackH / (trackH + m_tacticalInfoScrollMax)));
+        const int thumbY = contentTop + (trackH - thumbH) *
+            m_tacticalInfoScrollOffset / m_tacticalInfoScrollMax;
+        fill(trackX, contentTop, trackW, trackH, inset);
+        fill(trackX, thumbY, trackW, thumbH, green);
+    }
 }
 
 void MainFrame::OnPaintCanvas(wxPaintEvent& event)
 {
     m_tacticalInfoHealRect = wxRect();
     m_tacticalInfoHealUnitId = -1;
+    m_tacticalInfoScrollRect = wxRect();
+    m_tacticalInfoScrollMax = 0;
     wxPaintDC pdc(canvas);
     const wxSize size = canvas->GetClientSize();
     // Native fullscreen restoration can briefly leave a zero-sized canvas.
@@ -7909,6 +7921,22 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
         spell_map->GetHUDtop(spellcross_display::ToLogical(event.GetX())))
     {
         event.Skip();
+        return;
+    }
+
+    if (m_tacticalInfoVisible && m_tacticalInfoScrollMax > 0 &&
+        !inSubForm() && m_tacticalInfoScrollRect.Contains(event.GetPosition()))
+    {
+        const int notches = (std::max)(1,
+            std::abs(event.GetWheelRotation()) / event.GetWheelDelta());
+        const int direction = event.GetWheelRotation() > 0 ? -1 : 1;
+        m_tacticalInfoScrollOffset = std::clamp(
+            m_tacticalInfoScrollOffset + direction * notches * FromDIP(48),
+            0, m_tacticalInfoScrollMax);
+        // Do not allow the old hitbox to issue a heal before the repaint.
+        m_tacticalInfoHealRect = wxRect();
+        m_tacticalInfoHealUnitId = -1;
+        if (canvas) canvas->Refresh(false);
         return;
     }
 
