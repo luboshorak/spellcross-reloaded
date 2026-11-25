@@ -195,6 +195,9 @@
     <ClInclude Include="spell_video.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="can_video_decoder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="riff_loader.h">
       <Filter>Header Files</Filter>
     </ClInclude>

@@ -111,6 +111,7 @@
     <ClInclude Include="spell_midi.h" />
     <ClInclude Include="smacker_video_decoder.h" />
     <ClInclude Include="spell_video.h" />
+      <ClInclude Include="can_video_decoder.h" />
     <ClInclude Include="spell_filter.h" />
     <ClInclude Include="spell_texts.h" />
     <ClInclude Include="spell_ui_locale.h" />
@@ -432,12 +433,10 @@
     <ItemGroup>
       <BundledRuntimeData Include="$(ProjectDir)..\data\C_NAMES.DEF;$(ProjectDir)..\data\DEVAST.fs;$(ProjectDir)..\data\PUST.fs;$(ProjectDir)..\data\T11.FS;$(ProjectDir)..\data\font_spellcross_7pix.fnt;$(ProjectDir)..\data\font_spellcross_14pix.fnt;$(ProjectDir)..\data\units.fsa;$(ProjectDir)..\data\units.json" />
       <BundledRuntimeMenuData Include="$(ProjectDir)..\data\menu\*.png" />
-      <BundledMovieFallbackData Include="$(ProjectDir)..\data\movie_fallback\*.mp4;$(ProjectDir)..\data\movie_fallback\MANIFEST.tsv" />
     </ItemGroup>
-    <MakeDir Directories="$(OutDir)data;$(OutDir)data\menu;$(OutDir)data\movie_fallback" />
+    <MakeDir Directories="$(OutDir)data;$(OutDir)data\menu" />
     <Copy SourceFiles="@(BundledRuntimeData)" DestinationFolder="$(OutDir)data" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(BundledRuntimeMenuData)" DestinationFolder="$(OutDir)data\menu" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(BundledMovieFallbackData)" DestinationFolder="$(OutDir)data\movie_fallback" SkipUnchangedFiles="true" />
   </Target>
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -10,7 +10,6 @@ param(
     [switch]$Rebuild,
     [string]$WxRoot = '',
     [string]$OutputDirectory = '',
-    [string]$MovieSource = '',
     [switch]$NoZip,
     [switch]$NoSfx,
     [string]$WinRARPath = '',
@@ -331,62 +330,6 @@ foreach ($language in @('en', 'cs')) {
     Assert-File (Join-Path $localeSource ($language + '.lang'))
 }
 Copy-Item -LiteralPath $localeSource -Destination $localeTarget -Recurse -Force
-$movieDir = Join-Path $gameData 'movie_fallback'
-New-Item -ItemType Directory -Path $movieDir -Force | Out-Null
-# Local Markdown notes are intentionally not included in clean source clones.
-foreach ($f in @('MANIFEST.tsv')) {
-    $src = Join-Path $gameAssets ('movie_fallback\' + $f)
-    if (Test-Path -LiteralPath $src -PathType Leaf) {
-        Copy-Item -LiteralPath $src -Destination $movieDir -Force
-    }
-}
-# 37 v0.8.0 H.264/AAC fallback clips are gitignored. Locate existing
-# locally owned copies, optionally supplied through -MovieSource.
-# Fail explicitly rather than distribute an incomplete cutscene pack.
-$manifest = Join-Path $movieDir 'MANIFEST.tsv'
-Assert-File $manifest
-$movieCandidates = @()
-if ($MovieSource) {
-    $provided = (Resolve-Path -LiteralPath $MovieSource).Path
-    $movieCandidates += $provided
-    $movieCandidates += (Join-Path $provided 'data\movie_fallback')
-    $movieCandidates += (Join-Path $provided 'movie_fallback')
-}
-$movieCandidates += (Join-Path $game 'builds\x64\Release\data\movie_fallback')
-$movieCandidates += (Join-Path $gameAssets 'movie_fallback')
-$movieCount = 0
-foreach ($line in (Get-Content -LiteralPath $manifest -Encoding UTF8 | Select-Object -Skip 1)) {
-    if ([string]::IsNullOrWhiteSpace($line)) { continue }
-    $fields = $line.Split([char]9)
-    if ($fields.Count -lt 11) { throw "Malformed MP4 manifest entry: $line" }
-    $movieFile = $fields[1].Trim()
-    $expectedSha = $fields[10].Trim()
-    if ([System.IO.Path]::GetFileName($movieFile) -ne $movieFile -or
-        $movieFile -notmatch '^[A-Za-z0-9_-]+\.mp4$' -or
-        $expectedSha -notmatch '^[a-fA-F0-9]{64}$') {
-        throw "Invalid movie filename or SHA-256 in manifest: $movieFile"
-    }
-    $movieSrc = $null
-    foreach ($candidate in $movieCandidates) {
-        $p = Join-Path $candidate $movieFile
-        if (Test-Path -LiteralPath $p -PathType Leaf) {
-            $movieSrc = $p
-            break
-        }
-    }
-    if (-not $movieSrc) {
-        throw ("Missing fallback movie " + $movieFile + ". Copy the 37 MP4 files from your v0.8.0 release to spellcross-map-edit-main\data\movie_fallback, or pass -MovieSource pointing at the old release folder.")
-    }
-    $actualSha = (Get-FileHash -LiteralPath $movieSrc -Algorithm SHA256).Hash
-    if (-not [string]::Equals($actualSha, $expectedSha, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "MP4 integrity check failed: $movieSrc (does not match MANIFEST.tsv)"
-    }
-    Copy-Item -LiteralPath $movieSrc -Destination (Join-Path $movieDir $movieFile) -Force
-    $movieCount++
-}
-if ($movieCount -ne 37) { throw "Expected 37 fallback videos, got $movieCount entries" }
-Write-Host "Bundled and SHA-256 verified all $movieCount MP4 cutscenes." -ForegroundColor Green
-
 $editorAssets = Join-Path $editor 'data'
 foreach ($f in @('COMMON.fs','DEVAST.con','DEVAST.fs','PUST.con',
     'PUST.fs','T11.FS','T11.con','font_spellcross_7pix.fnt',
@@ -497,7 +440,7 @@ Map editor: Editor\spellcross_map_editor.exe
 3. The game keeps new imported archives in game_data\imports\DATA-*.
 4. Launch Editor\spellcross_map_editor.exe. It locates that game-data folder.
 5. Game and editor have SEPARATE config.ini files in their executable folders.
-MP4 fallback videos: 37 files, verified against MANIFEST.tsv.
+Cinematics: decoded directly from the original retail archives.
 
 Original retail game archives are NOT included. Do not confuse editor's
 Editor\data\COMMON.fs with the original game's COMMON.FS archive.
