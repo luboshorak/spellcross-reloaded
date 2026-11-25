@@ -87,6 +87,9 @@ public:
     MissionResultStage m_mission_result_stage = MissionResultStage::None;
     bool m_mission_result_visible = false;
     bool m_tacticalInfoVisible = false;
+    wxRect m_tacticalInfoHealRect;
+    int m_tacticalInfoHealUnitId = -1;
+    bool CanHealTacticalInfoUnit(MapUnit* unit);
     void ToggleTacticalInfoPanel();
     void DrawTacticalInfoPanel(wxDC& dc);
     // A mission can finish while a normal tactical message is still closing.
