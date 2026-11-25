@@ -6306,65 +6306,137 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     const auto tr = [](const char* key, const char* fallback) {
         return spellcross_ui_locale::Tr(key, fallback);
     };
-    wxFont font = spellcross_menu::MenuFont();
-    font.SetPointSize(10);
-    dc.SetFont(font);
-    const int pad = FromDIP(8);
-    const int gap = FromDIP(3);
-    const int line = dc.GetCharHeight() + gap;
-    const int width = FromDIP(284);
+    const int pad = FromDIP(11), gap = FromDIP(5);
+    const int width = (std::min)(FromDIP(348), size.x / 2);
     const int inner = width - 2 * pad;
-    const int x = size.x - width - pad;
-    const int y = pad;
-    const wxColour muted(149, 164, 135), normal(210, 220, 188);
-    const wxColour friendly(143, 194, 118), enemy(209, 137, 107);
-    const wxColour gold(208, 190, 116), steel(102, 117, 91);
-    const wxColour background(17, 29, 17), dark(9, 17, 10);
-    const int summaryH = 2 * pad + line * 7 + FromDIP(5);
-    if (size.x < width + pad * 2 || size.y < summaryH + FromDIP(140))
-        return;
+    if (width < FromDIP(240)) return;
+    const int x = size.x - width - pad, y = pad;
+    const int availableH = size.y - y - FromDIP(140);
+    wxFont font = spellcross_menu::MenuFont();
+    font.SetPointSize(12);
+    if (availableH < FromDIP(420)) font.SetPointSize(10);
+    dc.SetFont(font);
+    const int line = dc.GetCharHeight() + FromDIP(3);
+    const wxColour green(94, 238, 43), light(227, 243, 205);
+    const wxColour label(174, 205, 145), amber(255, 211, 76);
+    const wxColour hostile(255, 122, 78), blue(100, 205, 244);
+    const wxColour shell(22, 29, 17), inset(8, 16, 7);
+    const wxColour bevel(111, 116, 83), shadow(45, 50, 31);
 
-    auto frame = [&](int yy, int h) {
-        dc.SetPen(wxPen(steel));
-        dc.SetBrush(wxBrush(background));
-        dc.DrawRectangle(x, yy, width, h);
-        dc.SetPen(wxPen(wxColour(44, 58, 39)));
-        dc.SetBrush(*wxTRANSPARENT_BRUSH);
-        dc.DrawRectangle(x + 2, yy + 2, width - 4, h - 4);
+    auto* preview = spell_data ? spell_data->gres.wm_map_units_list : nullptr;
+    const bool hasPreview = preview && preview->x_size > 0 && preview->y_size > 0;
+    const int pw = hasPreview ? preview->x_size : 144;
+    const int ph = hasPreview ? preview->y_size : 77;
+    const int headH = line + gap;
+    const int metricH = line * 2 + gap;
+    const int fixedH = 2 * pad + 3 * headH + 2 * metricH +
+        8 * line + 9 * gap + FromDIP(7);
+    const int previewBudget = availableH - fixedH;
+    if (previewBudget < FromDIP(36)) return;
+    const int drawW = (std::min)((std::min)(inner, FromDIP(pw * 2)),
+        previewBudget * pw / ph);
+    if (drawW <= 0) return;
+    const int drawH = (std::max)(1, drawW * ph / pw);
+    const int height = fixedH + drawH;
+
+    auto fill = [&](int xx, int yy, int w, int h, const wxColour& colour) {
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        dc.SetBrush(wxBrush(colour));
+        dc.DrawRectangle(xx, yy, w, h);
     };
-    auto drawText = [&](wxString value, int xx, int yy, int available, const wxColour& colour) {
-        if (available <= 0) return;
-        if (dc.GetTextExtent(value).x > available)
+    auto stroke = [&](int xx, int yy, int w, int h, const wxColour& colour) {
+        dc.SetPen(wxPen(colour));
+        dc.SetBrush(*wxTRANSPARENT_BRUSH);
+        dc.DrawRectangle(xx, yy, w, h);
+    };
+    auto text = [&](wxString value, int xx, int yy, int maxW, const wxColour& colour) {
+        if (maxW <= 0) return;
+        if (dc.GetTextExtent(value).x > maxW)
         {
-            while (!value.empty() && dc.GetTextExtent(value + "...").x > available)
+            while (!value.empty() && dc.GetTextExtent(value + "...").x > maxW)
                 value.RemoveLast();
             value += "...";
         }
         dc.SetTextForeground(colour);
         dc.DrawText(value, xx, yy);
     };
-    auto right = [&](wxString value, int yy, const wxColour& colour) {
-        drawText(value, x + width - pad - dc.GetTextExtent(value).x,
-            yy, inner, colour);
+    auto right = [&](const wxString& value, int yy, const wxColour& colour) {
+        text(value, x + width - pad - dc.GetTextExtent(value).x, yy, inner, colour);
     };
-    auto pair = [&](const wxString& label, const wxString& value, int yy, const wxColour& colour) {
-        drawText(label, x + pad, yy, inner - dc.GetTextExtent(value).x - pad, muted);
+    auto pair = [&](const wxString& name, const wxString& value, int yy,
+                    const wxColour& colour) {
+        text(name, x + pad, yy, inner - dc.GetTextExtent(value).x - gap, label);
         right(value, yy, colour);
     };
-    auto header = [&](const wxString& title, int yy, const wxColour& colour) {
-        dc.SetPen(*wxTRANSPARENT_PEN);
-        dc.SetBrush(wxBrush(dark));
-        dc.DrawRectangle(x + 3, yy + 3, width - 6, line + pad);
-        drawText(title, x + pad, yy + pad, inner, colour);
+    auto section = [&](const wxString& name, int yy, const wxColour& colour) {
+        fill(x + pad, yy, inner, headH, wxColour(15, 39, 9));
+        // Subtle instrument grid, echoing the original unit card's green raster.
+        dc.SetPen(wxPen(wxColour(29, 54, 16)));
+        for (int xx = x + pad + FromDIP(12); xx < x + pad + inner; xx += FromDIP(12))
+            dc.DrawLine(xx, yy, xx, yy + headH);
+        stroke(x + pad, yy, inner, headH, wxColour(69, 99, 43));
+        text(name, x + pad + gap, yy + gap / 2, inner - 2 * gap, colour);
     };
 
+    fill(x, y, width, height, shell);
+    stroke(x, y, width, height, bevel);
+    stroke(x + 2, y + 2, width - 4, height - 4, shadow);
+    stroke(x + 4, y + 4, width - 8, height - 8, wxColour(76, 87, 53));
+    // Recessed metal-style corners, all part of the single fixed canvas panel.
+    fill(x + 2, y + 2, FromDIP(7), FromDIP(2), bevel);
+    fill(x + width - FromDIP(9), y + 2, FromDIP(7), FromDIP(2), bevel);
+    fill(x + 2, y + height - FromDIP(4), FromDIP(7), FromDIP(2), bevel);
+    fill(x + width - FromDIP(9), y + height - FromDIP(4), FromDIP(7), FromDIP(2), bevel);
+    int yy = y + pad;
+    section(tr("tactical_info.title", "TACTICAL REPORT"), yy, green);
+    right("[I]", yy + gap / 2, light);
+    yy += headH + gap;
+    const bool enemyPhase = spell_map->IsEnemyTurnRunning();
+    const wxString phase = m_deployment_active ? tr("tactical_info.deployment", "Deployment") :
+        enemyPhase ? tr("tactical_info.enemy_phase", "Other Side turn") :
+        tr("tactical_info.own_phase", "Alliance turn");
+    fill(x + pad, yy + line / 4, FromDIP(6), FromDIP(6), enemyPhase ? hostile : green);
+    text(phase, x + pad + FromDIP(12), yy, inner - FromDIP(12), enemyPhase ? hostile : green);
+    yy += line + gap;
+
+    const int round = spell_map->GetTacticalRound();
+    const int shownRound = round < 0 ? -round : round;
+    const int completed = (std::max)(0, shownRound - 1) + (enemyPhase ? 1 : 0);
     const auto losses = spell_map->GetMissionLossStats();
+    const int cellW = (inner - gap) / 2;
+    auto metric = [&](int xx, int top, const wxString& name, int value, const wxColour& colour) {
+        fill(xx, top, cellW, metricH, inset);
+        stroke(xx, top, cellW, metricH, shadow);
+        text(name, xx + gap, top + gap / 2, cellW - 2 * gap, label);
+        wxFont number = font;
+        number.SetWeight(wxFONTWEIGHT_BOLD);
+        number.SetPointSize(font.GetPointSize() + 1);
+        dc.SetFont(number);
+        text(wxString::Format("%d", value), xx + gap, top + line,
+            cellW - 2 * gap, colour);
+        dc.SetFont(font);
+    };
+    metric(x + pad, yy, round < 0 ? tr("tactical_info.relative_round", "Round since load") :
+        tr("tactical_info.round", "Round"), shownRound, amber);
+    metric(x + pad + cellW + gap, yy, round < 0 ? tr("tactical_info.relative_turns", "Turns since load") :
+        tr("tactical_info.completed_turns", "Completed turns"), completed, light);
+    yy += metricH + gap;
+    metric(x + pad, yy, tr("tactical_info.kills_short", "Enemy losses"),
+        losses.enemy_light + losses.enemy_heavy + losses.enemy_air, green);
+    metric(x + pad + cellW + gap, yy, tr("tactical_info.losses_short", "Own losses"),
+        losses.alliance_light + losses.alliance_heavy + losses.alliance_air, hostile);
+    yy += metricH + gap;
+
+    auto ownValid = [](MapUnit* u) {
+        return u && u->unit && !u->is_enemy && !u->isDead() &&
+            u->isActive() && !u->hide && u->coor.IsSelected();
+    };
     int own = 0, ready = 0, fireReady = 0;
+    MapUnit* fallback = nullptr;
     for (auto* u : spell_map->units)
     {
-        if (!u || !u->unit || u->is_enemy || u->isDead() ||
-            !u->isActive() || u->hide || !u->coor.IsSelected())
-            continue;
+        if (!ownValid(u)) continue;
+        if (!fallback) fallback = u;
         ++own;
         if (u->GetAP() > 0 && !u->panic_turns && !u->paralyze_turns && !u->freeze_turns)
         {
@@ -6372,52 +6444,29 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
             if (u->unit->bonuses && u->GetFireCount() > 0) ++fireReady;
         }
     }
-    frame(y, summaryH);
-    header(tr("tactical_info.title", "TACTICAL REPORT"), y, friendly);
-    right("[I]", y + pad, muted);
-    const int round = spell_map->GetTacticalRound();
-    const bool enemyPhase = spell_map->IsEnemyTurnRunning();
-    const wxString phase = m_deployment_active ? tr("tactical_info.deployment", "Deployment") :
-        enemyPhase ? tr("tactical_info.enemy_phase", "Other Side turn") :
-        tr("tactical_info.own_phase", "Alliance turn");
-    drawText(phase, x + pad, y + pad + line, inner, enemyPhase ? enemy : friendly);
-    const int shownRound = round < 0 ? -round : round;
-    pair(round < 0 ? tr("tactical_info.relative_round", "Round since load") :
-        tr("tactical_info.round", "Round"), wxString::Format("%d", shownRound),
-        y + pad + 2 * line, gold);
-    pair(round < 0 ? tr("tactical_info.relative_turns", "Turns since load") :
-        tr("tactical_info.completed_turns", "Completed turns"),
-        wxString::Format("%d", (std::max)(0, shownRound - 1) + (enemyPhase ? 1 : 0)),
-        y + pad + 3 * line, normal);
-    pair(tr("tactical_info.destroyed", "Enemy companies lost"),
-        wxString::Format("%d", losses.enemy_light + losses.enemy_heavy + losses.enemy_air),
-        y + pad + 4 * line, friendly);
-    pair(tr("tactical_info.lost", "Own companies lost"),
-        wxString::Format("%d", losses.alliance_light + losses.alliance_heavy + losses.alliance_air),
-        y + pad + 5 * line, enemy);
-    pair(tr("tactical_info.ready_fire", "Ready / can fire / all"),
-        wxString::Format("%d / %d / %d", ready, fireReady, own),
-        y + pad + 6 * line, normal);
-    const int barY = y + summaryH - pad;
-    dc.SetPen(*wxTRANSPARENT_PEN);
-    dc.SetBrush(wxBrush(dark));
-    dc.DrawRectangle(x + pad, barY, inner, FromDIP(4));
+    pair(tr("tactical_info.ready", "Companies with AP"),
+        wxString::Format("%d / %d", ready, own), yy, green);
+    yy += line;
+    pair(tr("tactical_info.fire_ready", "Can fire"),
+        wxString::Format("%d / %d", fireReady, own), yy, blue);
+    yy += line;
+    fill(x + pad, yy, inner, FromDIP(7), inset);
     if (own > 0 && ready > 0)
-    {
-        dc.SetBrush(wxBrush(friendly));
-        dc.DrawRectangle(x + pad, barY, inner * ready / own, FromDIP(4));
-    }
+        fill(x + pad, yy, inner * ready / own, FromDIP(7), green);
+    if (own > 0 && fireReady > 0)
+        fill(x + pad, yy + FromDIP(4), inner * fireReady / own, FromDIP(3), blue);
+    yy += FromDIP(7) + gap;
 
-    // Use the exact original roster preview renderer and palette, not a mock
-    // sprite. Only inspect a currently visible tile; never disclose fog data.
+    // Hover overrides the selected company only while its tile is actually
+    // visible. Never cache MapUnit pointers across paints or save/map loads.
     const wxPoint pointer = canvas->ScreenToClient(wxGetMousePosition());
     const bool overMap = !m_deployment_active && !m_boxSelecting &&
         canvas->GetClientRect().Contains(pointer) &&
         spellcross_display::ToLogical(pointer.y) <
             spell_map->GetHUDtop(spellcross_display::ToLogical(pointer.x));
     MapXY tile;
-    bool visible = false;
     int tileIndex = -1;
+    bool visible = false;
     if (overMap)
     {
         tile = spell_map->GetSelection();
@@ -6431,29 +6480,25 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
             view->ResultLock(false);
         }
     }
-    MapUnit* u = visible ? spell_map->GetCursorUnit() : nullptr;
-    if (u && (!u->unit || u->hide || u->isDead() || (u->is_enemy && u->is_visible != 2)))
-        u = nullptr;
-    const int cardY = y + summaryH + gap;
-    const int availableH = size.y - cardY - FromDIP(140);
-    auto* preview = spell_data ? spell_data->gres.wm_map_units_list : nullptr;
-    if (u && preview && spell_data->font && u->unit->icon_glyph &&
-        u->unit->bonuses && u->unit->cnt > 0 && u->GetMaxAP() > 0 &&
-        preview->x_size > 0 && preview->y_size > 0)
+    MapUnit* hovered = visible ? spell_map->GetCursorUnit() : nullptr;
+    if (hovered && (!hovered->unit || hovered->hide || hovered->isDead() ||
+        (hovered->is_enemy && hovered->is_visible != 2)))
+        hovered = nullptr;
+    MapUnit* selected = spell_map->GetSelectedUnit();
+    if (!ownValid(selected)) selected = fallback;
+    MapUnit* u = hovered ? hovered : selected;
+    const wxColour side = u && u->is_enemy ? hostile : green;
+    section(hovered && hovered != selected ?
+        (hovered->is_enemy ? tr("tactical_info.contact_enemy", "ENEMY CONTACT") :
+         tr("tactical_info.contact_ally", "ALLIED CONTACT")) :
+        tr("tactical_info.selected", "SELECTED COMPANY"), yy, side);
+    yy += headH + gap;
+    const int cardX = x + (width - drawW) / 2;
+    fill(cardX, yy, drawW, drawH, inset);
+    stroke(cardX, yy, drawW, drawH, bevel);
+    if (u && hasPreview && spell_data->font && u->unit->icon_glyph &&
+        u->unit->bonuses && u->unit->cnt > 0 && u->GetMaxAP() > 0)
     {
-        const int pw = preview->x_size, ph = preview->y_size;
-        const int previewBudget = availableH - 2 * pad - line * 4 - gap;
-        if (previewBudget < FromDIP(40)) return;
-        const int drawW = (std::min)((std::min)(inner, FromDIP(pw * 2)),
-            previewBudget * pw / ph);
-        if (drawW <= 0) return;
-        const int drawH = (std::max)(1, drawW * ph / pw);
-        const int cardH = 2 * pad + line * 4 + drawH + gap;
-        if (availableH < cardH) return;
-        frame(cardY, cardH);
-        const wxColour side = u->is_enemy ? enemy : friendly;
-        header(u->is_enemy ? tr("tactical_info.enemy", "Enemy") :
-            tr("tactical_info.ally", "Alliance"), cardY, side);
         std::vector<uint8_t> indexed(static_cast<size_t>(pw) * ph, 0);
         u->RenderPreview(indexed.data(), indexed.data() + indexed.size(), pw);
         wxImage image(pw, ph, false);
@@ -6463,21 +6508,27 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
             for (size_t i = 0; i < indexed.size(); ++i)
             {
                 const auto& c = spell_map->pal[indexed[i]];
-                rgb[i * 3] = c[0];
-                rgb[i * 3 + 1] = c[1];
-                rgb[i * 3 + 2] = c[2];
+                rgb[i * 3] = c[0]; rgb[i * 3 + 1] = c[1]; rgb[i * 3 + 2] = c[2];
             }
             dc.DrawBitmap(wxBitmap(image.Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST)),
-                x + (width - drawW) / 2, cardY + pad + line + gap, false);
+                cardX, yy, false);
         }
-        const int infoY = cardY + pad + line + gap + drawH;
+    }
+    else
+        text(u ? wxString(char2wstringCP895(u->name.empty() ? u->unit->name : u->name.c_str())) :
+            tr("tactical_info.no_company", "No company selected"),
+            cardX + gap, yy + gap, drawW - 2 * gap, label);
+    yy += drawH + gap;
+
+    if (u)
+    {
         const wxString type = u->unit->isAir() ? tr("tactical_info.air", "Air") :
             u->unit->isArmored() ? tr("tactical_info.heavy", "Heavy") :
             tr("tactical_info.light", "Light");
         pair(type + " / " + tr("tactical_info.dig", "Dig-in"),
-            wxString::Format("%d", u->dig_level), infoY, normal);
+            wxString::Format("%d", u->dig_level), yy, light);
         pair(tr("tactical_info.range", "Weapon range"),
-            wxString::Format("%d", u->GetFireRange()), infoY + line, normal);
+            wxString::Format("%d", u->GetFireRange()), yy + line, light);
         wxString status;
         auto append = [&](const wxString& v) { if (!status.empty()) status += " / "; status += v; };
         if (u->is_commander) append(tr("tactical_info.commander", "Commander"));
@@ -6487,15 +6538,18 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
         if (u->paralyze_turns) append(tr("tactical_info.paralyzed", "Paralyzed"));
         if (u->freeze_turns) append(tr("tactical_info.frozen", "Frozen"));
         if (u->wounded > 0) append(tr("tactical_info.wounded", "Wounded"));
-        if (status.empty()) status = tr("tactical_info.normal", "No special status");
-        drawText(status, x + pad, infoY + 2 * line, inner, gold);
+        text(status.empty() ? tr("tactical_info.normal", "No special status") : status,
+            x + pad, yy + 2 * line, inner, status.empty() ? label : amber);
     }
-    else if (visible && tileIndex >= 0 && static_cast<size_t>(tileIndex) < spell_map->tiles.size())
+    else
+        text(tr("tactical_info.hint", "Point at a visible company"),
+            x + pad, yy, inner, label);
+    yy += 3 * line + gap;
+
+    section(tr("tactical_info.terrain", "TERRAIN"), yy, green);
+    yy += headH + gap;
+    if (visible && tileIndex >= 0 && static_cast<size_t>(tileIndex) < spell_map->tiles.size())
     {
-        const int cardH = 2 * pad + 4 * line;
-        if (availableH < cardH) return;
-        frame(cardY, cardH);
-        header(tr("tactical_info.terrain", "TERRAIN"), cardY, muted);
         const auto& ground = spell_map->tiles[tileIndex];
         const int flags = ground.L1 ? ground.L1->GetFlags() : 0;
         const wxString terrain = ground.flags == 0x90 ? tr("tactical_info.forest", "Forest") :
@@ -6504,19 +6558,14 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
             (flags & Sprite::IS_DIRT_ROAD) ? tr("tactical_info.dirt_road", "Dirt road") :
             (flags & Sprite::IS_ROAD) ? tr("tactical_info.road", "Road") :
             tr("tactical_info.open_ground", "Open ground");
-        drawText(terrain, x + pad, cardY + pad + 3 * line, inner, normal);
-        pair(tr("tactical_info.position", "Position"),
-            wxString::Format("%d / %d", tile.x, tile.y), cardY + pad + line, normal);
+        text(terrain, x + pad, yy, inner, light);
+        right(wxString::Format("%d / %d", tile.x, tile.y), yy, label);
         pair(tr("tactical_info.elevation", "Elevation"),
-            wxString::Format("%d", spell_map->tiles[tileIndex].elev),
-            cardY + pad + 2 * line, normal);
+            wxString::Format("%d", ground.elev), yy + line, light);
     }
-    else if (availableH >= 2 * pad + line)
-    {
-        frame(cardY, 2 * pad + line);
-        drawText(tr("tactical_info.hint", "Point at a visible company"),
-            x + pad, cardY + pad, inner, muted);
-    }
+    else
+        text(tr("tactical_info.no_terrain", "No visible terrain"),
+            x + pad, yy, inner, label);
 }
 
 void MainFrame::OnPaintCanvas(wxPaintEvent& event)
