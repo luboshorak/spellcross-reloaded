@@ -3084,6 +3084,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuGame->Append(ID_mmResetViewMap, spellcross_ui_locale::Tr("menu.reset_view", "Reset view map"));
     menuGame->Append(ID_mmUnitViewMode, spellcross_ui_locale::Tr("menu.range", "View unit move/attack range (Space)"));
 
+    menuGame->AppendCheckItem(ID_TacticalInfoPanel,
+        spellcross_ui_locale::Tr("menu.tactical_info", "Tactical information (I)"));
+    menuGame->Check(ID_TacticalInfoPanel, m_tacticalInfoVisible);
+
     // Help menu
     wxMenu* menuHelp = spellcross_help::BuildMenu();
 
@@ -3260,6 +3264,7 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnOpenMapEditorFromBattle,this,ID_mmOpenMapEditor);
     Bind(wxEVT_MENU,&MainFrame::OnResetUnitView,this,ID_mmResetViewMap);
     Bind(wxEVT_MENU,&MainFrame::OnSelectUnitView,this,ID_mmUnitViewMode);
+    Bind(wxEVT_MENU, [this](wxCommandEvent&) { ToggleTacticalInfoPanel(); }, ID_TacticalInfoPanel);
 
     Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_HighlighObj);
 
@@ -3320,6 +3325,26 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
         {
             if (!event.IsAutoRepeat())
                 OnMapConsoleCommand();
+            return;
+        }
+
+        // The new overlay is display-only. Shift+I preserves the retail
+        // graphic markers above units; the original HUD icon still works.
+        if (spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+            !inSubForm() && !m_mission_result_visible && !m_mission_end_flow &&
+            !event.ControlDown() && !event.AltDown() &&
+            (consoleKey == 'I' || consoleKey == 'i'))
+        {
+            if (!event.IsAutoRepeat())
+            {
+                if (event.ShiftDown())
+                {
+                    spell_map->OnHUDswitchUnitHUD();
+                    if (canvas) canvas->Refresh(false);
+                }
+                else
+                    ToggleTacticalInfoPanel();
+            }
             return;
         }
 
@@ -6226,6 +6251,115 @@ wxSize MainFrame::TacticalMapSize(const wxSize& size) const
         spellcross_tactical::MapExtent(spellcross_display::LogicalExtent(size.y), percent));
 }
 
+void MainFrame::ToggleTacticalInfoPanel()
+{
+    if (spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+        !inSubForm() && !m_mission_end_flow && !m_mission_result_visible)
+        m_tacticalInfoVisible = !m_tacticalInfoVisible;
+    // The custom menu owns the model; the frame has no native menu bar.
+    if (auto* menu = spellcross_menu::Model(this))
+        menu->Check(ID_TacticalInfoPanel, m_tacticalInfoVisible);
+    if (canvas) canvas->Refresh(false);
+}
+
+// Draw on the existing canvas, not a child window. No focus, mouse capture,
+// new game state, or gameplay commands are introduced by this overlay.
+void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
+{
+    const wxSize size = canvas->GetClientSize();
+    const auto tr = [](const char* key, const char* fallback) {
+        return spellcross_ui_locale::Tr(key, fallback);
+    };
+    wxFont font = spellcross_menu::MenuFont();
+    font.SetPointSize(10);
+    dc.SetFont(font);
+    const int pad = FromDIP(9);
+    const int gap = FromDIP(3);
+    const int line = dc.GetCharHeight() + gap;
+    const int width = FromDIP(258);
+    const int height = pad * 2 + line * 11;
+    if (size.x < width + pad * 2 || size.y < height + FromDIP(140))
+        return; // Never cover the original bottom HUD in a tiny window.
+    const int x = size.x - width - pad;
+    const int y = pad;
+    const wxColour muted(149, 164, 135);
+    const wxColour normal(210, 220, 188);
+    const wxColour friendly(143, 194, 118);
+    const wxColour enemy(209, 137, 107);
+
+    dc.SetPen(wxPen(wxColour(78, 97, 65), FromDIP(1)));
+    dc.SetBrush(wxBrush(wxColour(17, 29, 17)));
+    dc.DrawRectangle(x, y, width, height);
+    dc.SetClippingRegion(x + pad, y + pad, width - pad * 2, height - pad * 2);
+    auto row = [&](int index, wxString value, const wxColour& colour) {
+        const int available = width - pad * 2;
+        if (dc.GetTextExtent(value).x > available)
+        {
+            while (!value.empty() && dc.GetTextExtent(value + "...").x > available)
+                value.RemoveLast();
+            value += "...";
+        }
+        dc.SetTextForeground(colour);
+        dc.DrawText(value, x + pad, y + pad + index * line);
+    };
+    auto stat = [&](int index, const wxString& label, int value, const wxColour& colour) {
+        row(index, label + ": " + wxString::Format("%d", value), colour);
+    };
+
+    const auto losses = spell_map->GetMissionLossStats();
+    int own = 0, ready = 0;
+    for (auto* u : spell_map->units)
+    {
+        if (!u || !u->unit || u->is_enemy || u->isDead() ||
+            !u->isActive() || u->hide || !u->coor.IsSelected())
+            continue;
+        ++own;
+        if (u->GetAP() > 0) ++ready;
+    }
+    row(0, tr("tactical_info.title", "TACTICAL REPORT") + "   [I]", friendly);
+    row(1, m_deployment_active ? tr("tactical_info.deployment", "Deployment") :
+        spell_map->IsEnemyTurnRunning() ? tr("tactical_info.enemy_phase", "Other Side turn") :
+        tr("tactical_info.own_phase", "Alliance turn"), muted);
+    stat(2, tr("tactical_info.friendly", "Active companies"), own, normal);
+    stat(3, tr("tactical_info.ready", "Companies with AP"), ready, normal);
+    stat(4, tr("tactical_info.destroyed", "Enemy companies lost"),
+        losses.enemy_light + losses.enemy_heavy + losses.enemy_air, friendly);
+    stat(5, tr("tactical_info.lost", "Own companies lost"),
+        losses.alliance_light + losses.alliance_heavy + losses.alliance_air, enemy);
+
+    dc.SetPen(wxPen(wxColour(65, 82, 55)));
+    dc.DrawLine(x + pad, y + pad + 6 * line + line / 2,
+        x + width - pad, y + pad + 6 * line + line / 2);
+
+    // GetCursorUnit itself does not check fog of war; match the existing
+    // dossier's visibility gate and never reveal enemy units in deployment.
+    MapUnit* u = nullptr;
+    const wxPoint pointer = canvas->ScreenToClient(wxGetMousePosition());
+    if (!m_deployment_active && !m_boxSelecting &&
+        canvas->GetClientRect().Contains(pointer) &&
+        spellcross_display::ToLogical(pointer.y) <
+            spell_map->GetHUDtop(spellcross_display::ToLogical(pointer.x)))
+        u = spell_map->GetCursorUnit();
+    if (u && u->unit && !u->hide && !u->isDead() &&
+        (!u->is_enemy || u->is_visible == 2))
+    {
+        const wxColour side = u->is_enemy ? enemy : friendly;
+        const wxString name(char2wstringCP895(
+            u->name.empty() ? u->unit->name : u->name.c_str()));
+        row(7, (u->is_enemy ? tr("tactical_info.enemy", "Enemy") :
+            tr("tactical_info.ally", "Alliance")) + ": " + name, side);
+        row(8, tr("tactical_info.strength", "Strength") + wxString::Format(" %d/%d", u->man, u->unit->cnt) +
+            "  " + tr("tactical_info.wounded", "Wounded") + wxString::Format(" %d", u->wounded), normal);
+        row(9, tr("tactical_info.ap", "AP") + wxString::Format(" %d/%d", u->GetAP(), u->GetMaxAP()) +
+            "  " + tr("tactical_info.shots", "Shots") + wxString::Format(" %d", u->GetFireCount()), normal);
+        row(10, tr("tactical_info.morale", "Morale") + wxString::Format(" %d", static_cast<int>(u->morale)) +
+            "  " + tr("tactical_info.dig", "Dig-in") + wxString::Format(" %d", u->dig_level), muted);
+    }
+    else
+        row(7, tr("tactical_info.hint", "Point at a visible company"), muted);
+    dc.DestroyClippingRegion();
+}
+
 void MainFrame::OnPaintCanvas(wxPaintEvent& event)
 {
     wxPaintDC pdc(canvas);
@@ -6267,6 +6401,9 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
 			pdc.SetBrush(*wxTRANSPARENT_BRUSH);
 			pdc.DrawRectangle(rect);
 		}
+        if (m_tacticalInfoVisible && !m_mission_result_visible &&
+            !m_mission_end_flow && !inSubForm() && spell_map->isGameMode())
+            DrawTacticalInfoPanel(pdc);
         if (m_mission_result_visible)
             DrawMissionResultOverlay(pdc);
     }
