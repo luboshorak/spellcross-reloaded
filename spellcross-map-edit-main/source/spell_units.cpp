@@ -1759,7 +1759,7 @@ void MapUnit::RenderVertBar(uint8_t* buffer,uint8_t* buf_end,int buf_x_size,int 
 }
 
 // render unit preview for map units list
-int MapUnit::RenderPreview(uint8_t* buffer,uint8_t* buf_end,int buf_x_size)
+int MapUnit::RenderPreview(uint8_t* buffer,uint8_t* buf_end,int buf_x_size, bool draw_text)
 {
 	auto *spell_data = map->spelldata;
 
@@ -1772,7 +1772,7 @@ int MapUnit::RenderPreview(uint8_t* buffer,uint8_t* buf_end,int buf_x_size)
 	std::string unit_name = name;
 	if(unit_name.empty())
 		unit_name = unit->name;
-	spell_data->font->Render(buffer, buf_end, buf_x_size, 4,3, 137,16, unit_name,title_color, 254, SpellFont::FontShadow::DIAG3);
+	if (draw_text) spell_data->font->Render(buffer, buf_end, buf_x_size, 4,3, 137,16, unit_name,title_color, 254, SpellFont::FontShadow::DIAG3);
 
 	// icon (pos = 82,23)
 	unit->icon_glyph->Render(buffer, buf_end, buf_x_size, 82,23);
@@ -1780,12 +1780,12 @@ int MapUnit::RenderPreview(uint8_t* buffer,uint8_t* buf_end,int buf_x_size)
 	// morale (pos = 4,23, size = 6,41)
 	RenderVertBar(buffer, buf_end, buf_x_size, 4,23, 6,41, 0.01*morale, 196);
 	// label (pox = 6,50)
-	spell_data->font->Render(buffer,buf_end,buf_x_size,6,50,string_format("%02.0f",morale),252,254,SpellFont::FontShadow::RIGHT_DOWN);
+	if (draw_text) spell_data->font->Render(buffer,buf_end,buf_x_size,6,50,string_format("%02.0f",morale),252,254,SpellFont::FontShadow::RIGHT_DOWN);
 
 	// ap (pos = 28,23, size = 6,41)
 	RenderVertBar(buffer, buf_end, buf_x_size, 28,23, 6,41, (double)action_points/GetMaxAP(), 228);
 	// label (pox = 30,50)
-	spell_data->font->Render(buffer,buf_end,buf_x_size,30,50,string_format("%02d",action_points),230,254,SpellFont::FontShadow::RIGHT_DOWN);
+	if (draw_text) spell_data->font->Render(buffer,buf_end,buf_x_size,30,50,string_format("%02d",action_points),230,254,SpellFont::FontShadow::RIGHT_DOWN);
 
 	// fire count (pos1 = 36,48, y_step = 5)
 	for(int k = 0; k < GetFireCount(); k++)
@@ -1801,17 +1801,17 @@ int MapUnit::RenderPreview(uint8_t* buffer,uint8_t* buf_end,int buf_x_size)
 	RenderVertBar(buffer,buf_end,buf_x_size,52,23, 6,41,
         unit->isSingleMan() ? spellcross_health::GetBars(1, man, wounded, damage_remainder, 1000).active / 1000.0 : (double)man/unit->cnt,hp_color);
 	// max man (pox = 60,50)
-	spell_data->font->Render(buffer,buf_end,buf_x_size,60,50,string_format("%02d",unit->cnt),216,254,SpellFont::FontShadow::RIGHT_DOWN);
+	if (draw_text) spell_data->font->Render(buffer,buf_end,buf_x_size,60,50,string_format("%02d",unit->cnt),216,254,SpellFont::FontShadow::RIGHT_DOWN);
 	// hp (pox = 60,36)
-	spell_data->font->Render(buffer,buf_end,buf_x_size,60,36,string_format("%02d",man),hp_color,254,SpellFont::FontShadow::RIGHT_DOWN);
+	if (draw_text) spell_data->font->Render(buffer,buf_end,buf_x_size,60,36,string_format("%02d",man),hp_color,254,SpellFont::FontShadow::RIGHT_DOWN);
 	// wounded (pox = 60,22)
-	spell_data->font->Render(buffer,buf_end,buf_x_size,60,22,string_format("%02d",wounded),215,254,SpellFont::FontShadow::RIGHT_DOWN);
+	if (draw_text) spell_data->font->Render(buffer,buf_end,buf_x_size,60,22,string_format("%02d",wounded),215,254,SpellFont::FontShadow::RIGHT_DOWN);
 
 	// experience (pox = 5,66, y_step = 9)
 	for(int k = 0; k < experience_level; k++)
 		spell_data->gres.wm_exp_mark->Render(buffer,buf_end,buf_x_size,5 + k*9,66);
 	
-	if(!map->isGameMode())
+	if(draw_text && !map->isGameMode())
 	{
 		// unit ID (pos = 141,25)
 		spell_data->font7->SetFilter(map->terrain->filter.darkpal);
