@@ -10,8 +10,8 @@ import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-SOURCE = ROOT / "spellcross-map-edit-main" / "source"
-LOCALES = ROOT / "spellcross-map-edit-main" / "locales"
+SOURCE = ROOT / "spellcross-remaster-main" / "source"
+LOCALES = ROOT / "spellcross-remaster-main" / "locales"
 
 
 def catalog(language: str) -> dict[str, str]:
