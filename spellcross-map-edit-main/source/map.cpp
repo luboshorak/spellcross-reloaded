@@ -9624,9 +9624,16 @@ void SpellMap::StartEnemyTurn()
 
 void SpellMap::EndEnemyTurn()
 {
-	// One round is complete only after the enemy phase finishes.
-	if (m_tactical_round > 0 && m_tactical_round < 2147483647)
-		++m_tactical_round;
+	// Count each accepted player turn once, when the enemy phase finishes.
+	if (enemy_turn_running)
+	{
+		if (m_tactical_round > 0 && m_tactical_round < 2147483647)
+			++m_tactical_round;
+		else if (m_tactical_round < 0 && m_tactical_round > -2147483647)
+			--m_tactical_round;
+		else if (m_tactical_round == 0)
+			m_tactical_round = -2;
+	}
     // Start the player phase with fresh enemy-defender opportunities.
     enhanced_reaction_attempts.Clear();
 	spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
@@ -16465,7 +16472,7 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 	map->next_enemy_ai_group_id = save->next_enemy_ai_group_id;
 	map->enemy_ai_groups_initialized = save->enemy_ai_groups_initialized;
 	map->m_mission_losses = save->mission_losses;
-	map->m_tactical_round = save->tactical_round;
+	map->SetTacticalRound(save->tactical_round);
 	if (map->enemy_ai_groups_initialized)
 	{
 		map->PruneEnemyAIGroups();
