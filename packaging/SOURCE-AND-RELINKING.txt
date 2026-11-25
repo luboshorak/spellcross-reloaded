@@ -1,0 +1,35 @@
+SPELLCROSS RELOADED - SOURCE AND RELINKING
+
+Source code is supplied in SOURCE-CODE.zip with this distribution.
+Project-owned Covered Code is licensed under CPAL-1.0 (LICENSE-Reloaded.txt);
+inherited MIT and third-party code retain their original licenses. See
+LICENSING.md, AUTHORS.md, NOTICE.md and third-party-licenses.
+
+The game incorporates libsmacker (LGPL-2.1-or-later) and the XMIDI converter
+(GNU Library GPL 2.0-or-later); their use is covered by those licenses.
+The separate editor also incorporates the XMIDI converter. You may modify
+these libraries, rebuild/relink the applications and reverse engineer
+the applications for debugging such modifications under the LGPL terms.
+
+To rebuild from the supplied source, extract SOURCE-CODE.zip into a writable
+folder. Install Visual Studio C++ build tools (v145 for the game) and the
+compatible x64 wxWidgets/vcpkg dependencies; use the project's original
+MSVC configuration. From Developer PowerShell, change to the extracted
+source root and run these commands with your own wxWidgets path:
+
+  $wx = "$HOME\vcpkg\installed\x64-windows\"
+  msbuild .\spellcross-map-edit-main\source\spellcross_map_editor.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$wx"
+  msbuild .\external\map-editor\source\spellcross_map_editor.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$wx"
+
+To change libsmacker, edit third_party\libsmacker\smacker.c and related
+headers before rebuilding the game. To change XMIDI, edit
+source\cxxmidi\guts\cvt_xmi2mid.hpp in the respective game/editor source
+directory before rebuilding. The source includes the MSBuild inputs and
+project support data, not the commercial game data. The player supplies
+their own original retail data. See the full project for further docs:
+https://github.com/luboshorak/spellcross-reloaded
+
+Redistributors must preserve notices and provide corresponding source and
+relinking rights under the applicable licenses; a link alone must not
+replace any required source availability. For a -SkipBuild package, the
+packager is responsible for ensuring that its binary and source match.

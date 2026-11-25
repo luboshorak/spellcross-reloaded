@@ -186,3 +186,7 @@ publish through the validating wrapper, which requires the full ZIP and EXE:
 Do not publish if WinRAR was unavailable: the EXE is mandatory. Do not create the same tag a second
 time. In the event of a rejected push the local version commit/tag remain
 available; resolve the conflict without force-pushing.
+
+## Attribution and corresponding source
+
+Each package includes the CPAL attribution, original MIT and third-party license notices, plus `SOURCE-CODE.zip` with game/editor build inputs and LGPL source. `SOURCE-AND-RELINKING.txt` explains rebuilding with modified LGPL libraries. The universal builder snapshots the actual local source before reverting any temporary version metadata. A `-SkipBuild` package must only be redistributed when the existing binaries match the supplied source. The separate editor retains MIT. No original commercial game data is added. See [LICENSING.md](../LICENSING.md).
