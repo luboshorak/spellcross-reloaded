@@ -1258,6 +1258,12 @@ void SpellMap::CheckAndTriggerMissionEnd()
 		}
 	}
 	bool success = AreAllObjectivesDone();
+	// Retail unit death routine sets a global defeat flag for type 83 (Alexander).
+	// Also check corpses still waiting for normal removal.
+	for (auto* unit : units)
+		if (unit && !unit->is_enemy && unit->unit &&
+			unit->unit->type_id == 83 && unit->isDead())
+			m_mission_end_req.campaign_defeat = true;
 
 	// Special: po první misi dovol success i bez objective, když velitel dojede na EscapeSquare (transport)
 	std::wstring stem = std::filesystem::path(map_path).stem().wstring();
@@ -1327,6 +1333,12 @@ void SpellMap::CheckAndTriggerMissionEnd()
 				}
 			}
 		}
+	}
+
+	if (m_mission_end_req.campaign_defeat)
+	{
+		success = false;
+		failure = true;
 	}
 
 	if (!success && !failure)
@@ -3893,6 +3905,8 @@ void SpellMap::RecordMissionLoss(const MapUnit* unit)
 	if (!unit || !unit->unit || !unit->isDead())
 		return;
 
+	if (!unit->is_enemy && unit->unit->type_id == 83)
+		m_mission_end_req.campaign_defeat = true;
 	QueueCommanderDeathNotification(unit);
 	const bool air = unit->unit->isAir() != 0;
 	const bool heavy = unit->unit->isArmored() != 0;

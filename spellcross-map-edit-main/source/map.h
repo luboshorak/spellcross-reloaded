@@ -265,6 +265,7 @@ public:
 	{
 		bool pending = false;
 		bool success = false;
+		bool campaign_defeat = false; // retail loss of Alexander (unit type 83)
 		SpellTextRec* text = nullptr;     // text pro HUD okno
 		std::wstring movie_path;          // LEVEL1_1.DPK
 		std::wstring next_level_def;      // LEVEL_02.DEF
