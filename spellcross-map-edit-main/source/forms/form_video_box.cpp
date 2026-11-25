@@ -4,7 +4,6 @@
 
 #include <wx/rawbmp.h>
 #include <wx/msgdlg.h>
-#include <wx/stdpaths.h>
 #include <wx/log.h>
 #include <filesystem>
 #include <stdexcept>
@@ -12,54 +11,12 @@
 #include <vector>
 #include <cctype>
 
-#ifdef _WIN32
-#ifndef WINVER
-#define WINVER 0x0601
-#endif
-#include <windows.h>
-#include <mfplay.h>
-#include <mferror.h>
-#pragma comment(lib, "mfplay.lib")
-#pragma comment(lib, "mfplat.lib")
-#pragma comment(lib, "mfuuid.lib")
-#pragma comment(lib, "ole32.lib")
-#endif
-
 namespace
 {
 std::string UpperAscii(std::string s)
 {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::toupper(c); });
     return s;
-}
-
-std::filesystem::path FindBundledMovieFallback(SpellData* spell_data, const std::string& stem)
-{
-    namespace fs = std::filesystem;
-    const std::string fallback_name = UpperAscii(stem) + ".mp4";
-    std::vector<fs::path> roots;
-
-    const fs::path exe_dir = fs::path(wxStandardPaths::Get().GetExecutablePath().ToStdWstring()).parent_path();
-    roots.push_back(exe_dir / "data" / "movie_fallback");
-    roots.push_back(fs::current_path() / "data" / "movie_fallback");
-    roots.push_back(fs::current_path() / ".." / "data" / "movie_fallback");
-
-    if (spell_data)
-    {
-        if (!spell_data->data_path.empty())
-            roots.push_back(fs::path(spell_data->data_path) / "movie_fallback");
-        if (!spell_data->cd_data_path.empty())
-            roots.push_back(fs::path(spell_data->cd_data_path) / "movie_fallback");
-    }
-
-    for (const auto& root : roots)
-    {
-        std::error_code ec;
-        const fs::path candidate = root / fallback_name;
-        if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec))
-            return candidate;
-    }
-    return {};
 }
 
 bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, SpellVideo*& out_video, std::string& error)
@@ -146,8 +103,8 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
                     out_video = new SpellVideo(&archive, entry);
                     wxLogDebug("[VIDEO] original edition movie: %s (%s)",
                         entry.c_str(), entry_name.c_str());
-                    if (out_video->isCAN() && out_video->HasDecodedPicture())
-                        wxLogDebug("[VIDEO] experimental native CAN picture decoder active");
+                    if (out_video->isCAN())
+                        wxLogDebug("[VIDEO] native CAN picture decoder active");
                     return true;
                 }
                 catch (const std::exception& ex)
@@ -175,63 +132,6 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
 }
 }
 
-#ifdef _WIN32
-class FormVideoMfCallback final : public IMFPMediaPlayerCallback
-{
-public:
-    explicit FormVideoMfCallback(FormVideoBox* owner) : m_owner(owner) {}
-
-    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override
-    {
-        if (!ppv)
-            return E_POINTER;
-        *ppv = nullptr;
-        if (riid == IID_IUnknown || riid == __uuidof(IMFPMediaPlayerCallback))
-        {
-            *ppv = static_cast<IMFPMediaPlayerCallback*>(this);
-            AddRef();
-            return S_OK;
-        }
-        return E_NOINTERFACE;
-    }
-
-    STDMETHODIMP_(ULONG) AddRef() override
-    {
-        return (ULONG)InterlockedIncrement(&m_ref);
-    }
-
-    STDMETHODIMP_(ULONG) Release() override
-    {
-        const ULONG ref = (ULONG)InterlockedDecrement(&m_ref);
-        if (!ref)
-            delete this;
-        return ref;
-    }
-
-    void STDMETHODCALLTYPE OnMediaPlayerEvent(MFP_EVENT_HEADER* event) override
-    {
-        FormVideoBox* owner = m_owner;
-        if (!owner || !event)
-            return;
-
-        if (FAILED(event->hrEvent))
-        {
-            owner->NotifyMfPlaybackDone((long)event->hrEvent);
-            return;
-        }
-        if (event->eEventType == MFP_EVENT_TYPE_PLAYBACK_ENDED)
-            owner->NotifyMfPlaybackDone((long)S_OK);
-    }
-
-    void Detach() { m_owner = nullptr; }
-
-private:
-    ~FormVideoMfCallback() = default;
-    LONG m_ref = 1;
-    FormVideoBox* m_owner = nullptr;
-};
-#endif
-
 // load video and make form
 FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_data,std::string name,int zoom)
 {
@@ -249,76 +149,13 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     namespace fs = std::filesystem;
     const fs::path requested(name);
     const std::string entry_name = requested.filename().string();
-    const std::string ext = UpperAscii(requested.extension().string());
-    const std::string stem = requested.stem().string();
-    const bool czechEdition = spell_data &&
-        spell_data->GetTextLanguage() == SpellLang::CZE;
-    // These transcodes are Czech-only. Other editions never look for them:
-    // their own SMK/DPK/DP2/CAN files must come from the selected retail archives.
-    // Native-only experiment: do not even search for bundled MP4 files.
-    // Restore this switch to true when comparison with the transcodes is needed.
-    constexpr bool allowMp4Fallback = false;
-    const fs::path fallback_path = allowMp4Fallback && czechEdition
-        ? FindBundledMovieFallback(spell_data, stem) : fs::path{};
-
-    // The CZ CAN picture codec is the one format the restoration decoder does
-    // not understand.  Maslan captured those sequences from the CZ game and
-    // converted them to SMK2 for the EN engine.  This build ships modern MP4
-    // transcodes of those exact conversions and prefers them for CAN/SMK.
-    bool use_fallback = false;
     std::string legacy_error;
-    if (czechEdition && SpellVideo::ExperimentalCANEnabled() &&
-        (ext == ".CAN" || ext == ".SMK"))
-    {
-        TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error);
-        if (!m_video && !fallback_path.empty())
-        {
-            wxLogMessage("[VIDEO] experimental native movie failed: %s; using MP4", legacy_error.c_str());
-            use_fallback = true;
-        }
-    }
-    else if ((ext == ".CAN" || ext == ".SMK") && !fallback_path.empty())
-    {
-        use_fallback = true;
-    }
-    else
-    {
-        TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error);
-        if (!m_video && !fallback_path.empty())
-            use_fallback = true;
-    }
-
-    // Last chance: if a requested CAN has no converted asset, retain the old
-    // audio-only path instead of silently dropping the cutscene altogether.
-    if (!m_video && !use_fallback && (ext == ".CAN" || ext == ".SMK"))
-        TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error);
-
-#ifndef _WIN32
-    // The game-mode target is Windows.  On other platforms keep the legacy
-    // decoder behaviour; MP4 fallback playback uses the native Windows MFPlay.
-    if (use_fallback)
-        use_fallback = false;
-#endif
-
-    if (!m_video && !use_fallback)
-    {
-        if (!czechEdition)
-            throw runtime_error(string_format(
-                "Cannot load original %s edition movie \"%s\" (%s). "
-                "Check the selected retail MOVIE.FS/SPEAKER.FS sources.",
-                spell_data->GetTextLanguage() == SpellLang::ENG ? "EN" : "non-CZ",
-                entry_name.c_str(), legacy_error.c_str()));
+    if (!TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error))
         throw runtime_error(string_format(
-            "Loading Czech video file \"%s\" failed (%s)%s%s",
-            entry_name.c_str(), legacy_error.c_str(),
-            fallback_path.empty() ? "; no CZ fallback " : "; CZ fallback unusable on this platform: ",
-            fallback_path.empty() ? (UpperAscii(stem) + ".mp4").c_str() : fallback_path.string().c_str()));
-    }
+            "Cannot load original movie \"%s\" (%s). Check the selected retail MOVIE.FS/SPEAKER.FS sources.",
+            entry_name.c_str(), legacy_error.c_str()));
 
-    int frame_x = 320;
-    int frame_y = 200;
-    if (m_video)
-        std::tie(frame_x, frame_y) = m_video->GetResolution();
+    auto [frame_x, frame_y] = m_video->GetResolution();
 
     // frame border graphics
     auto corn = m_spelldata->gres.wm_frame_corner;
@@ -328,9 +165,7 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     const int x_size = frame_x*m_zoom + 2*corn->x_size;
     const int y_size = frame_y*m_zoom + 2*corn->y_size;
 
-    // Render the original Spellcross frame chrome once.  The MF video host is
-    // a child window placed inside this border; legacy video is painted into
-    // the same central rectangle by OnPaintTab().
+    // Render the original frame chrome; native video is painted by OnPaintTab().
     vector<uint8_t> buf(x_size*y_size,0x00);
     int pos_x = corn->x_size;
     do {
@@ -380,99 +215,19 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     form->Bind(wxEVT_LEFT_DOWN,&FormVideoBox::OnWinClick,this,win_id);
     form->Bind(wxEVT_LEFT_UP,&FormVideoBox::OnWinClick,this,win_id);
     form->Bind(wxEVT_MOTION,&FormVideoBox::OnWinMouseMove,this,win_id);
-    form->Bind(wxEVT_THREAD,&FormVideoBox::OnNewAudioFrame,this);
 
-    // Cover both native movies and MFPlay, including constructor failure.
+    // Cover native movie playback, including constructor failure.
     // The guard restores mission audio without overwriting user preferences.
     if (m_spelldata->sounds && m_spelldata->sounds->channels)
         m_background_mute = std::make_unique<SoundChannels::BackgroundMute>(
             *m_spelldata->sounds->channels);
 
-#ifdef _WIN32
-    if (use_fallback)
-    {
-        m_using_mf = true;
-        m_media_host = new wxWindow(form, wxID_ANY,
-            wxPoint(corn->x_size, corn->y_size),
-            wxSize(frame_x*m_zoom, frame_y*m_zoom), wxBORDER_NONE);
-        m_media_host->SetBackgroundColour(*wxBLACK);
-        m_media_host->Bind(wxEVT_PAINT, &FormVideoBox::OnMediaHostPaint, this);
-        m_media_host->Bind(wxEVT_SIZE, &FormVideoBox::OnMediaHostSize, this);
-        m_media_host->Bind(wxEVT_KEY_UP, &FormVideoBox::OnKeyPress, this);
-
-        // MFPlay is a COM-based Windows component.  wxWidgets applications
-        // normally already have COM available, but do not rely on that.
-        // S_OK/S_FALSE must be balanced by CoUninitialize; RPC_E_CHANGED_MODE
-        // means COM already exists in another apartment and is still usable.
-        const HRESULT co_hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-        if (SUCCEEDED(co_hr))
-            m_com_uninit = true;
-        else if (co_hr != RPC_E_CHANGED_MODE)
-        {
-            form->Destroy();
-            form = nullptr;
-            delete m_frame;
-            m_frame = nullptr;
-            throw runtime_error(string_format("Cannot initialize COM for movie playback (HRESULT 0x%08lx).",
-                (unsigned long)co_hr));
-        }
-
-        m_mf_callback = new FormVideoMfCallback(this);
-        const HRESULT hr = MFPCreateMediaPlayer(
-            fallback_path.wstring().c_str(),
-            TRUE,                   // auto-start once the local MP4 is opened
-            0,
-            m_mf_callback,
-            reinterpret_cast<HWND>(m_media_host->GetHandle()),
-            &m_mf_player);
-
-        if (FAILED(hr) || !m_mf_player)
-        {
-            wxLogMessage("[VIDEO] MFPlay failed for %s (HRESULT 0x%08lx)", fallback_path.string().c_str(), (unsigned long)hr);
-            if (m_mf_callback)
-                m_mf_callback->Detach();
-            if (m_mf_player)
-            {
-                m_mf_player->Release();
-                m_mf_player = nullptr;
-            }
-            if (m_mf_callback)
-            {
-                m_mf_callback->Release();
-                m_mf_callback = nullptr;
-            }
-            if (m_media_host)
-            {
-                m_media_host->Destroy();
-                m_media_host = nullptr;
-            }
-            if (m_com_uninit)
-            {
-                CoUninitialize();
-                m_com_uninit = false;
-            }
-            form->Destroy();
-            form = nullptr;
-            delete m_frame;
-            m_frame = nullptr;
-            throw runtime_error(string_format("Cannot play bundled movie fallback %s (MFPlay HRESULT 0x%08lx).",
-                fallback_path.string().c_str(), (unsigned long)hr));
-        }
-        wxLogDebug("[VIDEO] MP4 fallback: %s -> %s", entry_name.c_str(), fallback_path.string().c_str());
-    }
-#endif
-
-    if (!use_fallback)
-    {
-        m_sound = new SpellSound(m_spelldata->sounds->channels, m_video->GetSound(), true);
-        // Audio must not retain a callback bound to this GUI object's lifetime.
-        // Advance the image from the wxWidgets event loop using the sound
-        // stream's playback clock instead.
-        m_sound->Play(false, false, nullptr, 0.010);
-        m_video_timer.SetOwner(form);
-        form->Bind(wxEVT_TIMER, &FormVideoBox::OnVideoTimer, this);
-        m_video_timer.Start(16);
-    }
+    m_sound = new SpellSound(m_spelldata->sounds->channels, m_video->GetSound(), true);
+    // Advance the image on the GUI thread using the sound stream clock.
+    m_sound->Play(false, false, nullptr, 0.010);
+    m_video_timer.SetOwner(form);
+    form->Bind(wxEVT_TIMER, &FormVideoBox::OnVideoTimer, this);
+    m_video_timer.Start(16);
 
     form->SetFocus();
 }
@@ -496,7 +251,6 @@ FormVideoBox::~FormVideoBox()
     {
         form->Unbind(wxEVT_CLOSE_WINDOW, &FormVideoBox::OnClose, this);
         form->Unbind(wxEVT_TIMER, &FormVideoBox::OnVideoTimer, this);
-        form->Unbind(wxEVT_THREAD, &FormVideoBox::OnNewAudioFrame, this);
     }
 
     if (form)
@@ -505,19 +259,6 @@ FormVideoBox::~FormVideoBox()
         form = NULL;
     }
 
-}
-
-// Media Foundation delivers completion through a wxThreadEvent. Legacy
-// video uses a GUI-thread timer instead of a function called by RtAudio.
-void FormVideoBox::OnNewAudioFrame(wxThreadEvent& event)
-{
-#ifdef _WIN32
-    if (m_using_mf && !m_closing && form)
-    {
-        m_closing = true;
-        form->Close();
-    }
-#endif
 }
 
 // Refresh legacy frames on the GUI thread. No audio-thread callback is
@@ -545,28 +286,6 @@ void FormVideoBox::OnVideoTimer(wxTimerEvent& event)
 // stop audio playback
 void FormVideoBox::StopPlayback()
 {
-#ifdef _WIN32
-    if (m_mf_callback)
-        m_mf_callback->Detach();
-    if (m_mf_player)
-    {
-        m_mf_player->Stop();
-        m_mf_player->Shutdown();
-        m_mf_player->Release();
-        m_mf_player = nullptr;
-    }
-    if (m_mf_callback)
-    {
-        m_mf_callback->Release();
-        m_mf_callback = nullptr;
-    }
-    m_using_mf = false;
-    if (m_com_uninit)
-    {
-        CoUninitialize();
-        m_com_uninit = false;
-    }
-#endif
     if(m_sound)
     {
         // Stop is bounded.  If the audio backend does not acknowledge it, do
@@ -603,7 +322,6 @@ void FormVideoBox::OnClose(wxCloseEvent& ev)
     // Stop GUI frame updates before releasing the stream or its owner.
     m_video_timer.Stop();
     StopPlayback();
-    form->Unbind(wxEVT_THREAD, &FormVideoBox::OnNewAudioFrame, this);
 
     // signal parentovi "cutscene done"
     wxCloseEvent* done = new wxCloseEvent(wxEVT_CLOSE_WINDOW);
@@ -630,7 +348,7 @@ void FormVideoBox::OnPaintTab(wxPaintEvent& event)
     auto horz = m_spelldata->gres.wm_frame_horz;
     auto vert = m_spelldata->gres.wm_frame_vert;
     
-    if(m_frame && m_video && m_video->GetFramesCount() && m_frame_id >= 0 && m_frame_id < m_video->GetFramesCount() && m_video->HasDecodedPicture())
+    if(m_frame && m_video && m_video->GetFramesCount() && m_frame_id >= 0 && m_frame_id < m_video->GetFramesCount())
     {
         // get frame size
         auto [frame_x,frame_y] = m_video->GetResolution();
@@ -671,33 +389,6 @@ void FormVideoBox::OnPaintTab(wxPaintEvent& event)
     wxPaintDC pdc(form);
     pdc.DrawBitmap(*m_frame,wxPoint(0,0));
 }
-
-#ifdef _WIN32
-void FormVideoBox::NotifyMfPlaybackDone(long hr)
-{
-    if (FAILED((HRESULT)hr))
-        wxLogMessage("[VIDEO] MFPlay playback error: HRESULT 0x%08lx", (unsigned long)hr);
-    if (!form || m_closing)
-        return;
-    wxThreadEvent* evt = new wxThreadEvent();
-    evt->SetInt((int)hr);
-    wxQueueEvent(form, evt);
-}
-
-void FormVideoBox::OnMediaHostPaint(wxPaintEvent& event)
-{
-    wxPaintDC dc(m_media_host);
-    if (m_mf_player)
-        m_mf_player->UpdateVideo();
-}
-
-void FormVideoBox::OnMediaHostSize(wxSizeEvent& event)
-{
-    if (m_mf_player)
-        m_mf_player->UpdateVideo();
-    event.Skip();
-}
-#endif
 
 void FormVideoBox::OnWinClick(wxMouseEvent& event)
 {    

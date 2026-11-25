@@ -55,7 +55,6 @@ private:
     int y_size;
     double fps;
     SpellVideoType type;
-    bool can_picture_decoded = false;
 
     int DecodeCAN(uint8_t* data,int len);
     int DecodeDPK(uint8_t* data,int len);
@@ -76,8 +75,6 @@ public:
     SpellSample *GetSound();
     bool isDPK() {return(type == SpellVideoType::DPK);};
     bool isCAN() { return(type == SpellVideoType::CAN); };
-    static bool ExperimentalCANEnabled();
-    bool HasDecodedPicture() { return !isCAN() || can_picture_decoded; }
     bool isDP2() { return(type == SpellVideoType::DP2); };
     bool isSMK() { return(type == SpellVideoType::SMK); };
 

@@ -10,10 +10,6 @@
 #include <string>
 #include <memory>
 
-#ifdef _WIN32
-struct IMFPMediaPlayer;
-class FormVideoMfCallback;
-#endif
 
 class FormVideoBox
 {
@@ -31,17 +27,6 @@ private:
     wxTimer m_video_timer;
     wxBitmap* m_frame;
     SpellVideo *m_video;
-#ifdef _WIN32
-    IMFPMediaPlayer* m_mf_player = nullptr;
-    FormVideoMfCallback* m_mf_callback = nullptr;
-    wxWindow* m_media_host = nullptr;
-    bool m_using_mf = false;
-    bool m_com_uninit = false;
-    void NotifyMfPlaybackDone(long hr);
-    void OnMediaHostPaint(wxPaintEvent& event);
-    void OnMediaHostSize(wxSizeEvent& event);
-    friend class FormVideoMfCallback;
-#endif
     int m_frame_id;
     int m_zoom;
     
@@ -60,7 +45,6 @@ private:
     void OnWinMouseMove(wxMouseEvent& event);    
 
     void OnVideoTimer(wxTimerEvent& event);
-    void OnNewAudioFrame(wxThreadEvent& event);
 
     bool m_closing = false;       // aby se Close() nevolalo opakovan
     bool m_done_sent = false;     // aby se parentovi neposlal done event vckrt
