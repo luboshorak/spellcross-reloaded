@@ -9,23 +9,17 @@ VIDEO = (Path(__file__).resolve().parents[1] /
 
 
 class NativeEditionVideoRegression(unittest.TestCase):
-    def test_fallback_is_reserved_for_czech_edition(self):
+    def test_all_editions_use_native_archives(self):
         constructor = SOURCE.split("FormVideoBox::FormVideoBox(", 1)[1].split(
-            "    int frame_x = 320;", 1
-        )[0]
-        self.assertIn("spell_data->GetTextLanguage() == SpellLang::CZE", constructor)
-        self.assertIn("? FindBundledMovieFallback(spell_data, stem) : fs::path{}", constructor)
-        self.assertIn('if (!czechEdition)', constructor)
-        self.assertIn('Check the selected retail MOVIE.FS/SPEAKER.FS sources.', constructor)
-        noncz = constructor.split('if (!czechEdition)', 1)[1].split(
-            'throw runtime_error(string_format(\n            "Loading Czech', 1
-        )[0]
-        self.assertNotIn("fallback.mp4", noncz)
-        self.assertNotIn("no bundled fallback", noncz)
+            "    // frame border graphics", 1)[0]
+        self.assertIn("TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error)", constructor)
+        self.assertIn("Check the selected retail MOVIE.FS/SPEAKER.FS sources.", constructor)
+        for removed in ("FindBundledMovieFallback", "movie_fallback", "MFPlay", "use_fallback"):
+            self.assertNotIn(removed, SOURCE)
 
     def test_original_archive_sources_are_exhaustive_and_edition_scoped(self):
         lookup = SOURCE.split("bool TryLoadLegacyVideo(", 1)[1].split(
-            "\n}\n\n#ifdef _WIN32", 1
+            "// load video and make form", 1
         )[0]
         self.assertIn("for (const auto& path : archive_candidates)", lookup)
         self.assertIn("for (const auto& entry : entries)", lookup)
@@ -42,12 +36,14 @@ class NativeEditionVideoRegression(unittest.TestCase):
         self.assertNotIn("std::wstring archive_path;", lookup)
         self.assertIn('selected edition MOVIE.FS/SPEAKER.FS archive not found', lookup)
 
-    def test_czech_transcode_only_remains_available_where_needed(self):
-        constructor = SOURCE.split("FormVideoBox::FormVideoBox(", 1)[1].split(
-            "    int frame_x = 320;", 1
-        )[0]
-        self.assertIn('(ext == ".CAN" || ext == ".SMK") && !fallback_path.empty()', constructor)
-        self.assertIn('TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error)', constructor)
+    def test_can_picture_decoder_is_unconditional(self):
+        decode = VIDEO.split("int SpellVideo::DecodeCAN(", 1)[1].split(
+            "int SpellVideo::DecodeDPK(", 1)[0]
+        self.assertIn("spellcross_can::Decode(", decode)
+        self.assertIn("frames = std::move(decoded.frames)", decode)
+        self.assertNotIn("ExperimentalCANEnabled", VIDEO)
+        self.assertNotIn("SPELLCROSS_EXPERIMENTAL_CAN", VIDEO)
+        self.assertNotIn("!m_video->isCAN()", SOURCE)
 
     def test_real_smk_decoder_is_wired_into_archive_playback(self):
         self.assertIn('else if(ext == ".SMK" && DecodeSMK(v_data, v_size))', VIDEO)

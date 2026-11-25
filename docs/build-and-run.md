@@ -4,7 +4,7 @@
 
 Despite its historic filename, [`spellcross-map-edit-main/source/spellcross_map_editor.vcxproj`](../spellcross-map-edit-main/source/spellcross_map_editor.vcxproj) compiles the **game** as `Spellcross.exe` for x64. Its `ClCompile` list includes `main.cpp`, `map.cpp`, `spellcross.cpp`, `forms/form_level.cpp` and the other C++ engine modules. The **standalone editor** is a separate pinned Git submodule in `external/map-editor` (`.gitmodules`), compiled using that submodule's project. Its language standard is managed separately and is not upgraded by this game-only change. Both are packaged by `packaging/Build-CombinedRelease.ps1`.
 
-The game project specifies MSVC `PlatformToolset=v145` and x64 `LanguageStandard=stdcpp23`, uses wxWidgets headers and libraries under the `wxwin` property, links Windows `dsound.lib` / `winmm.lib` and includes the vendored `RtAudio`, `cxxmidi` and LGPL-2.1-or-later `libsmacker` sources. Windows multimedia/Media Foundation is used by `forms/form_video_box.cpp` for Czech MP4 fallbacks; original EN/PL/IT SMK2 movies are decoded by libsmacker. No CMake build was found for the native game.
+The game project specifies MSVC `PlatformToolset=v145` and x64 `LanguageStandard=stdcpp23`, uses wxWidgets headers and libraries under the `wxwin` property, links Windows `dsound.lib` / `winmm.lib` and includes the vendored `RtAudio`, `cxxmidi` and LGPL-2.1-or-later `libsmacker` sources. The native cinematic player decodes CAN, DPK and DP2; original SMK2 movies are decoded by libsmacker. No CMake build was found for the native game.
 
 ## Requirements
 
@@ -12,7 +12,7 @@ The game project specifies MSVC `PlatformToolset=v145` and x64 `LanguageStandard
 - Compatible wxWidgets MSVC x64 dependencies (for example from a vcpkg `installed/x64-windows` location), passed as `-WxRoot` in the release script or `/p:wxwin=...`.
 - Git submodules initialized, including `external/map-editor` and its `data/COMMON.fs`.
 - A legally owned original Spellcross CZ/EN game-data set to play. The source does not distribute original commercial archives.
-- For a **complete distributable package**, all 37 fallback MP4 files matching `spellcross-map-edit-main/data/movie_fallback/MANIFEST.tsv`; optional WinRAR and its `Default.SFX` for an installer.
+- Optional WinRAR and its `Default.SFX` for an installer.
 
 ## Developer build
 
@@ -31,10 +31,10 @@ The project sets its x64 output directory to `spellcross-map-edit-main/builds/x6
 ```powershell
 git submodule sync --recursive
 git submodule update --init --recursive
-.\packaging\Build-CombinedRelease.ps1 -Rebuild -WxRoot "$HOME\vcpkg\installed\x64-windows" -MovieSource "D:\OwnedSpellcrossFallbacks"
+.\packaging\Build-CombinedRelease.ps1 -Rebuild -WxRoot "$HOME\vcpkg\installed\x64-windows"
 ```
 
-The actual script parameters are `-SkipBuild`, `-Rebuild`, `-WxRoot`, `-OutputDirectory`, `-MovieSource`, `-NoZip`, `-NoSfx`, `-WinRARPath` and `-PruneOldBuilds`. Use `-NoSfx` to skip optional WinRAR; it does not waive required movie hash checks. The packager reads `source/app_version.h`, validates compiled FileVersion/ProductVersion (including with `-SkipBuild`), verifies SHA-256 for 37 MP4 files, bundles runtime DLL dependencies discovered using `dumpbin` and stages the two executables with their data/licenses. See [packaging/README.md](../packaging/README.md) for complete release, tagging and smoke-test instructions.
+The actual script parameters are `-SkipBuild`, `-Rebuild`, `-WxRoot`, `-OutputDirectory`, `-NoZip`, `-NoSfx`, `-WinRARPath` and `-PruneOldBuilds`. Use `-NoSfx` to skip optional WinRAR. The packager reads `source/app_version.h`, validates compiled FileVersion/ProductVersion (including with `-SkipBuild`), bundles runtime DLL dependencies discovered using `dumpbin` and stages the two executables with their data/licenses. See [packaging/README.md](../packaging/README.md) for complete release, tagging and smoke-test instructions.
 
 ## Runtime settings and paths
 
