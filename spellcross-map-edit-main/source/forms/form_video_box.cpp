@@ -255,7 +255,10 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
         spell_data->GetTextLanguage() == SpellLang::CZE;
     // These transcodes are Czech-only. Other editions never look for them:
     // their own SMK/DPK/DP2/CAN files must come from the selected retail archives.
-    const fs::path fallback_path = czechEdition
+    // Native-only experiment: do not even search for bundled MP4 files.
+    // Restore this switch to true when comparison with the transcodes is needed.
+    constexpr bool allowMp4Fallback = false;
+    const fs::path fallback_path = allowMp4Fallback && czechEdition
         ? FindBundledMovieFallback(spell_data, stem) : fs::path{};
 
     // The CZ CAN picture codec is the one format the restoration decoder does
