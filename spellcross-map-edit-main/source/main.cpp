@@ -6322,7 +6322,7 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
         return spellcross_ui_locale::Tr(key, fallback);
     };
     const int pad = FromDIP(9), gap = FromDIP(4);
-    const int width = (std::min)(FromDIP(300), size.x / 2);
+    const int width = (std::min)(FromDIP(285), size.x / 2);
     const int inner = width - 2 * pad;
     if (width < FromDIP(240)) return;
     const int x = size.x - width - pad, y = pad;
@@ -6338,11 +6338,15 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     const bool hasPreview = preview && preview->x_size > 0 && preview->y_size > 0;
     const int pw = hasPreview ? preview->x_size : 144;
     const int ph = hasPreview ? preview->y_size : 77;
-    // Match the original tactical HUD scale, not map zoom or arbitrary 2x enlargement.
-    const int drawW = spellcross_display::ToDevice(pw);
-    const int drawH = spellcross_display::ToDevice(ph);
-    if (drawW <= 0 || drawH <= 0 || drawW > inner) return;
-    int line = 0, headH = 0, metricH = 0, height = 0;
+    // Fill almost the entire inner width, retaining the original card aspect
+    // ratio and pixel-art scaling. On short windows, fit the card to the
+    // remaining height rather than allowing it to overlap the bottom HUD.
+    const int targetW = inner - 2 * FromDIP(2);
+    if (targetW <= 0) return;
+    const int targetH = (std::max)(1, static_cast<int>(
+        std::lround(static_cast<double>(targetW) * ph / pw)));
+    int drawW = targetW, drawH = targetH;
+    int line = 0, headH = 0, metricH = 0, height = 0, fixedH = 0;
     for (int pt = 12; pt >= 8; --pt)
     {
         font.SetPointSize(pt);
@@ -6350,11 +6354,22 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
         line = dc.GetCharHeight() + FromDIP(2);
         headH = line + gap;
         metricH = line * 2 + gap;
-        height = 2 * pad + 3 * headH + 2 * metricH +
-            18 * line + 9 * gap + FromDIP(7) + drawH;
+        fixedH = 2 * pad + 3 * headH + 2 * metricH +
+            18 * line + 9 * gap + FromDIP(7);
+        height = fixedH + drawH;
         if (height <= availableH) break;
     }
-    if (height > availableH) return;
+    if (height > availableH)
+    {
+        const int budget = availableH - fixedH;
+        if (budget < FromDIP(36)) return;
+        drawW = (std::min)(targetW, budget * pw / ph);
+        if (drawW <= 0) return;
+        drawH = (std::max)(1, static_cast<int>(
+            std::lround(static_cast<double>(drawW) * ph / pw)));
+        height = fixedH + drawH;
+        if (height > availableH) return;
+    }
 
     auto fill = [&](int xx, int yy, int w, int h, const wxColour& colour) {
         dc.SetPen(*wxTRANSPARENT_PEN);
@@ -6406,7 +6421,8 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     fill(x + width - FromDIP(9), y + height - FromDIP(4), FromDIP(7), FromDIP(2), bevel);
     int yy = y + pad;
     section(tr("tactical_info.title", "TACTICAL REPORT"), yy, green);
-    right("[I]", yy + gap / 2, light);
+    text("[I]", x + width - pad - FromDIP(6) - dc.GetTextExtent("[I]").x,
+        yy + gap / 2, inner - FromDIP(6), light);
     yy += headH + gap;
     const auto missionPath = std::filesystem::path(spell_map->GetTopPath());
     const wxString mission(missionPath.stem().wstring());
