@@ -2266,6 +2266,7 @@ void SpellMap::Close()
 	m_mission_end_req = MissionEndRequest();
 	m_mission_end_fired = false;
 	m_mission_losses = MissionLossStats();
+	m_tactical_round = 1;
 	m_commander_death_queue.clear();
 	m_commander_death_active = false;
     m_objective_notify_queue.clear();
@@ -9623,6 +9624,16 @@ void SpellMap::StartEnemyTurn()
 
 void SpellMap::EndEnemyTurn()
 {
+	// Count each accepted player turn once, when the enemy phase finishes.
+	if (enemy_turn_running)
+	{
+		if (m_tactical_round > 0 && m_tactical_round < 2147483647)
+			++m_tactical_round;
+		else if (m_tactical_round < 0 && m_tactical_round > -2147483647)
+			--m_tactical_round;
+		else if (m_tactical_round == 0)
+			m_tactical_round = -2;
+	}
     // Start the player phase with fresh enemy-defender opportunities.
     enhanced_reaction_attempts.Clear();
 	spellcross_diag::Log(spellcross_diag::Level::Info, "AI",
@@ -16230,6 +16241,7 @@ void SpellMap::SavedState::Clear()
 	next_enemy_ai_group_id = 1;
 	enemy_ai_groups_initialized = false;
 	mission_losses = MissionLossStats{};
+	tactical_round = 0;
 	sel_unit = NULL;
 	tiles.clear();
 	if (events)
@@ -16346,6 +16358,7 @@ int SpellMap::Saves::Save(SpellMap::SavedState* slot)
 	save->enemy_ai_groups_initialized = map->enemy_ai_groups_initialized;
 	// The statistics page must reflect the restored tactical timeline.
 	save->mission_losses = map->m_mission_losses;
+	save->tactical_round = map->m_tactical_round;
 
 	map->ReleaseMap();
 	map->ResumeUnitRanging(false);
@@ -16459,6 +16472,7 @@ int SpellMap::Saves::Load(SpellMap::SavedState* save)
 	map->next_enemy_ai_group_id = save->next_enemy_ai_group_id;
 	map->enemy_ai_groups_initialized = save->enemy_ai_groups_initialized;
 	map->m_mission_losses = save->mission_losses;
+	map->SetTacticalRound(save->tactical_round);
 	if (map->enemy_ai_groups_initialized)
 	{
 		map->PruneEnemyAIGroups();

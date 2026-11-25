@@ -701,7 +701,7 @@ public:
 	int ClearSounds();
 	~MapUnit();
 	int Render(Terrain* data,uint8_t* buffer,uint8_t* buf_end,int buf_x_pos,int buf_y_pos,int buf_x_size,uint8_t* filter,uint8_t* hud_filter,Sprite* sprt,int show_hud);
-	int RenderPreview(uint8_t* buffer,uint8_t* buf_end,int buf_x_size);
+	int RenderPreview(uint8_t* buffer,uint8_t* buf_end,int buf_x_size, bool draw_text = true);
 
 	int ResetAP();
 	int GetMaxAP();

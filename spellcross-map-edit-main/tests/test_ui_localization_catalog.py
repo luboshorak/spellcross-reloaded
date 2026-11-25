@@ -120,7 +120,19 @@ class LocalizationCatalogTests(unittest.TestCase):
             line for line in source.splitlines()
             if 'spellcross_ui_locale::Tr("menu.' in line
         ]
-        self.assertEqual(sum(r"\t" in line for line in menu_lines), 5)
+        shortcut_keys = {
+            "menu.load_custom_map", "menu.main", "menu.load_strategic",
+            "menu.save_game", "menu.load_game", "menu.confine_cursor",
+        }
+        actual_keys = {
+            line.split('Tr("', 1)[1].split('"', 1)[0]
+            for line in menu_lines if r"\t" in line
+        }
+        self.assertEqual(actual_keys, shortcut_keys)
+        self.assertTrue(any(
+            'Tr("menu.confine_cursor"' in line and r"\tCtrl+X" in line
+            for line in menu_lines
+        ))
         # Double-escaped C++ source would display a literal \t in wx menus.
         self.assertFalse(any(r"\\t" in line for line in menu_lines))
         for lang in ("en", "cs"):

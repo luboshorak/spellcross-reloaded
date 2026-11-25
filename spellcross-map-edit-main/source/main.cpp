@@ -63,6 +63,7 @@
 #include "main.h"
 #include "tactical_range_input.h"
 #include "campaign_company_identity.h"
+#include "unit_health_display.h"
 #include "other.h"
 #include "simpleini.h"
 #include "spellcross.h"
@@ -108,6 +109,7 @@ namespace
         std::vector<std::uint64_t> sent_unit_indices;
         std::vector<std::uint32_t> sent_unit_uids;
         SpellMap::MissionLossStats mission_losses;
+        std::int32_t tactical_round = 0;
         bool has_camera = false;
         std::int32_t camera_x = 0;
         std::int32_t camera_y = 0;
@@ -166,6 +168,8 @@ namespace
     static constexpr char kTacticalContextMarker[] = "\n--SPELLCROSS-STRATEGIC-CONTEXT-V1--\n";
     static constexpr std::uint32_t kTacticalContextMagic = 0x31584353u; // SCX1
     static constexpr std::uint32_t kTacticalContextVersion = 5u;
+    // Optional, tagged tail to the v5 context. Earlier readers stop at camera_y.
+    static constexpr std::uint32_t kTacticalRoundMarker = 0x31444E52u; // RND1
 
     template <typename T>
     static bool WriteCtxPod(std::ostream& os, const T& v)
@@ -234,6 +238,7 @@ namespace
         const std::int32_t attackId = static_cast<std::int32_t>(ctx.counter_attack_id);
         if (!WriteCtxPod(os, attackId)) return false;
         if (!WriteCtxPod(os, ctx.camera_x) || !WriteCtxPod(os, ctx.camera_y)) return false;
+        if (!WriteCtxPod(os, kTacticalRoundMarker) || !WriteCtxPod(os, ctx.tactical_round)) return false;
         os.close();
         return !os.fail();
     }
@@ -297,6 +302,13 @@ namespace
         {
             if (!ReadCtxPod(is, ctx.camera_x) || !ReadCtxPod(is, ctx.camera_y)) return false;
             ctx.has_camera = true;
+            // Old saves end here. Unknown rounds remain unknown instead of
+            // reporting a fictitious round 1 after loading mid-battle.
+            std::uint32_t roundMarker = 0;
+            std::int32_t round = 0;
+            if (ReadCtxPod(is, roundMarker) && roundMarker == kTacticalRoundMarker &&
+                ReadCtxPod(is, round) && round != 0 && round >= -2147483647)
+                ctx.tactical_round = round;
         }
         ctx.present = true;
         return true;
@@ -2795,6 +2807,10 @@ bool MyApp::OnInit()
         }
     }
 
+    // Restore the shared mode before creating any game window. Existing
+    // configs without this key start fullscreen just like a fresh install.
+    spellcross_window::Fullscreen() = ini.GetBoolValue("STATE", "fullscreen", true);
+
     // The game owns its pixel scale (100/125%) independently of Windows DPI.
     // Keep the PerMonitorV2 manifest enabled and restore all display options
     // before creating the map, main menu or strategic windows.
@@ -3002,6 +3018,7 @@ int MyApp::OnExit()
 
     // Persist display settings outside campaign saves: same visual preferences
     // apply on every tactical map and strategic chapter.
+    ini.SetBoolValue("STATE", "fullscreen", spellcross_window::Fullscreen());
     const auto& screen = spellcross_display::Current();
     ini.SetLongValue("STATE", "display_scale", screen.scale_percent);
     ini.SetBoolValue("STATE", "display_smoothing", screen.smooth_scaling);
@@ -3084,6 +3101,10 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     menuGame->Append(ID_mmResetViewMap, spellcross_ui_locale::Tr("menu.reset_view", "Reset view map"));
     menuGame->Append(ID_mmUnitViewMode, spellcross_ui_locale::Tr("menu.range", "View unit move/attack range (Space)"));
 
+    menuGame->AppendCheckItem(ID_TacticalInfoPanel,
+        spellcross_ui_locale::Tr("menu.tactical_info", "Tactical information (I)"));
+    menuGame->Check(ID_TacticalInfoPanel, m_tacticalInfoVisible);
+
     // Help menu
     wxMenu* menuHelp = spellcross_help::BuildMenu();
 
@@ -3115,7 +3136,7 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
 		spellcross_ui_locale::Tr("menu.box_selection_help", "Enable temporary unit groups selected by dragging the left mouse button"));
 	menuOptions->Check(ID_OptionsBoxSelection, spell_map && spell_map->IsBoxSelectionEnabled());
     menuOptions->AppendCheckItem(ID_OptionsConfineCursor,
-        spellcross_ui_locale::Tr("menu.confine_cursor", "Keep cursor inside game window"),
+        spellcross_ui_locale::Tr("menu.confine_cursor", "Keep cursor inside game window") + "\tCtrl+X",
         spellcross_ui_locale::Tr("menu.confine_cursor_help", "Restrict the pointer to the active tactical game window; Alt+Tab releases it"));
     menuOptions->Check(ID_OptionsConfineCursor, m_confineTacticalCursor);
     menuOptions->AppendCheckItem(ID_OptionsAutoDeploy,
@@ -3221,10 +3242,15 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     
     Bind(wxEVT_MENU,&MainFrame::OnLoadCustomMap,this,ID_LoadCustomMap);
     Bind(wxEVT_MENU,&MainFrame::OnOpenMainMenu,this,ID_MainMenu);
-    Bind(wxEVT_MENU, [this](wxCommandEvent& event) {
-        m_confineTacticalCursor = event.IsChecked();
+    Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+        // Both a menu click and an accelerator toggle the same source of truth.
+        m_confineTacticalCursor = !m_confineTacticalCursor;
+        if (auto* bar = spellcross_menu::Model(this))
+            bar->Check(ID_OptionsConfineCursor, m_confineTacticalCursor);
         if (!m_confineTacticalCursor)
             ReleaseTacticalCursorClip();
+        else
+            UpdateTacticalCursorClip();
     }, ID_OptionsConfineCursor);
 
 // Load a remake strategic JSON save or an original BIG_MAP.SAV.
@@ -3260,6 +3286,7 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
     Bind(wxEVT_MENU,&MainFrame::OnOpenMapEditorFromBattle,this,ID_mmOpenMapEditor);
     Bind(wxEVT_MENU,&MainFrame::OnResetUnitView,this,ID_mmResetViewMap);
     Bind(wxEVT_MENU,&MainFrame::OnSelectUnitView,this,ID_mmUnitViewMode);
+    Bind(wxEVT_MENU, [this](wxCommandEvent&) { ToggleTacticalInfoPanel(); }, ID_TacticalInfoPanel);
 
     Bind(wxEVT_MENU,&MainFrame::OnViewLayer,this,ID_HighlighObj);
 
@@ -3320,6 +3347,39 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
         {
             if (!event.IsAutoRepeat())
                 OnMapConsoleCommand();
+            return;
+        }
+
+        if (event.ControlDown() && !event.AltDown() && !event.ShiftDown() &&
+            (consoleKey == 'X' || consoleKey == 'x' || consoleKey == 24) &&
+            spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+            !inSubForm() && !m_mission_result_visible && !m_mission_end_flow)
+        {
+            if (!event.IsAutoRepeat())
+            {
+                wxCommandEvent toggle(wxEVT_MENU, ID_OptionsConfineCursor);
+                ProcessWindowEvent(toggle);
+            }
+            return;
+        }
+
+        // The new overlay is display-only. Shift+I preserves the retail
+        // graphic markers above units; the original HUD icon still works.
+        if (spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+            !inSubForm() && !m_mission_result_visible && !m_mission_end_flow &&
+            !event.ControlDown() && !event.AltDown() &&
+            (consoleKey == 'I' || consoleKey == 'i'))
+        {
+            if (!event.IsAutoRepeat())
+            {
+                if (event.ShiftDown())
+                {
+                    spell_map->OnHUDswitchUnitHUD();
+                    if (canvas) canvas->Refresh(false);
+                }
+                else
+                    ToggleTacticalInfoPanel();
+            }
             return;
         }
 
@@ -4255,6 +4315,7 @@ bool MainFrame::SaveTacticalGameWithCampaignContext(const std::wstring& path)
     // GetMissionLossStats() after load; storing that transient corpse here as
     // well would count it twice.
     ctx.mission_losses = spell_map->GetRecordedMissionLossStats();
+    ctx.tactical_round = spell_map->GetTacticalRound();
     const auto [cameraX, cameraY] = spell_map->scroller.GetScroll();
     ctx.camera_x = cameraX;
     ctx.camera_y = cameraY;
@@ -4297,6 +4358,7 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
         return false;
     if (hasEmbeddedContext && ctx.present)
         spell_map->SetMissionLossStats(ctx.mission_losses);
+    spell_map->SetTacticalRound(hasEmbeddedContext && ctx.present ? ctx.tactical_round : 0);
 
     auto destroyOldStrategic = [this]()
     {
@@ -5734,7 +5796,12 @@ void MainFrame::OnTimer(wxTimerEvent& event)
 
     try
     {
-        if (spell_map->Tick())
+        const bool enemyPhaseBefore = spell_map->IsEnemyTurnRunning();
+        const int roundBefore = spell_map->GetTacticalRound();
+        const bool changed = spell_map->Tick();
+        if (changed || (m_tacticalInfoVisible &&
+            (enemyPhaseBefore != spell_map->IsEnemyTurnRunning() ||
+             roundBefore != spell_map->GetTacticalRound())))
             canvas->Refresh();
     }
     catch (const std::exception& ex)
@@ -6226,8 +6293,501 @@ wxSize MainFrame::TacticalMapSize(const wxSize& size) const
         spellcross_tactical::MapExtent(spellcross_display::LogicalExtent(size.y), percent));
 }
 
+void MainFrame::ToggleTacticalInfoPanel()
+{
+    if (spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+        !inSubForm() && !m_mission_end_flow && !m_mission_result_visible)
+    {
+        m_tacticalInfoVisible = !m_tacticalInfoVisible;
+        m_tacticalInfoScrollOffset = 0;
+    }
+    // The custom menu owns the model; the frame has no native menu bar.
+    if (auto* menu = spellcross_menu::Model(this))
+        menu->Check(ID_TacticalInfoPanel, m_tacticalInfoVisible);
+    if (canvas) canvas->Refresh(false);
+}
+
+// Draw on the existing canvas, not a child window. No focus, mouse capture,
+// new game state, or gameplay commands are introduced by this overlay.
+bool MainFrame::CanHealTacticalInfoUnit(MapUnit* u)
+{
+    return spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+        !inSubForm() && !m_deployment_active && !m_mission_end_flow &&
+        !m_mission_result_visible && !m_inspectUnit && !spell_map->IsGroupMode() &&
+        !spell_map->IsActiveGroupMoving() &&
+        std::string(spell_map->GetTacticalInputBlockReason()) == "none" &&
+        u && u == spell_map->GetSelectedUnit() && u->unit && u->unit->bonuses &&
+        !u->is_enemy && !u->isDead() && !u->hide && u->isActive() &&
+        !u->panic_turns && !u->paralyze_turns && !u->freeze_turns &&
+        !u->isMoving() && !u->isAttacker() &&
+        u->GetMaxAP() > 0 && u->HasMaxAP() && u->HasWounded();
+}
+
+void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
+{
+    const wxSize size = canvas->GetClientSize();
+    const auto tr = [](const char* key, const char* fallback) {
+        return spellcross_ui_locale::Tr(key, fallback);
+    };
+    const int pad = FromDIP(9), gap = FromDIP(3);
+    const int width = (std::min)(FromDIP(285), size.x / 2);
+    const int inner = width - 2 * pad;
+    if (width < FromDIP(240)) return;
+    const int x = size.x - width - pad, y = pad;
+    // Use the actual upper edge of the original HUD below the report.
+    int hudTop = size.y;
+    for (int px = spellcross_display::ToLogical(x);
+         px <= spellcross_display::ToLogical(x + width - 1); ++px)
+    {
+        const int top = spellcross_display::ToDevice(spell_map->GetHUDtop(px));
+        if (top > 0) hudTop = (std::min)(hudTop, top);
+    }
+    const int availableH = hudTop - y - pad;
+    const wxFont font = GetToolBar() && GetToolBar()->GetFont().IsOk() ?
+        GetToolBar()->GetFont() : spellcross_menu::MenuFont();
+    dc.SetFont(font);
+    dc.SetBackgroundMode(wxTRANSPARENT);
+    const wxColour green(94, 238, 43), light(227, 243, 205);
+    const wxColour label(174, 205, 145), amber(255, 211, 76);
+    const wxColour hostile(255, 122, 78), blue(100, 205, 244);
+    const wxColour shell(22, 29, 17), inset(8, 16, 7);
+    const wxColour bevel(111, 116, 83), shadow(45, 50, 31);
+
+    auto* preview = spell_data ? spell_data->gres.wm_map_units_list : nullptr;
+    const bool hasPreview = preview && preview->x_size > 0 && preview->y_size > 0;
+    const int pw = hasPreview ? preview->x_size : 144;
+    const int ph = hasPreview ? preview->y_size : 77;
+    // Never reduce the menu font or the card to squeeze more information
+    // into a short window. Scroll the content instead, keeping the title fixed.
+    const int drawW = inner - 2 * FromDIP(2);
+    if (drawW <= 0) return;
+    const int drawH = (std::max)(1, static_cast<int>(
+        std::lround(static_cast<double>(drawW) * ph / pw)));
+    const int line = dc.GetCharHeight() + FromDIP(1);
+    const int headH = line + gap;
+    const int metricH = line * 2 + gap;
+    const int contentHeight = 2 * pad + 3 * headH + 2 * metricH +
+        18 * line + 9 * gap + FromDIP(7) + drawH;
+    const int height = (std::min)(contentHeight, availableH);
+    if (height < 2 * pad + headH + gap + 3 * line) return;
+    m_tacticalInfoScrollRect = wxRect(x, y, width, height);
+    m_tacticalInfoScrollMax = (std::max)(0, contentHeight - height);
+    m_tacticalInfoScrollOffset = std::clamp(m_tacticalInfoScrollOffset, 0, m_tacticalInfoScrollMax);
+    const int contentTop = y + pad + headH + gap;
+    const int contentBottom = y + height - pad;
+    const wxRect contentClip(x + pad, contentTop, inner, contentBottom - contentTop);
+
+    auto fill = [&](int xx, int yy, int w, int h, const wxColour& colour) {
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        dc.SetBrush(wxBrush(colour));
+        dc.DrawRectangle(xx, yy, w, h);
+    };
+    auto stroke = [&](int xx, int yy, int w, int h, const wxColour& colour) {
+        dc.SetPen(wxPen(colour));
+        dc.SetBrush(*wxTRANSPARENT_BRUSH);
+        dc.DrawRectangle(xx, yy, w, h);
+    };
+    auto text = [&](wxString value, int xx, int yy, int maxW, const wxColour& colour) {
+        if (maxW <= 0) return;
+        if (dc.GetTextExtent(value).x > maxW)
+        {
+            while (!value.empty() && dc.GetTextExtent(value + "...").x > maxW)
+                value.RemoveLast();
+            value += "...";
+        }
+        dc.SetTextForeground(colour);
+        dc.DrawText(value, xx, yy);
+    };
+    auto right = [&](const wxString& value, int yy, const wxColour& colour) {
+        text(value, x + width - pad - dc.GetTextExtent(value).x, yy, inner, colour);
+    };
+    auto pair = [&](const wxString& name, const wxString& value, int yy,
+                    const wxColour& colour) {
+        text(name, x + pad, yy, inner - dc.GetTextExtent(value).x - gap, label);
+        right(value, yy, colour);
+    };
+    auto section = [&](const wxString& name, int yy, const wxColour& colour) {
+        fill(x + pad, yy, inner, headH, wxColour(15, 39, 9));
+        // Subtle instrument grid, echoing the original unit card's green raster.
+        dc.SetPen(wxPen(wxColour(29, 54, 16)));
+        for (int xx = x + pad + FromDIP(12); xx < x + pad + inner; xx += FromDIP(12))
+            dc.DrawLine(xx, yy, xx, yy + headH);
+        stroke(x + pad, yy, inner, headH, wxColour(69, 99, 43));
+        text(name, x + pad + gap, yy + gap / 2, inner - 2 * gap, colour);
+    };
+
+    fill(x, y, width, height, shell);
+    stroke(x, y, width, height, bevel);
+    stroke(x + 2, y + 2, width - 4, height - 4, shadow);
+    stroke(x + 4, y + 4, width - 8, height - 8, wxColour(76, 87, 53));
+    // Recessed metal-style corners, all part of the single fixed canvas panel.
+    fill(x + 2, y + 2, FromDIP(7), FromDIP(2), bevel);
+    fill(x + width - FromDIP(9), y + 2, FromDIP(7), FromDIP(2), bevel);
+    fill(x + 2, y + height - FromDIP(4), FromDIP(7), FromDIP(2), bevel);
+    fill(x + width - FromDIP(9), y + height - FromDIP(4), FromDIP(7), FromDIP(2), bevel);
+    int yy = y + pad;
+    section(tr("tactical_info.title", "TACTICAL REPORT"), yy, green);
+    text("[I]", x + width - pad - FromDIP(6) - dc.GetTextExtent("[I]").x,
+        yy + gap / 2, inner - FromDIP(6), light);
+    yy += headH + gap;
+    dc.SetClippingRegion(contentClip);
+    yy -= m_tacticalInfoScrollOffset;
+    const auto missionPath = std::filesystem::path(spell_map->GetTopPath());
+    const wxString mission(missionPath.stem().wstring());
+    wxString level = "--";
+    if (m_strategicLevel && !m_strategicLevel->m_level.source_path.empty())
+        level = wxString::FromUTF8(std::filesystem::path(
+            m_strategicLevel->m_level.source_path).stem().string().c_str());
+    pair(tr("tactical_info.level", "Level"), level, yy, light);
+    yy += line;
+    pair(tr("tactical_info.mission", "Mission"), mission.empty() ? wxString("--") : mission, yy, light);
+    yy += line;
+    int objectives = 0, objectivesDone = 0;
+    SpellMapEventRec* nextObjective = nullptr;
+    if (spell_map->events)
+        for (auto* e : spell_map->events->GetEvents())
+        {
+            if (!e || !e->is_objective) continue;
+            ++objectives;
+            if (e->isDone()) ++objectivesDone;
+            else if (!nextObjective) nextObjective = e;
+        }
+    pair(tr("tactical_info.objectives", "Objectives"),
+        wxString::Format("%d / %d", objectivesDone, objectives), yy, green);
+    yy += line;
+    wxString objective = tr("tactical_info.no_objectives", "No listed objectives");
+    if (nextObjective)
+    {
+        objective = wxString(nextObjective->label);
+        objective.Replace("\n", " ");
+        objective.Replace("\r", " ");
+        if (objective.empty() || objective == "x" || objective == "-")
+        {
+            switch (nextObjective->evt_type)
+            {
+            case SpellMapEventRec::EVT_DESTROY_ALL: objective = tr("tactical_info.obj_destroy_all", "Destroy all enemies"); break;
+            case SpellMapEventRec::EVT_DESTROY_UNIT: objective = tr("tactical_info.obj_destroy_unit", "Destroy target unit"); break;
+            case SpellMapEventRec::EVT_DESTROY_OBJ: objective = tr("tactical_info.obj_destroy_object", "Destroy target object"); break;
+            case SpellMapEventRec::EVT_TRANSPORT_UNIT: objective = tr("tactical_info.obj_transport", "Transport target unit"); break;
+            case SpellMapEventRec::EVT_SAVE_UNIT: objective = tr("tactical_info.obj_save", "Rescue target unit"); break;
+            case SpellMapEventRec::EVT_SEE_PLACE: objective = tr("tactical_info.obj_reach", "Discover target location"); break;
+            default: objective = tr("tactical_info.obj_pending", "Objective pending"); break;
+            }
+        }
+    }
+    else if (objectives > 0)
+        objective = tr("tactical_info.objectives_done", "All objectives complete");
+    text(objective, x + pad, yy, inner, nextObjective ? amber : label);
+    yy += line;
+    const bool enemyPhase = spell_map->IsEnemyTurnRunning();
+    const wxString phase = m_deployment_active ? tr("tactical_info.deployment", "Deployment") :
+        enemyPhase ? tr("tactical_info.enemy_phase", "Other Side turn") :
+        tr("tactical_info.own_phase", "Alliance turn");
+    fill(x + pad, yy + line / 4, FromDIP(6), FromDIP(6), enemyPhase ? hostile : green);
+    text(phase, x + pad + FromDIP(12), yy, inner - FromDIP(12), enemyPhase ? hostile : green);
+    yy += line + gap;
+
+    const int round = spell_map->GetTacticalRound();
+    const int shownRound = round < 0 ? -round : round;
+    const int completed = (std::max)(0, shownRound - 1) + (enemyPhase ? 1 : 0);
+    const auto losses = spell_map->GetMissionLossStats();
+    const int cellW = (inner - gap) / 2;
+    auto metric = [&](int xx, int top, const wxString& name, int value, const wxColour& colour) {
+        fill(xx, top, cellW, metricH, inset);
+        stroke(xx, top, cellW, metricH, shadow);
+        text(name, xx + gap, top + gap / 2, cellW - 2 * gap, label);
+        wxFont number = font;
+        number.SetWeight(wxFONTWEIGHT_BOLD);
+        dc.SetFont(number);
+        text(wxString::Format("%d", value), xx + gap, top + line,
+            cellW - 2 * gap, colour);
+        dc.SetFont(font);
+    };
+    metric(x + pad, yy, round < 0 ? tr("tactical_info.relative_round", "Round since load") :
+        tr("tactical_info.round", "Round"), shownRound, amber);
+    metric(x + pad + cellW + gap, yy, round < 0 ? tr("tactical_info.relative_turns", "Turns since load") :
+        tr("tactical_info.completed_turns", "Completed turns"), completed, light);
+    yy += metricH + gap;
+    metric(x + pad, yy, tr("tactical_info.kills_short", "Enemy losses"),
+        losses.enemy_light + losses.enemy_heavy + losses.enemy_air, green);
+    metric(x + pad + cellW + gap, yy, tr("tactical_info.losses_short", "Own losses"),
+        losses.alliance_light + losses.alliance_heavy + losses.alliance_air, hostile);
+    yy += metricH + gap;
+
+    auto ownValid = [](MapUnit* u) {
+        return u && u->unit && !u->is_enemy && !u->isDead() &&
+            u->isActive() && !u->hide && u->coor.IsSelected();
+    };
+    const bool groupMode = spell_map->IsGroupMode();
+    int own = 0, ready = 0, fireReady = 0;
+    int groupCount = 0, groupReady = 0, groupFire = 0, groupLight = 0, groupHeavy = 0, groupAir = 0;
+    MapUnit* fallback = nullptr;
+    MapUnit* groupFallback = nullptr;
+    for (auto* u : spell_map->units)
+    {
+        if (!ownValid(u)) continue;
+        if (!fallback) fallback = u;
+        ++own;
+        const bool member = groupMode && spell_map->IsUnitInActiveGroup(u);
+        if (member)
+        {
+            ++groupCount;
+            if (!groupFallback) groupFallback = u;
+            if (u->unit->isAir()) ++groupAir;
+            else if (u->unit->isArmored()) ++groupHeavy;
+            else ++groupLight;
+        }
+        if (u->GetAP() > 0 && !u->panic_turns && !u->paralyze_turns && !u->freeze_turns)
+        {
+            ++ready;
+            if (member) ++groupReady;
+            if (u->unit->bonuses && u->GetFireCount() > 0)
+            {
+                ++fireReady;
+                if (member) ++groupFire;
+            }
+        }
+    }
+    if (groupMode)
+    {
+        const wxString groupName = spell_map->IsBoxGroupMode() ?
+            tr("tactical_info.group_selection", "Selected group") :
+            tr("tactical_info.group", "Group") + wxString::Format(" %d", spell_map->GetActiveGroup());
+        pair(groupName, wxString::Format("%d", groupCount), yy, amber);
+        yy += line;
+        pair(tr("tactical_info.group_types", "Light / heavy / air"),
+            wxString::Format("%d / %d / %d", groupLight, groupHeavy, groupAir), yy, light);
+        yy += line;
+        pair(tr("tactical_info.group_ready", "Ready / can fire"),
+            wxString::Format("%d / %d", groupReady, groupFire), yy, green);
+        yy += line;
+        own = groupCount;
+        ready = groupReady;
+        fireReady = groupFire;
+    }
+    else
+    {
+    pair(tr("tactical_info.friendly", "Active companies"), wxString::Format("%d", own), yy, light);
+    yy += line;
+    pair(tr("tactical_info.ready", "Companies with AP"),
+        wxString::Format("%d / %d", ready, own), yy, green);
+    yy += line;
+    pair(tr("tactical_info.fire_ready", "Can fire"),
+        wxString::Format("%d / %d", fireReady, own), yy, blue);
+    yy += line;
+    }
+    fill(x + pad, yy, inner, FromDIP(7), inset);
+    if (own > 0 && ready > 0)
+        fill(x + pad, yy, inner * ready / own, FromDIP(7), green);
+    if (own > 0 && fireReady > 0)
+        fill(x + pad, yy + FromDIP(4), inner * fireReady / own, FromDIP(3), blue);
+    yy += FromDIP(7) + gap;
+
+    // Hover overrides the selected company only while its tile is actually
+    // visible. Never cache MapUnit pointers across paints or save/map loads.
+    const wxPoint pointer = canvas->ScreenToClient(wxGetMousePosition());
+    const bool overMap = !m_deployment_active && !m_boxSelecting &&
+        !wxRect(x, y, width, height).Contains(pointer) &&
+        canvas->GetClientRect().Contains(pointer) &&
+        spellcross_display::ToLogical(pointer.y) <
+            spell_map->GetHUDtop(spellcross_display::ToLogical(pointer.x));
+    MapXY tile;
+    int tileIndex = -1;
+    bool visible = false;
+    if (overMap)
+    {
+        tile = spell_map->GetSelection();
+        tileIndex = spell_map->ConvXY(tile);
+        if (tileIndex >= 0 && spell_map->unit_view)
+        {
+            auto* view = spell_map->unit_view;
+            view->ResultLock(true);
+            visible = static_cast<size_t>(tileIndex) < view->view.size() &&
+                view->view[tileIndex] == 2;
+            view->ResultLock(false);
+        }
+    }
+    MapUnit* hovered = visible ? spell_map->GetCursorUnit() : nullptr;
+    if (hovered && (!hovered->unit || hovered->hide || hovered->isDead() ||
+        (hovered->is_enemy && hovered->is_visible != 2)))
+        hovered = nullptr;
+    MapUnit* selected = spell_map->GetSelectedUnit();
+    if (!ownValid(selected) || (groupMode && !spell_map->IsUnitInActiveGroup(selected)))
+        selected = groupMode ? groupFallback : fallback;
+    MapUnit* u = hovered ? hovered : selected;
+    const wxColour side = u && u->is_enemy ? hostile : green;
+    section(hovered && hovered != selected ?
+        (hovered->is_enemy ? tr("tactical_info.contact_enemy", "ENEMY CONTACT") :
+         tr("tactical_info.contact_ally", "ALLIED CONTACT")) :
+        tr("tactical_info.selected", "SELECTED COMPANY"), yy, side);
+    yy += headH + gap;
+    const int cardX = x + (width - drawW) / 2;
+    fill(cardX, yy, drawW, drawH, inset);
+    stroke(cardX, yy, drawW, drawH, bevel);
+    if (u && hasPreview && spell_data->font && u->unit->icon_glyph &&
+        u->unit->bonuses && u->unit->cnt > 0 && u->GetMaxAP() > 0)
+    {
+        std::vector<uint8_t> indexed(static_cast<size_t>(pw) * ph, 0);
+        u->RenderPreview(indexed.data(), indexed.data() + indexed.size(), pw, false);
+        wxImage image(pw, ph, false);
+        if (image.IsOk())
+        {
+            unsigned char* rgb = image.GetData();
+            for (size_t i = 0; i < indexed.size(); ++i)
+            {
+                const auto& c = spell_map->pal[indexed[i]];
+                rgb[i * 3] = c[0]; rgb[i * 3 + 1] = c[1]; rgb[i * 3 + 2] = c[2];
+            }
+            dc.DrawBitmap(wxBitmap(image.Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST)),
+                cardX, yy, false);
+
+            // The original artwork is scaled, but every glyph is drawn at
+            // the exact menu font size, regardless of card or viewport size.
+            const auto sx = [&](int v) { return cardX + static_cast<int>(
+                std::lround(static_cast<double>(v) * drawW / pw)); };
+            const auto sy = [&](int v) { return yy + static_cast<int>(
+                std::lround(static_cast<double>(v) * drawH / ph)); };
+            auto cardText = [&](wxString value, int left, int top, int right,
+                                int bottom, const wxColour& colour, bool centered) {
+                const int xx = sx(left), ty = sy(top);
+                const int w = sx(right) - xx, h = sy(bottom) - ty;
+                if (w <= 0 || h <= 0) return;
+                dc.SetFont(font);
+                // Only a long company name may be abbreviated; never
+                // truncate numeric values or shrink their glyphs.
+                if (centered && dc.GetTextExtent(value).x > w)
+                {
+                    while (!value.empty() && dc.GetTextExtent(value + "...").x > w)
+                        value.RemoveLast();
+                    value += "...";
+                }
+                const wxSize extent = dc.GetTextExtent(value);
+                const int tx = centered ? xx + (w - extent.x) / 2 : xx;
+                const int textY = ty + (h - extent.y) / 2;
+                dc.SetTextForeground(wxColour(0, 0, 0));
+                dc.DrawText(value, tx + 1, textY + 1);
+                dc.SetTextForeground(colour);
+                dc.DrawText(value, tx, textY);
+            };
+            const wxString name(char2wstringCP895(
+                u->name.empty() ? u->unit->name : u->name.c_str()));
+            cardText(name, 4, 3, pw - 4, 19, u->is_enemy ? hostile : green, true);
+            cardText(wxString::Format("%02.0f", u->morale), 6, 49, 28, 65, amber, false);
+            cardText(wxString::Format("%02d", u->GetAP()), 30, 49, 52, 65, blue, false);
+            cardText(wxString::Format("%02d", u->wounded), 60, 22, 82, 36, amber, false);
+            cardText(wxString::Format("%02d", u->man), 60, 36, 82, 50,
+                u->is_enemy ? hostile : green, false);
+            cardText(wxString::Format("%02d", u->unit->cnt), 60, 50, 82, 65, light, false);
+        }
+    }
+    else
+        text(u ? wxString(char2wstringCP895(u->name.empty() ? u->unit->name : u->name.c_str())) :
+            tr("tactical_info.no_company", "No company selected"),
+            cardX + gap, yy + gap, drawW - 2 * gap, label);
+    yy += drawH + gap;
+
+    if (u)
+    {
+        const wxString type = u->unit->isAir() ? tr("tactical_info.air", "Air") :
+            u->unit->isArmored() ? tr("tactical_info.heavy", "Heavy") :
+            tr("tactical_info.light", "Light");
+        pair(type + " / " + tr("tactical_info.unit_level", "Rank"),
+            wxString::Format("%d", u->experience_level), yy, light);
+        const auto hp = spellcross_health::GetBars(u->unit->cnt, u->man, u->wounded,
+            u->damage_remainder, 100);
+        wxString health = wxString::Format("%d%%", hp.active);
+        if (!u->unit->isSingleMan())
+            health += wxString::Format(" (%d/%d)", u->man, u->unit->cnt);
+        pair(tr("tactical_info.health", "Health"), health, yy + line, hp.active < 50 ? hostile : green);
+        pair(tr("tactical_info.morale", "Morale") + " / " + tr("tactical_info.dig", "Dig-in"),
+            wxString::Format("%d%% / %d", static_cast<int>(u->morale), u->dig_level), yy + 2 * line, light);
+        const bool validStats = u->unit->bonuses != nullptr;
+        const int stepAP = u->GetWalkAP();
+        const int maxSteps = validStats && stepAP > 0 ? (std::max)(0, u->GetMaxAP()) / stepAP : 0;
+        const int nowSteps = stepAP > 0 && !u->panic_turns && !u->paralyze_turns && !u->freeze_turns ?
+            (std::max)(0, u->GetAP()) / stepAP : 0;
+        pair(tr("tactical_info.move_steps", "Move (base steps)"),
+            wxString::Format("%d / %d", nowSteps, maxSteps), yy + 3 * line, blue);
+        pair(tr("tactical_info.attack_types", "Attack L / H / A"),
+            validStats ? wxString::Format("%d / %d / %d",
+                u->GetAttack(MapUnit::TARGET_TYPE::LIGHT),
+                u->GetAttack(MapUnit::TARGET_TYPE::ARMOR),
+                u->GetAttack(MapUnit::TARGET_TYPE::AIR)) : wxString("--"), yy + 4 * line, amber);
+        pair(tr("tactical_info.range", "Weapon range"),
+            wxString::Format("%d", u->GetFireRange()), yy + 5 * line, light);
+        wxString status;
+        auto append = [&](const wxString& v) { if (!status.empty()) status += " / "; status += v; };
+        if (u->is_commander) append(tr("tactical_info.commander", "Commander"));
+        if (!u->is_enemy && (u->spec_type == MapUnitType::VoluntUnit ||
+            u->spec_type == MapUnitType::MissionUnit))
+            append(tr("tactical_info.temporary", "Temporary"));
+        if (u->panic_turns) append(tr("tactical_info.panic", "Panic"));
+        if (u->paralyze_turns) append(tr("tactical_info.paralyzed", "Paralyzed"));
+        if (u->freeze_turns) append(tr("tactical_info.frozen", "Frozen"));
+        if (u->HasWounded()) append(tr("tactical_info.wounded", "Wounded"));
+        text(status.empty() ? tr("tactical_info.normal", "No special status") : status,
+            x + pad, yy + 6 * line, inner, status.empty() ? label : amber);
+        // The panel never heals a hovered enemy or a fallback company.
+        if (!u->is_enemy && u->HasWounded())
+        {
+            const bool canHeal = CanHealTacticalInfoUnit(u);
+            const int buttonY = yy + 7 * line;
+            m_tacticalInfoHealRect = wxRect(x + pad, buttonY, inner, line);
+            m_tacticalInfoHealRect.Intersect(contentClip);
+            m_tacticalInfoHealUnitId = canHeal && !m_tacticalInfoHealRect.IsEmpty() ? u->id : -1;
+            fill(x + pad, buttonY, inner, line, canHeal ? wxColour(25, 61, 12) : inset);
+            stroke(x + pad, buttonY, inner, line, canHeal ? green : shadow);
+            const wxString caption = canHeal ? tr("tactical_info.heal", "Heal / repair (all AP)") :
+                tr("tactical_info.heal_unavailable", "Heal: select unit with full AP");
+            text(caption, x + pad + gap, buttonY, inner - 2 * gap, canHeal ? green : label);
+        }
+    }
+    else
+        text(tr("tactical_info.hint", "Point at a visible company"),
+            x + pad, yy, inner, label);
+    yy += 8 * line + gap;
+
+    section(tr("tactical_info.terrain", "TERRAIN"), yy, green);
+    yy += headH + gap;
+    if (visible && tileIndex >= 0 && static_cast<size_t>(tileIndex) < spell_map->tiles.size())
+    {
+        const auto& ground = spell_map->tiles[tileIndex];
+        const int flags = ground.L1 ? ground.L1->GetFlags() : 0;
+        const wxString terrain = ground.flags == 0x90 ? tr("tactical_info.forest", "Forest") :
+            ground.flags == 0x70 ? tr("tactical_info.bridge", "Bridge") :
+            ground.flags != 0 ? tr("tactical_info.obstacle", "Obstacle") :
+            (flags & Sprite::IS_DIRT_ROAD) ? tr("tactical_info.dirt_road", "Dirt road") :
+            (flags & Sprite::IS_ROAD) ? tr("tactical_info.road", "Road") :
+            tr("tactical_info.open_ground", "Open ground");
+        text(terrain, x + pad, yy, inner, light);
+        right(wxString::Format("%d / %d", tile.x, tile.y), yy, label);
+        pair(tr("tactical_info.elevation", "Elevation"),
+            wxString::Format("%d", ground.elev), yy + line, light);
+    }
+    else
+        text(tr("tactical_info.no_terrain", "No visible terrain"),
+            x + pad, yy, inner, label);
+    dc.DestroyClippingRegion();
+    if (m_tacticalInfoScrollMax > 0)
+    {
+        const int trackW = FromDIP(3);
+        const int trackX = x + width - FromDIP(6);
+        const int trackH = contentClip.height;
+        const int thumbH = (std::min)(trackH, (std::max)(FromDIP(18),
+            trackH * trackH / (trackH + m_tacticalInfoScrollMax)));
+        const int thumbY = contentTop + (trackH - thumbH) *
+            m_tacticalInfoScrollOffset / m_tacticalInfoScrollMax;
+        fill(trackX, contentTop, trackW, trackH, inset);
+        fill(trackX, thumbY, trackW, thumbH, green);
+    }
+}
+
 void MainFrame::OnPaintCanvas(wxPaintEvent& event)
 {
+    m_tacticalInfoHealRect = wxRect();
+    m_tacticalInfoHealUnitId = -1;
+    m_tacticalInfoScrollRect = wxRect();
+    m_tacticalInfoScrollMax = 0;
     wxPaintDC pdc(canvas);
     const wxSize size = canvas->GetClientSize();
     // Native fullscreen restoration can briefly leave a zero-sized canvas.
@@ -6267,6 +6827,9 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
 			pdc.SetBrush(*wxTRANSPARENT_BRUSH);
 			pdc.DrawRectangle(rect);
 		}
+        if (m_tacticalInfoVisible && !m_mission_result_visible &&
+            !m_mission_end_flow && !inSubForm() && spell_map->isGameMode())
+            DrawTacticalInfoPanel(pdc);
         if (m_mission_result_visible)
             DrawMissionResultOverlay(pdc);
     }
@@ -6456,7 +7019,10 @@ void MainFrame::OnHUDbuttonsClick(wxMouseEvent& event)
         }
         // click event callback?
         if(!btn->is_press && btn->cb_press)
+        {
             btn->cb_press();
+            if (m_tacticalInfoVisible && canvas) canvas->Refresh(false);
+        }
         if(btn->is_press)
             return;
         if (btn->action_id == SpellMap::HUD_ACTION_INFO && spell_map->isGameMode())
@@ -6934,6 +7500,16 @@ void MainFrame::OnCanvasLMouseDown(wxMouseEvent& event)
     if (m_boxSelectPending ||
         (m_rightPressActive && !event.RightIsDown()))
         ResetTransientTacticalPointerState("new-left-down-with-stale-gesture");
+    if (m_tacticalInfoVisible && !m_tacticalInfoHealRect.IsEmpty() &&
+        m_tacticalInfoHealRect.Contains(event.GetPosition()) &&
+        !inSubForm() && !m_deployment_active && !m_mission_result_visible)
+    {
+        auto* selected = spell_map ? spell_map->GetSelectedUnit() : nullptr;
+        if (selected && selected->id == m_tacticalInfoHealUnitId && CanHealTacticalInfoUnit(selected))
+            spell_map->OnHUDhealUnit();
+        if (canvas) canvas->Refresh(false);
+        return; // A disabled or stale heal button must not issue a map command.
+    }
 	const bool can_box_select = spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
 		spell_map->IsBoxSelectionEnabled() &&
 		!inSubForm() && !m_deployment_active && !m_inspectUnit &&
@@ -7206,6 +7782,7 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
     if (!m_rightRangeActive && !m_rangeMoveKeyDown && !m_rangeAttackKeyDown)
         spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
     spell_map->scroller.Idle();
+    if (m_tacticalInfoVisible && canvas) canvas->Refresh(false);
 }
 // on canvas mouse move
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
@@ -7349,6 +7926,22 @@ void MainFrame::OnCanvasMouseWheel(wxMouseEvent& event)
         spell_map->GetHUDtop(spellcross_display::ToLogical(event.GetX())))
     {
         event.Skip();
+        return;
+    }
+
+    if (m_tacticalInfoVisible && m_tacticalInfoScrollMax > 0 &&
+        !inSubForm() && m_tacticalInfoScrollRect.Contains(event.GetPosition()))
+    {
+        const int notches = (std::max)(1,
+            std::abs(event.GetWheelRotation()) / event.GetWheelDelta());
+        const int direction = event.GetWheelRotation() > 0 ? -1 : 1;
+        m_tacticalInfoScrollOffset = std::clamp(
+            m_tacticalInfoScrollOffset + direction * notches * FromDIP(48),
+            0, m_tacticalInfoScrollMax);
+        // Do not allow the old hitbox to issue a heal before the repaint.
+        m_tacticalInfoHealRect = wxRect();
+        m_tacticalInfoHealUnitId = -1;
+        if (canvas) canvas->Refresh(false);
         return;
     }
 
