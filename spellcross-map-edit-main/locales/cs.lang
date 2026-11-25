@@ -375,3 +375,4 @@ tactical_info.dig=Zakopání
 tactical_info.hint=Najeď na viditelný oddíl
 help.key.tactical_info=I / Shift+I
 help.action.tactical_info=Přepne taktický panel / grafické info nad jednotkami.
+tactical_info.round=Kolo
