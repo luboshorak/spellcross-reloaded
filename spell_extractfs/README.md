@@ -9,4 +9,4 @@ This directory is a **standalone toolbox**, not a dependency automatically built
 - `data_sorter.py` — CLI directory organization after extraction.
 - `bin_out/` and `level_out/` — retained research/reference exports; `*.spec` — PyInstaller build recipes. Generated `build/` and `dist/` are ignored and no longer tracked.
 
-For all entry points, dependencies and caveats see [tools guide](../docs/tools.md). The game runtime uses its **own** `source/fs_archive.cpp` and `source/LZ_spell.cpp` under `../spellcross-map-edit-main/`. Do not remove packaged executables or reorganize adjacent-data assumptions until their tools are individually tested.
+For all entry points, dependencies and caveats see [tools guide](../docs/tools.md). The game runtime uses its **own** `source/fs_archive.cpp` and `source/LZ_spell.cpp` under `../spellcross-remaster-main/`. Do not remove packaged executables or reorganize adjacent-data assumptions until their tools are individually tested.
