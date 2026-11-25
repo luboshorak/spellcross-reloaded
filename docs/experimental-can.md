@@ -1,12 +1,12 @@
 # Experimental native CAN playback
 
-Build the usual game from this branch. On Windows PowerShell, set
-`$env:SPELLCROSS_EXPERIMENTAL_CAN = "1"` before starting the game executable
-from the same shell, using the original Czech game data. The normal
-Czech MP4 preference remains unchanged when the flag is unset. To disable
-the experiment, close the game and run `Remove-Item Env:SPELLCROSS_EXPERIMENTAL_CAN`.
+Build the usual game from this branch and start it normally using original
+Czech game data. Native CAN is enabled by default on this isolated branch.
+To disable the experiment for comparison, close the game and set
+`$env:SPELLCROSS_EXPERIMENTAL_CAN = "0"` in PowerShell before starting the
+executable from that shell. Remove the variable to restore native playback.
 
-With the flag enabled the Czech CAN/SMK resolver tries original archive
+With the experiment enabled the Czech CAN/SMK resolver tries original archive
 entries before MP4. If native decoding fails, the existing Czech MP4
 fallback remains available on Windows. For a definitive native test,
 temporarily move all matching MP4 fallbacks out of the search paths.

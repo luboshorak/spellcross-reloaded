@@ -126,6 +126,7 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
 
     bool foundArchive = false;
     std::string lastError;
+    std::string decodeError;
     // Do NOT stop at the first existing archive. Different editions may ship
     // SPEAKER and MOVIE independently, and the first archive may not contain
     // the requested entry. Try every explicitly configured source in order.
@@ -154,6 +155,9 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
                     delete out_video;
                     out_video = nullptr;
                     lastError = ex.what();
+                    // Later missing aliases must not hide an actual decoder failure.
+                    if (lastError.find("Decoding ") != std::string::npos)
+                        decodeError = path.string() + ": " + entry + ": " + lastError;
                 }
             }
         }
@@ -165,7 +169,8 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
 
     error = !foundArchive
         ? "selected edition MOVIE.FS/SPEAKER.FS archive not found"
-        : "requested clip absent/undecodable in selected edition archives: " + lastError;
+        : "requested clip absent/undecodable in selected edition archives: " +
+            (decodeError.empty() ? lastError : decodeError);
     return false;
 }
 }
@@ -265,7 +270,7 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
         TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error);
         if (!m_video && !fallback_path.empty())
         {
-            wxLogDebug("[VIDEO] experimental native movie failed: %s; using MP4", legacy_error.c_str());
+            wxLogMessage("[VIDEO] experimental native movie failed: %s; using MP4", legacy_error.c_str());
             use_fallback = true;
         }
     }

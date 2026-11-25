@@ -242,7 +242,8 @@ int SpellVideo::DecodeSMK(uint8_t* data, int len)
 bool SpellVideo::ExperimentalCANEnabled()
 {
     const char* value = std::getenv("SPELLCROSS_EXPERIMENTAL_CAN");
-    return value && value[0] == '1' && value[1] == '\0';
+    // This isolated branch exists to exercise native CAN on ordinary launches.
+    return !(value && value[0] == '0' && value[1] == '\0');
 }
 
 int SpellVideo::DecodeCAN(uint8_t* data,int len)

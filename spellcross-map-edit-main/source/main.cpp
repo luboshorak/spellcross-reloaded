@@ -4880,8 +4880,10 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                                     form_video_box = new FormVideoBox(
                                         canvas, ID_VIDEO_BOX_WIN, spell_data,
                                         lvlIntro.intro_video, 2);
-                                } catch (const std::exception&) {
-                                    // intro video not found — continue without it
+                                } catch (const std::exception& ex) {
+                                    wxLogWarning("[VIDEO] New game intro %s failed: %s",
+                                        lvlIntro.intro_video.c_str(), ex.what());
+                                    // Continue the mission even if the introductory movie failed.
                                 }
                             }
                         }
