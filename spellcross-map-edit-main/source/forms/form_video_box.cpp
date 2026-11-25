@@ -157,7 +157,7 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
                     lastError = ex.what();
                     // Later missing aliases must not hide an actual decoder failure.
                     if (lastError.find("Decoding ") != std::string::npos)
-                        decodeError = path.string() + ": " + entry + ": " + lastError;
+                        decodeError = wxString(path).ToStdString(wxConvUTF8) + ": " + entry + ": " + lastError;
                 }
             }
         }
