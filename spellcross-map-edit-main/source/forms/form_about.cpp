@@ -1,5 +1,15 @@
+/*
+ * The contents of this file are subject to the Common Public Attribution License Version 1.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at https://opensource.org/license/cpal-1-0. The License is based on the Mozilla Public License Version 1.1 but Sections 14 and 15 have been added to cover use of software over a computer network and provide for limited attribution for the Original Developer. In addition, Exhibit A has been modified to be consistent with Exhibit B.
+ * Software distributed under the License is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the specific language governing rights and limitations under the License.
+ * The Original Code is Spellcross Reloaded restoration code covered by CPAL-1.0.
+ * The Initial Developer and Original Developer of the Original Code is Luboš Horák. All portions of the code written by Luboš Horák and covered by this License are Copyright (c) 2026 Luboš Horák. All Rights Reserved.
+ * Contributor: see AUTHORS.md and the Git history.
+ * SPDX-License-Identifier: CPAL-1.0
+ * Previously granted MIT rights are not withdrawn; see LICENSING.md.
+ */
 #include "form_about.h"
 #include "app_identity.h"
+#include "../project_attribution.h"
 #include "app_version.h"
 #include "../strategic_ui_theme.h"
 #include "../release_version_compare.h"
@@ -147,11 +157,15 @@ FormAbout::FormAbout(wxWindow* parent, wxWindowID id, const wxString& title,
     projectBox->Add(projectHeading, 0, wxLEFT | wxTOP | wxBOTTOM, FromDIP(9));
     auto* grid = new wxFlexGridSizer(2, 8, 12);
     grid->AddGrowableCol(1, 1);
-    AddInfoRow(content, grid, Tr("about.author", "Author"), wxString::FromUTF8("Luboš Horák"));
+    AddInfoRow(content, grid, Tr("about.author", "Author"), wxString::FromUTF8(spellcross_attribution::Copyright));
     AddInfoRow(content, grid, Tr("about.version", "Version"), spellcross_app::VersionLabel());
-    AddInfoRow(content, grid, Tr("about.repository", "Repository"), "github.com/luboshorak/spellcross-reloaded");
-    AddInfoRow(content, grid, Tr("about.based_on", "Based on"), Tr("about.based_on_value", "Spellcross Map Editor by Stanislav Mašláň"));
-    AddInfoRow(content, grid, Tr("about.license", "License"), "MIT License");
+    AddInfoRow(content, grid, Tr("about.repository", "Repository"), wxString::FromUTF8(spellcross_attribution::Url));
+    auto* attribution = AddInfoRow(content, grid, Tr("about.based_on", "Based on"), wxString::FromUTF8(spellcross_attribution::Phrase));
+    attribution->Wrap(470);
+    AddInfoRow(content, grid, Tr("about.license", "License"), wxString::FromUTF8(spellcross_attribution::License));
+    auto* libraryCredits = AddInfoRow(content, grid, "LGPL",
+        wxString::FromUTF8("libsmacker © 2012–2021 Greg Kennedy; XMIDI © Ryan Nunn, Bret Curtis, WildMIDI Developers, Vitaly Novichkov. See third-party-licenses."));
+    libraryCredits->Wrap(470);
     projectBox->Add(grid, 0, wxEXPAND | wxALL, 10);
 
     auto* projectButtons = new wxBoxSizer(wxHORIZONTAL);
