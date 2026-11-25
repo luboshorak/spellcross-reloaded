@@ -6442,7 +6442,11 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
         preview->x_size > 0 && preview->y_size > 0)
     {
         const int pw = preview->x_size, ph = preview->y_size;
-        const int drawW = (std::min)(inner, FromDIP(pw * 2));
+        const int previewBudget = availableH - 2 * pad - line * 4 - gap;
+        if (previewBudget < FromDIP(40)) return;
+        const int drawW = (std::min)((std::min)(inner, FromDIP(pw * 2)),
+            previewBudget * pw / ph);
+        if (drawW <= 0) return;
         const int drawH = (std::max)(1, drawW * ph / pw);
         const int cardH = 2 * pad + line * 4 + drawH + gap;
         if (availableH < cardH) return;
@@ -6748,7 +6752,10 @@ void MainFrame::OnHUDbuttonsClick(wxMouseEvent& event)
         }
         // click event callback?
         if(!btn->is_press && btn->cb_press)
+        {
             btn->cb_press();
+            if (m_tacticalInfoVisible && canvas) canvas->Refresh(false);
+        }
         if(btn->is_press)
             return;
         if (btn->action_id == SpellMap::HUD_ACTION_INFO && spell_map->isGameMode())
