@@ -306,7 +306,7 @@ namespace
             std::uint32_t roundMarker = 0;
             std::int32_t round = 0;
             if (ReadCtxPod(is, roundMarker) && roundMarker == kTacticalRoundMarker &&
-                ReadCtxPod(is, round) && round > 0)
+                ReadCtxPod(is, round) && round != 0 && round >= -2147483647)
                 ctx.tactical_round = round;
         }
         ctx.present = true;
@@ -3130,7 +3130,7 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
 		spellcross_ui_locale::Tr("menu.box_selection_help", "Enable temporary unit groups selected by dragging the left mouse button"));
 	menuOptions->Check(ID_OptionsBoxSelection, spell_map && spell_map->IsBoxSelectionEnabled());
     menuOptions->AppendCheckItem(ID_OptionsConfineCursor,
-        spellcross_ui_locale::Tr("menu.confine_cursor", "Keep cursor inside game window"),
+        spellcross_ui_locale::Tr("menu.confine_cursor", "Keep cursor inside game window") + "\tCtrl+X",
         spellcross_ui_locale::Tr("menu.confine_cursor_help", "Restrict the pointer to the active tactical game window; Alt+Tab releases it"));
     menuOptions->Check(ID_OptionsConfineCursor, m_confineTacticalCursor);
     menuOptions->AppendCheckItem(ID_OptionsAutoDeploy,
@@ -3236,10 +3236,15 @@ MainFrame::MainFrame(SpellMap* map, SpellData* spelldata):wxFrame(NULL, wxID_ANY
     
     Bind(wxEVT_MENU,&MainFrame::OnLoadCustomMap,this,ID_LoadCustomMap);
     Bind(wxEVT_MENU,&MainFrame::OnOpenMainMenu,this,ID_MainMenu);
-    Bind(wxEVT_MENU, [this](wxCommandEvent& event) {
-        m_confineTacticalCursor = event.IsChecked();
+    Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+        // Both a menu click and an accelerator toggle the same source of truth.
+        m_confineTacticalCursor = !m_confineTacticalCursor;
+        if (auto* bar = spellcross_menu::Model(this))
+            bar->Check(ID_OptionsConfineCursor, m_confineTacticalCursor);
         if (!m_confineTacticalCursor)
             ReleaseTacticalCursorClip();
+        else
+            UpdateTacticalCursorClip();
     }, ID_OptionsConfineCursor);
 
 // Load a remake strategic JSON save or an original BIG_MAP.SAV.
@@ -3336,6 +3341,19 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
         {
             if (!event.IsAutoRepeat())
                 OnMapConsoleCommand();
+            return;
+        }
+
+        if (event.ControlDown() && !event.AltDown() && !event.ShiftDown() &&
+            (consoleKey == 'X' || consoleKey == 'x' || consoleKey == 24) &&
+            spell_map && spell_map->IsLoaded() && spell_map->isGameMode() &&
+            !inSubForm() && !m_mission_result_visible && !m_mission_end_flow)
+        {
+            if (!event.IsAutoRepeat())
+            {
+                wxCommandEvent toggle(wxEVT_MENU, ID_OptionsConfineCursor);
+                ProcessWindowEvent(toggle);
+            }
             return;
         }
 
@@ -6286,26 +6304,31 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     wxFont font = spellcross_menu::MenuFont();
     font.SetPointSize(10);
     dc.SetFont(font);
-    const int pad = FromDIP(9);
+    const int pad = FromDIP(8);
     const int gap = FromDIP(3);
     const int line = dc.GetCharHeight() + gap;
-    const int width = FromDIP(258);
-    const int height = pad * 2 + line * 12;
-    if (size.x < width + pad * 2 || size.y < height + FromDIP(140))
-        return; // Never cover the original bottom HUD in a tiny window.
+    const int width = FromDIP(284);
+    const int inner = width - 2 * pad;
     const int x = size.x - width - pad;
     const int y = pad;
-    const wxColour muted(149, 164, 135);
-    const wxColour normal(210, 220, 188);
-    const wxColour friendly(143, 194, 118);
-    const wxColour enemy(209, 137, 107);
+    const wxColour muted(149, 164, 135), normal(210, 220, 188);
+    const wxColour friendly(143, 194, 118), enemy(209, 137, 107);
+    const wxColour gold(208, 190, 116), steel(102, 117, 91);
+    const wxColour background(17, 29, 17), dark(9, 17, 10);
+    const int summaryH = 2 * pad + line * 6 + FromDIP(5);
+    if (size.x < width + pad * 2 || size.y < summaryH + FromDIP(140))
+        return;
 
-    dc.SetPen(wxPen(wxColour(78, 97, 65), FromDIP(1)));
-    dc.SetBrush(wxBrush(wxColour(17, 29, 17)));
-    dc.DrawRectangle(x, y, width, height);
-    dc.SetClippingRegion(x + pad, y + pad, width - pad * 2, height - pad * 2);
-    auto row = [&](int index, wxString value, const wxColour& colour) {
-        const int available = width - pad * 2;
+    auto frame = [&](int yy, int h) {
+        dc.SetPen(wxPen(steel));
+        dc.SetBrush(wxBrush(background));
+        dc.DrawRectangle(x, yy, width, h);
+        dc.SetPen(wxPen(wxColour(44, 58, 39)));
+        dc.SetBrush(*wxTRANSPARENT_BRUSH);
+        dc.DrawRectangle(x + 2, yy + 2, width - 4, h - 4);
+    };
+    auto drawText = [&](wxString value, int xx, int yy, int available, const wxColour& colour) {
+        if (available <= 0) return;
         if (dc.GetTextExtent(value).x > available)
         {
             while (!value.empty() && dc.GetTextExtent(value + "...").x > available)
@@ -6313,67 +6336,165 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
             value += "...";
         }
         dc.SetTextForeground(colour);
-        dc.DrawText(value, x + pad, y + pad + index * line);
+        dc.DrawText(value, xx, yy);
     };
-    auto stat = [&](int index, const wxString& label, int value, const wxColour& colour) {
-        row(index, label + ": " + wxString::Format("%d", value), colour);
+    auto right = [&](wxString value, int yy, const wxColour& colour) {
+        drawText(value, x + width - pad - dc.GetTextExtent(value).x,
+            yy, inner, colour);
+    };
+    auto pair = [&](const wxString& label, const wxString& value, int yy, const wxColour& colour) {
+        drawText(label, x + pad, yy, inner - dc.GetTextExtent(value).x - pad, muted);
+        right(value, yy, colour);
+    };
+    auto header = [&](const wxString& title, int yy, const wxColour& colour) {
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        dc.SetBrush(wxBrush(dark));
+        dc.DrawRectangle(x + 3, yy + 3, width - 6, line + pad);
+        drawText(title, x + pad, yy + pad, inner, colour);
     };
 
     const auto losses = spell_map->GetMissionLossStats();
-    int own = 0, ready = 0;
+    int own = 0, ready = 0, fireReady = 0;
     for (auto* u : spell_map->units)
     {
         if (!u || !u->unit || u->is_enemy || u->isDead() ||
             !u->isActive() || u->hide || !u->coor.IsSelected())
             continue;
         ++own;
-        if (u->GetAP() > 0) ++ready;
+        if (u->GetAP() > 0 && !u->panic_turns && !u->paralyze_turns && !u->freeze_turns)
+        {
+            ++ready;
+            if (u->unit->bonuses && u->GetFireCount() > 0) ++fireReady;
+        }
     }
-    row(0, tr("tactical_info.title", "TACTICAL REPORT") + "   [I]", friendly);
-    row(1, m_deployment_active ? tr("tactical_info.deployment", "Deployment") :
-        spell_map->IsEnemyTurnRunning() ? tr("tactical_info.enemy_phase", "Other Side turn") :
-        tr("tactical_info.own_phase", "Alliance turn"), muted);
+    frame(y, summaryH);
+    header(tr("tactical_info.title", "TACTICAL REPORT"), y, friendly);
+    right("[I]", y + pad, muted);
     const int round = spell_map->GetTacticalRound();
-    row(2, tr("tactical_info.round", "Round") + ": " +
-        (round > 0 ? wxString::Format("%d", round) : wxString("--")), normal);
-    stat(3, tr("tactical_info.friendly", "Active companies"), own, normal);
-    stat(4, tr("tactical_info.ready", "Companies with AP"), ready, normal);
-    stat(5, tr("tactical_info.destroyed", "Enemy companies lost"),
-        losses.enemy_light + losses.enemy_heavy + losses.enemy_air, friendly);
-    stat(6, tr("tactical_info.lost", "Own companies lost"),
-        losses.alliance_light + losses.alliance_heavy + losses.alliance_air, enemy);
+    const bool enemyPhase = spell_map->IsEnemyTurnRunning();
+    const wxString phase = m_deployment_active ? tr("tactical_info.deployment", "Deployment") :
+        enemyPhase ? tr("tactical_info.enemy_phase", "Other Side turn") :
+        tr("tactical_info.own_phase", "Alliance turn");
+    drawText(phase, x + pad, y + pad + line, inner, enemyPhase ? enemy : friendly);
+    const int shownRound = round < 0 ? -round : round;
+    pair(round < 0 ? tr("tactical_info.relative_round", "Round since load") :
+        tr("tactical_info.round", "Round"), wxString::Format("%d", shownRound),
+        y + pad + 2 * line, gold);
+    pair(tr("tactical_info.destroyed", "Enemy companies lost"),
+        wxString::Format("%d", losses.enemy_light + losses.enemy_heavy + losses.enemy_air),
+        y + pad + 3 * line, friendly);
+    pair(tr("tactical_info.lost", "Own companies lost"),
+        wxString::Format("%d", losses.alliance_light + losses.alliance_heavy + losses.alliance_air),
+        y + pad + 4 * line, enemy);
+    pair(tr("tactical_info.ready_fire", "Ready / can fire / all"),
+        wxString::Format("%d / %d / %d", ready, fireReady, own),
+        y + pad + 5 * line, normal);
+    const int barY = y + summaryH - pad;
+    dc.SetPen(*wxTRANSPARENT_PEN);
+    dc.SetBrush(wxBrush(dark));
+    dc.DrawRectangle(x + pad, barY, inner, FromDIP(4));
+    if (own > 0 && ready > 0)
+    {
+        dc.SetBrush(wxBrush(friendly));
+        dc.DrawRectangle(x + pad, barY, inner * ready / own, FromDIP(4));
+    }
 
-    dc.SetPen(wxPen(wxColour(65, 82, 55)));
-    dc.DrawLine(x + pad, y + pad + 7 * line + line / 2,
-        x + width - pad, y + pad + 7 * line + line / 2);
-
-    // GetCursorUnit itself does not check fog of war; match the existing
-    // dossier's visibility gate and never reveal enemy units in deployment.
-    MapUnit* u = nullptr;
+    // Use the exact original roster preview renderer and palette, not a mock
+    // sprite. Only inspect a currently visible tile; never disclose fog data.
     const wxPoint pointer = canvas->ScreenToClient(wxGetMousePosition());
-    if (!m_deployment_active && !m_boxSelecting &&
+    const bool overMap = !m_deployment_active && !m_boxSelecting &&
         canvas->GetClientRect().Contains(pointer) &&
         spellcross_display::ToLogical(pointer.y) <
-            spell_map->GetHUDtop(spellcross_display::ToLogical(pointer.x)))
-        u = spell_map->GetCursorUnit();
-    if (u && u->unit && !u->hide && !u->isDead() &&
-        (!u->is_enemy || u->is_visible == 2))
+            spell_map->GetHUDtop(spellcross_display::ToLogical(pointer.x));
+    MapXY tile;
+    bool visible = false;
+    int tileIndex = -1;
+    if (overMap)
     {
-        const wxColour side = u->is_enemy ? enemy : friendly;
-        const wxString name(char2wstringCP895(
-            u->name.empty() ? u->unit->name : u->name.c_str()));
-        row(8, (u->is_enemy ? tr("tactical_info.enemy", "Enemy") :
-            tr("tactical_info.ally", "Alliance")) + ": " + name, side);
-        row(9, tr("tactical_info.strength", "Strength") + wxString::Format(" %d/%d", u->man, u->unit->cnt) +
-            "  " + tr("tactical_info.wounded", "Wounded") + wxString::Format(" %d", u->wounded), normal);
-        row(10, tr("tactical_info.ap", "AP") + wxString::Format(" %d/%d", u->GetAP(), u->GetMaxAP()) +
-            "  " + tr("tactical_info.shots", "Shots") + wxString::Format(" %d", u->GetFireCount()), normal);
-        row(11, tr("tactical_info.morale", "Morale") + wxString::Format(" %d", static_cast<int>(u->morale)) +
-            "  " + tr("tactical_info.dig", "Dig-in") + wxString::Format(" %d", u->dig_level), muted);
+        tile = spell_map->GetSelection();
+        tileIndex = spell_map->ConvXY(tile);
+        if (tileIndex >= 0 && spell_map->unit_view)
+        {
+            auto* view = spell_map->unit_view;
+            view->ResultLock(true);
+            visible = static_cast<size_t>(tileIndex) < view->view.size() &&
+                view->view[tileIndex] == 2;
+            view->ResultLock(false);
+        }
     }
-    else
-        row(8, tr("tactical_info.hint", "Point at a visible company"), muted);
-    dc.DestroyClippingRegion();
+    MapUnit* u = visible ? spell_map->GetCursorUnit() : nullptr;
+    if (u && (!u->unit || u->hide || u->isDead() || (u->is_enemy && u->is_visible != 2)))
+        u = nullptr;
+    const int cardY = y + summaryH + gap;
+    const int availableH = size.y - cardY - FromDIP(140);
+    auto* preview = spell_data ? spell_data->gres.wm_map_units_list : nullptr;
+    if (u && preview && spell_data->font && u->unit->icon_glyph &&
+        u->unit->bonuses && u->unit->cnt > 0 && u->GetMaxAP() > 0 &&
+        preview->x_size > 0 && preview->y_size > 0)
+    {
+        const int pw = preview->x_size, ph = preview->y_size;
+        const int drawW = (std::min)(inner, FromDIP(pw * 2));
+        const int drawH = (std::max)(1, drawW * ph / pw);
+        const int cardH = 2 * pad + line * 4 + drawH + gap;
+        if (availableH < cardH) return;
+        frame(cardY, cardH);
+        const wxColour side = u->is_enemy ? enemy : friendly;
+        header(u->is_enemy ? tr("tactical_info.enemy", "Enemy") :
+            tr("tactical_info.ally", "Alliance"), cardY, side);
+        std::vector<uint8_t> indexed(static_cast<size_t>(pw) * ph, 0);
+        u->RenderPreview(indexed.data(), indexed.data() + indexed.size(), pw);
+        wxImage image(pw, ph, false);
+        if (image.IsOk())
+        {
+            unsigned char* rgb = image.GetData();
+            for (size_t i = 0; i < indexed.size(); ++i)
+            {
+                const auto& c = spell_map->pal[indexed[i]];
+                rgb[i * 3] = c[0];
+                rgb[i * 3 + 1] = c[1];
+                rgb[i * 3 + 2] = c[2];
+            }
+            dc.DrawBitmap(wxBitmap(image.Scale(drawW, drawH, wxIMAGE_QUALITY_NEAREST)),
+                x + (width - drawW) / 2, cardY + pad + line + gap, false);
+        }
+        const int infoY = cardY + pad + line + gap + drawH;
+        const wxString type = u->unit->isAir() ? tr("tactical_info.air", "Air") :
+            u->unit->isArmored() ? tr("tactical_info.heavy", "Heavy") :
+            tr("tactical_info.light", "Light");
+        pair(type + " / " + tr("tactical_info.dig", "Dig-in"),
+            wxString::Format("%d", u->dig_level), infoY, normal);
+        pair(tr("tactical_info.range", "Weapon range"),
+            wxString::Format("%d", u->GetFireRange()), infoY + line, normal);
+        wxString status;
+        auto append = [&](const wxString& v) { if (!status.empty()) status += " / "; status += v; };
+        if (u->is_commander) append(tr("tactical_info.commander", "Commander"));
+        if (!u->is_enemy && u->spec_type != MapUnitType::ArmyUnit)
+            append(tr("tactical_info.temporary", "Temporary"));
+        if (u->panic_turns) append(tr("tactical_info.panic", "Panic"));
+        if (u->paralyze_turns) append(tr("tactical_info.paralyzed", "Paralyzed"));
+        if (u->freeze_turns) append(tr("tactical_info.frozen", "Frozen"));
+        if (u->wounded > 0) append(tr("tactical_info.wounded", "Wounded"));
+        if (status.empty()) status = tr("tactical_info.normal", "No special status");
+        drawText(status, x + pad, infoY + 2 * line, inner, gold);
+    }
+    else if (visible && tileIndex >= 0 && static_cast<size_t>(tileIndex) < spell_map->tiles.size())
+    {
+        const int cardH = 2 * pad + 3 * line;
+        if (availableH < cardH) return;
+        frame(cardY, cardH);
+        header(tr("tactical_info.terrain", "TERRAIN"), cardY, muted);
+        pair(tr("tactical_info.position", "Position"),
+            wxString::Format("%d / %d", tile.x, tile.y), cardY + pad + line, normal);
+        pair(tr("tactical_info.elevation", "Elevation"),
+            wxString::Format("%d", spell_map->tiles[tileIndex].elev),
+            cardY + pad + 2 * line, normal);
+    }
+    else if (availableH >= 2 * pad + line)
+    {
+        frame(cardY, 2 * pad + line);
+        drawText(tr("tactical_info.hint", "Point at a visible company"),
+            x + pad, cardY + pad, inner, muted);
+    }
 }
 
 void MainFrame::OnPaintCanvas(wxPaintEvent& event)
@@ -7359,6 +7480,7 @@ void MainFrame::OnCanvasMouseLeave(wxMouseEvent& event)
     if (!m_rightRangeActive && !m_rangeMoveKeyDown && !m_rangeAttackKeyDown)
         spell_map->SetUnitRangeViewMode(SpellMap::UNIT_RANGE_NONE);
     spell_map->scroller.Idle();
+    if (m_tacticalInfoVisible && canvas) canvas->Refresh(false);
 }
 // on canvas mouse move
 void MainFrame::OnCanvasMouseMove(wxMouseEvent& event)
