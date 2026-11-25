@@ -7,10 +7,9 @@ This guide builds the Windows x64 game and its pinned standalone editor. For ins
 - Windows with Visual Studio C++ build tools and MSBuild. The projects use the **v145** toolset.
 - A compatible wxWidgets/vcpkg x64 installation.
 - The editor submodule initialized at the revision pinned by this repository.
-- All **37 fallback MP4s** matching `data/movie_fallback/MANIFEST.tsv`.
 - **WinRAR** for the full graphical SFX installer published to GitHub (required for in-game downloads).
 
-Original commercial Spellcross archives are not bundled.
+Original commercial Spellcross archives are not bundled. All cinematics play natively from the player's selected retail data; no separate video pack is required.
 
 ## One-command release build (commit and push)
 
@@ -64,12 +63,11 @@ without uploading them. On a feature branch, both `-NoPush -AllowNonMain` are
 required. To check version injection with no commit/build/push, use
 `.\packaging\Release.ps1 -Version 0.9.6 -ValidateOnly`.
 
-With custom dependencies or movie location:
+With custom dependencies:
 
 ```powershell
 .\packaging\Build-CombinedRelease.ps1 -Version 0.9.6 `
-    -WxRoot "$HOME\vcpkg\installed\x64-windows" `
-    -MovieSource "D:\Games\Spellcross-previous-build"
+    -WxRoot "$HOME\vcpkg\installed\x64-windows"
 ```
 
 Output contains **only two complete distribution archives** (example version):
@@ -151,7 +149,6 @@ staging folders are shipped or required.
 | `-AllowNonMain` | Combined with `-NoPush`, permit a feature-branch dry run |
 | `-ValidateOnly` | Supported by Release.ps1, inject and restore version without compiling |
 | `-WxRoot <path>` | Explicit wxWidgets/vcpkg x64 installation |
-| `-MovieSource <path>` | Directory containing the manifest-matching fallback videos |
 | `-SkipBuild` | Repackage executables already compiled for this exact version |
 | `-NoZip` | Only for legacy `-SkipBuild` packaging, not the automated release path |
 | `-NoSfx` | Disable SFX for local testing only; that build cannot be published with the in-game updater |

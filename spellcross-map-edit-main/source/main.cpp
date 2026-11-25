@@ -4880,8 +4880,10 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                                     form_video_box = new FormVideoBox(
                                         canvas, ID_VIDEO_BOX_WIN, spell_data,
                                         lvlIntro.intro_video, 2);
-                                } catch (const std::exception&) {
-                                    // intro video not found — continue without it
+                                } catch (const std::exception& ex) {
+                                    wxLogWarning("[VIDEO] New game intro %s failed: %s",
+                                        lvlIntro.intro_video.c_str(), ex.what());
+                                    // Continue the mission even if the introductory movie failed.
                                 }
                             }
                         }
@@ -5399,7 +5401,11 @@ void MainFrame::CompleteCampaignAfterCutscenes()
     // #181: final LEVEL_10 completion is a different destination from an
     // ordinary chapter. Keep the parent strategic frame alive until every
     // original cutscene has finished; do not reopen its exhausted territory map.
+    m_campaignDefeatPending = false;
     m_campaignCompletionPending = true;
+    const bool czech = spell_data && spell_data->GetTextLanguage() == SpellLang::CZE;
+    for (const char* clip : spellcross_menu_video::Victory(czech))
+        PlayCutsceneFromStrategic(clip);
     if (!m_strategicCutscenePlaying && !m_strategicCutsceneScheduled)
     {
         m_strategicCutsceneScheduled = true;
@@ -5408,6 +5414,15 @@ void MainFrame::CompleteCampaignAfterCutscenes()
             PlayNextStrategicCutscene();
         });
     }
+}
+
+void MainFrame::FailCampaignAfterCutscenes()
+{
+    if (m_campaignCompletionPending)
+        return;
+    m_campaignDefeatPending = true;
+    m_campaignCompletionPending = true;
+    PlayCutsceneFromStrategic(spellcross_menu_video::Defeat());
 }
 
 void MainFrame::PlayNextStrategicCutscene()
@@ -5451,6 +5466,8 @@ void MainFrame::PlayNextStrategicCutscene()
     // never the inert LEVEL_10 strategic territory map (#181).
     if (m_campaignCompletionPending)
     {
+        const bool defeated = m_campaignDefeatPending;
+        m_campaignDefeatPending = false;
         m_campaignCompletionPending = false;
         HideTacticalWindow();
 
@@ -5463,8 +5480,10 @@ void MainFrame::PlayNextStrategicCutscene()
             ? static_cast<wxWindow*>(m_strategicLevel)
             : static_cast<wxWindow*>(this);
         spellcross_dialog_ui::ShowThemedMessage(
-            "Congratulations!\n\nYou have completed the Spellcross campaign.",
-            "Campaign Complete", wxOK | wxICON_INFORMATION, owner);
+            defeated ? "The Spellcross campaign has been lost." :
+                "Congratulations!\n\nYou have completed the Spellcross campaign.",
+            defeated ? "Campaign Defeat" : "Campaign Complete",
+            wxOK | wxICON_INFORMATION, owner);
 
         if (m_strategicLevel)
         {
@@ -6077,6 +6096,16 @@ void MainFrame::OpenStrategicAndLoadNext()
         m_strategicLevel = nullptr;
         stale->Hide();
         stale->Destroy();
+    }
+
+    // Death of Alexander is a campaign loss, not a retriable mission.
+    if (m_mission_end_req.campaign_defeat)
+    {
+        m_mission_earned_units.clear();
+        m_mission_end_flow = false;
+        m_mission_end_req = SpellMap::MissionEndRequest();
+        FailCampaignAfterCutscenes();
+        return;
     }
 
     // Return to existing strategic level with mission result

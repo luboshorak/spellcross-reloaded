@@ -55,7 +55,15 @@ class ReleaseMetadataTest(unittest.TestCase):
         self.assertIn('$builtFileVersion.Trim() -ne $releaseVersion', PACKAGER)
         self.assertIn('$builtProductVersion.Trim() -ne $releaseVersion', PACKAGER)
         self.assertIn('Release tag: $releaseTag', PACKAGER)
-        self.assertIn('MP4 integrity check failed', PACKAGER)
+    def test_packaging_has_no_converted_movie_dependency(self):
+        for name in ("Build-CombinedRelease.ps1", "Build-UniversalNoRelease.ps1", "Release.ps1"):
+            script = (ROOT.parent / "packaging" / name).read_text(encoding="utf-8")
+            for removed in ("MovieSource", "movie_fallback", "MP4 integrity check", "movieCount"):
+                self.assertNotIn(removed, script, name)
+        project = (ROOT / "source/spellcross_map_editor.vcxproj").read_text(encoding="utf-8")
+        self.assertNotIn("BundledMovieFallbackData", project)
+        self.assertNotIn("movie_fallback", project)
+        self.assertFalse((ROOT / "data/movie_fallback/MANIFEST.tsv").exists())
 
     def test_release_notes_present(self):
         notes = ROOT.parent / "packaging/releases/v0.9.5.md"

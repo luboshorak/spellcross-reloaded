@@ -36,7 +36,7 @@ flowchart TD
 | `sprites.cpp`, `sprites.h` | `Sprite::Decode/Render`, `Terrain::Load`, tile contexts, scenery objects and animation decoding. |
 | `spell_graphics.cpp`, `spell_graphics.h` | `SpellGraphics::AddICO/AddCUR/AddPNM`, generic indexed glyphs and projectiles. |
 | `fs_archive.cpp`, `fsu_archive.cpp`, `LZ_spell.cpp` | Archive reading, unit-sprite resources, LZ decompression. |
-| `spell_sound.cpp`, `spell_midi.cpp`, `spell_video.cpp`, `forms/form_video_box.cpp` | Audio pooling, MIDI, legacy cinematics, MP4 fallback playback and scoped muting. |
+| `spell_sound.cpp`, `spell_midi.cpp`, `spell_video.cpp`, `forms/form_video_box.cpp` | Audio pooling, MIDI, native CAN/DPK/DP2/SMK cinematics and scoped muting. |
 | `spell_font.cpp`, `spell_texts.cpp`, `spell_ui_locale.h` | Retail font/text, text wrap and independent authored UI translations. |
 | `display_settings.h`, `tactical_zoom.h`, `strategic_ui_theme.h`, `game_menu_bar.h` | Pixel scale, zoom/picking, wx theme and shared menu. |
 | `runtime_diagnostics.h`, `startup_log.h` | Session log and startup instrumentation; see [debugging](debugging.md). |

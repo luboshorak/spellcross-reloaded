@@ -56,5 +56,22 @@ class CampaignFinaleRegression(unittest.TestCase):
         self.assertIn("!m_strategicCutscenePlaying && !m_strategicCutsceneScheduled", marker)
 
 
+    def test_executable_finale_is_queued_after_scripted_movies(self):
+        finish = MAIN.split("void MainFrame::CompleteCampaignAfterCutscenes()", 1)[1].split(
+            "void MainFrame::FailCampaignAfterCutscenes()", 1)[0]
+        self.assertIn("spellcross_menu_video::Victory(czech)", finish)
+        self.assertIn("PlayCutsceneFromStrategic(clip);", finish)
+        self.assertLess(finish.index("if (m_campaignCompletionPending)"),
+                        finish.index("spellcross_menu_video::Victory(czech)"))
+
+    def test_defeat_uses_a_separate_outro(self):
+        fail = MAIN.split("void MainFrame::FailCampaignAfterCutscenes()", 1)[1].split(
+            "void MainFrame::PlayNextStrategicCutscene()", 1)[0]
+        self.assertIn("spellcross_menu_video::Defeat()", fail)
+        self.assertIn("m_campaignDefeatPending = true;", fail)
+        self.assertIn("m_mission_end_req.campaign_defeat", MAIN)
+        self.assertIn("m_ownedTerritories.empty() && m_main", LEVEL)
+
+
 if __name__ == "__main__":
     unittest.main()

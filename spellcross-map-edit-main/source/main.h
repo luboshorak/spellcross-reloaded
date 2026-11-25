@@ -137,6 +137,8 @@ public:
     // The original final chapter has no LEVEL_11. Finish it only AFTER the
     // authored mission/chapter ending video queue has drained (#181).
     void CompleteCampaignAfterCutscenes();
+    void FailCampaignAfterCutscenes();
+    bool IsCampaignEnding() const { return m_campaignCompletionPending; }
 
     // Window-flow helpers: only one game layer is interactable at a time.
     void ShowMainMenuWindow();
@@ -172,6 +174,7 @@ private:
     bool m_strategicCutsceneScheduled = false;
     bool m_strategicCutscenePlaying = false;
     bool m_campaignCompletionPending = false;
+    bool m_campaignDefeatPending = false;
 
     // Pre-battle placement belongs to gameplay, not the removed map editor.
     bool m_deployment_requested = false;

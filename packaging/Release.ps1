@@ -8,7 +8,6 @@ param(
     [switch]$Rebuild,
     [string]$WxRoot = '',
     [string]$OutputDirectory = '',
-    [string]$MovieSource = '',
     [switch]$NoZip,
     [switch]$NoSfx,
     [string]$WinRARPath = '',
@@ -242,7 +241,7 @@ try {
         if ($cleanEditorWorktree) {
             $buildParameters['EditorRoot'] = $cleanEditorWorktree
         }
-        foreach ($key in @('WxRoot','MovieSource','WinRARPath','NoSfx')) {
+        foreach ($key in @('WxRoot','WinRARPath','NoSfx')) {
             if ($PSBoundParameters.ContainsKey($key)) { $buildParameters[$key] = $PSBoundParameters[$key] }
         }
         [Environment]::SetEnvironmentVariable('SPELLCROSS_RELEASE_OVERRIDE', $releaseLabel, 'Process')
@@ -268,7 +267,7 @@ try {
         if ($cleanEditorWorktree) {
             $packageParameters['EditorRoot'] = $cleanEditorWorktree
         }
-        foreach ($key in @('WxRoot','OutputDirectory','MovieSource','NoZip','NoSfx','WinRARPath','PruneOldBuilds')) {
+        foreach ($key in @('WxRoot','OutputDirectory','NoZip','NoSfx','WinRARPath','PruneOldBuilds')) {
             if ($PSBoundParameters.ContainsKey($key)) { $packageParameters[$key] = $PSBoundParameters[$key] }
         }
         & (Join-Path $PSScriptRoot 'Build-CombinedRelease.ps1') @packageParameters

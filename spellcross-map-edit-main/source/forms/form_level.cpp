@@ -16597,6 +16597,8 @@ void StrategicLevelFrame::OnEndTurn(wxCommandEvent&)
                 return;
             for (auto* attack : undefended)
                 SurrenderCounterAttack(*attack);
+            if (m_main && m_main->IsCampaignEnding())
+                return;
         }
     }
 
@@ -20788,8 +20790,15 @@ void StrategicLevelFrame::HandleMissionResult(int territory_id, bool success, co
     m_pendingMission.valid = false;
 
     ApplyTerritoryVisibility();
-    CheckTimeouts();
     MarkOverlayDirty();
+    if (m_gameModeEnabled && m_ownedTerritories.empty() && m_main)
+    {
+        SaveMissionStats();
+        SaveStrategicState();
+        m_main->FailCampaignAfterCutscenes();
+        return;
+    }
+    CheckTimeouts();
 
     SaveMissionStats();
     SaveStrategicState();
@@ -21400,6 +21409,12 @@ void StrategicLevelFrame::SurrenderCounterAttack(CounterAttackState& attack)
         ShowBriefing(attack.territory_id);
     ApplyTerritoryVisibility();
     MarkOverlayDirty();
+    if (m_gameModeEnabled && m_ownedTerritories.empty() && m_main)
+    {
+        SaveMissionStats();
+        SaveStrategicState();
+        m_main->FailCampaignAfterCutscenes();
+    }
 }
 
 void StrategicLevelFrame::ProcessRandomCounterAttack()

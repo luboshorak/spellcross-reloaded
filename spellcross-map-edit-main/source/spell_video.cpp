@@ -11,6 +11,7 @@
 #include "LZ_spell.h"
 #include "riff_loader.h"
 #include "smacker_video_decoder.h"
+#include "can_video_decoder.h"
 
 #include <fstream>
 #include <filesystem>
@@ -239,90 +240,21 @@ int SpellVideo::DecodeSMK(uint8_t* data, int len)
 
 int SpellVideo::DecodeCAN(uint8_t* data,int len)
 {
-	type = SpellVideoType::CAN;
-
-	uint8_t *p = data;
-	uint8_t *pend = &data[len];
-	
-	// frame rate (estimate from smallest audio chunk)
-	fps = 15.0;
-		
-	// read frames count
-	if(&p[4] > pend)
-	{
-		// fail
-		return(1);
-	}
-	int frames_count = *(uint32_t*)p; p += sizeof(uint32_t);
-
-	// some crazy stuff here...
-	// looks like 68x 256-byte tables of god know what, possibly some palette indices???
-
-	// read frame resolution
-	p = &data[0x4408];
-	if(&p[12] > pend)
-	{
-		// fail
-		return(1);
-	}
-	x_size = *(uint32_t*)p; p += sizeof(uint32_t);
-	y_size = *(uint32_t*)p; p += sizeof(uint32_t);	
-	int something = *(uint32_t*)p; p += sizeof(uint32_t);
-
-	// first audio block
-		
-	// audio frame size 1/15s of 11025Hz
-	int audio_frames_size = 735;
-	
-	// audio frames count per block (first block is 44 frames)
-	int audio_frames = 44;
-
-	// init audio stream data
-	audio.samples = 0;
-	audio.fs = 11025;
-	audio.channels = 1;
-	strcpy_s(audio.name, sizeof(audio.name), "stream");
-
-	// read frames
-	while(p < pend)
-	{
-		int audio_block_size = audio_frames_size*audio_frames;
-		if(&p[audio_block_size] > pend)
-		{
-			// fail
-			return(1);
-		}
-		
-		// copy audio block
-		audio.data.resize(audio.samples + audio_block_size);
-		for(int k = 0; k < audio_block_size; k++)
-			audio.data[audio.samples++] = (int16_t)((((uint16_t)*p++)<<8) - (uint16_t)0x8000u);
-		
-		
-		// next audio block will be one frame only
-		audio_frames = 1;
-
-		// get frame
-		if(&p[4] > pend)
-		{
-			// fail
-			return(1);
-		}
-		int video_frame_size = *(uint32_t*)p; p += sizeof(uint32_t);
-		if(&p[video_frame_size] > pend)
-		{
-			// fail
-			return(1);
-		}
-
-		// store to frame buffer
-		frames.emplace_back();
-		frames.back().resize(video_frame_size);
-		memcpy(frames.back().data(), p,video_frame_size);
-		p += video_frame_size;
-	}
-
-	return(0);
+    type = SpellVideoType::CAN;
+    spellcross_can::Decoded decoded;
+    if (len <= 0 || !spellcross_can::Decode(data, static_cast<size_t>(len), decoded))
+        return 1;
+    x_size = 320;
+    y_size = 200;
+    fps = 15.0;
+    std::copy(decoded.palette.begin(), decoded.palette.end(), &pal[0][0]);
+    frames = std::move(decoded.frames);
+    audio.data = std::move(decoded.audio);
+    audio.samples = static_cast<int>(audio.data.size());
+    audio.fs = 11025;
+    audio.channels = 1;
+    strcpy_s(audio.name, sizeof(audio.name), "stream");
+    return 0;
 }
 
 int SpellVideo::DecodeDPK(uint8_t* data,int len)

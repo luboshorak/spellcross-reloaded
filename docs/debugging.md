@@ -33,7 +33,7 @@ The automated tests have no single universal runner in the inspected files: chec
 | Losses doubled / different after tactical reload | `SpellMap::RecordMissionLoss`, `GetMissionLossStats`, `SaveTacticalGameWithCampaignContext` and `ReadTacticalCampaignContext`. |
 | Background battle audio plays over a movie | `SoundChannels::BackgroundMute` in `source/spell_sound.h`, `FormVideoBox`; run `tests/test_video_background_audio.cpp`. |
 | Crash on continue or missing saved map | `SaveContinueGame/LoadContinueGame`, `SpellMap::LoadGameStateFromFile`, legacy map-path relocation and `LoadStrategicStateFromPath`. |
-| SFX/ZIP missing runtime DLL or video | `packaging/Build-CombinedRelease.ps1`: `dumpbin` dependency copy, `MANIFEST.tsv` SHA-256 validation, submodule path. |
+| SFX/ZIP missing runtime DLL | `packaging/Build-CombinedRelease.ps1`: `dumpbin` dependency copy, submodule path. |
 
 ## When changing behavior
 
