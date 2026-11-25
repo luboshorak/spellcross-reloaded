@@ -76,8 +76,16 @@ public:
         wxFrame* frames[3] = {};
         try
         {
+            Check(spellcross_window::Fullscreen(), "Default mode is not fullscreen");
             frames[0] = Screen();
             wxYield();
+            Check(frames[0]->IsFullScreen(), "Initial screen did not start fullscreen");
+            Check(frames[0]->GetToolBar()->IsShown(), "Startup fullscreen hid menu");
+            // The remaining regression exercises entry from a windowed baseline
+            // and restoration of its geometry after repeated native transitions.
+            Toggle(frames[0]);
+            wxYield();
+            Check(!frames[0]->IsFullScreen(), "Initial fullscreen exit failed");
             if (!spellcross_menu::EnsureMenuFontLoaded())
             {
 #ifdef __WXMSW__
