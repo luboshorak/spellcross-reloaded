@@ -108,6 +108,7 @@ namespace
         std::vector<std::uint64_t> sent_unit_indices;
         std::vector<std::uint32_t> sent_unit_uids;
         SpellMap::MissionLossStats mission_losses;
+        std::int32_t tactical_round = 0;
         bool has_camera = false;
         std::int32_t camera_x = 0;
         std::int32_t camera_y = 0;
@@ -166,6 +167,8 @@ namespace
     static constexpr char kTacticalContextMarker[] = "\n--SPELLCROSS-STRATEGIC-CONTEXT-V1--\n";
     static constexpr std::uint32_t kTacticalContextMagic = 0x31584353u; // SCX1
     static constexpr std::uint32_t kTacticalContextVersion = 5u;
+    // Optional, tagged tail to the v5 context. Earlier readers stop at camera_y.
+    static constexpr std::uint32_t kTacticalRoundMarker = 0x31444E52u; // RND1
 
     template <typename T>
     static bool WriteCtxPod(std::ostream& os, const T& v)
@@ -234,6 +237,7 @@ namespace
         const std::int32_t attackId = static_cast<std::int32_t>(ctx.counter_attack_id);
         if (!WriteCtxPod(os, attackId)) return false;
         if (!WriteCtxPod(os, ctx.camera_x) || !WriteCtxPod(os, ctx.camera_y)) return false;
+        if (!WriteCtxPod(os, kTacticalRoundMarker) || !WriteCtxPod(os, ctx.tactical_round)) return false;
         os.close();
         return !os.fail();
     }
@@ -297,6 +301,13 @@ namespace
         {
             if (!ReadCtxPod(is, ctx.camera_x) || !ReadCtxPod(is, ctx.camera_y)) return false;
             ctx.has_camera = true;
+            // Old saves end here. Unknown rounds remain unknown instead of
+            // reporting a fictitious round 1 after loading mid-battle.
+            std::uint32_t roundMarker = 0;
+            std::int32_t round = 0;
+            if (ReadCtxPod(is, roundMarker) && roundMarker == kTacticalRoundMarker &&
+                ReadCtxPod(is, round) && round > 0)
+                ctx.tactical_round = round;
         }
         ctx.present = true;
         return true;
@@ -4280,6 +4291,7 @@ bool MainFrame::SaveTacticalGameWithCampaignContext(const std::wstring& path)
     // GetMissionLossStats() after load; storing that transient corpse here as
     // well would count it twice.
     ctx.mission_losses = spell_map->GetRecordedMissionLossStats();
+    ctx.tactical_round = spell_map->GetTacticalRound();
     const auto [cameraX, cameraY] = spell_map->scroller.GetScroll();
     ctx.camera_x = cameraX;
     ctx.camera_y = cameraY;
@@ -4322,6 +4334,7 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
         return false;
     if (hasEmbeddedContext && ctx.present)
         spell_map->SetMissionLossStats(ctx.mission_losses);
+    spell_map->SetTacticalRound(hasEmbeddedContext && ctx.present ? ctx.tactical_round : 0);
 
     auto destroyOldStrategic = [this]()
     {
@@ -6277,7 +6290,7 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     const int gap = FromDIP(3);
     const int line = dc.GetCharHeight() + gap;
     const int width = FromDIP(258);
-    const int height = pad * 2 + line * 11;
+    const int height = pad * 2 + line * 12;
     if (size.x < width + pad * 2 || size.y < height + FromDIP(140))
         return; // Never cover the original bottom HUD in a tiny window.
     const int x = size.x - width - pad;
@@ -6320,16 +6333,19 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
     row(1, m_deployment_active ? tr("tactical_info.deployment", "Deployment") :
         spell_map->IsEnemyTurnRunning() ? tr("tactical_info.enemy_phase", "Other Side turn") :
         tr("tactical_info.own_phase", "Alliance turn"), muted);
-    stat(2, tr("tactical_info.friendly", "Active companies"), own, normal);
-    stat(3, tr("tactical_info.ready", "Companies with AP"), ready, normal);
-    stat(4, tr("tactical_info.destroyed", "Enemy companies lost"),
+    const int round = spell_map->GetTacticalRound();
+    row(2, tr("tactical_info.round", "Round") + ": " +
+        (round > 0 ? wxString::Format("%d", round) : wxString("--")), normal);
+    stat(3, tr("tactical_info.friendly", "Active companies"), own, normal);
+    stat(4, tr("tactical_info.ready", "Companies with AP"), ready, normal);
+    stat(5, tr("tactical_info.destroyed", "Enemy companies lost"),
         losses.enemy_light + losses.enemy_heavy + losses.enemy_air, friendly);
-    stat(5, tr("tactical_info.lost", "Own companies lost"),
+    stat(6, tr("tactical_info.lost", "Own companies lost"),
         losses.alliance_light + losses.alliance_heavy + losses.alliance_air, enemy);
 
     dc.SetPen(wxPen(wxColour(65, 82, 55)));
-    dc.DrawLine(x + pad, y + pad + 6 * line + line / 2,
-        x + width - pad, y + pad + 6 * line + line / 2);
+    dc.DrawLine(x + pad, y + pad + 7 * line + line / 2,
+        x + width - pad, y + pad + 7 * line + line / 2);
 
     // GetCursorUnit itself does not check fog of war; match the existing
     // dossier's visibility gate and never reveal enemy units in deployment.
@@ -6346,17 +6362,17 @@ void MainFrame::DrawTacticalInfoPanel(wxDC& dc)
         const wxColour side = u->is_enemy ? enemy : friendly;
         const wxString name(char2wstringCP895(
             u->name.empty() ? u->unit->name : u->name.c_str()));
-        row(7, (u->is_enemy ? tr("tactical_info.enemy", "Enemy") :
+        row(8, (u->is_enemy ? tr("tactical_info.enemy", "Enemy") :
             tr("tactical_info.ally", "Alliance")) + ": " + name, side);
-        row(8, tr("tactical_info.strength", "Strength") + wxString::Format(" %d/%d", u->man, u->unit->cnt) +
+        row(9, tr("tactical_info.strength", "Strength") + wxString::Format(" %d/%d", u->man, u->unit->cnt) +
             "  " + tr("tactical_info.wounded", "Wounded") + wxString::Format(" %d", u->wounded), normal);
-        row(9, tr("tactical_info.ap", "AP") + wxString::Format(" %d/%d", u->GetAP(), u->GetMaxAP()) +
+        row(10, tr("tactical_info.ap", "AP") + wxString::Format(" %d/%d", u->GetAP(), u->GetMaxAP()) +
             "  " + tr("tactical_info.shots", "Shots") + wxString::Format(" %d", u->GetFireCount()), normal);
-        row(10, tr("tactical_info.morale", "Morale") + wxString::Format(" %d", static_cast<int>(u->morale)) +
+        row(11, tr("tactical_info.morale", "Morale") + wxString::Format(" %d", static_cast<int>(u->morale)) +
             "  " + tr("tactical_info.dig", "Dig-in") + wxString::Format(" %d", u->dig_level), muted);
     }
     else
-        row(7, tr("tactical_info.hint", "Point at a visible company"), muted);
+        row(8, tr("tactical_info.hint", "Point at a visible company"), muted);
     dc.DestroyClippingRegion();
 }
 
