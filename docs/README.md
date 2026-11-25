@@ -1,6 +1,6 @@
 # Spellcross Reloaded — developer documentation
 
-This is the entry point for developers and researchers working on the **current source tree**, not a substitute for the retail game manual. The source was surveyed on **2026-11-05** at `main` commit `d3f478ca`. Paths in these pages are relative to the repository root; for readability, references written as `source/...`, `forms/...` or `tests/...` **inside a game module discussion** abbreviate `spellcross-map-edit-main/source/...`, `spellcross-map-edit-main/source/forms/...` and `spellcross-map-edit-main/tests/...` respectively. For historical/original-game behavior, see [evidence and verification](verification.md) before treating a reconstruction as definitive.
+This is the entry point for developers and researchers working on the **current source tree**, not a substitute for the retail game manual. The source was surveyed on **2026-11-05** at `main` commit `d3f478ca`. Paths in these pages are relative to the repository root; for readability, references written as `source/...`, `forms/...` or `tests/...` **inside a game module discussion** abbreviate `spellcross-remaster-main/source/...`, `spellcross-remaster-main/source/forms/...` and `spellcross-remaster-main/tests/...` respectively. For historical/original-game behavior, see [evidence and verification](verification.md) before treating a reconstruction as definitive.
 
 ## Recommended reading order
 
@@ -25,12 +25,12 @@ This is the entry point for developers and researchers working on the **current 
 - [Health indicators, unit activity icons and slope firing](restoration-health-status-terrain.md) — measured native geometry and original executable evidence.
 - [Runtime crash diagnostics](runtime-crash-diagnostics.md) — bounded rotating `debug.log` and incident collection.
 - [Historical strategic regression plans](archive/README.md) — issues #51–#54, #57 and hidden enemy movement. Some plans record the status of an **older branch**; they are evidence/checklists, not present-tense main-branch status.
-- [Game UI localization guide](../spellcross-map-edit-main/locales/README.md).
+- [Game UI localization guide](../spellcross-remaster-main/locales/README.md).
 - [Packaging and release guide](../packaging/README.md), [restoration principles](../packaging/restoration-development-principles.md), and [historical release notes](../packaging/releases/).
 
 ## Scope and evidence rules
 
-The **shipping game** is compiled from `spellcross-map-edit-main/source/spellcross_map_editor.vcxproj`; despite the historic project filename its x64 output is `Spellcross.exe`. The **standalone editor** is a separate pinned submodule in `external/map-editor`. Code under `spell_decomp/`, `spell_extractfs/` and `spellcross-master-pytools/` is research/tooling, not automatically part of the game build.
+The **shipping game** is compiled from `spellcross-remaster-main/source/spellcross_map_editor.vcxproj`; despite the historic project filename its x64 output is `Spellcross.exe`. The **standalone editor** is a separate pinned submodule in `external/map-editor`. Code under `spell_decomp/`, `spell_extractfs/` and `spellcross-master-pytools/` is research/tooling, not automatically part of the game build.
 
 Each guide names source files and functions so it can be updated alongside code. A current implementation, an original-game observation and a proposed improvement are three different kinds of evidence. The pages here are **static source review**, not a Windows build, DOS trace, full campaign replay or proof that every archived note is still accurate.
 

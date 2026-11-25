@@ -2,7 +2,7 @@
 
 ## Archive and game data pipeline
 
-The native source is under `spellcross-map-edit-main/source/`. `MyApp::OnInit` (`main.cpp`) resolves an original legally owned CZ/EN installation. `FormLoader` and `SpellData::SpellData` (`spellcross.cpp`) load the archives; the repository does **not** contain the complete original commercial game. The auxiliary `data/` folder and `locales/` are different from the player's retail assets.
+The native source is under `spellcross-remaster-main/source/`. `MyApp::OnInit` (`main.cpp`) resolves an original legally owned CZ/EN installation. `FormLoader` and `SpellData::SpellData` (`spellcross.cpp`) load the archives; the repository does **not** contain the complete original commercial game. The auxiliary `data/` folder and `locales/` are different from the player's retail assets.
 
 ```mermaid
 flowchart TD
@@ -32,7 +32,7 @@ flowchart TD
 | `*.ICO`, `*.CUR`, `*.PNM`, `*.BTN`, `*.ANM` | Game-specific indexed graphics, handled by `SpellGraphics`, `Sprite`, `Terrain` and strategic UI asset loaders. Spellcross `.ICO` is not necessarily a Windows icon. |
 | `*.CAN` / `*.DPK` / `*.DP2` / `*.SMK` | `SpellVideo`, `FormVideoBox`; Movies and speech are loaded directly from retail `MOVIE.FS` and `SPEAKER.FS`. |
 | Retail names/briefings in `TEXTS.FS` and `COMMON.FS` | `SpellTexts` / `SpellData`, using actual edition language; see `packaging/original-language-resources.md`. |
-| `locales/en.lang` / `cs.lang` | UTF-8 key=value authored UI strings through `spellcross_ui_locale::Tr`; see `spellcross-map-edit-main/locales/README.md`. |
+| `locales/en.lang` / `cs.lang` | UTF-8 key=value authored UI strings through `spellcross_ui_locale::Tr`; see `spellcross-remaster-main/locales/README.md`. |
 | `config.ini` | SimpleIni in `source/SimpleIni.h` and `MyApp::OnInit`; default template `source/config.example.ini`. |
 
 ## Campaign state and IDs

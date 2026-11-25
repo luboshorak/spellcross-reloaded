@@ -2,7 +2,7 @@
 
 ## Application-level ownership
 
-The application is a **wxWidgets event-driven Windows C++23 program**, not an OpenGL game loop. The principal entry is `wxIMPLEMENT_APP(MyApp)` and `MyApp::OnInit` in [`spellcross-map-edit-main/source/main.cpp`](../spellcross-map-edit-main/source/main.cpp). `MyApp` loads configuration, resolves original game data, starts `FormLoader` and creates `SpellMap` and `MainFrame`. `SpellData` owns archive-backed assets and decoded resources. `MainFrame` handles tactical interaction, global transitions and ownership of the active strategic frame; `StrategicLevelFrame` owns campaign models and strategic UI.
+The application is a **wxWidgets event-driven Windows C++23 program**, not an OpenGL game loop. The principal entry is `wxIMPLEMENT_APP(MyApp)` and `MyApp::OnInit` in [`spellcross-remaster-main/source/main.cpp`](../spellcross-remaster-main/source/main.cpp). `MyApp` loads configuration, resolves original game data, starts `FormLoader` and creates `SpellMap` and `MainFrame`. `SpellData` owns archive-backed assets and decoded resources. `MainFrame` handles tactical interaction, global transitions and ownership of the active strategic frame; `StrategicLevelFrame` owns campaign models and strategic UI.
 
 `MainFrame::OnTimer` advances tactical state through `SpellMap::Tick` **only while the tactical frame is visible**; `StrategicLevelFrame::OnEndTurn` commits campaign-wide strategic turns. These are distinct time domains.
 
@@ -23,7 +23,7 @@ flowchart TD
 
 ## Modules and exact source responsibilities
 
-| Source (under `spellcross-map-edit-main/source/`) | Responsibility / important interfaces |
+| Source (under `spellcross-remaster-main/source/`) | Responsibility / important interfaces |
 | --- | --- |
 | `main.cpp`, `main.h` | `MyApp::OnInit/OnExit`, `MainFrame`, user events (`OnTimer`, `OnCanvas*`), mission deployment, cutscene/strategic navigation, Continue. |
 | `spellcross.cpp`, `spellcross.h` | `SpellData::SpellData` imports and composes resources, `SpellDEF` parses tactical commands, edition-dependent text. |

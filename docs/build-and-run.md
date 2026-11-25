@@ -2,7 +2,7 @@
 
 ## Real build targets
 
-Despite its historic filename, [`spellcross-map-edit-main/source/spellcross_map_editor.vcxproj`](../spellcross-map-edit-main/source/spellcross_map_editor.vcxproj) compiles the **game** as `Spellcross.exe` for x64. Its `ClCompile` list includes `main.cpp`, `map.cpp`, `spellcross.cpp`, `forms/form_level.cpp` and the other C++ engine modules. The **standalone editor** is a separate pinned Git submodule in `external/map-editor` (`.gitmodules`), compiled using that submodule's project. Its language standard is managed separately and is not upgraded by this game-only change. Both are packaged by `packaging/Build-CombinedRelease.ps1`.
+Despite its historic filename, [`spellcross-remaster-main/source/spellcross_map_editor.vcxproj`](../spellcross-remaster-main/source/spellcross_map_editor.vcxproj) compiles the **game** as `Spellcross.exe` for x64. Its `ClCompile` list includes `main.cpp`, `map.cpp`, `spellcross.cpp`, `forms/form_level.cpp` and the other C++ engine modules. The **standalone editor** is a separate pinned Git submodule in `external/map-editor` (`.gitmodules`), compiled using that submodule's project. Its language standard is managed separately and is not upgraded by this game-only change. Both are packaged by `packaging/Build-CombinedRelease.ps1`.
 
 The game project specifies MSVC `PlatformToolset=v145` and x64 `LanguageStandard=stdcpp23`, uses wxWidgets headers and libraries under the `wxwin` property, links Windows `dsound.lib` / `winmm.lib` and includes the vendored `RtAudio`, `cxxmidi` and LGPL-2.1-or-later `libsmacker` sources. The native cinematic player decodes CAN, DPK and DP2; original SMK2 movies are decoded by libsmacker. No CMake build was found for the native game.
 
@@ -21,10 +21,10 @@ From the root in Windows Developer PowerShell:
 ```powershell
 git clone --recurse-submodules https://github.com/luboshorak/spellcross-reloaded.git
 cd spellcross-reloaded
-msbuild .\spellcross-map-edit-main\source\spellcross_map_editor.vcxproj /m /t:Build /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$HOME\vcpkg\installed\x64-windows\"
+msbuild .\spellcross-remaster-main\source\spellcross_map_editor.vcxproj /m /t:Build /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$HOME\vcpkg\installed\x64-windows\"
 ```
 
-The project sets its x64 output directory to `spellcross-map-edit-main/builds/x64/Release/`. Debug and Release configurations differ; check the `.vcxproj` rather than assuming a toolchain-specific generated path. This review did **not** run an MSVC build.
+The project sets its x64 output directory to `spellcross-remaster-main/builds/x64/Release/`. Debug and Release configurations differ; check the `.vcxproj` rather than assuming a toolchain-specific generated path. This review did **not** run an MSVC build.
 
 ## Packaging game plus editor
 
@@ -68,7 +68,7 @@ Run `Spellcross.exe --select-game-data` to reselect retail CZ/EN sources. Displa
 Run dependency-free Python source checks from the repository root:
 
 ```bash
-python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py' -v
+python -m unittest discover -s spellcross-remaster-main/tests -p 'test_*.py' -v
 ```
 
 `.github/workflows/strategy-regression.yml` compiles additional C++ gameplay tests; `.github/workflows/fullscreen-menu.yml` uses wxWidgets and Windows-specific GUI checks. The whole native game, retail-media integration tests and complete campaign must be tested separately on a suitable Windows machine. Repository path changes also require updating the workflow trigger filters and compiler commands.
