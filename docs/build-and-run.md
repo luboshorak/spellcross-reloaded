@@ -71,6 +71,6 @@ Run dependency-free Python source checks from the repository root:
 python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py' -v
 ```
 
-`.github/workflows/strategy-regression.yml` compiles additional C++ gameplay tests; `.github/workflows/fullscreen-menu.yml` uses wxWidgets and Windows-specific GUI checks. The whole native game, retail-media integration tests, 37-MP4 staging and complete campaign must be tested separately on a suitable Windows machine. Repository path changes also require updating the workflow trigger filters and compiler commands.
+`.github/workflows/strategy-regression.yml` compiles additional C++ gameplay tests; `.github/workflows/fullscreen-menu.yml` uses wxWidgets and Windows-specific GUI checks. The whole native game, retail-media integration tests and complete campaign must be tested separately on a suitable Windows machine. Repository path changes also require updating the workflow trigger filters and compiler commands.
 
 The output ZIP/optional SFX installer has `Spellcross.exe`, `data/`, `locales/`, `Editor/spellcross_map_editor.exe` and editor `data/`. Release packages exclude personal configurations, saves and imported retail archives. Detailed verification is in [debugging.md](debugging.md) and [verification.md](verification.md).

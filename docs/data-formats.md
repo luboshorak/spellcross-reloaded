@@ -30,7 +30,7 @@ flowchart TD
 | `LEVEL_XX.DEF` | `LevelLoader::LoadLevelDef` in `source/level.cpp`; `LevelData` / `LevelMission` / `LevelEvent` in `level.h`. Unrecognized commands are recorded in `unknown_lines`. |
 | `LEVEL_XX.LZ`, `HMLA__XX.LZ`, `LEVEL_XX.CLK`, `*.PAL` | `StrategicOriginalRenderer::RenderStrategicMap/DecodeClk/BuildPalette` in `strategic_original_renderer.cpp`. |
 | `*.ICO`, `*.CUR`, `*.PNM`, `*.BTN`, `*.ANM` | Game-specific indexed graphics, handled by `SpellGraphics`, `Sprite`, `Terrain` and strategic UI asset loaders. Spellcross `.ICO` is not necessarily a Windows icon. |
-| `*.CAN` / `*.SMK`, fallback `*.mp4` | `SpellVideo`, `FormVideoBox`; MP4 fallback files must match `data/movie_fallback/MANIFEST.tsv`. |
+| `*.CAN` / `*.DPK` / `*.DP2` / `*.SMK` | `SpellVideo`, `FormVideoBox`; Movies and speech are loaded directly from retail `MOVIE.FS` and `SPEAKER.FS`. |
 | Retail names/briefings in `TEXTS.FS` and `COMMON.FS` | `SpellTexts` / `SpellData`, using actual edition language; see `packaging/original-language-resources.md`. |
 | `locales/en.lang` / `cs.lang` | UTF-8 key=value authored UI strings through `spellcross_ui_locale::Tr`; see `spellcross-map-edit-main/locales/README.md`. |
 | `config.ini` | SimpleIni in `source/SimpleIni.h` and `MyApp::OnInit`; default template `source/config.example.ini`. |
