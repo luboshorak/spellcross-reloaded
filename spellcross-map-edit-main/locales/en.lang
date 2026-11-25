@@ -375,3 +375,4 @@ tactical_info.dig=Dig-in
 tactical_info.hint=Point at a visible company
 help.key.tactical_info=I / Shift+I
 help.action.tactical_info=Toggle tactical information / graphic markers above units.
+tactical_info.round=Round
