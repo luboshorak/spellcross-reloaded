@@ -5,6 +5,7 @@ on:
     paths:
       - 'packaging/Release.ps1'
       - 'packaging/Build-CombinedRelease.ps1'
+      - 'packaging/Build-UniversalNoRelease.ps1'
       - 'packaging/Publish-Release.ps1'
       - 'packaging/README.md'
       - '.github/workflows/release-version-automation.yml'
@@ -12,6 +13,7 @@ on:
     paths:
       - 'packaging/Release.ps1'
       - 'packaging/Build-CombinedRelease.ps1'
+      - 'packaging/Build-UniversalNoRelease.ps1'
       - 'packaging/Publish-Release.ps1'
       - '.github/workflows/release-version-automation.yml'
   workflow_dispatch:
