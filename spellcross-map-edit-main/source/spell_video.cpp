@@ -11,6 +11,8 @@
 #include "LZ_spell.h"
 #include "riff_loader.h"
 #include "smacker_video_decoder.h"
+#include "can_video_decoder.h"
+#include <cstdlib>
 
 #include <fstream>
 #include <filesystem>
@@ -237,9 +239,36 @@ int SpellVideo::DecodeSMK(uint8_t* data, int len)
 	return(frames.empty() || frame_palettes.size() != frames.size() || audio.samples <= 0);
 }
 
+bool SpellVideo::ExperimentalCANEnabled()
+{
+    const char* value = std::getenv("SPELLCROSS_EXPERIMENTAL_CAN");
+    return value && value[0] == '1' && value[1] == '\0';
+}
+
 int SpellVideo::DecodeCAN(uint8_t* data,int len)
 {
 	type = SpellVideoType::CAN;
+
+    if (ExperimentalCANEnabled())
+    {
+        spellcross_can::Decoded decoded;
+        if (len <= 0 || !spellcross_can::Decode(data, static_cast<size_t>(len), decoded))
+            return 1;
+        x_size = 320;
+        y_size = 200;
+        fps = 15.0;
+        std::copy(decoded.palette.begin(), decoded.palette.end(), &pal[0][0]);
+        frames = std::move(decoded.frames);
+        audio.data = std::move(decoded.audio);
+        audio.samples = static_cast<int>(audio.data.size());
+        audio.fs = 11025;
+        audio.channels = 1;
+        strcpy_s(audio.name, sizeof(audio.name), "stream");
+        can_picture_decoded = true;
+        return 0;
+    }
+
+    // Preserve the original audio-only behaviour when the experiment is off.
 
 	uint8_t *p = data;
 	uint8_t *pend = &data[len];

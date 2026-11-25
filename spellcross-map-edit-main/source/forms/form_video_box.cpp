@@ -145,6 +145,8 @@ bool TryLoadLegacyVideo(SpellData* spell_data, const std::string& entry_name, Sp
                     out_video = new SpellVideo(&archive, entry);
                     wxLogDebug("[VIDEO] original edition movie: %s (%s)",
                         entry.c_str(), entry_name.c_str());
+                    if (out_video->isCAN() && out_video->HasDecodedPicture())
+                        wxLogDebug("[VIDEO] experimental native CAN picture decoder active");
                     return true;
                 }
                 catch (const std::exception& ex)
@@ -257,7 +259,17 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     // transcodes of those exact conversions and prefers them for CAN/SMK.
     bool use_fallback = false;
     std::string legacy_error;
-    if ((ext == ".CAN" || ext == ".SMK") && !fallback_path.empty())
+    if (czechEdition && SpellVideo::ExperimentalCANEnabled() &&
+        (ext == ".CAN" || ext == ".SMK"))
+    {
+        TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error);
+        if (!m_video && !fallback_path.empty())
+        {
+            wxLogDebug("[VIDEO] experimental native movie failed: %s; using MP4", legacy_error.c_str());
+            use_fallback = true;
+        }
+    }
+    else if ((ext == ".CAN" || ext == ".SMK") && !fallback_path.empty())
     {
         use_fallback = true;
     }
@@ -610,7 +622,7 @@ void FormVideoBox::OnPaintTab(wxPaintEvent& event)
     auto horz = m_spelldata->gres.wm_frame_horz;
     auto vert = m_spelldata->gres.wm_frame_vert;
     
-    if(m_frame && m_video && m_video->GetFramesCount() && m_frame_id >= 0 && m_frame_id < m_video->GetFramesCount() && !m_video->isCAN())
+    if(m_frame && m_video && m_video->GetFramesCount() && m_frame_id >= 0 && m_frame_id < m_video->GetFramesCount() && m_video->HasDecodedPicture())
     {
         // get frame size
         auto [frame_x,frame_y] = m_video->GetResolution();
