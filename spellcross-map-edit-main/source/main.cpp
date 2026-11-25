@@ -6311,6 +6311,7 @@ bool MainFrame::CanHealTacticalInfoUnit(MapUnit* u)
         u && u == spell_map->GetSelectedUnit() && u->unit && u->unit->bonuses &&
         !u->is_enemy && !u->isDead() && !u->hide && u->isActive() &&
         !u->panic_turns && !u->paralyze_turns && !u->freeze_turns &&
+        !u->isMoving() && !u->isAttacker() &&
         u->GetMaxAP() > 0 && u->HasMaxAP() && u->HasWounded();
 }
 
