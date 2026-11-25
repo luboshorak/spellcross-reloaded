@@ -353,3 +353,25 @@ updates.launch_failed_continue=The download or installer launch failed. The curr
 updates.dont_ask=Do not show this update offer again
 updates.download_title=Downloading Spellcross Reloaded
 updates.downloading=Downloading the complete installer...
+
+# Tactical information overlay
+menu.tactical_info=Tactical information (I)
+tactical_info.title=TACTICAL REPORT
+tactical_info.deployment=Deployment
+tactical_info.enemy_phase=Other Side turn
+tactical_info.own_phase=Alliance turn
+tactical_info.friendly=Active companies
+tactical_info.ready=Companies with AP
+tactical_info.destroyed=Enemy companies lost
+tactical_info.lost=Own companies lost
+tactical_info.enemy=Enemy
+tactical_info.ally=Alliance
+tactical_info.strength=Strength
+tactical_info.wounded=Wounded
+tactical_info.ap=AP
+tactical_info.shots=Shots
+tactical_info.morale=Morale
+tactical_info.dig=Dig-in
+tactical_info.hint=Point at a visible company
+help.key.tactical_info=I / Shift+I
+help.action.tactical_info=Toggle tactical information / graphic markers above units.
