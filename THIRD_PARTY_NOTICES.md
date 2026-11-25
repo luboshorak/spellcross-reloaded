@@ -14,6 +14,6 @@ The CPAL license covers the identified project-owned restoration work, not these
 | Packaged DLL dependencies | Their respective vcpkg copyright notices, included by the packaging scripts |
 | Separate map editor | Its own MIT license, pinned submodule external/map-editor; retain its third-party notices |
 
-Paths beginning with source/ refer to spellcross-map-edit-main/source/. The XMIDI converter carries notices for Ryan Nunn, Bret Curtis, WildMIDI Developers and Vitaly Novichkov. Both LGPL components are compiled into the game rather than assumed to be freely replaceable DLLs. Preserve recipients' right to modify them and reverse engineer for debugging those modifications; provide the complete corresponding source and build inputs needed to rebuild/relink. See packaging documentation.
+Paths beginning with source/ refer to spellcross-remaster-main/source/. The XMIDI converter carries notices for Ryan Nunn, Bret Curtis, WildMIDI Developers and Vitaly Novichkov. Both LGPL components are compiled into the game rather than assumed to be freely replaceable DLLs. Preserve recipients' right to modify them and reverse engineer for debugging those modifications; provide the complete corresponding source and build inputs needed to rebuild/relink. See packaging documentation.
 
 Commercial game resources are not covered by any of these source licenses.

@@ -51,7 +51,7 @@ if (-not $NoVersionPrompt -and -not $SkipBuild) {
 }
 
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$game = Join-Path $root 'spellcross-map-edit-main'
+$game = Join-Path $root 'spellcross-remaster-main'
 # Keep packaging synchronized with the app and Windows version metadata.
 $versionHeader = Join-Path $game 'source\app_version.h'
 if (-not (Test-Path -LiteralPath $versionHeader -PathType Leaf)) { throw "Version header not found: $versionHeader" }
