@@ -8525,13 +8525,12 @@ void SpellMap::ApplyMoraleSpecialAction(MapUnit* caster)
 	const int act = caster->unit->action_id;
 	if (act == SpellUnitRec::SPEC_ACT_AUTODESTRUCT)
 	{
-		using namespace spellcross_tactical::predator_blast;
 		for (auto* target : units)
 		{
 			if (!_predator_blast_target(caster, target))
 				continue;
 
-			const int attack = Attack(target->unit->utype, caster->unit->action_params[1],
+			const int attack = spellcross_tactical::predator_blast::Attack(target->unit->utype, caster->unit->action_params[1],
 				caster->unit->action_params[2]);
 			if (attack <= 0) continue;
 			const int defence = target->GetDefence() + 5 * (std::max)(0, target->dig_level);
@@ -8541,13 +8540,13 @@ void SpellMap::ApplyMoraleSpecialAction(MapUnit* caster)
 			const bool penalized = (difficulty == GameDifficulty::HARD && !caster->is_enemy) ||
 				(difficulty == GameDifficulty::EASY && caster->is_enemy);
 			const int chance_bonus = favored ? std::rand() % 16 : 0;
-			if (std::rand() % 100 > HitChance(attack, defence, chance_bonus))
+			if (std::rand() % 100 > spellcross_tactical::predator_blast::HitChance(attack, defence, chance_bonus))
 				continue;
 			const int attack_roll = std::rand() % 6;
 			const int defence_roll = std::rand() % 6;
 			const int effect_bonus = favored ? std::rand() % 6 : penalized ? -(std::rand() % 6) : 0;
-			const int effect = Lethality(attack, defence, attack_roll, defence_roll, effect_bonus);
-			const auto damage = Apply(target->man, target->unit->cnt, target->damage_remainder,
+			const int effect = spellcross_tactical::predator_blast::Lethality(attack, defence, attack_roll, defence_roll, effect_bonus);
+			const auto damage = spellcross_tactical::predator_blast::Apply(target->man, target->unit->cnt, target->damage_remainder,
 				effect, target->unit->die_action_params[2] != 0);
 			target->man = damage.active;
 			target->damage_remainder = damage.remainder;
