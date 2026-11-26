@@ -14540,8 +14540,11 @@ int SpellMap::Tick()
 				// rotate turret to the target				
 				//int target_azimuth = unit->unit->gr_aux->GetStaticFireAzim(slope_id, unit->unit_angle);
 				int target_azimuth = unit->unit->gr_aux->GetStaticAzim(unit->unit_angle);
-				int azim_count = unit->unit->gr_base->stat.azimuths;
-				int delta_azim = mod(target_azimuth - unit->azimuth_turret + azim_count / 2, azim_count) - azim_count / 2;
+				int azim_count = original_projectile::enabled() ? unit->unit->gr_aux->stat.azimuths : unit->unit->gr_base->stat.azimuths;
+				if (azim_count <= 0) azim_count=1;
+				int delta_azim = original_projectile::enabled()
+					? original_projectile::turn_delta(target_azimuth,unit->azimuth_turret,azim_count)
+					: mod(target_azimuth - unit->azimuth_turret + azim_count / 2, azim_count) - azim_count / 2;
 				if (delta_azim == 0)
 				{
 					// aligned: done
@@ -14568,7 +14571,10 @@ int SpellMap::Tick()
 				if (shot_anim)
 					target_azimuth = shot_anim->GetAnimAzim(unit->unit_angle);
 				int azim_count = unit->unit->gr_base->stat.azimuths;
-				int delta_azim = mod(target_azimuth - unit->azimuth + azim_count / 2, azim_count) - azim_count / 2;
+				if (azim_count <= 0) azim_count=1;
+				int delta_azim = original_projectile::enabled()
+					? original_projectile::turn_delta(target_azimuth,unit->azimuth,azim_count)
+					: mod(target_azimuth - unit->azimuth + azim_count / 2, azim_count) - azim_count / 2;
 				if (delta_azim == 0)
 				{
 					// aligned: done
