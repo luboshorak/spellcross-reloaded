@@ -2,6 +2,8 @@
   <img src="./spellcross-remaster-main/data/logo.png" alt="Spellcross Reloaded" width="430">
 </p>
 
+**English** | [Čeština](README.cs.md)
+
 # Spellcross Reloaded
 
 **An unofficial, open-source restoration of *Spellcross: The Last Battle* (1997) for modern Windows.**
