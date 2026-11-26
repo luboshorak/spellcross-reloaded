@@ -6,6 +6,7 @@
 //          spellcross-remaster-main/tests/test_original_level_events.cpp
 //          spellcross-remaster-main/source/level.cpp
 #include "../source/level.h"
+#include "../source/predator_blast_rules.h"
 #include <cassert>
 #include <filesystem>
 #include <fstream>
@@ -79,5 +80,30 @@ int main()
     assert((level.events[4].wait_for_research == std::vector<int>{135, 136}));
     assert(level.events[4].set_player_territory == 4);
     assert((level.events[4].research_flags == std::vector<int>{115}));
+    // Predator retail action 13: explicit attack values, ground-only radius,
+    // no ordinary-weapon casualty scaling or wounded conversion.
+    using namespace spellcross_tactical::predator_blast;
+    assert(Eligible(0x20, true, true, false, 1.414, 1));
+    assert(!Eligible(0x04, true, true, false, 1.0, 1));
+    assert(!Eligible(0x20, false, true, false, 1.0, 1));
+    assert(!Eligible(0x20, true, false, false, 1.0, 1));
+    assert(!Eligible(0x20, true, true, true, 1.0, 1));
+    assert(!Eligible(0x20, true, true, false, 2.0, 1));
+    assert(Attack(0x20, 26, 18) == 26);
+    assert(Attack(0x10, 26, 18) == 18);
+    assert(HitChance(18, 18) == 80);
+    assert(HitChance(26, 18) == 100);
+    assert(HitChance(18, 40) == 20);
+    assert(Lethality(18, 18, 0, 0) == 16);
+    assert(Lethality(26, 20, 0, 0) == 31);
+    assert(Lethality(18, 40, 0, 0) == 4);
+    auto damage = Apply(1, 1, 200, 30, false);
+    assert(damage.active == 1 && damage.remainder == 500);
+    damage = Apply(1, 1, 800, 20, false);
+    assert(damage.active == 0 && damage.remainder == 0);
+    damage = Apply(7, 10, 0, 40, false);
+    assert(damage.active == 3 && damage.remainder == 0);
+    damage = Apply(2, 10, 0, 80, true);
+    assert(damage.active == 1);
     return 0;
 }
