@@ -2,3 +2,6 @@
 	path = external/map-editor
 	url = https://github.com/luboshorak/spellcross-reloaded-editor.git
 	branch = main
+[submodule "spellcross-asset-converter"]
+	path = spellcross-asset-converter
+	url = https://github.com/luboshorak/spellcross-asset-converter.git
