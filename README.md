@@ -35,7 +35,7 @@ Spellcross combines two layers of turn-based strategy:
 - **Strategic campaign:** conquer and defend territories, recruit and replenish units, develop new technologies, purchase upgrades and organize commanders and formations.
 - **Tactical battles:** deploy companies, use terrain and visibility to your advantage, and manage movement, attacks, morale and unit experience.
 
-Reloaded also adds modern display scaling, fullscreen support, mouse controls and in-game help while retaining the original game's presentation.
+Reloaded also adds modern display scaling, fullscreen support and in-game help while retaining the original game's presentation.
 
 This is an **actively developed fan restoration**, not a finished commercial remaster. Some mechanics and edge cases may differ from the 1997 game, and bugs or regressions are still possible.
 
