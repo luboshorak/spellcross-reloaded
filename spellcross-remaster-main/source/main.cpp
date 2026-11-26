@@ -32,6 +32,7 @@
 #pragma comment(lib, "wininet.lib")
 #endif
 #include "iso9660_import.h"
+#include "pak_dataset_import.h"
 #include "game_menu_bar.h"
 #include "menu_video_names.h"
 #include "game_controls.h"
@@ -1420,6 +1421,7 @@ namespace
                 options.Add("Select individual game archives manually");
                 options.Add("Download CZ ISO (Spellcross_CS.iso) and import");
                 options.Add("Download EN ISO (Spellcross_EN.iso) and import");
+                options.Add("Import Spellcross Asset Converter PAK dataset (compatibility mode)");
 
                 wxSingleChoiceDialog choice(nullptr,
                     "Spellcross needs files from your original game.\n\n"
@@ -1431,6 +1433,103 @@ namespace
                     return false;
 
                 const int option = choice.GetSelection();
+                if (option == 6)
+                {
+                    wxDirDialog datasetDialog(nullptr,
+                        "Select the complete PAK dataset folder containing manifest.json",
+                        wxEmptyString, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+                    if (datasetDialog.ShowModal() != wxID_OK)
+                        continue;
+
+                    fs::path importedDir;
+                    try
+                    {
+                        const fs::path datasetDir(datasetDialog.GetPath().ToStdWstring());
+                        wxProgressDialog progress("Spellcross PAK import", "Validating dataset...",
+                            100, nullptr, wxPD_APP_MODAL | wxPD_CAN_ABORT);
+                        auto report = [&](const std::string& msg) {
+                            if (!progress.Pulse(wxString::FromUTF8(msg.c_str())))
+                                throw std::runtime_error("PAK import cancelled");
+                        };
+                        const auto dataset = spellcross_pak::inspect(datasetDir, report);
+                        const fs::path importsRoot = runtime_root / "game_data" / "imports";
+                        fs::create_directories(importsRoot);
+                        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+                        for (unsigned attempt = 0; attempt < 64; ++attempt)
+                        {
+                            const auto candidate = importsRoot /
+                                ("PAK-" + std::to_string(stamp) + "-" + std::to_string(attempt));
+                            if (fs::create_directory(candidate))
+                            {
+                                importedDir = candidate;
+                                break;
+                            }
+                        }
+                        if (importedDir.empty())
+                            throw std::runtime_error("Cannot create unique PAK import directory");
+
+                        spellcross_pak::materialize(dataset, importedDir, report);
+                        std::vector<fs::path> selectedSources;
+                        for (const auto& req : reqs)
+                        {
+                            const auto candidate = importedDir / req.filename;
+                            if (!IsValidSourceFile(candidate, req.filename))
+                            {
+                                if (!req.optional || dataset.archives.count(req.filename))
+                                    throw std::runtime_error(std::string("Invalid imported archive: ") + req.filename);
+                                selectedSources.emplace_back();
+                            }
+                            else
+                                selectedSources.push_back(candidate);
+                        }
+                        progress.Update(100);
+                        progress.Hide();
+
+                        // Commit every source from this dataset together. Never
+                        // substitute stale optional or required archives.
+                        for (size_t i = 0; i < selectedSources.size(); ++i)
+                        {
+                            const auto& req = reqs[i];
+                            if (!selectedSources[i].empty())
+                                storeSource(req, selectedSources[i]);
+                            else
+                            {
+                                ini.SetValue("FILES", req.key, "");
+                                if (req.skip_key)
+                                    ini.SetBoolValue("FILES", req.skip_key, true, nullptr, true);
+                            }
+                        }
+                        ini.SetValue("SPELCROS", "spell_path",
+                            ConfigPathValue(importedDir, config_path, runtime_root).c_str());
+                        ini.SetValue("SPELCROS", "spellcd_path",
+                            ConfigPathValue(importedDir, config_path, runtime_root).c_str());
+                        if (!saveNow())
+                        {
+                            std::error_code cleanup;
+                            fs::remove_all(importedDir, cleanup);
+                            wxMessageBox("PAK sources could not be saved in config.ini.",
+                                "Spellcross PAK import", wxOK | wxICON_ERROR);
+                            return false;
+                        }
+                        wxMessageBox(
+                            "PAK dataset imported successfully. This compatibility mode uses the "
+                            "original archives retained inside the PAK files. Native atlas and "
+                            "structured-data loading is not enabled yet.",
+                            "Spellcross PAK import", wxOK | wxICON_INFORMATION);
+                        break;
+                    }
+                    catch (const std::exception& e)
+                    {
+                        if (!importedDir.empty())
+                        {
+                            std::error_code cleanup;
+                            fs::remove_all(importedDir, cleanup);
+                        }
+                        wxMessageBox(wxString::FromUTF8(e.what()), "Spellcross PAK import",
+                            wxOK | wxICON_ERROR);
+                        continue;
+                    }
+                }
                 if (option == 3)
                 {
                     if (!forceSourceSelection)
