@@ -35,7 +35,7 @@ Spellcross kombinuje dvě roviny tahové strategie:
 - **Strategická kampaň:** dobývejte a braňte území, nakupujte jednotky a doplňujte jejich ztráty, vyvíjejte nové technologie, pořizujte vylepšení a organizujte velitele a bojové formace.
 - **Taktické bitvy:** rozmísťujte roty, využívejte terén a dohled ve svůj prospěch a řiďte pohyb, útoky, morálku a bojové zkušenosti jednotek.
 
-Reloaded také přidává moderní škálování zobrazení, režim celé obrazovky, ovládání myší a nápovědu přímo ve hře, přičemž zachovává původní vizuální a zvukovou podobu hry.
+Reloaded také přidává moderní škálování zobrazení, podporu režimu celé obrazovky a nápovědu přímo ve hře, přičemž zachovává původní vizuální a zvukovou podobu hry.
 
 Jedná se o **aktivně vyvíjený fanouškovský projekt obnovy hry**, nikoli o dokončený komerční remaster. Některé herní mechaniky a okrajové situace se mohou od hry z roku 1997 lišit a stále se mohou objevit chyby nebo regrese.
 
