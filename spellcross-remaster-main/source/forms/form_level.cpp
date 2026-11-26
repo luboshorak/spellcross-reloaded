@@ -16228,7 +16228,7 @@ std::wstring StrategicLevelFrame::ResolveMapDtaPathForMissionToken(const std::st
 
 void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
 {
-    if (m_selectedTerritory < 0 || !m_main ||
+    if (m_selectedTerritory < 0 || !m_main || m_main->HasPendingStrategicCutscenes() ||
         !CanLaunchTerritoryBattle(m_selectedTerritory))
         return;
 
@@ -16509,10 +16509,28 @@ void StrategicLevelFrame::OnLaunch(wxCommandEvent&)
     // but the remake renderer does not implement those legacy modes. Keep the
     // current application/window size unchanged when entering a battle.
 
-    // jump directly into game mode and hide the strategic-level window (keep alive for result callback)
-    m_main->StartTacticalGame();
-    m_main->ShowTacticalWindow();
-
+    // Use the actual loaded DEF variant; generated recapture battles have no
+    // authored mission intro. Queue only after the map has loaded successfully.
+    if (m_gameModeEnabled && !generatedDtaBattle)
+    {
+        const auto missionName = to_upper(std::filesystem::path(defPath).stem().string());
+        if (const auto* mission = FindMissionByNameUpper(missionName))
+        {
+            const auto flags = spellcross_strategy::EffectiveResearchFlags(
+                m_level.research_flags, m_level.events, m_triggeredLevelEvents);
+            for (const auto& intro : mission->intro_videos)
+            {
+                const bool allowed = std::all_of(intro.research_prerequisites.begin(),
+                    intro.research_prerequisites.end(), [&](int id) {
+                        return m_researchCompleted.count(id) != 0 || flags.count(id) != 0;
+                    });
+                if (allowed) PlayVideo(intro.video);
+            }
+        }
+    }
+    // Keep the strategic frame alive for the result callback. Deployment and
+    // mission-start events must not run underneath an intro cinematic.
+    m_main->StartTacticalGameAfterStrategicCutscenes();
     Hide();
 }
 
