@@ -6341,7 +6341,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				if (original_projectile::enabled())
 				{
 					using namespace original_projectile;
-					const auto* ground=tiles[ConvXY(attacker->coor)].L1;
+					auto* ground=tiles[ConvXY(attacker->coor)].L1;
 					const auto off=offset(ground?ground->GetSlope()-'A':0,attacker->unit->isAir(),from_angle(attacker->attack_angle));
 					const Point launch{attack_pos.x,attack_pos.y},dest{target_pos.x,target_pos.y};
 					const auto p=position(trajectory(launch,dest,difference(dest,{launch.x-off.x,launch.y-off.y})),attacker->attack_proj_step);
