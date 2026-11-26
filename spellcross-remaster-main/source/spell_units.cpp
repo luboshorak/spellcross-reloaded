@@ -11,6 +11,7 @@
 #define _HAS_STD_BYTE 0
 
 #include "spell_units.h"
+#include "original_projectile_geometry.h"
 #include "unit_health_display.h"
 #include "destructible_health.h"
 #include "spellcross.h"
@@ -749,7 +750,7 @@ tuple<int,int> SpellUnitRec::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x
 	int x_status_bar = 0;
 
 	// flight altitute (in pixels)
-	flight_alt = (flight_alt>=0)?(AIR_UNIT_FLY_HEIGHT*flight_alt/100):AIR_UNIT_FLY_HEIGHT;
+	flight_alt = (flight_alt>=0)?(original_projectile::air_height()*flight_alt/100):original_projectile::air_height();
 
 	// --- repeat for each man:
 	for (int uid = 0; uid < man; uid++)
