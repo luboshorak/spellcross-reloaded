@@ -20,18 +20,21 @@ int main()
         assert(f);
         // Representative original CZ LEVEL_03.DEF commands; only the
         // minimum needed to catch the mission event/turn state regressions.
-        f << "LevelInit {\n"
+        f << "levelINIT {\n"
              " Start(1)\n Start(3)\n"
              " Territory(1,none,m03_01,mus05)\n"
              " Territory(3,none,m03_03,mus05)\n"
              " Territory(4,m03_04a,m03_04,mus05)\n"
              " SetSpecialTerritory(4)\n"
              "}\n"
-             "Mission(M03_04A) {\n"
+             "mISSION(M03_04A) {\n"
              " Time(5)\n"
              " EndOKMission(none)\n"
              " EndBadMission(M03_04B)\n"
-             " EndOKEvent(5)\n"
+             " EndOkEvent(5)\n"
+             " playStartMissionDeltaAnim(LEVEL9_1.SMK)\n"
+             " PlayStartMissionCANAnim(clip,135,136)\n"
+             " PlayStartMissionDeltaAnim(skip,invalid)\n"
              " EndBadEvent(5)\n"
              "}\n"
              "Event(0) {\n AbsTime(-1)\n EventText(MSG0014)\n}\n"
@@ -58,6 +61,12 @@ int main()
     assert(mission.name == "M03_04A");
     assert(mission.time_limit == 5);
     assert(mission.end_ok_event == 5);
+    assert(mission.intro_videos.size() == 2);
+    assert(mission.intro_videos[0].video == "LEVEL9_1.SMK");
+    assert(mission.intro_videos[0].research_prerequisites.empty());
+    assert(mission.intro_videos[1].video == "clip.CAN");
+    assert((mission.intro_videos[1].research_prerequisites == std::vector<int>{135, 136}));
+    assert(level.unknown_lines.size() == 1);
     assert(mission.end_bad_event == 5);
     assert(mission.end_bad_mission == "M03_04B");
 
