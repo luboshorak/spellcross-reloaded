@@ -3,7 +3,9 @@ SPELLCROSS RELOADED - SOURCE AND RELINKING
 Source code is supplied in SOURCE-CODE.zip with this distribution.
 Project-owned Covered Code is licensed under CPAL-1.0 (LICENSE-Reloaded.txt);
 inherited MIT and third-party code retain their original licenses. See
-LICENSING.md, AUTHORS.md, NOTICE.md and third-party-licenses.
+LICENSING.md, AUTHORS.md, NOTICE.md and third-party-licenses in the binary
+package. In the extracted source archive, the legal documents and LICENSES
+are under docs/legal/; the main LICENSE remains at the source root.
 
 The game incorporates libsmacker (LGPL-2.1-or-later) and the XMIDI converter
 (GNU Library GPL 2.0-or-later); their use is covered by those licenses.

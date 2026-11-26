@@ -3,9 +3,9 @@
  * Software distributed under the License is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the specific language governing rights and limitations under the License.
  * The Original Code is Spellcross Reloaded restoration code covered by CPAL-1.0.
  * The Initial Developer and Original Developer of the Original Code is Luboš Horák. All portions of the code written by Luboš Horák and covered by this License are Copyright (c) 2026 Luboš Horák. All Rights Reserved.
- * Contributor: see AUTHORS.md and the Git history.
+ * Contributor: see docs/legal/AUTHORS.md and the Git history.
  * SPDX-License-Identifier: CPAL-1.0
- * Previously granted MIT rights are not withdrawn; see LICENSING.md.
+ * Previously granted MIT rights are not withdrawn; see docs/legal/LICENSING.md.
  */
 #pragma once
 // Global user preference and pure deterministic START-square assignment.

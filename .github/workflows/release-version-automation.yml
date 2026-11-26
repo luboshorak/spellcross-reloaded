@@ -10,8 +10,8 @@ on:
       - 'packaging/Add-DistributionLicenses.ps1'
       - 'packaging/SOURCE-AND-RELINKING.txt'
       - 'LICENSE'
-      - 'LICENSES/**'
-      - 'LICENSING.md'
+      - 'docs/legal/**'
+      - '.github/CONTRIBUTING.md'
       - 'spellcross-remaster-main/tests/test_project_attribution.py'
       - 'spellcross-remaster-main/source/app_version.h'
       - 'spellcross-remaster-main/source/resources.rc'
@@ -27,8 +27,8 @@ on:
       - 'packaging/Add-DistributionLicenses.ps1'
       - 'packaging/SOURCE-AND-RELINKING.txt'
       - 'LICENSE'
-      - 'LICENSES/**'
-      - 'LICENSING.md'
+      - 'docs/legal/**'
+      - '.github/CONTRIBUTING.md'
       - 'spellcross-remaster-main/tests/test_project_attribution.py'
       - 'spellcross-remaster-main/source/app_version.h'
       - 'spellcross-remaster-main/source/resources.rc'
@@ -312,7 +312,7 @@ jobs:
           }
           $source = Join-Path $stage 'extracted-source'
           Expand-Archive -LiteralPath (Join-Path $stage 'SOURCE-CODE.zip') -DestinationPath $source
-          foreach ($file in @('LICENSE','LICENSES\MIT-legacy.txt','spellcross-remaster-main\source\project_attribution.h','spellcross-remaster-main\source\spellcross_map_editor.vcxproj','spellcross-remaster-main\source\cxxmidi\guts\cvt_xmi2mid.hpp','external\map-editor\source\spellcross_map_editor.vcxproj','external\map-editor\LICENSE','third_party\libsmacker\smacker.c','third_party\libsmacker\COPYING','packaging\Build-CombinedRelease.ps1','SOURCE-AND-RELINKING.txt')) {
+          foreach ($file in @('LICENSE','README.cs.md','docs\legal\AUTHORS.md','docs\legal\NOTICE.md','docs\legal\LICENSING.md','docs\legal\THIRD_PARTY_NOTICES.md','docs\legal\CHANGES.md','docs\legal\LICENSES\CPAL-1.0.txt','docs\legal\LICENSES\MIT-Maslan.txt','docs\legal\LICENSES\LGPL-2.0.txt','docs\legal\LICENSES\MIT-legacy.txt','spellcross-remaster-main\source\project_attribution.h','spellcross-remaster-main\source\spellcross_map_editor.vcxproj','spellcross-remaster-main\source\cxxmidi\guts\cvt_xmi2mid.hpp','external\map-editor\source\spellcross_map_editor.vcxproj','external\map-editor\LICENSE','third_party\libsmacker\smacker.c','third_party\libsmacker\COPYING','packaging\Build-CombinedRelease.ps1','SOURCE-AND-RELINKING.txt')) {
             if (-not (Test-Path -LiteralPath (Join-Path $source $file) -PathType Leaf)) { throw "Missing corresponding source: $file" }
           }
           if ((Get-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Raw) -notmatch 'Corresponding source ZIP SHA256: [0-9A-F]{64}') {

@@ -28,6 +28,10 @@ This is the entry point for developers and researchers working on the **current 
 - [Game UI localization guide](../spellcross-remaster-main/locales/README.md).
 - [Packaging and release guide](../packaging/README.md), [restoration principles](../packaging/restoration-development-principles.md), and [historical release notes](../packaging/releases/).
 
+## Licensing and contributions
+
+See [licensing scope](legal/LICENSING.md), [authors](legal/AUTHORS.md), [attribution notice](legal/NOTICE.md), [third-party notices](legal/THIRD_PARTY_NOTICES.md), [dated changes](legal/CHANGES.md) and [contributing](../.github/CONTRIBUTING.md).
+
 ## Scope and evidence rules
 
 The **shipping game** is compiled from `spellcross-remaster-main/source/spellcross_map_editor.vcxproj`; despite the historic project filename its x64 output is `Spellcross.exe`. The **standalone editor** is a separate pinned submodule in `external/map-editor`. Code under `spell_decomp/`, `spell_extractfs/` and `spellcross-master-pytools/` is research/tooling, not automatically part of the game build.

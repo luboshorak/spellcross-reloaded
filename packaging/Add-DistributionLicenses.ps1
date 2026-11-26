@@ -2,9 +2,9 @@
 # Software distributed under the License is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the specific language governing rights and limitations under the License.
 # The Original Code is Spellcross Reloaded restoration code covered by CPAL-1.0.
 # The Initial Developer and Original Developer of the Original Code is Luboš Horák. All portions of the code written by Luboš Horák and covered by this License are Copyright (c) 2026 Luboš Horák. All Rights Reserved.
-# Contributor: see AUTHORS.md and the Git history.
+# Contributor: see docs/legal/AUTHORS.md and the Git history.
 # SPDX-License-Identifier: CPAL-1.0
-# Previously granted MIT rights are not withdrawn; see LICENSING.md.
+# Previously granted MIT rights are not withdrawn; see docs/legal/LICENSING.md.
 
 # Copy attribution, dependency notices and corresponding build source.
 # The ZIP contains the actual working source, including local changes in the
@@ -23,14 +23,15 @@ function Copy-Notice([string]$source, [string]$target) {
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required notice missing: $source" }
     Copy-Item -LiteralPath $source -Destination $target -Force
 }
+$legalRoot = Join-Path $Root 'docs\legal'
 $licenses = Join-Path $Stage 'third-party-licenses'
 New-Item -ItemType Directory -Path $licenses -Force | Out-Null
 foreach ($name in @('AUTHORS.md','NOTICE.md','LICENSING.md','THIRD_PARTY_NOTICES.md','CHANGES.md')) {
-    Copy-Notice (Join-Path $Root $name) (Join-Path $Stage $name)
+    Copy-Notice (Join-Path $legalRoot $name) (Join-Path $Stage $name)
 }
-Copy-Item -LiteralPath (Join-Path $Root 'LICENSES') -Destination $Stage -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $legalRoot 'LICENSES') -Destination $Stage -Recurse -Force
 Copy-Notice (Join-Path $Root 'third_party\libsmacker\COPYING') (Join-Path $licenses 'libsmacker-LGPL-2.1.txt')
-Copy-Notice (Join-Path $Root 'LICENSES\LGPL-2.0.txt') (Join-Path $licenses 'XMIDI-LGPL-2.0.txt')
+Copy-Notice (Join-Path $legalRoot 'LICENSES\LGPL-2.0.txt') (Join-Path $licenses 'XMIDI-LGPL-2.0.txt')
 # Extract the full copyright + permission + disclaimer from vendored headers.
 $headers = @{
     'RtAudio.txt' = 'RtAudio.h'
@@ -72,12 +73,12 @@ try {
     Copy-CodeTree (Join-Path $EditorRoot 'source') (Join-Path $editorSource 'source')
     Copy-CodeTree (Join-Path $Root 'third_party') (Join-Path $temp 'third_party')
     Copy-CodeTree (Join-Path $Root 'packaging') (Join-Path $temp 'packaging')
-    foreach ($name in @('LICENSE','README.md','AUTHORS.md','NOTICE.md','LICENSING.md','THIRD_PARTY_NOTICES.md','CHANGES.md')) {
+    foreach ($name in @('LICENSE','README.md','README.cs.md')) {
         Copy-Notice (Join-Path $Root $name) (Join-Path $temp $name)
     }
     Copy-Notice (Join-Path $Root 'spellcross-remaster-main\LICENSE') (Join-Path $gameSource 'LICENSE')
     Copy-Notice (Join-Path $EditorRoot 'LICENSE') (Join-Path $editorSource 'LICENSE')
-    Copy-Item -LiteralPath (Join-Path $Root 'LICENSES') -Destination $temp -Recurse -Force
+    Copy-CodeTree $legalRoot (Join-Path $temp 'docs\legal')
     Copy-Item -LiteralPath (Join-Path $Stage 'data') -Destination $gameSource -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $Stage 'locales') -Destination $gameSource -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $Stage 'Editor\data') -Destination $editorSource -Recurse -Force
