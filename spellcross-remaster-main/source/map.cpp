@@ -10,6 +10,7 @@
 #include "map.h"
 #include "night_palette.h"
 #include "pnm_frame_rules.h"
+#include "original_projectile_geometry.h"
 #include "runtime_diagnostics.h"
 #include "unit_health_display.h"
 #include "destructible_health.h"
@@ -6258,12 +6259,12 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 						if (unit->isAttacker())
 						{
 							attacker = unit;
-							attack_pos = MapXY(mxx + unit->attack_fire_x_org, myy + unit->attack_fire_y_org + sid->y_ofs - attacker->unit->isAir() * SpellUnitRec::AIR_UNIT_FLY_HEIGHT);
+							attack_pos = MapXY(mxx + unit->attack_fire_x_org, myy + unit->attack_fire_y_org + sid->y_ofs - attacker->unit->isAir() * original_projectile::air_height());
 						}
 						if (unit->isTarget())
 						{
 							target = unit->unit;
-							target_pos = MapXY(mxx + 40, myy + sid->y_ofs + sid->y_size / 2 - target->isAir() * SpellUnitRec::AIR_UNIT_FLY_HEIGHT);
+							target_pos = MapXY(mxx + 40, myy + sid->y_ofs + (original_projectile::enabled() ? original_projectile::center_y(sid->GetSlope()-'A') : sid->y_size / 2) - target->isAir() * original_projectile::air_height());
 						}
 
 						// render fire PNM animation
@@ -6273,6 +6274,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 							auto* frame = pnm->frames[unit->attack_fire_frame];
 							int org_x = mxx + unit->attack_fire_x_org - (pnm->x_max + pnm->x_min) / 2;
 							int org_y = myy + unit->attack_fire_y_org - (pnm->y_max + pnm->y_min) / 2;
+							if (original_projectile::enabled())
+								org_y += sid->y_ofs - unit->unit->isAir()*original_projectile::air_height();
 							frame->Render(pic, pic_end, org_x, org_y, pic_x_size, filter);
 						}
 
@@ -6315,7 +6318,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 				// mark target tile position
 				if (tile->is_target)
-					target_pos = MapXY(mxx + 40, myy + sid->y_ofs + sid->y_size / 2);
+					target_pos = MapXY(mxx + 40, myy + sid->y_ofs + (original_projectile::enabled() ? original_projectile::center_y(sid->GetSlope()-'A') : sid->y_size / 2));
 			}
 		}
 	}
@@ -6335,6 +6338,16 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				int denom = (attacker->attack_proj_delay > 0) ? attacker->attack_proj_delay : 1;
 				int mxx = attack_pos.x + dx * attacker->attack_proj_step / denom - glyph->x_size / 2;
 				int myy = attack_pos.y + dy * attacker->attack_proj_step / denom - glyph->y_size / 2;
+				if (original_projectile::enabled())
+				{
+					using namespace original_projectile;
+					const auto* ground=tiles[ConvXY(attacker->coor)].L1;
+					const auto off=offset(ground?ground->GetSlope()-'A':0,attacker->unit->isAir(),from_angle(attacker->attack_angle));
+					const Point launch{attack_pos.x,attack_pos.y},dest{target_pos.x,target_pos.y};
+					const auto p=position(trajectory(launch,dest,difference(dest,{launch.x-off.x,launch.y-off.y})),attacker->attack_proj_step);
+					mxx=p.x-glyph->x_size/2;
+					myy=p.y-glyph->y_size/2;
+				}
 				glyph->Render(pic, pic_end, pic_x_size, mxx, myy);
 			}
 		}
@@ -6438,7 +6451,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				mxx2 += 40;
 				myy2 += spr->y_ofs + spr->y_size / 2;
 				if (unit.unit->unit->isAir())
-					myy2 -= SpellUnitRec::AIR_UNIT_FLY_HEIGHT;
+					myy2 -= original_projectile::air_height();
 
 				int is_selected = (cursor_unit == unit.unit || evt == GetSelectEvent());
 
@@ -6511,7 +6524,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				string label = "?" + evt->type_name;
 				if (evt->probability != 100)
 					label += string_format("(%d%%)", evt->probability);
-				int y_ofs = (unit->unit->unit->isAir()) ? (myy - SpellUnitRec::AIR_UNIT_FLY_HEIGHT) : myy2;
+				int y_ofs = (unit->unit->unit->isAir()) ? (myy - original_projectile::air_height()) : myy2;
 				terrain->font7->Render(pic, pic_end, pic_x_size, mxx, y_ofs, 80, 10, label, 252, 254, SpellFont::SOLID);
 			}
 
@@ -6543,7 +6556,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			string label = "?" + evt->type_name;
 			if (evt->probability != 100)
 				label += string_format("(%d%%)", evt->probability);
-			int y_ofs = (unit->unit->unit->isAir()) ? (-SpellUnitRec::AIR_UNIT_FLY_HEIGHT) : 0;
+			int y_ofs = (unit->unit->unit->isAir()) ? (-original_projectile::air_height()) : 0;
 			terrain->font7->Render(pic, pic_end, pic_x_size, mxx, myy + y_ofs, 80, spr->y_size, label, 252, 254, SpellFont::SOLID);
 		}
 
@@ -6608,7 +6621,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 							//label += "\x1A";
 
 							// plot it
-							int y_ofs = (unit->unit->isAir())?(-SpellUnitRec::AIR_UNIT_FLY_HEIGHT):0;
+							int y_ofs = (unit->unit->isAir())?(-original_projectile::air_height()):0;
 							int color = (is_selected && sel_blink_state)?214:252;
 							terrain->font7->Render(pic,pic_end,pic_x_size,mxx,myy + y_ofs,80,spr->y_size,label,color,254,SpellFont::SOLID);
 						}
@@ -6628,7 +6641,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 								label += "\x1B";
 
 							// plot it
-							int y_ofs = (unit->unit->isAir())?(-SpellUnitRec::AIR_UNIT_FLY_HEIGHT):0;
+							int y_ofs = (unit->unit->isAir())?(-original_projectile::air_height()):0;
 							int color = (is_selected && sel_blink_state)?214:252;
 							terrain->font->Render(pic,pic_end,pic_x_size,mxx,myy + y_ofs,80,spr->y_size,label,color,254,SpellFont::SOLID);
 						}
@@ -8085,7 +8098,7 @@ int SpellMap::SelectUnitsInScreenRect(const spellcross_tactical::SelectionRect& 
 			anchor_y = tile_y + terrain_sprite->y_ofs + terrain_sprite->y_size / 2 - surf_y_origin;
 		}
 		if (u->unit->isAir())
-			anchor_y -= SpellUnitRec::AIR_UNIT_FLY_HEIGHT;
+			anchor_y -= original_projectile::air_height();
 
 		if (rect.Contains(anchor_x, anchor_y))
 			box_group_units.push_back(u->id);
@@ -14487,8 +14500,22 @@ int SpellMap::Tick()
 			//unit->unit_angle = GetUnitsAngle(unit,target);//unit->coor.Angle(target->coor);
 			unit->unit_angle = unit->coor.Angle(target_pos);
 			unit->attack_angle = unit->unit_angle;
-			//unit->attack_angle = GetUnitsAngle(unit,target);
-			if (unit->unit->isMLRS())
+			if (original_projectile::enabled() && target_obj->L1)
+			{
+				using namespace original_projectile;
+				const auto& source_tile = tiles[ConvXY(unit->coor)];
+				const int target_slope = target_obj->L1->GetSlope() - 'A';
+				// DOS ordinary aiming uses map elevation and slope height,
+				// before applying the flight-height correction.
+				Point delta{
+					tile_x(target_pos.x,target_pos.y)-tile_x(unit->coor.x,unit->coor.y),
+					tile_y(target_pos.y,target_obj->elev,target_slope)-tile_y(unit->coor.y,source_tile.elev,slope_id)
+				};
+				const int dir=direction(delta,from_angle(unit->unit_angle));
+				unit->attack_angle=angle(dir);
+				unit->unit_angle=angle(graphic_direction(dir,unit->unit->isMLRS()));
+			}
+			else if (unit->unit->isMLRS())
 			{
 				unit->unit_angle -= 90.0;
 				unit->attack_angle -= 90.0;
@@ -14600,7 +14627,13 @@ int SpellMap::Tick()
 				// get fire origin (SAFE)
 				FSU_resource::Txy fire_org{ 0, 0 };
 
-				if (unit->in_animation &&
+				if (original_projectile::enabled())
+				{
+					const auto p=original_projectile::local_origin(slope_id,unit->unit->isAir(),
+						original_projectile::from_angle(unit->attack_angle));
+					fire_org=FSU_resource::Txy(p.x,p.y);
+				}
+				else if (unit->in_animation &&
 					unit->azimuth >= 0 &&
 					unit->azimuth < unit->in_animation->anim.azimuths)
 				{
@@ -14638,7 +14671,18 @@ int SpellMap::Tick()
 
 				// start projectile flight
 				unit->attack_proj_step = 0;
-				if ((target && unit->unit->hasProjectile(target->unit)) || unit->unit->hasProjectile())
+				if (original_projectile::enabled() && target_obj->L1 &&
+					unit->unit->hasProjectile(target ? target->unit : nullptr))
+				{
+					using namespace original_projectile;
+					const auto& source_tile=tiles[ConvXY(unit->coor)];
+					const auto source=tile_center(unit->coor.x,unit->coor.y,source_tile.elev,slope_id,sprite->y_ofs,unit->unit->isAir());
+					const auto dest=tile_center(target_pos.x,target_pos.y,target_obj->elev,
+						target_obj->L1->GetSlope()-'A',target_obj->L1->y_ofs,target && target->unit->isAir());
+					const auto off=offset(slope_id,unit->unit->isAir(),from_angle(unit->attack_angle));
+					unit->attack_proj_delay=flight_ticks(trajectory({source.x+off.x,source.y+off.y},dest,difference(dest,source)));
+				}
+				else if ((target && unit->unit->hasProjectile(target->unit)) || unit->unit->hasProjectile())
 				{
 					unit->attack_proj_delay = (int)(0.04 * unit->attack_dist / 0.02);
 				}
@@ -15893,9 +15937,9 @@ double SpellMap::GetUnitsAngle(MapUnit* ref, MapUnit* target)
 	auto [x_targ, y_targ] = GetPosOrigin(target->coor);
 
 	if (ref->unit->isAir())
-		y_ref -= SpellUnitRec::AIR_UNIT_FLY_HEIGHT;
+		y_ref -= original_projectile::air_height();
 	if (target->unit->isAir())
-		y_targ -= SpellUnitRec::AIR_UNIT_FLY_HEIGHT;
+		y_targ -= original_projectile::air_height();
 
 	return atan2(y_ref - y_targ, x_targ - x_ref) * 180.0 / M_PI;
 }
