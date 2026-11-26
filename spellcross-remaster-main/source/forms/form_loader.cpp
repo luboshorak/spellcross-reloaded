@@ -19,6 +19,7 @@
 #include "other.h"
 #include "simpleini.h"
 #include "spell_units.h"
+#include "../original_projectile_geometry.h"
 #include <algorithm>
 #include <string>
 
@@ -279,25 +280,18 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
         }
     }
 
-	// try load units.fsu aux metadata (optional)
-	UpdateList("Loading units aux data...");
-	if (spell_data->units_fsu->LoadAuxData(units_aux_data_path))
+	// The experimental DOS model must run independently of editor metadata.
+	if (original_projectile::enabled())
 	{
-		// OPTIONAL: don't kill the whole loader, just continue
-		UpdateList(string_format(" - missing/failed, continuing without aux data (''%ls'')", units_aux_data_path.c_str()));
-
-		// pokud máš nějaký flag, nastav ho:
-		// spell_data->units_fsu->has_aux_data = false;
-
-		// a hlavně NEVOLAT:
-		// delete spell_data;
-		// spell_data = NULL;
-		// LoaderExit(true);
-		// return;
+		UpdateList("Projectile geometry: original EN DOS (units.fsa not loaded)");
 	}
 	else
 	{
-		UpdateList(" - OK");
+		UpdateList("Projectile geometry: legacy FSA (comparison mode)");
+		if (spell_data->units_fsu->LoadAuxData(units_aux_data_path))
+			UpdateList(string_format(" - missing/failed, continuing without aux data (''%ls'')", units_aux_data_path.c_str()));
+		else
+			UpdateList(" - OK");
 	}
 
 
