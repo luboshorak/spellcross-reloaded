@@ -8466,6 +8466,16 @@ static int _morale_rank(const MapUnit* unit)
 	return unit ? (std::clamp)(unit->experience_level - 1, 0, 11) : 0;
 }
 
+// Retail EN SPELCROS.EXE: cases 6 (0x2c888), 11 (0x2cbc7), 14
+// (0x2d0b5) skip targets with unit class bit 0x04 (flight movement).
+static bool _morale_special_target_allowed(int act, const MapUnit* target)
+{
+    if (!target || !target->unit) return false;
+    const bool skips_flying = act == SpellUnitRec::SPEC_ACT_LOWER_MORALE ||
+        act == SpellUnitRec::SPEC_ACT_FREEZE || act == SpellUnitRec::SPEC_ACT_BREORN_SCREAM;
+    return !skips_flying || (target->unit->utype & 0x04) == 0;
+}
+
 bool SpellMap::StartMoraleSpecialAction(MapUnit* caster)
 {
 	if (!caster || !caster->unit || !caster->CanSpecAction())
@@ -8503,7 +8513,7 @@ void SpellMap::ApplyMoraleSpecialAction(MapUnit* caster)
 
 	for (auto* target : units)
 	{
-		if (!target || target == caster || target->isDead() || target->is_enemy == caster->is_enemy)
+		if (!_morale_special_target_allowed(act, target) || target == caster || target->isDead() || target->is_enemy == caster->is_enemy)
 			continue;
 		if (caster->coor.Distance(target->coor) > radius)
 			continue;
@@ -8562,7 +8572,7 @@ bool SpellMap::TryEnemyMoraleSpecialAction(MapUnit* caster)
 	const int radius = (std::max)(1, caster->unit->action_params[0]);
 	for (auto* target : units)
 	{
-		if (!target || target->is_enemy || target->isDead()) continue;
+		if (!_morale_special_target_allowed(act, target) || target->is_enemy || target->isDead()) continue;
 		if (caster->coor.Distance(target->coor) <= radius)
 			return StartMoraleSpecialAction(caster);
 	}
