@@ -24,6 +24,7 @@ on:
       - 'spellcross-remaster-main/source/strategic_unit_timer_rules.h'
       - 'spellcross-remaster-main/source/unit_health_display.h'
       - 'spellcross-remaster-main/source/map.cpp'
+      - 'spellcross-remaster-main/source/original_projectile_geometry.h'
       - 'spellcross-remaster-main/source/map.h'
       - 'spellcross-remaster-main/source/spell_units.cpp'
       - 'spellcross-remaster-main/source/strategic_campaign_unlock_rules.h'
@@ -59,6 +60,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate source and localization invariants
         run: python3 -m unittest discover -s spellcross-remaster-main/tests -p 'test_*.py' -v
+      - name: Verify recovered EN projectile geometry and FSA comparison switch
+        run: |
+          c++ -std=c++23 -O2 -Wall -Wextra -pedantic \
+            spellcross-remaster-main/tests/test_original_projectile_geometry.cpp -o /tmp/spellcross-projectile-test
+          env -u SPELLCROSS_PROJECTILE_MODEL /tmp/spellcross-projectile-test
+          SPELLCROSS_PROJECTILE_MODEL=fsa /tmp/spellcross-projectile-test fsa
       - name: Compile and test native CAN decoding and retail finale playlist
         run: |
           c++ -std=c++23 -O2 -Wall -Wextra -pedantic \
