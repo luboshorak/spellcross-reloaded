@@ -38,7 +38,7 @@ $headers = @{
     'cxxmidi.txt' = 'cxxmidi\file.hpp'
 }
 foreach ($name in $headers.Keys) {
-    $header = Get-Content -Raw -LiteralPath (Join-Path (Join-Path $Root 'spellcross-map-edit-main\source') $headers[$name])
+    $header = Get-Content -Raw -LiteralPath (Join-Path (Join-Path $Root 'spellcross-remaster-main\source') $headers[$name])
     $license = [regex]::Match($header, '(?s)Copyright \(c\).*?THE SOFTWARE IS PROVIDED.*?SOFTWARE\.')
     if (-not $license.Success) { throw "Cannot extract required license: $name" }
     Set-Content -LiteralPath (Join-Path $licenses $name) -Value $license.Value -Encoding UTF8
@@ -65,17 +65,17 @@ function Copy-CodeTree([string]$from, [string]$to) {
     }
 }
 try {
-    $gameSource = Join-Path $temp 'spellcross-map-edit-main'
+    $gameSource = Join-Path $temp 'spellcross-remaster-main'
     $editorSource = Join-Path $temp 'external\map-editor'
     New-Item -ItemType Directory -Path $gameSource,$editorSource -Force | Out-Null
-    Copy-CodeTree (Join-Path $Root 'spellcross-map-edit-main\source') (Join-Path $gameSource 'source')
+    Copy-CodeTree (Join-Path $Root 'spellcross-remaster-main\source') (Join-Path $gameSource 'source')
     Copy-CodeTree (Join-Path $EditorRoot 'source') (Join-Path $editorSource 'source')
     Copy-CodeTree (Join-Path $Root 'third_party') (Join-Path $temp 'third_party')
     Copy-CodeTree (Join-Path $Root 'packaging') (Join-Path $temp 'packaging')
     foreach ($name in @('LICENSE','README.md','AUTHORS.md','NOTICE.md','LICENSING.md','THIRD_PARTY_NOTICES.md','CHANGES.md')) {
         Copy-Notice (Join-Path $Root $name) (Join-Path $temp $name)
     }
-    Copy-Notice (Join-Path $Root 'spellcross-map-edit-main\LICENSE') (Join-Path $gameSource 'LICENSE')
+    Copy-Notice (Join-Path $Root 'spellcross-remaster-main\LICENSE') (Join-Path $gameSource 'LICENSE')
     Copy-Notice (Join-Path $EditorRoot 'LICENSE') (Join-Path $editorSource 'LICENSE')
     Copy-Item -LiteralPath (Join-Path $Root 'LICENSES') -Destination $temp -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $Stage 'data') -Destination $gameSource -Recurse -Force

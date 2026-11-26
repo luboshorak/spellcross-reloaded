@@ -12,10 +12,10 @@ on:
       - 'LICENSE'
       - 'LICENSES/**'
       - 'LICENSING.md'
-      - 'spellcross-map-edit-main/tests/test_project_attribution.py'
-      - 'spellcross-map-edit-main/source/app_version.h'
-      - 'spellcross-map-edit-main/source/resources.rc'
-      - 'spellcross-map-edit-main/tests/test_release_candidate_metadata.py'
+      - 'spellcross-remaster-main/tests/test_project_attribution.py'
+      - 'spellcross-remaster-main/source/app_version.h'
+      - 'spellcross-remaster-main/source/resources.rc'
+      - 'spellcross-remaster-main/tests/test_release_candidate_metadata.py'
       - 'packaging/README.md'
       - '.github/workflows/release-version-automation.yml'
   pull_request:
@@ -29,10 +29,10 @@ on:
       - 'LICENSE'
       - 'LICENSES/**'
       - 'LICENSING.md'
-      - 'spellcross-map-edit-main/tests/test_project_attribution.py'
-      - 'spellcross-map-edit-main/source/app_version.h'
-      - 'spellcross-map-edit-main/source/resources.rc'
-      - 'spellcross-map-edit-main/tests/test_release_candidate_metadata.py'
+      - 'spellcross-remaster-main/tests/test_project_attribution.py'
+      - 'spellcross-remaster-main/source/app_version.h'
+      - 'spellcross-remaster-main/source/resources.rc'
+      - 'spellcross-remaster-main/tests/test_release_candidate_metadata.py'
       - '.github/workflows/release-version-automation.yml'
   workflow_dispatch:
 
@@ -103,14 +103,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not initialize editor submodule origin.' }
           & git -C $source -c protocol.file.allow=always submodule add $editorOrigin external/map-editor | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Could not pin editor submodule.' }
-          New-Item -ItemType Directory -Force -Path (Join-Path $source 'packaging'),(Join-Path $source 'spellcross-map-edit-main\source') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $source 'packaging'),(Join-Path $source 'spellcross-remaster-main\source') | Out-Null
           Copy-Item -LiteralPath '.\packaging\Release.ps1' -Destination (Join-Path $source 'packaging\Release.ps1')
           foreach ($file in @('app_version.h','resources.rc')) {
-            Copy-Item -LiteralPath (Join-Path 'spellcross-map-edit-main\source' $file) -Destination (Join-Path (Join-Path $source 'spellcross-map-edit-main\source') $file)
+            Copy-Item -LiteralPath (Join-Path 'spellcross-remaster-main\source' $file) -Destination (Join-Path (Join-Path $source 'spellcross-remaster-main\source') $file)
           }
           # Derive test versions from the checked-out metadata, not from a
           # release number that becomes stale on the next version bump.
-          $currentHeader = Get-Content -Raw -LiteralPath (Join-Path $source 'spellcross-map-edit-main\source\app_version.h')
+          $currentHeader = Get-Content -Raw -LiteralPath (Join-Path $source 'spellcross-remaster-main\source\app_version.h')
           $match = [regex]::Match($currentHeader, '(?m)^\s*#define\s+SPELLCROSS_VERSION_STRING\s+"(\d+\.\d+\.\d+\.\d+)"')
           if (-not $match.Success) { throw 'Could not read current version for CI fixture.' }
           function Next-TestVersion([string]$version) {
@@ -140,7 +140,7 @@ jobs:
           )
           if (-not $NoVersionPrompt) { throw 'Lost internal release delegation.' }
           $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-          $header = Get-Content -Raw -LiteralPath (Join-Path $root 'spellcross-map-edit-main\source\app_version.h')
+          $header = Get-Content -Raw -LiteralPath (Join-Path $root 'spellcross-remaster-main\source\app_version.h')
           $expectedTag = [regex]::Escape('SPELLCROSS_RELEASE_TAG "' + $env:SPELLCROSS_TEST_TAG + '"')
           if ($header -notmatch $expectedTag) { throw 'Build did not receive new version metadata.' }
           if (-not $EditorRoot -or -not (Test-Path -LiteralPath (Join-Path $EditorRoot 'source\pinned.txt'))) {
@@ -161,7 +161,7 @@ jobs:
               throw 'Packaging ran before the successful compilation.'
           }
           $head = (& git -C $root rev-parse HEAD).Trim()
-          $committed = & git -C $root show 'HEAD:spellcross-map-edit-main/source/app_version.h'
+          $committed = & git -C $root show 'HEAD:spellcross-remaster-main/source/app_version.h'
           if (($committed -join [Environment]::NewLine) -notmatch $expectedTag) {
               throw 'Packaging ran before the version commit.'
           }
@@ -200,8 +200,8 @@ jobs:
           }
           # Exercise rollback in the same valid Git fixture. The stub fails
           # only AFTER verifying the injected version and clean pinned editor.
-          $fixtureHeader = Join-Path $source 'spellcross-map-edit-main\source\app_version.h'
-          $fixtureRc = Join-Path $source 'spellcross-map-edit-main\source\resources.rc'
+          $fixtureHeader = Join-Path $source 'spellcross-remaster-main\source\app_version.h'
+          $fixtureRc = Join-Path $source 'spellcross-remaster-main\source\resources.rc'
           $headerBefore = (Get-FileHash -LiteralPath $fixtureHeader -Algorithm SHA256).Hash
           $rcBefore = (Get-FileHash -LiteralPath $fixtureRc -Algorithm SHA256).Hash
           $failedVersion = Next-TestVersion $testVersion
@@ -238,8 +238,8 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $header = 'spellcross-map-edit-main\source\app_version.h'
-          $rc = 'spellcross-map-edit-main\source\resources.rc'
+          $header = 'spellcross-remaster-main\source\app_version.h'
+          $rc = 'spellcross-remaster-main\source\resources.rc'
           $originalHeader = (Get-FileHash -LiteralPath $header -Algorithm SHA256).Hash
           $originalRc = (Get-FileHash -LiteralPath $rc -Algorithm SHA256).Hash
 
@@ -285,7 +285,7 @@ jobs:
           }
 
           # Legacy source checks must keep passing after the version override.
-          python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_release_candidate_metadata.py' -v
+          python -m unittest discover -s spellcross-remaster-main/tests -p 'test_release_candidate_metadata.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Regression metadata tests failed.' }
           Assert-Clean
           $global:LASTEXITCODE = 0
@@ -312,11 +312,11 @@ jobs:
           }
           $source = Join-Path $stage 'extracted-source'
           Expand-Archive -LiteralPath (Join-Path $stage 'SOURCE-CODE.zip') -DestinationPath $source
-          foreach ($file in @('LICENSE','LICENSES\MIT-legacy.txt','spellcross-map-edit-main\source\project_attribution.h','spellcross-map-edit-main\source\spellcross_map_editor.vcxproj','spellcross-map-edit-main\source\cxxmidi\guts\cvt_xmi2mid.hpp','external\map-editor\source\spellcross_map_editor.vcxproj','external\map-editor\LICENSE','third_party\libsmacker\smacker.c','third_party\libsmacker\COPYING','packaging\Build-CombinedRelease.ps1','SOURCE-AND-RELINKING.txt')) {
+          foreach ($file in @('LICENSE','LICENSES\MIT-legacy.txt','spellcross-remaster-main\source\project_attribution.h','spellcross-remaster-main\source\spellcross_map_editor.vcxproj','spellcross-remaster-main\source\cxxmidi\guts\cvt_xmi2mid.hpp','external\map-editor\source\spellcross_map_editor.vcxproj','external\map-editor\LICENSE','third_party\libsmacker\smacker.c','third_party\libsmacker\COPYING','packaging\Build-CombinedRelease.ps1','SOURCE-AND-RELINKING.txt')) {
             if (-not (Test-Path -LiteralPath (Join-Path $source $file) -PathType Leaf)) { throw "Missing corresponding source: $file" }
           }
           if ((Get-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Raw) -notmatch 'Corresponding source ZIP SHA256: [0-9A-F]{64}') {
             throw 'Missing corresponding source hash.'
           }
-          if (Test-Path -LiteralPath (Join-Path $source 'spellcross-map-edit-main\source\spellcross_ui_coordinate_catalog')) { throw 'Raw resource catalog was bundled.' }
+          if (Test-Path -LiteralPath (Join-Path $source 'spellcross-remaster-main\source\spellcross_ui_coordinate_catalog')) { throw 'Raw resource catalog was bundled.' }
           $global:LASTEXITCODE = 0

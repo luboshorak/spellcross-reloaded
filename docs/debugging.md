@@ -10,7 +10,7 @@ Always record the **source commit/release**, retail data edition (CZ or EN), mis
 
 | Check | Source / invocation | What it establishes |
 | --- | --- | --- |
-| Python static/source regressions | `python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py' -v` | Source invariants, event scripts, locale catalogs, thread fields, release metadata; **not** full runtime behavior. |
+| Python static/source regressions | `python -m unittest discover -s spellcross-remaster-main/tests -p 'test_*.py' -v` | Source invariants, event scripts, locale catalogs, thread fields, release metadata; **not** full runtime behavior. |
 | Linux/native C++ invariants | `.github/workflows/strategy-regression.yml` | Compiles and runs selected header-only and `LevelLoader` tests; does not build `Spellcross.exe`. |
 | wx menu/display tests | `.github/workflows/fullscreen-menu.yml` | GUI and coordinate behavior with wx on Ubuntu; dedicated Windows C++ tests. |
 | Full Windows game/editor | `packaging/Build-CombinedRelease.ps1 -Rebuild` | Compiles both native projects and validates packaging requirements with the specified dependencies. |

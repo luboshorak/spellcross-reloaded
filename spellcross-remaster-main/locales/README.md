@@ -36,7 +36,7 @@ briefings continue to come from the imported edition's archives (including
 Run the catalog consistency check:
 
 ```shell
-python spellcross-map-edit-main/tests/test_ui_localization_catalog.py
+python spellcross-remaster-main/tests/test_ui_localization_catalog.py
 ```
 
 ## Integration QA (Windows / original legally owned ISOs)

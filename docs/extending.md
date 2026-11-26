@@ -43,7 +43,7 @@ For tactical art use `Terrain::Load`/`Sprite::Render` or `SpellGraphics::AddICO/
 
 ## Add UI text or a language
 
-Keep authored UI in `locales/en.lang` and `locales/cs.lang` with stable UTF-8 keys and call `spellcross_ui_locale::Tr(key, EnglishFallback)` (`source/spell_ui_locale.h`). Commercial narrative and research text comes from retail archives, not `locales/`. Run `tests/test_ui_localization_catalog.py` and test labels at real CZ and EN widths. See [localization guide](../spellcross-map-edit-main/locales/README.md).
+Keep authored UI in `locales/en.lang` and `locales/cs.lang` with stable UTF-8 keys and call `spellcross_ui_locale::Tr(key, EnglishFallback)` (`source/spell_ui_locale.h`). Commercial narrative and research text comes from retail archives, not `locales/`. Run `tests/test_ui_localization_catalog.py` and test labels at real CZ and EN widths. See [localization guide](../spellcross-remaster-main/locales/README.md).
 
 ## Add a C++ module or persistent field
 

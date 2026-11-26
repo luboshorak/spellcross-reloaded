@@ -90,7 +90,7 @@ namespace spellcross_ui_locale
             for (int depth = 0; depth < 7 && !dir.empty(); ++depth)
             {
                 paths.push_back(dir / "locales");
-                paths.push_back(dir / "spellcross-map-edit-main" / "locales");
+                paths.push_back(dir / "spellcross-remaster-main" / "locales");
                 const fs::path parent = dir.parent_path();
                 if (parent.empty() || parent == dir)
                     break;

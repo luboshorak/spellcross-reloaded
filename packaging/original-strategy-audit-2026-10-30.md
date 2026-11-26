@@ -64,7 +64,7 @@ correctness repair, not a redesign and not an asserted full DOS emulation.
 
 ## Test gate
 
-`python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py'`
+`python -m unittest discover -s spellcross-remaster-main/tests -p 'test_*.py'`
 
 Compile and run `tests/test_original_level_events.cpp` against
 `source/level.cpp` using C++17 (in CI). These are genuine parser

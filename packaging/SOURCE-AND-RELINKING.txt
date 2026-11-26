@@ -18,7 +18,7 @@ MSVC configuration. From Developer PowerShell, change to the extracted
 source root and run these commands with your own wxWidgets path:
 
   $wx = "$HOME\vcpkg\installed\x64-windows\"
-  msbuild .\spellcross-map-edit-main\source\spellcross_map_editor.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$wx"
+  msbuild .\spellcross-remaster-main\source\spellcross_map_editor.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$wx"
   msbuild .\external\map-editor\source\spellcross_map_editor.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$wx"
 
 To change libsmacker, edit third_party\libsmacker\smacker.c and related

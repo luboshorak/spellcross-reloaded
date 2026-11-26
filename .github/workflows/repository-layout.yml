@@ -1,0 +1,13 @@
+name: Repository layout
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  source-layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify game directory, package paths and tracked references
+        run: python spellcross-remaster-main/tests/test_repository_layout.py

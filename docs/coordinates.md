@@ -4,7 +4,7 @@ This game has **multiple spaces**. A coordinate in one is not interchangeable wi
 
 ## 1. Map/tile space
 
-`MapXY { int x, y; }` in [`source/map_types.h`](../spellcross-map-edit-main/source/map_types.h) holds integer **tile indices**. A default instance is invalid (`-1,-1`); `IsSelected()` tests both components for non-negativity. Validity against the *specific map bounds* still requires `x < x_size`, `y < y_size`. `SpellMap::ConvXY(x,y)` in `source/map.cpp` indexes the row-major tile array:
+`MapXY { int x, y; }` in [`source/map_types.h`](../spellcross-remaster-main/source/map_types.h) holds integer **tile indices**. A default instance is invalid (`-1,-1`); `IsSelected()` tests both components for non-negativity. Validity against the *specific map bounds* still requires `x < x_size`, `y < y_size`. `SpellMap::ConvXY(x,y)` in `source/map.cpp` indexes the row-major tile array:
 
 ```cpp
 int SpellMap::ConvXY(int x, int y) {
@@ -40,7 +40,7 @@ Example: neighboring tile rows do **not** share the same x origin: even y rows h
 
 ## 4. Device pixels, logical pixels and tactical zoom
 
-`spellcross_display::Settings` in [`source/display_settings.h`](../spellcross-map-edit-main/source/display_settings.h) normalizes global app scale to **100% or 125%** (plus brightness/gamma/temperature). `spellcross_display::ToLogical(devicePixel)` removes that display scale. Tactical zoom is an **independent** 50–300% setting in [`source/tactical_zoom.h`](../spellcross-map-edit-main/source/tactical_zoom.h).
+`spellcross_display::Settings` in [`source/display_settings.h`](../spellcross-remaster-main/source/display_settings.h) normalizes global app scale to **100% or 125%** (plus brightness/gamma/temperature). `spellcross_display::ToLogical(devicePixel)` removes that display scale. Tactical zoom is an **independent** 50–300% setting in [`source/tactical_zoom.h`](../spellcross-remaster-main/source/tactical_zoom.h).
 
 `MainFrame::TacticalMousePoint` (`source/main.cpp`) composes these conversions:
 

@@ -1,6 +1,6 @@
 # Game source and runtime assets
 
-This historically named directory contains the **Spellcross Reloaded game**, not the standalone bundled map editor. `source/spellcross_map_editor.vcxproj` builds `Spellcross.exe` for x64; entry point is `source/main.cpp` (`MyApp::OnInit`). The independent editor is pinned at `../external/map-editor` and is built by the root release script.
+This directory contains the **Spellcross Reloaded game**, not the standalone bundled map editor. `source/spellcross_map_editor.vcxproj` builds `Spellcross.exe` for x64; entry point is `source/main.cpp` (`MyApp::OnInit`). The independent editor is pinned at `../external/map-editor` and is built by the root release script.
 
 - `source/` — wxWidgets C++ gameplay, tactical map, strategic campaign, rendering, original data import, sound/video.
 - `data/` — auxiliary metadata, fonts/menu artwork and project runtime support; original commercial archives are **not** distributed here.

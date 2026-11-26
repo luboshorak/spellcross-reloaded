@@ -6,7 +6,7 @@
 spell_extractfs/data_extracted/
 spell_extractfs/data_raw/
 spell_extractfs/data_sorted/
-spellcross-map-edit-main/builds/
+spellcross-remaster-main/builds/
 
 # --- Custom ---
 # allow EXE in this repo (overrides global ignore)
@@ -25,7 +25,7 @@ env/
 **/ENV/
 **/env/
 
-spellcross-map-edit-main.7z
+spellcross-remaster-main.7z
 *.7z
 *.zip
 *.mp4
@@ -33,28 +33,28 @@ spellcross-map-edit-main.7z
 # Local release staging and user-owned retail archives
 /dist/
 /game_data/
-/spellcross-map-edit-main/game_data/
+/spellcross-remaster-main/game_data/
 # Local engineering notes, in this directory and all nested directories:
-/spellcross-map-edit-main/**/*.md
-/spellcross-map-edit-main/**/*.txt
+/spellcross-remaster-main/**/*.md
+/spellcross-remaster-main/**/*.txt
 
 # Visual Studio state/build output and abandoned editor source snapshots
 /.vs/
-/spellcross-map-edit-main/.vs/
-/spellcross-map-edit-main/source/.vs/
-/spellcross-map-edit-main/source/Debug/
-/spellcross-map-edit-main/source/Release/
-/spellcross-map-edit-main/source/_backup/
-/spellcross-map-edit-main/source/forms/_backup/
-/spellcross-map-edit-main/wxFormsBuilder/form_sprites.fbp
-/spellcross-map-edit-main/wxFormsBuilder/form_sprite_view.cpp
-/spellcross-map-edit-main/wxFormsBuilder/form_sprite_view.h
+/spellcross-remaster-main/.vs/
+/spellcross-remaster-main/source/.vs/
+/spellcross-remaster-main/source/Debug/
+/spellcross-remaster-main/source/Release/
+/spellcross-remaster-main/source/_backup/
+/spellcross-remaster-main/source/forms/_backup/
+/spellcross-remaster-main/wxFormsBuilder/form_sprites.fbp
+/spellcross-remaster-main/wxFormsBuilder/form_sprite_view.cpp
+/spellcross-remaster-main/wxFormsBuilder/form_sprite_view.h
 
 # Player settings are generated at runtime and can contain local ISO/CD paths.
 # The tracked defaults live in source/config.example.ini instead.
 /config.ini
-/spellcross-map-edit-main/config.ini
-/spellcross-map-edit-main/source/config.ini
+/spellcross-remaster-main/config.ini
+/spellcross-remaster-main/source/config.ini
 
 # Ephemeral editor files and Python bytecode (any nested directory)
 **/.idea/

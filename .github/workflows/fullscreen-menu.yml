@@ -6,49 +6,49 @@ on:
     paths:
       # This job runs the entire Python regression suite: changes to tests
       # must rerun it even if no source file listed below changed.
-      - 'spellcross-map-edit-main/tests/test_*.py'
-      - 'spellcross-map-edit-main/source/tactical_zoom.h'
-      - 'spellcross-map-edit-main/source/tactical_edge_pan.h'
-      - 'spellcross-map-edit-main/source/tactical_range_input.h'
-      - 'spellcross-map-edit-main/source/tactical_navigation_rules.h'
-      - 'spellcross-map-edit-main/tests/test_tactical_navigation_rules.cpp'
-      - 'spellcross-map-edit-main/source/strategic_buy_variant_rules.h'
-      - 'spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp'
-      - 'spellcross-map-edit-main/tests/test_divac_buy_and_goals.py'
-      - 'spellcross-map-edit-main/tests/test_tactical_range_input.cpp'
-      - 'spellcross-map-edit-main/tests/test_tactical_edge_pan.cpp'
-      - 'spellcross-map-edit-main/source/display_settings.h'
-      - 'spellcross-map-edit-main/tests/test_display_settings.cpp'
-      - 'spellcross-map-edit-main/source/tactical_box_selection.h'
-      - 'spellcross-map-edit-main/source/map.cpp'
-      - 'spellcross-map-edit-main/source/map.h'
-      - 'spellcross-map-edit-main/source/spell_map_event.cpp'
-      - 'spellcross-map-edit-main/source/spell_map_event.h'
-      - 'spellcross-map-edit-main/tests/test_worker_thread_safety.py'
-      - 'spellcross-map-edit-main/source/runtime_diagnostics.h'
-      - 'spellcross-map-edit-main/tests/test_runtime_diagnostics.cpp'
-      - 'spellcross-map-edit-main/tests/test_tactical_zoom.cpp'
-      - 'spellcross-map-edit-main/tests/test_tactical_box_selection.cpp'
-      - 'spellcross-map-edit-main/source/game_menu_bar.h'
-      - 'spellcross-map-edit-main/source/game_audio_settings.h'
-      - 'spellcross-map-edit-main/source/game_dialogs.h'
-      - 'spellcross-map-edit-main/source/display_settings.h'
-      - 'spellcross-map-edit-main/source/game_controls.h'
-      - 'spellcross-map-edit-main/source/forms/form_about.cpp'
-      - 'spellcross-map-edit-main/source/strategic_ui_theme.h'
-      - 'spellcross-map-edit-main/source/strategic_hierarchy_layout.h'
-      - 'spellcross-map-edit-main/tests/test_strategic_hierarchy_layout.cpp'
-      - 'spellcross-map-edit-main/source/game_menu_font.rc'
-      - 'spellcross-map-edit-main/data/font.ttf'
-      - 'spellcross-map-edit-main/source/main.cpp'
-      - 'spellcross-map-edit-main/source/forms/form_level.cpp'
-      - 'spellcross-map-edit-main/source/forms/form_video_box.cpp'
-      - 'spellcross-map-edit-main/source/level.cpp'
-      - 'spellcross-map-edit-main/source/level.h'
-      - 'spellcross-map-edit-main/tests/test_level_video_playlist.cpp'
-      - 'spellcross-map-edit-main/source/forms/form_mmenu.cpp'
-      - 'spellcross-map-edit-main/locales/**'
-      - 'spellcross-map-edit-main/tests/test_game_menu_bar.cpp'
+      - 'spellcross-remaster-main/tests/test_*.py'
+      - 'spellcross-remaster-main/source/tactical_zoom.h'
+      - 'spellcross-remaster-main/source/tactical_edge_pan.h'
+      - 'spellcross-remaster-main/source/tactical_range_input.h'
+      - 'spellcross-remaster-main/source/tactical_navigation_rules.h'
+      - 'spellcross-remaster-main/tests/test_tactical_navigation_rules.cpp'
+      - 'spellcross-remaster-main/source/strategic_buy_variant_rules.h'
+      - 'spellcross-remaster-main/tests/test_strategic_buy_variant_rules.cpp'
+      - 'spellcross-remaster-main/tests/test_divac_buy_and_goals.py'
+      - 'spellcross-remaster-main/tests/test_tactical_range_input.cpp'
+      - 'spellcross-remaster-main/tests/test_tactical_edge_pan.cpp'
+      - 'spellcross-remaster-main/source/display_settings.h'
+      - 'spellcross-remaster-main/tests/test_display_settings.cpp'
+      - 'spellcross-remaster-main/source/tactical_box_selection.h'
+      - 'spellcross-remaster-main/source/map.cpp'
+      - 'spellcross-remaster-main/source/map.h'
+      - 'spellcross-remaster-main/source/spell_map_event.cpp'
+      - 'spellcross-remaster-main/source/spell_map_event.h'
+      - 'spellcross-remaster-main/tests/test_worker_thread_safety.py'
+      - 'spellcross-remaster-main/source/runtime_diagnostics.h'
+      - 'spellcross-remaster-main/tests/test_runtime_diagnostics.cpp'
+      - 'spellcross-remaster-main/tests/test_tactical_zoom.cpp'
+      - 'spellcross-remaster-main/tests/test_tactical_box_selection.cpp'
+      - 'spellcross-remaster-main/source/game_menu_bar.h'
+      - 'spellcross-remaster-main/source/game_audio_settings.h'
+      - 'spellcross-remaster-main/source/game_dialogs.h'
+      - 'spellcross-remaster-main/source/display_settings.h'
+      - 'spellcross-remaster-main/source/game_controls.h'
+      - 'spellcross-remaster-main/source/forms/form_about.cpp'
+      - 'spellcross-remaster-main/source/strategic_ui_theme.h'
+      - 'spellcross-remaster-main/source/strategic_hierarchy_layout.h'
+      - 'spellcross-remaster-main/tests/test_strategic_hierarchy_layout.cpp'
+      - 'spellcross-remaster-main/source/game_menu_font.rc'
+      - 'spellcross-remaster-main/data/font.ttf'
+      - 'spellcross-remaster-main/source/main.cpp'
+      - 'spellcross-remaster-main/source/forms/form_level.cpp'
+      - 'spellcross-remaster-main/source/forms/form_video_box.cpp'
+      - 'spellcross-remaster-main/source/level.cpp'
+      - 'spellcross-remaster-main/source/level.h'
+      - 'spellcross-remaster-main/tests/test_level_video_playlist.cpp'
+      - 'spellcross-remaster-main/source/forms/form_mmenu.cpp'
+      - 'spellcross-remaster-main/locales/**'
+      - 'spellcross-remaster-main/tests/test_game_menu_bar.cpp'
       - '.github/workflows/fullscreen-menu.yml'
   workflow_dispatch:
 jobs:
@@ -60,47 +60,47 @@ jobs:
       - name: Install GUI test dependencies
         run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev xvfb
       - name: Check source and localization regressions
-        run: python3 -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py'
+        run: python3 -m unittest discover -s spellcross-remaster-main/tests -p 'test_*.py'
       - name: Verify tactical zoom geometry and wheel input
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic \
-            spellcross-map-edit-main/tests/test_tactical_zoom.cpp -o /tmp/spellcross-zoom-test
+            spellcross-remaster-main/tests/test_tactical_zoom.cpp -o /tmp/spellcross-zoom-test
           /tmp/spellcross-zoom-test
       - name: Verify time-based mouse edge-pan and full-window hot zones
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic \
-            spellcross-map-edit-main/tests/test_tactical_edge_pan.cpp -o /tmp/spellcross-edge-pan-test
+            spellcross-remaster-main/tests/test_tactical_edge_pan.cpp -o /tmp/spellcross-edge-pan-test
           /tmp/spellcross-edge-pan-test
       - name: Verify right-mouse movement preview priority
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic \
-            spellcross-map-edit-main/tests/test_tactical_range_input.cpp -o /tmp/spellcross-range-input-test
+            spellcross-remaster-main/tests/test_tactical_range_input.cpp -o /tmp/spellcross-range-input-test
           /tmp/spellcross-range-input-test
       - name: Verify retail battlefield envelope and Magotar AI decisions
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic \
-            spellcross-map-edit-main/tests/test_tactical_navigation_rules.cpp -o /tmp/spellcross-navigation-test
+            spellcross-remaster-main/tests/test_tactical_navigation_rules.cpp -o /tmp/spellcross-navigation-test
           /tmp/spellcross-navigation-test
       - name: Verify original strategic purchasable unit types
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic \
-            spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp -o /tmp/spellcross-buy-variants-test
+            spellcross-remaster-main/tests/test_strategic_buy_variant_rules.cpp -o /tmp/spellcross-buy-variants-test
           /tmp/spellcross-buy-variants-test
       - name: Verify persisted DPI settings, palette LUT and scaled hitboxes
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic $(wx-config --cxxflags) \
-            spellcross-map-edit-main/tests/test_display_settings.cpp \
+            spellcross-remaster-main/tests/test_display_settings.cpp \
             $(wx-config --libs) -o /tmp/spellcross-display-test
           /tmp/spellcross-display-test
       - name: Verify tactical box-selection geometry
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic \
-            spellcross-map-edit-main/tests/test_tactical_box_selection.cpp -o /tmp/spellcross-box-selection-test
+            spellcross-remaster-main/tests/test_tactical_box_selection.cpp -o /tmp/spellcross-box-selection-test
           /tmp/spellcross-box-selection-test
       - name: Build and exercise menu across three windows
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic $(wx-config --cxxflags) \
-            spellcross-map-edit-main/tests/test_game_menu_bar.cpp \
+            spellcross-remaster-main/tests/test_game_menu_bar.cpp \
             $(wx-config --libs) -o /tmp/spellcross-menu-test
           timeout 30s xvfb-run -a /tmp/spellcross-menu-test
   menu-windows:
@@ -142,60 +142,60 @@ jobs:
           $rangeInputTest = Join-Path $env:RUNNER_TEMP 'spellcross-range-input-test.exe'
           $hierarchyLayoutTest = Join-Path $env:RUNNER_TEMP 'spellcross-hierarchy-layout-test.exe'
           $videoPlaylistTest = Join-Path $env:RUNNER_TEMP 'spellcross-level-video-playlist-test.exe'
-          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-map-edit-main/tests/test_level_video_playlist.cpp spellcross-map-edit-main/source/level.cpp "/Fe:$videoPlaylistTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_level_video_playlist.cpp spellcross-remaster-main/source/level.cpp "/Fe:$videoPlaylistTest"
           if ($LASTEXITCODE -ne 0) { throw 'Chapter video playlist test compilation failed' }
           & $videoPlaylistTest
           if ($LASTEXITCODE -ne 0) { throw 'Chapter video playlist test failed' }
-          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-map-edit-main/tests/test_strategic_hierarchy_layout.cpp "/Fe:$hierarchyLayoutTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_strategic_hierarchy_layout.cpp "/Fe:$hierarchyLayoutTest"
           if ($LASTEXITCODE -ne 0) { throw 'Hierarchy layout test compilation failed' }
           & $hierarchyLayoutTest
           if ($LASTEXITCODE -ne 0) { throw 'Hierarchy layout test failed' }
-          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_edge_pan.cpp "/Fe:$edgePanTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_tactical_edge_pan.cpp "/Fe:$edgePanTest"
           if ($LASTEXITCODE -ne 0) { throw 'Edge-pan test compilation failed' }
           & $edgePanTest
           if ($LASTEXITCODE -ne 0) { throw 'Edge-pan test failed' }
-          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_range_input.cpp "/Fe:$rangeInputTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_tactical_range_input.cpp "/Fe:$rangeInputTest"
           if ($LASTEXITCODE -ne 0) { throw 'RMB preview test compilation failed' }
           & $rangeInputTest
           if ($LASTEXITCODE -ne 0) { throw 'RMB preview test failed' }
           $navigationTest = Join-Path $env:RUNNER_TEMP 'spellcross-navigation-test.exe'
-          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_navigation_rules.cpp "/Fe:$navigationTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_tactical_navigation_rules.cpp "/Fe:$navigationTest"
           if ($LASTEXITCODE -ne 0) { throw 'Tactical navigation test compilation failed' }
           & $navigationTest
           if ($LASTEXITCODE -ne 0) { throw 'Tactical navigation test failed' }
           $buyVariantsTest = Join-Path $env:RUNNER_TEMP 'spellcross-buy-variants-test.exe'
-          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-map-edit-main/tests/test_strategic_buy_variant_rules.cpp "/Fe:$buyVariantsTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_strategic_buy_variant_rules.cpp "/Fe:$buyVariantsTest"
           if ($LASTEXITCODE -ne 0) { throw 'Strategic unit variant test compilation failed' }
           & $buyVariantsTest
           if ($LASTEXITCODE -ne 0) { throw 'Strategic unit variant test failed' }
-          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_zoom.cpp "/Fe:$zoomTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_tactical_zoom.cpp "/Fe:$zoomTest"
           if ($LASTEXITCODE -ne 0) { throw 'Zoom test compilation failed' }
           & $zoomTest
           if ($LASTEXITCODE -ne 0) { throw 'Zoom test failed' }
           $diagTest = Join-Path $env:RUNNER_TEMP 'spellcross-diagnostics-test.exe'
-          & cl.exe /nologo /std:c++23 /EHsc /MD /D_UNICODE /DUNICODE /D_CRT_SECURE_NO_WARNINGS spellcross-map-edit-main/tests/test_runtime_diagnostics.cpp "/Fe:$diagTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD /D_UNICODE /DUNICODE /D_CRT_SECURE_NO_WARNINGS spellcross-remaster-main/tests/test_runtime_diagnostics.cpp "/Fe:$diagTest"
           if ($LASTEXITCODE -ne 0) { throw 'Runtime diagnostics test compilation failed' }
           & $diagTest
           if ($LASTEXITCODE -ne 0) { throw 'Runtime diagnostics rotation/concurrency test failed' }
-          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-map-edit-main/tests/test_tactical_box_selection.cpp "/Fe:$boxSelectionTest"
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_tactical_box_selection.cpp "/Fe:$boxSelectionTest"
           if ($LASTEXITCODE -ne 0) { throw 'Box-selection test compilation failed' }
           & $boxSelectionTest
           if ($LASTEXITCODE -ne 0) { throw 'Box-selection test failed' }
-          $source = Join-Path $PWD 'spellcross-map-edit-main/source'
+          $source = Join-Path $PWD 'spellcross-remaster-main/source'
           foreach ($file in @('main.cpp', 'map.cpp', 'spell_units.cpp', 'spell_map_event.cpp', 'forms/form_level.cpp', 'forms/form_video_box.cpp', 'forms/form_mmenu.cpp', 'forms/form_about.cpp')) {
             $object = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileName($file) + '.obj')
             & cl.exe /nologo /c /std:c++23 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" (Join-Path $source $file) "/Fo:$object"
             if ($LASTEXITCODE -ne 0) { throw "Tactical source compilation failed: $file" }
           }
           $fontResource = Join-Path $env:RUNNER_TEMP 'game-menu-font.res'
-          Push-Location spellcross-map-edit-main/source
+          Push-Location spellcross-remaster-main/source
           try {
             & rc.exe /nologo "/fo$fontResource" game_menu_font.rc
             if ($LASTEXITCODE -ne 0) { throw 'Menu font resource compilation failed' }
           } finally {
             Pop-Location
           }
-          & cl.exe /nologo /std:c++23 /EHsc /MD /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL "/I$include" "/I$setupInclude" spellcross-map-edit-main/tests/test_game_menu_bar.cpp "/Fe:$binary" /link $fontResource "/LIBPATH:$($core.DirectoryName)" wxmsw32u_core.lib wxbase32u.lib gdi32.lib user32.lib /SUBSYSTEM:WINDOWS
+          & cl.exe /nologo /std:c++23 /EHsc /MD /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL "/I$include" "/I$setupInclude" spellcross-remaster-main/tests/test_game_menu_bar.cpp "/Fe:$binary" /link $fontResource "/LIBPATH:$($core.DirectoryName)" wxmsw32u_core.lib wxbase32u.lib gdi32.lib user32.lib /SUBSYSTEM:WINDOWS
           if ($LASTEXITCODE -ne 0) { throw 'Fullscreen test compilation failed' }
           Get-ChildItem $wxRoot -Recurse -Filter '*.dll' | Copy-Item -Destination $env:RUNNER_TEMP -Force
           $process = Start-Process $binary -PassThru

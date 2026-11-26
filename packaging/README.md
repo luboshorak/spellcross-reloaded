@@ -88,7 +88,7 @@ the published `Spellcross.exe` and `BUILD-INFO.txt`.
 
 ## Version and package contents
 
-The release command permanently commits the release version in `spellcross-map-edit-main/source/app_version.h` and `source/resources.rc`:
+The release command permanently commits the release version in `spellcross-remaster-main/source/app_version.h` and `source/resources.rc`:
 
 | Field | example v0.9.6 |
 | --- | --- |

@@ -1,7 +1,7 @@
 """Source integration guard for original mission scripts and strategic defence.
 
 This intentionally does not claim to simulate the DOS binary or native GUI.
-Run with python -m unittest discover -s spellcross-map-edit-main/tests -p 'test_*.py'
+Run with python -m unittest discover -s spellcross-remaster-main/tests -p 'test_*.py'
 """
 import pathlib
 import re

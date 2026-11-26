@@ -23,7 +23,7 @@ $ErrorActionPreference = 'Stop'
 $root = $null
 foreach ($candidate in @($PSScriptRoot, (Join-Path $PSScriptRoot '..'))) {
     $candidatePath = (Resolve-Path -LiteralPath $candidate).Path
-    $candidateHeader = Join-Path $candidatePath 'spellcross-map-edit-main\source\app_version.h'
+    $candidateHeader = Join-Path $candidatePath 'spellcross-remaster-main\source\app_version.h'
     if (Test-Path -LiteralPath $candidateHeader -PathType Leaf) {
         $root = $candidatePath
         break
@@ -33,7 +33,7 @@ if (-not $root) {
     throw 'Repository root not found. Put the script into the repository root or the packaging folder.'
 }
 $packagingDir = Join-Path $root 'packaging'
-$game = Join-Path $root 'spellcross-map-edit-main'
+$game = Join-Path $root 'spellcross-remaster-main'
 $versionHeader = Join-Path $game 'source\app_version.h'
 $resourceFile = Join-Path $game 'source\resources.rc'
 foreach ($required in @($versionHeader, $resourceFile)) {

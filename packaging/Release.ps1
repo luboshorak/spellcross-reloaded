@@ -20,8 +20,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$headerPath = Join-Path $root 'spellcross-map-edit-main\source\app_version.h'
-$resourcesPath = Join-Path $root 'spellcross-map-edit-main\source\resources.rc'
+$headerPath = Join-Path $root 'spellcross-remaster-main\source\app_version.h'
+$resourcesPath = Join-Path $root 'spellcross-remaster-main\source\resources.rc'
 foreach ($path in @($headerPath, $resourcesPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required release metadata file not found: $path"
@@ -252,8 +252,8 @@ try {
         Write-Host 'Phase 2/4: committing release version ...' -ForegroundColor Cyan
         $addAttempted = $true
         Invoke-ReleaseGit @('add', '--',
-            'spellcross-map-edit-main/source/app_version.h',
-            'spellcross-map-edit-main/source/resources.rc')
+            'spellcross-remaster-main/source/app_version.h',
+            'spellcross-remaster-main/source/resources.rc')
         Invoke-ReleaseGit @('commit', '-m', "chore(release): set version $releaseTag")
         $commitCreated = $true
         $releaseCommit = (& git -C $root rev-parse HEAD).Trim()
@@ -306,7 +306,7 @@ finally {
     }
     if ($changed -and -not $commitCreated) {
         if ($addAttempted) {
-            & git -C $root restore --staged -- 'spellcross-map-edit-main/source/app_version.h' 'spellcross-map-edit-main/source/resources.rc'
+            & git -C $root restore --staged -- 'spellcross-remaster-main/source/app_version.h' 'spellcross-remaster-main/source/resources.rc'
             if ($LASTEXITCODE -ne 0) { Write-Warning 'Could not unstage release metadata; inspect git status.' }
         }
         [System.IO.File]::WriteAllBytes($headerPath, $originalHeader)

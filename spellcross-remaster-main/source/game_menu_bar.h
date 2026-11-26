@@ -114,7 +114,7 @@ namespace spellcross_menu
             const fs::path candidates[] = {
                 executable.parent_path() / "data" / "font.ttf",
                 cwd / "data" / "font.ttf",
-                cwd / "spellcross-map-edit-main" / "data" / "font.ttf"
+                cwd / "spellcross-remaster-main" / "data" / "font.ttf"
             };
             for (const auto& path : candidates)
             {

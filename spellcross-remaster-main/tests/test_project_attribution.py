@@ -12,7 +12,7 @@ import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "spellcross-map-edit-main/source"
+SOURCE = ROOT / "spellcross-remaster-main/source"
 LICENSE = (ROOT / "LICENSE").read_text(encoding="utf-8")
 TEMPLATE = (ROOT / "LICENSES/CPAL-1.0.txt").read_text(encoding="utf-8")
 ATTRIBUTION = (SOURCE / "project_attribution.h").read_text(encoding="utf-8")
@@ -39,7 +39,7 @@ class AttributionTest(unittest.TestCase):
 
     def test_legacy_mit_and_lgpl_notices_are_preserved(self):
         self.assertEqual((ROOT / "LICENSES/MIT-Maslan.txt").read_bytes(),
-                         (ROOT / "spellcross-map-edit-main/LICENSE").read_bytes())
+                         (ROOT / "spellcross-remaster-main/LICENSE").read_bytes())
         self.assertIn("MIT License", (ROOT / "LICENSES/MIT-legacy.txt").read_text())
         self.assertIn("GNU LIBRARY GENERAL PUBLIC LICENSE", (ROOT / "LICENSES/LGPL-2.0.txt").read_text())
         for script in ("Build-CombinedRelease.ps1", "Build-UniversalNoRelease.ps1"):

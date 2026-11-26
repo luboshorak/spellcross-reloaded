@@ -2,7 +2,7 @@
 
 ## Startup and shutdown
 
-`wxIMPLEMENT_APP(MyApp)` and `MyApp::OnInit` in [`source/main.cpp`](../spellcross-map-edit-main/source/main.cpp) are the native entry point. Initialization selects a stable runtime directory, starts diagnostics, reads `config.ini` or seeds from `config.example.ini`, restores display settings, runs the original-data source wizard (`EnsureSpellcrossSourceConfiguration`), loads assets using `FormLoader`/`SpellData`, then creates `SpellMap` and `MainFrame`. Shutdown is coordinated by `MainFrame::RequestApplicationExit` and `MyApp::OnExit`; the strategic window and main-menu window are separate top-level wx windows.
+`wxIMPLEMENT_APP(MyApp)` and `MyApp::OnInit` in [`source/main.cpp`](../spellcross-remaster-main/source/main.cpp) are the native entry point. Initialization selects a stable runtime directory, starts diagnostics, reads `config.ini` or seeds from `config.example.ini`, restores display settings, runs the original-data source wizard (`EnsureSpellcrossSourceConfiguration`), loads assets using `FormLoader`/`SpellData`, then creates `SpellMap` and `MainFrame`. Shutdown is coordinated by `MainFrame::RequestApplicationExit` and `MyApp::OnExit`; the strategic window and main-menu window are separate top-level wx windows.
 
 ```mermaid
 stateDiagram-v2
@@ -23,7 +23,7 @@ stateDiagram-v2
 
 ## Tactical timer and drawing
 
-`MainFrame::OnTimer` in `main.cpp` is the periodic tactical update handler (source comments state a 10 ms timer). It calls `SpellMap::Tick` only while the tactical frame is loaded **and shown**. Deployment, message dialogs, a latched mission end and visible result presentations stop simulation. `Tick` in [`source/map.cpp`](../spellcross-map-edit-main/source/map.cpp) advances movement/animation, AI turns, events and reaction fire; it requests a repaint rather than directly drawing the battlefield. Actual drawing is `MainFrame::OnPaintCanvas` -> `SpellMap::Render` -> wx bitmap. The tactical game is therefore event-driven rather than an independent infinite rendering thread.
+`MainFrame::OnTimer` in `main.cpp` is the periodic tactical update handler (source comments state a 10 ms timer). It calls `SpellMap::Tick` only while the tactical frame is loaded **and shown**. Deployment, message dialogs, a latched mission end and visible result presentations stop simulation. `Tick` in [`source/map.cpp`](../spellcross-remaster-main/source/map.cpp) advances movement/animation, AI turns, events and reaction fire; it requests a repaint rather than directly drawing the battlefield. Actual drawing is `MainFrame::OnPaintCanvas` -> `SpellMap::Render` -> wx bitmap. The tactical game is therefore event-driven rather than an independent infinite rendering thread.
 
 Input handlers `MainFrame::OnCanvasLMouseDown`, `OnCanvasRMouse`, `OnCanvasMouseMove`, `OnCanvasKeyDown/Up` and `OnCanvasMouseWheel` convert input with `TacticalMousePoint`. Wheel zoom uses `spellcross_tactical::Zoom::Wheel` and `AnchoredScroll`; HUD buttons route through `MainFrame::OnHUDbuttonsClick` and `SpellMap::OnHUD*`.
 

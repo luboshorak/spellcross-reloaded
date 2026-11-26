@@ -17,7 +17,7 @@ The checked-in `bin_out/` and `level_out/` contain exports and build artifacts a
 
 ## `spell_decomp/` — compression tools
 
-`bulk_delz.py` dispatches `spell_delz.exe` in batch. `spell_bulk_delz_gui.py` is a Tk front-end with `App._start_worker`; `spell_lz_tool_gui.py` provides compress/decompress jobs via `App._compute_jobs` / `_run_job` and uses `spell_delz.exe` and `spell_mklz.exe`. These are external tool processes, not the runtime's `LZWexpand` implementation (`spellcross-map-edit-main/source/LZ_spell.cpp`).
+`bulk_delz.py` dispatches `spell_delz.exe` in batch. `spell_bulk_delz_gui.py` is a Tk front-end with `App._start_worker`; `spell_lz_tool_gui.py` provides compress/decompress jobs via `App._compute_jobs` / `_run_job` and uses `spell_delz.exe` and `spell_mklz.exe`. These are external tool processes, not the runtime's `LZWexpand` implementation (`spellcross-remaster-main/source/LZ_spell.cpp`).
 
 ## `spellcross-master-pytools/` — earlier format investigations
 
@@ -25,7 +25,7 @@ The checked-in `bin_out/` and `level_out/` contain exports and build artifacts a
 
 ## Native in-repository audit and coordinate research
 
-`spellcross-map-edit-main/tools/audit_original_ranges.py` parses original ranges. `spellcross-map-edit-main/source/spellcross_ui_coordinate_catalog/extract_spellcross_layout.py` inspects `.QH` and `.LST` sources; `qh_rectangles_*.csv`, `lst_links_all.csv`, SVG overlays and `spellcross_ui_coordinates_master.json` are reverse-engineering evidence for native UI hitboxes. The runtime code, not these generated tables alone, determines current behavior (`StrategicLevelFrame::OnOriginalStrategicLeftDown` and `StrategicOriginalRenderer`).
+`spellcross-remaster-main/tools/audit_original_ranges.py` parses original ranges. `spellcross-remaster-main/source/spellcross_ui_coordinate_catalog/extract_spellcross_layout.py` inspects `.QH` and `.LST` sources; `qh_rectangles_*.csv`, `lst_links_all.csv`, SVG overlays and `spellcross_ui_coordinates_master.json` are reverse-engineering evidence for native UI hitboxes. The runtime code, not these generated tables alone, determines current behavior (`StrategicLevelFrame::OnOriginalStrategicLeftDown` and `StrategicOriginalRenderer`).
 
 ## Dependency caution
 

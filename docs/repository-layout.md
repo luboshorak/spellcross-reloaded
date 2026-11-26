@@ -10,7 +10,7 @@ docs/                            Developer guides and current cross-cutting evid
   archive/                       Dated regression notes and map-editor screenshots
 external/map-editor/             Independent pinned Git submodule
 packaging/                       Release scripts, notes and provenance
-spellcross-map-edit-main/
+spellcross-remaster-main/
   source/                        C++17/wxWidgets Spellcross.exe project and resource files
   data/                          Ancillary game assets and fallback-video manifest
   locales/                       CZ/EN UI text
@@ -38,7 +38,7 @@ That is **55 generated files / 28,509,045 bytes** removed from the *current Git 
 
 ## Deliberately retained
 
-- **All 26 game regression files** in `spellcross-map-edit-main/tests/`, including their CI references. Moving them is not required to remove clutter.
+- **All 26 game regression files** in `spellcross-remaster-main/tests/`, including their CI references. Moving them is not required to remove clutter.
 - `spell_extractfs/bin_out/`: extracted PNGs and JSON UI references and the sibling `spell_ui_builder.py` may rely on their existing relative layout. These are research assets, not PyInstaller build output.
 - `spell_decomp/*.exe`, `spell_extractfs/*.exe`, `spellcross-master-pytools/*.exe`: tools or bundled binaries. They may be old or duplicated, but their dependencies and distribution requirements need individual examination before deletion.
 - `spellcross-master-pytools/MAIN*.bin`: example/extracted image data. Repeated SHA values alone do not prove their filenames are interchangeable for scripts.
@@ -48,7 +48,7 @@ This is a source/tree cleanup, **not** a claim that the legacy toolbox is fully 
 
 ## Hard path contracts if a larger restructure is attempted
 
-- `packaging/Build-CombinedRelease.ps1` expects `spellcross-map-edit-main/source`, `builds/x64/Release/Spellcross.exe`, auxiliary `data/`, `locales/` and `external/map-editor/`, and stages video fallbacks.
+- `packaging/Build-CombinedRelease.ps1` expects `spellcross-remaster-main/source`, `builds/x64/Release/Spellcross.exe`, auxiliary `data/`, `locales/` and `external/map-editor/`, and stages video fallbacks.
 - `source/spellcross_map_editor.sln`, `.vcxproj`, `.filters`, Windows resources and wx include/lib paths encode relative locations.
 - `.github/workflows/strategy-regression.yml` and `fullscreen-menu.yml` use literal paths for changes, C++ compilation and Python tests. A move can silently disable CI triggers if filters are missed.
 - Source-level Python checks such as `tests/test_original_strategy_scripts.py` compute their root with `parents[1]`.
@@ -63,4 +63,4 @@ The removed `build/`, `.idea/` and `__pycache__/` directories contain generated 
 
 **Not performed**: MSVC/x64 compilation, Python regression execution, original Czech/English retail data loading, strategic/tactical save compatibility, portable ZIP/SFX smoke tests and individual launches of old tool EXEs. The changes here avoid those runtime dependencies rather than assuming those checks pass.
 
-A broader rename of `spellcross-map-edit-main/` or grouping of `spell_extractfs`, `spell_decomp` and `spellcross-master-pytools` should be a **separate Windows-tested change**, only after tracing script and asset dependencies. The archive and generated-file cleanup above is already applied, not a future proposal.
+A broader rename of `spellcross-remaster-main/` or grouping of `spell_extractfs`, `spell_decomp` and `spellcross-master-pytools` should be a **separate Windows-tested change**, only after tracing script and asset dependencies. The archive and generated-file cleanup above is already applied, not a future proposal.

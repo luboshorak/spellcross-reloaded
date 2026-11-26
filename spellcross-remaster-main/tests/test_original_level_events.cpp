@@ -1,10 +1,10 @@
 // Standalone original-script parser regression (no wxWidgets required).
 // Linux: g++ -std=c++17 -Wall -Wextra -o /tmp/level_event_test
-//        spellcross-map-edit-main/tests/test_original_level_events.cpp
-//        spellcross-map-edit-main/source/level.cpp && /tmp/level_event_test
-// Windows: cl /std:c++17 /EHsc /I spellcross-map-edit-main/source
-//          spellcross-map-edit-main/tests/test_original_level_events.cpp
-//          spellcross-map-edit-main/source/level.cpp
+//        spellcross-remaster-main/tests/test_original_level_events.cpp
+//        spellcross-remaster-main/source/level.cpp && /tmp/level_event_test
+// Windows: cl /std:c++17 /EHsc /I spellcross-remaster-main/source
+//          spellcross-remaster-main/tests/test_original_level_events.cpp
+//          spellcross-remaster-main/source/level.cpp
 #include "../source/level.h"
 #include <cassert>
 #include <filesystem>

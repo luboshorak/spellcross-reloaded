@@ -21,7 +21,7 @@ Analýza se záměrně opírá o **náš vlastní originál hry a jeho rekonstru
 
 - **Originální EN hra:** dodaný `Spellcros_EN_Verze_Puvodni.zip`, soubor `SPELL/SPELCROS.EXE`, SHA-256 `ff6b6554a2a8c532a2a2ed2c6d437ce63b7fc6b480efb29e9f7e14f441837623` (shoduje se s hashem uvedeným v existující projektové reverzní analýze).
 - **Statická kontrola originálu:** přímo z tohoto souboru byla znovu přečtena jeho LE/x86 kódová sekce. Provedena disassemblace pomocí `objdump` v režimu 32bit x86; adresy v dokumentu jsou virtuální adresy kódového objektu s bází `0x10000`. Zobrazené relativní cíle `CALL` a instrukce jsou ověřené přímo z binárky.
-- **Reloaded:** `luboshorak/spellcross-reloaded`, `main`, commit `3d6b41f443639b32f053b0d1a3d2adbdd15dce6f` (22. 11. 2026), zejména `spellcross-map-edit-main/source/map.cpp` a `spellcross-map-edit-main/source/spell_units.cpp`.
+- **Reloaded:** `luboshorak/spellcross-reloaded`, `main`, commit `3d6b41f443639b32f053b0d1a3d2adbdd15dce6f` (22. 11. 2026), zejména `spellcross-remaster-main/source/map.cpp` a `spellcross-remaster-main/source/spell_units.cpp`.
 - **Existující výzkum:** `docs/issue-188-tactical-reaction-fire.md`, `packaging/original-mechanics-parity.md`, `docs/verification.md`, manuál původního Spellcrossu (pasáž „Střelba z obrany“).
 - **Hranice důkazu:** tentokrát se **nespouštěla původní DOS hra** a nebylo porovnáno přesné chování obou programů za stejného průběhu mise. Tato práce je nová statická analýza **EN** binárky. Stejný výsledek pro CZ nelze tvrdit bez samostatného rozboru CZ binárky. Výstupy Ghidry `REAWork\Spellcross\AnalysisEN` a `AnalysisCZ`, zmíněné v repozitáři, nebyly v tomto prostředí k dispozici.
 
@@ -228,8 +228,8 @@ Pokud bude cílem *striktní mechanická shoda*, doporučuji následující poř
 
 ### Kód a projektová dokumentace
 
-- [Reloaded `map.cpp`](https://github.com/luboshorak/spellcross-reloaded/blob/3d6b41f443639b32f053b0d1a3d2adbdd15dce6f/spellcross-map-edit-main/source/map.cpp) — `CheckReactionFire`, `ProcessReactionFire`, `Tick`; cca řádky 10316–10477, 13620–13665, 14026, 14147.
-- [Reloaded `spell_units.cpp`](https://github.com/luboshorak/spellcross-reloaded/blob/3d6b41f443639b32f053b0d1a3d2adbdd15dce6f/spellcross-map-edit-main/source/spell_units.cpp) — `GetFireCount`, `GetMaxFireCount`, `GetAttack`.
+- [Reloaded `map.cpp`](https://github.com/luboshorak/spellcross-reloaded/blob/3d6b41f443639b32f053b0d1a3d2adbdd15dce6f/spellcross-remaster-main/source/map.cpp) — `CheckReactionFire`, `ProcessReactionFire`, `Tick`; cca řádky 10316–10477, 13620–13665, 14026, 14147.
+- [Reloaded `spell_units.cpp`](https://github.com/luboshorak/spellcross-reloaded/blob/3d6b41f443639b32f053b0d1a3d2adbdd15dce6f/spellcross-remaster-main/source/spell_units.cpp) — `GetFireCount`, `GetMaxFireCount`, `GetAttack`.
 - [Issue #188 — technická revize](https://github.com/luboshorak/spellcross-reloaded/blob/main/docs/issue-188-tactical-reaction-fire.md).
 - [Dosavadní reverzní analýza originálu](https://github.com/luboshorak/spellcross-reloaded/blob/main/packaging/original-mechanics-parity.md).
 - [Registr oblastí čekajících na ověření](https://github.com/luboshorak/spellcross-reloaded/blob/main/docs/verification.md), položka V08.

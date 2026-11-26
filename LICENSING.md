@@ -4,7 +4,7 @@ Starting with the first release incorporating this change, project-owned restora
 
 ## Scope and provenance
 
-- The original Spellcross Map Editor code by Stanislav Mašláň retains its MIT terms (see [original license](spellcross-map-edit-main/LICENSE) and [LICENSES/MIT-Maslan.txt](LICENSES/MIT-Maslan.txt)). No claim of ownership of his work is made.
+- The original Spellcross Map Editor code by Stanislav Mašláň retains its MIT terms (see [original license](spellcross-remaster-main/LICENSE) and [LICENSES/MIT-Maslan.txt](LICENSES/MIT-Maslan.txt)). No claim of ownership of his work is made.
 - The project-owned contributions to the files carrying the CPAL notice are Covered Code to the extent the initial developer has rights to license them. In mixed files, inherited MIT portions and independently licensed third-party contributions retain their terms. The prior published baseline is commit `fc524616d3c4ce2ffd21ef520583ec8d8bb4b0f8`; its prior MIT grants remain available under [LICENSES/MIT-legacy.txt](LICENSES/MIT-legacy.txt).
 - All other pre-existing source retains its previous applicable license unless explicitly identified as CPAL Covered Code by its rights holder. This avoids unilaterally changing the terms of other contributors' work.
 - Subsequent project-owned modifications are to be contributed under CPAL-1.0, not an optional MIT alternative; third-party imports are exceptions identified by their own licenses. A contributor must have the rights to submit their changes and retain notices. Do not add an MIT alternative for new CPAL work.

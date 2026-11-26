@@ -13,7 +13,7 @@ mono PCM at 11025 Hz. The palette transform row = intensity * 4 and the
 All frames are held in memory: INTRO.CAN alone uses about 243 MB of
 indexed frame data. No original assets are included.
 
-Standalone testing (from spellcross-map-edit-main):
+Standalone testing (from spellcross-remaster-main):
 
     g++ -std=c++17 -O2 tests/can_decoder_test.cpp -o can_decoder_test
     ./can_decoder_test /path/to/extracted/*.CAN
