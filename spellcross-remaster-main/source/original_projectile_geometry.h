@@ -62,6 +62,14 @@ inline int direction(Point delta, int fallback = 0) {
 }
 inline constexpr double angle(int dir) { return 90.0-22.5*wrap(dir); }
 inline int from_angle(double value) { return wrap(static_cast<int>(std::lround((90.0-value)/22.5))); }
+// DOS 0x77b5b: on a half-turn tie, follow the sign of target-current.
+inline constexpr int turn_delta(int target,int current,int count) {
+    if(count<=0) return 0;
+    int d=(target%count)-(current%count);
+    if(d>count/2) d-=count;
+    if(d<-count/2) d+=count;
+    return d;
+}
 inline constexpr int graphic_direction(int dir,bool mlrs) { return wrap(dir+(mlrs?4:0)); }
 inline constexpr Point local_origin(int slope,bool air,int dir) {
     const auto p=offset(slope,air,dir);
@@ -88,7 +96,7 @@ inline Point position(const Trajectory& t,int tick) {
     if (!t.dominant || (t.dominant>0)!=(t.remaining>0)) return t.launch;
     const int steps=std::clamp(tick,0,flight_ticks(t)-1);
     const int d=(t.dominant>0?10:-10)*steps;
-    if(t.horizontal) return {t.launch.x+d,t.launch.y+static_cast<int>(static_cast<double>(d)*t.center_delta.y/t.dominant)};
-    return {t.launch.x+static_cast<int>(static_cast<double>(d)*t.center_delta.x/t.dominant),t.launch.y+d};
+    if(t.horizontal) return {t.launch.x+d,t.launch.y+static_cast<int>(static_cast<float>(d)*(static_cast<float>(t.center_delta.y)/t.dominant))};
+    return {t.launch.x+static_cast<int>(static_cast<float>(d)*(static_cast<float>(t.center_delta.x)/t.dominant)),t.launch.y+d};
 }
 } // namespace original_projectile
