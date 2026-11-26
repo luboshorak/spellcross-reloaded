@@ -11,7 +11,7 @@ INFO = (ROOT / "forms/tactical_unit_info.h").read_text(encoding="utf-8")
 
 class OriginalIssues172174(unittest.TestCase):
     def test_retail_wait_for_research_is_parsed(self):
-        self.assertIn('cmd == "WaitForResearch"', LEVEL)
+        self.assertIn('keyword_equal(cmd, "WaitForResearch")', LEVEL)
         self.assertIn("curEvent.wait_for_research.push_back(v)", LEVEL)
 
     def test_special_flags_survive_save_load_and_unlock_keys(self):
@@ -32,7 +32,7 @@ class OriginalIssues172174(unittest.TestCase):
     def test_174_scripted_noncombat_sector_cannot_launch_or_be_attacked(self):
         # LEVEL_09 retail marks territory 4 with SetSpecialTerritory(4).
         # The event after both keys awards it without running M09_04A.DEF.
-        self.assertIn('cmd == "SetSpecialTerritory"', LEVEL)
+        self.assertIn('keyword_equal(cmd, "SetSpecialTerritory")', LEVEL)
         self.assertIn("t.is_special = std::find(specialTerritoryIds.begin()", LEVEL)
         start = STRATEGY.index("bool StrategicLevelFrame::CanLaunchTerritoryBattle(")
         end = STRATEGY.index("void StrategicLevelFrame::SurrenderCounterAttack(", start)

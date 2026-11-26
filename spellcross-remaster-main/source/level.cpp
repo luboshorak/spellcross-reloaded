@@ -25,8 +25,13 @@ static inline std::string trim(std::string s) {
     return s;
 }
 
-static inline bool starts_with(const std::string& s, const std::string& prefix) {
-    return s.size() >= prefix.size() && std::equal(prefix.begin(), prefix.end(), s.begin());
+// Retail DEF keywords are ASCII case-insensitive. Keep resource names and arguments intact.
+static bool keyword_equal(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    return std::equal(a.begin(), a.end(), b.begin(), [](unsigned char x, unsigned char y) {
+        const auto lower = [](unsigned char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; };
+        return lower(x) == lower(y);
+    });
 }
 
 static inline std::string strip_comment_semicolon(std::string s) {
@@ -86,7 +91,7 @@ static bool parse_block_header(const std::string& line, std::string& blockName, 
     if (l.find('{') == std::string::npos) return false;
 
     // LevelInit {  (bez závorek)
-    if (starts_with(l, "LevelInit")) {
+    if (keyword_equal(trim(l.substr(0, l.find('{'))), "LevelInit")) {
         blockName = "LevelInit";
         headerArgs.clear();
         return true;
@@ -166,11 +171,11 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
             std::string bname;
             std::vector<std::string> hargs;
             if (parse_block_header(line, bname, hargs)) {
-                if (bname == "LevelInit") {
+                if (keyword_equal(bname, "LevelInit")) {
                     ctx = Ctx::LevelInit;
                     continue;
                 }
-                if (bname == "Mission") {
+                if (keyword_equal(bname, "Mission")) {
                     flush_mission();
                     ctx = Ctx::Mission;
                     hasMission = true;
@@ -178,7 +183,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                     if (hargs.size() >= 1) curMission.name = hargs[0];
                     continue;
                 }
-                if (bname == "Event") {
+                if (keyword_equal(bname, "Event")) {
                     flush_event();
                     ctx = Ctx::Event;
                     hasEvent = true;
@@ -209,7 +214,7 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
 
         // --- LevelInit parsing ---
         if (ctx == Ctx::LevelInit) {
-            if (cmd == "Start" && args.size() >= 1) {
+            if (keyword_equal(cmd, "Start") && args.size() >= 1) {
                 // LEVEL_05/other chapters may contain several Start(n) entries.
                 // The FIRST is the original command sector; overwriting it
                 // with the final Start(n) made counter-attacks target command.
@@ -218,11 +223,11 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                     out.start_territory = v;
                 continue;
             }
-            if (cmd == "End" && args.size() >= 1) {
+            if (keyword_equal(cmd, "End") && args.size() >= 1) {
                 int v = 0; if (parse_int(args[0], v)) out.end_territory = v;
                 continue;
             }
-            if (cmd == "Territory" && args.size() >= 4) {
+            if (keyword_equal(cmd, "Territory") && args.size() >= 4) {
                 LevelTerritory t;
                 parse_int(args[0], t.id);
                 t.intro_mission = args[1];
@@ -231,13 +236,13 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 out.territories.push_back(t);
                 continue;
             }
-            if (cmd == "SetSpecialTerritory" && args.size() >= 1) {
+            if (keyword_equal(cmd, "SetSpecialTerritory") && args.size() >= 1) {
                 int tid = 0;
                 if (parse_int(args[0], tid) && tid > 0)
                     specialTerritoryIds.push_back(tid);
                 continue;
             }
-            if (cmd == "DefineStrategicPoints" && args.size() >= 3) {
+            if (keyword_equal(cmd, "DefineStrategicPoints") && args.size() >= 3) {
                 int tid = 0, x = 0, y = 0;
                 if (parse_int(args[0], tid) && parse_int(args[1], x) && parse_int(args[2], y)) {
                     // DefineStrategicPoints(id,total,perTurn) controls the finite
@@ -256,30 +261,30 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 }
                 continue;
             }
-            if (cmd == "LevelMusic" && args.size() >= 1) {
+            if (keyword_equal(cmd, "LevelMusic") && args.size() >= 1) {
                 out.level_music = args[0];
                 continue;
             }
-            if (cmd == "AttackUnits") {
+            if (keyword_equal(cmd, "AttackUnits")) {
                 out.attack_units.clear();
                 for (auto& a : args) { int v = 0; if (parse_int(a, v)) out.attack_units.push_back(v); }
                 continue;
             }
-            if (cmd == "AttackSpecialUnits") {
+            if (keyword_equal(cmd, "AttackSpecialUnits")) {
                 out.attack_special_units.clear();
                 for (auto& a : args) { int v = 0; if (parse_int(a, v)) out.attack_special_units.push_back(v); }
                 continue;
             }
-            if (cmd == "AttackFlags") {
+            if (keyword_equal(cmd, "AttackFlags")) {
                 out.attack_flags.clear();
                 for (auto& a : args) { int v = 0; if (parse_int(a, v)) out.attack_flags.push_back(v); }
                 continue;
             }
-            if (cmd == "SetResearchFlag" && args.size() >= 1) {
+            if (keyword_equal(cmd, "SetResearchFlag") && args.size() >= 1) {
                 int v = 0; if (parse_int(args[0], v)) out.research_flags.push_back(v);
                 continue;
             }
-            if (cmd == "AddUnitToPlayer" && args.size() >= 4) {
+            if (keyword_equal(cmd, "AddUnitToPlayer") && args.size() >= 4) {
                 LevelData::PlayerUnitAdd pu;
                 parse_int(args[0], pu.unit_id);
                 pu.count = 1;
@@ -294,46 +299,46 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
             // type. Preserve their encounter order; previously the final
             // PlayStartCANAnim overwrote L_08 with MAG and repeated ending
             // deltas (BRANA/LEVEL7_1) were silently discarded (#150).
-            if (cmd == "PlayStartDeltaAnim" && args.size() >= 1) {
+            if (keyword_equal(cmd, "PlayStartDeltaAnim") && args.size() >= 1) {
                 if (args[0] != "none") {
                     if (out.intro_video.empty()) out.intro_video = args[0];
                     out.intro_videos.push_back(args[0]);
                 }
                 continue;
             }
-            if (cmd == "PlayStartCANAnim" && args.size() >= 1) {
+            if (keyword_equal(cmd, "PlayStartCANAnim") && args.size() >= 1) {
                 if (args[0] != "none") {
                     if (out.intro_video.empty()) out.intro_video = args[0];
                     out.intro_videos.push_back(args[0]);
                 }
                 continue;
             }
-            if (cmd == "StartSpeaker" && args.size() >= 2) {
+            if (keyword_equal(cmd, "StartSpeaker") && args.size() >= 2) {
                 // The first argument names the matching speech audio entry;
                 // SpellVideo derives it from the DP2 name in args[1].
                 if (args[1] != "none") out.intro_videos.push_back(args[1]);
                 continue;
             }
-            if (cmd == "PlayEndCANAnim" && args.size() >= 1) {
+            if (keyword_equal(cmd, "PlayEndCANAnim") && args.size() >= 1) {
                 if (args[0] != "none") {
                     if (out.outro_can_video.empty()) out.outro_can_video = args[0];
                     out.outro_videos.push_back(args[0]);
                 }
                 continue;
             }
-            if (cmd == "PlayEndDeltaAnim" && args.size() >= 1) {
+            if (keyword_equal(cmd, "PlayEndDeltaAnim") && args.size() >= 1) {
                 if (args[0] != "none") {
                     if (out.outro_video.empty()) out.outro_video = args[0];
                     out.outro_videos.push_back(args[0]);
                 }
                 continue;
             }
-            if (cmd == "EndSpeaker" && args.size() >= 2) {
+            if (keyword_equal(cmd, "EndSpeaker") && args.size() >= 2) {
                 if (args[1] != "none") out.outro_videos.push_back(args[1]);
                 continue;
             }
             // NextLevel - další level po dokončení všech misí
-            if (cmd == "NextLevel" && args.size() >= 1) {
+            if (keyword_equal(cmd, "NextLevel") && args.size() >= 1) {
                 out.next_level_def = args[0];
                 continue;
             }
@@ -345,33 +350,50 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
 
         // --- Mission parsing ---
         if (ctx == Ctx::Mission && hasMission) {
-            if (cmd == "EndOKMission" && args.size() >= 1) { curMission.end_ok_mission = args[0]; continue; }
-            if (cmd == "EndBadMission" && args.size() >= 1) { curMission.end_bad_mission = args[0]; continue; }
-            if (cmd == "EndOKEvent" && args.size() >= 1) { int v = 0; if (parse_int(args[0], v)) curMission.end_ok_event = v; continue; }
-            if (cmd == "EndBadEvent" && args.size() >= 1) { int v = 0; if (parse_int(args[0], v)) curMission.end_bad_event = v; continue; }
-            if (cmd == "EndOK" && args.size() >= 2) { parse_int(args[0], curMission.end_ok_x); parse_int(args[1], curMission.end_ok_y); continue; }
-            if (cmd == "MissionMusic" && args.size() >= 1) { curMission.music = args[0]; continue; }
-            if (cmd == "FrequencyOfRandomAttacks" && args.size() >= 2) {
+            if (keyword_equal(cmd, "EndOKMission") && args.size() >= 1) { curMission.end_ok_mission = args[0]; continue; }
+            if (keyword_equal(cmd, "EndBadMission") && args.size() >= 1) { curMission.end_bad_mission = args[0]; continue; }
+            if (keyword_equal(cmd, "EndOKEvent") && args.size() >= 1) { int v = 0; if (parse_int(args[0], v)) curMission.end_ok_event = v; continue; }
+            if (keyword_equal(cmd, "EndBadEvent") && args.size() >= 1) { int v = 0; if (parse_int(args[0], v)) curMission.end_bad_event = v; continue; }
+            if (keyword_equal(cmd, "EndOK") && args.size() >= 2) { parse_int(args[0], curMission.end_ok_x); parse_int(args[1], curMission.end_ok_y); continue; }
+            if (keyword_equal(cmd, "MissionMusic") && args.size() >= 1) { curMission.music = args[0]; continue; }
+            if (keyword_equal(cmd, "FrequencyOfRandomAttacks") && args.size() >= 2) {
                 parse_int(args[0], curMission.freq_random_a);
                 parse_int(args[1], curMission.freq_random_b);
                 continue;
             }
-            if (cmd == "Time" && args.size() >= 1) {
+            if (keyword_equal(cmd, "Time") && args.size() >= 1) {
                 int v = 0; if (parse_int(args[0], v)) curMission.time_limit = v;
                 continue;
             }
+            if (keyword_equal(cmd, "PlayStartMissionDeltaAnim") || keyword_equal(cmd, "PlayStartMissionCANAnim")) {
+                if (args.empty() || args[0].empty()) { unknown_here(); continue; }
+                if (keyword_equal(args[0], "none")) continue;
+                LevelMissionIntro intro;
+                intro.video = args[0];
+                if (intro.video.find('.') == std::string::npos)
+                    intro.video += keyword_equal(cmd, "PlayStartMissionCANAnim") ? ".CAN" : ".DPK";
+                bool valid = true;
+                for (size_t i = 1; i < args.size(); ++i) {
+                    int id = -1;
+                    if (!parse_int(args[i], id) || id < 0) { valid = false; break; }
+                    intro.research_prerequisites.push_back(id);
+                }
+                if (valid) curMission.intro_videos.push_back(std::move(intro));
+                else unknown_here(); // malformed gates must never become unconditional clips
+                continue;
+            }
             // PlayEndDeltaAnim - video po dokončení mise (success)
-            if (cmd == "PlayEndDeltaAnim" && args.size() >= 1) {
+            if (keyword_equal(cmd, "PlayEndDeltaAnim") && args.size() >= 1) {
                 curMission.end_ok_video = args[0];
                 continue;
             }
             // PlayEndBadDeltaAnim - video po selhání mise
-            if (cmd == "PlayEndBadDeltaAnim" && args.size() >= 1) {
+            if (keyword_equal(cmd, "PlayEndBadDeltaAnim") && args.size() >= 1) {
                 curMission.end_bad_video = args[0];
                 continue;
             }
             // NextLevelDef - další level po dokončení mise
-            if (cmd == "NextLevelDef" && args.size() >= 1) {
+            if (keyword_equal(cmd, "NextLevelDef") && args.size() >= 1) {
                 curMission.next_level_def = args[0];
                 curMission.is_level_final = true;
                 continue;
@@ -383,21 +405,21 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
 
         // --- Event parsing ---
         if (ctx == Ctx::Event && hasEvent) {
-            if (cmd == "AbsTime" && args.size() >= 1) {
+            if (keyword_equal(cmd, "AbsTime") && args.size() >= 1) {
                 curEvent.abs_time = true;
                 parse_int(args[0], curEvent.time_value);
                 continue;
             }
-            if (cmd == "Time" && args.size() >= 1) {
+            if (keyword_equal(cmd, "Time") && args.size() >= 1) {
                 curEvent.abs_time = false;
                 parse_int(args[0], curEvent.time_value);
                 continue;
             }
-            if (cmd == "EventText" && args.size() >= 1) {
+            if (keyword_equal(cmd, "EventText") && args.size() >= 1) {
                 curEvent.text_id = args[0];
                 continue;
             }
-            if (cmd == "Army" && !args.empty()) {
+            if (keyword_equal(cmd, "Army") && !args.empty()) {
                 LevelEventArmy a;
                 for (auto& s : args) {
                     int v = 0; if (parse_int(s, v)) a.units.push_back(v);
@@ -405,30 +427,30 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 curEvent.armies.push_back(std::move(a));
                 continue;
             }
-            if (cmd == "WaitForTerritories" && !args.empty()) {
+            if (keyword_equal(cmd, "WaitForTerritories") && !args.empty()) {
                 for (auto& s : args) {
                     int v = 0; if (parse_int(s, v)) curEvent.wait_for_territories.push_back(v);
                 }
                 continue;
             }
-            if (cmd == "WaitForResearch" && !args.empty()) {
+            if (keyword_equal(cmd, "WaitForResearch") && !args.empty()) {
                 for (auto& s : args) {
                     int v = 0; if (parse_int(s, v)) curEvent.wait_for_research.push_back(v);
                 }
                 continue;
             }
-            if (cmd == "RunEvents" && !args.empty()) {
+            if (keyword_equal(cmd, "RunEvents") && !args.empty()) {
                 for (auto& s : args) {
                     int v = 0; if (parse_int(s, v)) curEvent.run_events.push_back(v);
                 }
                 continue;
             }
-            if (cmd == "ChangeMission" && args.size() >= 2) {
+            if (keyword_equal(cmd, "ChangeMission") && args.size() >= 2) {
                 parse_int(args[0], curEvent.change_mission_territory);
                 curEvent.change_mission_name = args[1];
                 continue;
             }
-            if (cmd == "AddUnitToPlayer" && args.size() >= 3) {
+            if (keyword_equal(cmd, "AddUnitToPlayer") && args.size() >= 3) {
                 LevelEvent::UnitAdd ua;
                 parse_int(args[0], ua.unit_id);
                 parse_int(args[1], ua.experience_level);
@@ -438,11 +460,11 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
                 curEvent.add_units.push_back(ua);
                 continue;
             }
-            if (cmd == "SetResearchFlag" && args.size() >= 1) {
+            if (keyword_equal(cmd, "SetResearchFlag") && args.size() >= 1) {
                 int v = 0; if (parse_int(args[0], v)) curEvent.research_flags.push_back(v);
                 continue;
             }
-            if (cmd == "SetPlayersTerritory" && args.size() >= 1) {
+            if (keyword_equal(cmd, "SetPlayersTerritory") && args.size() >= 1) {
                 parse_int(args[0], curEvent.set_player_territory);
                 continue;
             }

@@ -24,8 +24,8 @@ class OriginalStrategyScriptsTest(unittest.TestCase):
 
     def test_mission_event_ids_preserved_from_def(self):
         self.assertIn("int end_ok_event = -1;", self.level_h)
-        self.assertIn('cmd == "EndOKEvent"', self.level_cpp)
-        self.assertIn('cmd == "EndBadEvent"', self.level_cpp)
+        self.assertIn('keyword_equal(cmd, "EndOKEvent")', self.level_cpp)
+        self.assertIn('keyword_equal(cmd, "EndBadEvent")', self.level_cpp)
         self.assertIn("int time_value = -1;", self.level_h)
 
     def test_both_mission_outcomes_activate_events(self):

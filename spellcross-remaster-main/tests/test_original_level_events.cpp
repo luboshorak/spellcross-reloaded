@@ -6,6 +6,7 @@
 //          spellcross-remaster-main/tests/test_original_level_events.cpp
 //          spellcross-remaster-main/source/level.cpp
 #include "../source/level.h"
+#include "../source/predator_blast_rules.h"
 #include <cassert>
 #include <filesystem>
 #include <fstream>
@@ -20,18 +21,21 @@ int main()
         assert(f);
         // Representative original CZ LEVEL_03.DEF commands; only the
         // minimum needed to catch the mission event/turn state regressions.
-        f << "LevelInit {\n"
+        f << "levelINIT {\n"
              " Start(1)\n Start(3)\n"
              " Territory(1,none,m03_01,mus05)\n"
              " Territory(3,none,m03_03,mus05)\n"
              " Territory(4,m03_04a,m03_04,mus05)\n"
              " SetSpecialTerritory(4)\n"
              "}\n"
-             "Mission(M03_04A) {\n"
+             "mISSION(M03_04A) {\n"
              " Time(5)\n"
              " EndOKMission(none)\n"
              " EndBadMission(M03_04B)\n"
-             " EndOKEvent(5)\n"
+             " EndOkEvent(5)\n"
+             " playStartMissionDeltaAnim(LEVEL9_1.SMK)\n"
+             " PlayStartMissionCANAnim(clip,135,136)\n"
+             " PlayStartMissionDeltaAnim(skip,invalid)\n"
              " EndBadEvent(5)\n"
              "}\n"
              "Event(0) {\n AbsTime(-1)\n EventText(MSG0014)\n}\n"
@@ -58,6 +62,12 @@ int main()
     assert(mission.name == "M03_04A");
     assert(mission.time_limit == 5);
     assert(mission.end_ok_event == 5);
+    assert(mission.intro_videos.size() == 2);
+    assert(mission.intro_videos[0].video == "LEVEL9_1.SMK");
+    assert(mission.intro_videos[0].research_prerequisites.empty());
+    assert(mission.intro_videos[1].video == "clip.CAN");
+    assert((mission.intro_videos[1].research_prerequisites == std::vector<int>{135, 136}));
+    assert(level.unknown_lines.size() == 1);
     assert(mission.end_bad_event == 5);
     assert(mission.end_bad_mission == "M03_04B");
 
@@ -70,5 +80,30 @@ int main()
     assert((level.events[4].wait_for_research == std::vector<int>{135, 136}));
     assert(level.events[4].set_player_territory == 4);
     assert((level.events[4].research_flags == std::vector<int>{115}));
+    // Predator retail action 13: explicit attack values, ground-only radius,
+    // no ordinary-weapon casualty scaling or wounded conversion.
+    using namespace spellcross_tactical::predator_blast;
+    assert(Eligible(0x20, true, true, false, 1.414, 1));
+    assert(!Eligible(0x04, true, true, false, 1.0, 1));
+    assert(!Eligible(0x20, false, true, false, 1.0, 1));
+    assert(!Eligible(0x20, true, false, false, 1.0, 1));
+    assert(!Eligible(0x20, true, true, true, 1.0, 1));
+    assert(!Eligible(0x20, true, true, false, 2.0, 1));
+    assert(Attack(0x20, 26, 18) == 26);
+    assert(Attack(0x10, 26, 18) == 18);
+    assert(HitChance(18, 18) == 80);
+    assert(HitChance(26, 18) == 100);
+    assert(HitChance(18, 40) == 20);
+    assert(Lethality(18, 18, 0, 0) == 16);
+    assert(Lethality(26, 20, 0, 0) == 31);
+    assert(Lethality(18, 40, 0, 0) == 4);
+    auto damage = Apply(1, 1, 200, 30, false);
+    assert(damage.active == 1 && damage.remainder == 500);
+    damage = Apply(1, 1, 800, 20, false);
+    assert(damage.active == 0 && damage.remainder == 0);
+    damage = Apply(7, 10, 0, 40, false);
+    assert(damage.active == 3 && damage.remainder == 0);
+    damage = Apply(2, 10, 0, 80, true);
+    assert(damage.active == 1);
     return 0;
 }

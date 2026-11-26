@@ -17,6 +17,7 @@
 #include "tactical_navigation_rules.h"
 #include "tactical_background_action_rules.h"
 #include "tactical_reaction_fire_rules.h"
+#include "predator_blast_rules.h"
 #include "strategic_formation_bonus_rules.h"
 #include "display_settings.h"
 #include "spellcross.h"
@@ -8466,6 +8467,28 @@ static int _morale_rank(const MapUnit* unit)
 	return unit ? (std::clamp)(unit->experience_level - 1, 0, 11) : 0;
 }
 
+// Retail EN SPELCROS.EXE: cases 6 (0x2c888), 11 (0x2cbc7), 14
+// (0x2d0b5) skip targets with unit class bit 0x04 (flight movement).
+static bool _morale_special_target_allowed(int act, const MapUnit* target)
+{
+    if (!target || !target->unit) return false;
+    const bool skips_flying = act == SpellUnitRec::SPEC_ACT_LOWER_MORALE ||
+        act == SpellUnitRec::SPEC_ACT_FREEZE || act == SpellUnitRec::SPEC_ACT_BREORN_SCREAM;
+    return !skips_flying || (target->unit->utype & 0x04) == 0;
+}
+
+// Predator (retail action 13) shares the area-action animation lifecycle,
+// but uses a separate damage formula and target selector.
+static bool _predator_blast_target(MapUnit* caster, MapUnit* target)
+{
+	if (!caster || !caster->unit || !target || target == caster || !target->unit || target->isDead())
+		return false;
+	return spellcross_tactical::predator_blast::Eligible(target->unit->utype,
+		caster->is_enemy != target->is_enemy, target->is_active != 0,
+		caster->unit->type_id == target->unit->type_id,
+		caster->coor.Distance(target->coor), caster->unit->action_params[0]);
+}
+
 bool SpellMap::StartMoraleSpecialAction(MapUnit* caster)
 {
 	if (!caster || !caster->unit || !caster->CanSpecAction())
@@ -8476,6 +8499,7 @@ bool SpellMap::StartMoraleSpecialAction(MapUnit* caster)
 		act != SpellUnitRec::SPEC_ACT_PARALYZE &&
 		act != SpellUnitRec::SPEC_ACT_FREEZE &&
 		act != SpellUnitRec::SPEC_ACT_DRAGON_FEAR &&
+		act != SpellUnitRec::SPEC_ACT_AUTODESTRUCT &&
 		act != SpellUnitRec::SPEC_ACT_BREORN_SCREAM)
 		return false;
 
@@ -8483,6 +8507,8 @@ bool SpellMap::StartMoraleSpecialAction(MapUnit* caster)
 	caster->ResetTurnsCounter();
 	caster->PlayAction();
 	caster->in_animation = caster->unit->gr_action;
+	if (act == SpellUnitRec::SPEC_ACT_AUTODESTRUCT && caster->in_animation && caster->unit->gr_base)
+		caster->azimuth = caster->in_animation->GetAnimAzim(caster->unit->gr_base->GetStaticAngle(caster->azimuth));
 	caster->frame = 0;
 	caster->frame_stop = (std::max)(0, caster->unit->action_fsu_frames);
 	caster->action_step = 0;
@@ -8497,13 +8523,59 @@ void SpellMap::ApplyMoraleSpecialAction(MapUnit* caster)
 		return;
 
 	const int act = caster->unit->action_id;
+	if (act == SpellUnitRec::SPEC_ACT_AUTODESTRUCT)
+	{
+		for (auto* target : units)
+		{
+			if (!_predator_blast_target(caster, target))
+				continue;
+
+			const int attack = spellcross_tactical::predator_blast::Attack(target->unit->utype, caster->unit->action_params[1],
+				caster->unit->action_params[2]);
+			if (attack <= 0) continue;
+			const int defence = target->GetDefence() + 5 * (std::max)(0, target->dig_level);
+			const auto difficulty = GetGameDifficulty();
+			const bool favored = (difficulty == GameDifficulty::HARD && caster->is_enemy) ||
+				(difficulty == GameDifficulty::EASY && !caster->is_enemy);
+			const bool penalized = (difficulty == GameDifficulty::HARD && !caster->is_enemy) ||
+				(difficulty == GameDifficulty::EASY && caster->is_enemy);
+			const int chance_bonus = favored ? std::rand() % 16 : 0;
+			if (std::rand() % 100 > spellcross_tactical::predator_blast::HitChance(attack, defence, chance_bonus))
+				continue;
+			const int attack_roll = std::rand() % 6;
+			const int defence_roll = std::rand() % 6;
+			const int effect_bonus = favored ? std::rand() % 6 : penalized ? -(std::rand() % 6) : 0;
+			const int effect = spellcross_tactical::predator_blast::Lethality(attack, defence, attack_roll, defence_roll, effect_bonus);
+			const auto damage = spellcross_tactical::predator_blast::Apply(target->man, target->unit->cnt, target->damage_remainder,
+				effect, target->unit->die_action_params[2] != 0);
+			target->man = damage.active;
+			target->damage_remainder = damage.remainder;
+			if (target->isDead())
+			{
+				target->wounded = 0;
+				if (target->unit->sound_die) target->PlayDie();
+			}
+			else if (target->unit->sound_hit)
+				target->PlayBeingHit();
+		}
+		// Defer removal to the normal cleanup pass: mission objectives, losses,
+		// commander notifications and references all need the same death path.
+		caster->man = 0;
+		caster->wounded = 0;
+		caster->damage_remainder = 0;
+		caster->was_moved = true;
+		if (caster->unit->sound_die) caster->PlayDie();
+		unit_selection_mod = true;
+		InvalidateHUDbuttons();
+		return;
+	}
 	const int radius = (std::max)(1, caster->unit->action_params[0]);
 	const int base_drop = (std::max)(0, caster->unit->action_params[1]);
 	const int resistance_step = (std::max)(0, caster->unit->action_params[2]);
 
 	for (auto* target : units)
 	{
-		if (!target || target == caster || target->isDead() || target->is_enemy == caster->is_enemy)
+		if (!_morale_special_target_allowed(act, target) || target == caster || target->isDead() || target->is_enemy == caster->is_enemy)
 			continue;
 		if (caster->coor.Distance(target->coor) > radius)
 			continue;
@@ -8556,13 +8628,20 @@ bool SpellMap::TryEnemyMoraleSpecialAction(MapUnit* caster)
 		act != SpellUnitRec::SPEC_ACT_PARALYZE &&
 		act != SpellUnitRec::SPEC_ACT_FREEZE &&
 		act != SpellUnitRec::SPEC_ACT_DRAGON_FEAR &&
+		act != SpellUnitRec::SPEC_ACT_AUTODESTRUCT &&
 		act != SpellUnitRec::SPEC_ACT_BREORN_SCREAM)
 		return false;
 
 	const int radius = (std::max)(1, caster->unit->action_params[0]);
 	for (auto* target : units)
 	{
-		if (!target || target->is_enemy || target->isDead()) continue;
+		if (act == SpellUnitRec::SPEC_ACT_AUTODESTRUCT)
+		{
+			if (_predator_blast_target(caster, target))
+				return StartMoraleSpecialAction(caster);
+			continue;
+		}
+		if (!_morale_special_target_allowed(act, target) || target->is_enemy || target->isDead()) continue;
 		if (caster->coor.Distance(target->coor) <= radius)
 			return StartMoraleSpecialAction(caster);
 	}

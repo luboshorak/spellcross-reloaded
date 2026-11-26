@@ -43,6 +43,11 @@ struct LevelTerritory {
     std::string counter_attack_mission;
 };
 
+struct LevelMissionIntro {
+    std::string video;
+    std::vector<int> research_prerequisites;
+};
+
 struct LevelMission {
     std::string name;           // "M02_02A"
     std::string end_ok_mission; // "none" / "M02_02B"
@@ -65,6 +70,9 @@ struct LevelMission {
     // Videa po dokončení mise
     std::string end_ok_video;
     std::string end_bad_video;
+
+    // Ordered retail PlayStartMissionDeltaAnim / PlayStartMissionCANAnim clips.
+    std::vector<LevelMissionIntro> intro_videos;
 
     // Dokončení této mise dokonèí level
     bool is_level_final = false;
