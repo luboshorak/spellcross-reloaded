@@ -69,6 +69,7 @@ public:
         const std::vector<int>& enemy_unit_ids, int enemy_level_min = 1, int enemy_level_max = 1);
     // Switch between editor/game mode (also updates UI + resets game state when entering).
     void StartTacticalGame();
+    void StartTacticalGameAfterStrategicCutscenes();
     bool StartTutorialStage(int stage);
     // Access the current tactical map (used by strategic level for battle results)
     SpellMap* GetSpellMap() const { return spell_map; }
@@ -173,6 +174,7 @@ private:
     std::vector<std::string> m_strategicCutsceneQueue;
     bool m_strategicCutsceneScheduled = false;
     bool m_strategicCutscenePlaying = false;
+    bool m_missionStartAfterCutscenes = false;
     bool m_campaignCompletionPending = false;
     bool m_campaignDefeatPending = false;
 
