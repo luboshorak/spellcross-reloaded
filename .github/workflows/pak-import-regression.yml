@@ -1,0 +1,27 @@
+name: PAK compatibility import
+on:
+  pull_request:
+    paths:
+      - 'spellcross-remaster-main/source/pak_dataset_import.h'
+      - 'spellcross-remaster-main/source/main.cpp'
+      - 'spellcross-remaster-main/tests/pak_import_test.cpp'
+      - 'spellcross-remaster-main/tests/test_pak_import.py'
+      - '.github/workflows/pak-import-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'spellcross-remaster-main/source/pak_dataset_import.h'
+      - 'spellcross-remaster-main/tests/pak_import_test.cpp'
+      - 'spellcross-remaster-main/tests/test_pak_import.py'
+      - '.github/workflows/pak-import-regression.yml'
+jobs:
+  pak-import-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev xvfb
+      - name: Compile importer harness
+        run: |
+          c++ -std=c++17 -Wall -Wextra $(wx-config --cxxflags) spellcross-remaster-main/tests/pak_import_test.cpp -o /tmp/pak_import_test $(wx-config --libs base)
+      - name: Validate and extract synthetic datasets
+        run: xvfb-run -a python3 spellcross-remaster-main/tests/test_pak_import.py /tmp/pak_import_test
