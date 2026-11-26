@@ -5390,7 +5390,18 @@ void MainFrame::PlayCutsceneFromStrategic(const std::string& video_entry_name)
 bool MainFrame::HasPendingStrategicCutscenes() const
 {
     return m_strategicCutscenePlaying || m_strategicCutsceneScheduled ||
-        !m_strategicCutsceneQueue.empty() || m_campaignCompletionPending;
+        !m_strategicCutsceneQueue.empty() || m_campaignCompletionPending || m_missionStartAfterCutscenes;
+}
+
+void MainFrame::StartTacticalGameAfterStrategicCutscenes()
+{
+    if (HasPendingStrategicCutscenes())
+    {
+        m_missionStartAfterCutscenes = true;
+        return;
+    }
+    StartTacticalGame();
+    ShowTacticalWindow();
 }
 
 void MainFrame::CompleteCampaignAfterCutscenes()
@@ -5494,6 +5505,16 @@ void MainFrame::PlayNextStrategicCutscene()
         }
         m_mainMenuReturnToTactical = false;
         ShowMainMenuWindow();
+        return;
+    }
+
+    // A mission intro is a different destination from chapter/end videos.
+    // Begin deployment only after the queue drains, including skipped clips.
+    if (m_missionStartAfterCutscenes)
+    {
+        m_missionStartAfterCutscenes = false;
+        StartTacticalGame();
+        ShowTacticalWindow();
         return;
     }
 
