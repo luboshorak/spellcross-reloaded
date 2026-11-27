@@ -233,6 +233,18 @@ public:
             fail("Resource has no native payload: "+r.id);
         return checked(r).read(r.payload,limit);
     }
+    // Only the two modern tactical map layer payloads may be accessed here;
+    // a general archive-entry escape hatch would bypass the native contract.
+    Bytes map_plane(const std::string& id,const std::string& entry,std::size_t exact_size){
+        const auto& r=resource(id);
+        if(r.status!="converted"||!r.payload.starts_with("records/")||!r.payload.ends_with("/map.json")||
+           (entry!="ground.u16le"&&entry!="objects.u8x2")||exact_size>2000000)
+            fail("Invalid native map plane request");
+        auto prefix=r.payload.substr(0,r.payload.find_last_of('/')+1);
+        auto b=checked(r).read(prefix+entry,exact_size);
+        if(b.size()!=exact_size)fail("Native map plane length mismatch");
+        return b;
+    }
 private:
     J atlas_group(const Group& g){
         auto& p=package(g.package);

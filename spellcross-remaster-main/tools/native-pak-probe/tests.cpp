@@ -1,4 +1,4 @@
-#include "../../source/native_pak/assets.hpp"
+#include "../../source/native_pak/campaign.hpp"
 #include <wx/init.h>
 #include <chrono>
 #include <iostream>
@@ -103,6 +103,12 @@ int main(){
             Provider p(temp.path);
             rejects([&]{p.payload("DATA/COMMON.FS::TEST.TXT#1");},"raw locator accepted");
         }
+        auto script=decode_script(parse(R"({"schema":"spellcross-script","version":1,"source_encoding":"UTF-8","records":[{"line":1,"depth":0,"kind":"block","source":"MissionData {","name":"MissionData","keyword":"missiondata","args":[]},{"line":2,"depth":1,"kind":"call","source":"MissionMap(M01_01)","name":"MissionMap","keyword":"missionmap","args":["M01_01"]},{"line":3,"depth":1,"kind":"call","source":"MissionMap(M01_02)","name":"MissionMap","keyword":"missionmap","args":["M01_02"]},{"line":4,"depth":0,"kind":"end","source":"}"}]})"));
+        require(script.size()==4&&script[1].args[0]=="M01_01"&&script[2].args[0]=="M01_02","ordered script");
+        auto map_json=parse(R"({"schema":"spellcross-tactical-map","version":1,"width":2,"height":1,"terrain":"T11","ground":{"entry":"ground.u16le","sprites":["PLA00"],"index_mask":4095,"elevation_shift":12},"objects":{"entry":"objects.u8x2","sprites":["TREE"],"zero_means_empty":true,"index_base":1},"anm":{"resources":["A"],"placements":[{"resource":0,"frame_offset":1,"frame_limit":3,"x":1,"y":0}]},"pnm":{"resources":["P"],"placements":[{"resource":0,"frame_offset":0,"frame_limit":1,"x":0,"y":0,"x_offset":-3,"y_offset":4}]},"enemy_counterattack_posts":[0],"player_counterattack_posts":[1],"loop_sounds":{"resources":["S"],"placements":[{"tile":1,"resource":0}]},"random_sounds":{"resources":[],"placements":[]}})");
+        auto map=decode_map(map_json,Bytes{0,32,0,0},Bytes{1,7,0,0});
+        require(map.cells.size()==2&&map.cells[0].elevation==2&&map.cells[0].object==1&&map.cells[0].flags==7&&map.pnm.placements[0].x_offset==-3&&map.loop_sounds.placements[0].tile==1&&map.player_posts[0]==1,"eight map layers");
+        rejects([&]{decode_map(map_json,Bytes{1,0,0,0},Bytes{1,7,0,0});},"invalid map ground index accepted");
         require(crc32(Bytes({'1','2','3','4','5','6','7','8','9'}))==0xcbf43926u,"CRC implementation");
         rejects([]{parse(R"({"x":1,"x":2})");},"duplicate JSON key accepted");
         std::cout<<"Native PAK lookup and indexed graphics passed without original data\n";
