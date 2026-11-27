@@ -204,6 +204,12 @@ public:
     const std::string& edition()const{return edition_;}
     const std::string& converter_version()const{return version_;}
     bool partial()const{return partial_;}
+    // Converter uses ISO 639-1 language codes: Czech is cs, not cz.
+    void require_game_dataset() const {
+        if(partial_)fail("This is a partial PAK export. Select an All game data export.");
+        if(edition_!="cs"&&edition_!="en")
+            fail("Unsupported PAK edition '"+edition_+"': expected cs (Czech) or en (English).");
+    }
     std::size_t record_count()const{return records_.size();}
     std::size_t group_count()const{return groups_.size();}
     const std::map<std::string,Resource>& resources()const{return records_;}

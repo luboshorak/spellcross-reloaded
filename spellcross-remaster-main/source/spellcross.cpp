@@ -970,8 +970,7 @@ SpellData::SpellData(const std::wstring& pak_directory,const std::wstring& spec_
 {
     using namespace sc::native_pak;
     auto& p=*native_provider;
-    if(p.partial())fail("A complete PAK dataset is required for the native game");
-    if(p.edition()!="cz"&&p.edition()!="en")fail("Native runtime currently accepts CZ and EN datasets");
+    p.require_game_dataset();
     text_language=p.edition()=="en"?SpellLang::ENG:SpellLang::CZE;
     data_path=spell_data_root=pak_directory;cd_data_path.clear();
     std::memset(map_pal,0,sizeof(map_pal));std::memset(strategy_pal,0,sizeof(strategy_pal));

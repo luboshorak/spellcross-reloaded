@@ -123,6 +123,7 @@ int main(){
         {
             Provider p(temp.path);
             require(p.edition()=="en"&&p.converter_version()=="1.0.0"&&p.record_count()==3&&p.group_count()==1,"catalog");
+            p.require_game_dataset();
             require(p.resource("mainmenu.lz").kind=="indexed-atlas","leaf lookup");
             require(p.payload("DATA/COMMON.FS::TEST.TXT#1")==Bytes({'n','a','t','i','v','e'}),"native text");
             rejects([&]{p.payload("TEST.TXT");},"ambiguous leaf was accepted");
@@ -133,7 +134,7 @@ int main(){
             require(assets.text(assets.resolve("COMMON.FS","test.txt").id)=="native","typed UTF-8 resource");
             rejects([&]{assets.resolve("MISSING.FS","TEST.TXT");},"missing scope accepted");
             rejects([&]{assets.wave("DATA/COMMON.FS::TEST.TXT#1");},"wrong media type accepted");
-            auto language=decode_language_table(parse(R"({"schema":"spellcross-language-table","version":1,"language":"cz","entries":[{"id":0,"text":"A"},{"id":1,"text":"B"}]})"));
+            auto language=decode_language_table(parse(R"({"schema":"spellcross-language-table","version":1,"language":"cs","entries":[{"id":0,"text":"A"},{"id":1,"text":"B"}]})"));
             require(language.entries==std::vector<std::string>({"A","B"}),"language table ordering");
             rejects([]{decode_language_table(parse(R"({"schema":"spellcross-language-table","version":1,"language":"en","entries":[{"id":1,"text":"A"}]})"));},"unordered language table accepted");
             IndexedFrame glyph;glyph.width=2;glyph.height=2;glyph.indices={0,1,1,0};
@@ -148,6 +149,27 @@ int main(){
             require(p.payload("DATA/COMMON.FS::TEST.TXT#1").size()==6,"random reread text");
             frame.known[254]=0;rejects([&]{preview_rgba(frame);},"unknown palette accepted");
             rejects([&]{p.resource_frame("MAINMENU.LZ",99);},"invalid frame accepted");
+        }
+        // Use the actual language code emitted by Asset Converter.
+        {
+            auto with_edition=[](std::string s,const std::string& code){
+                const std::string key="\"edition_language\":\"en\"";
+                auto pos=s.find(key);require(pos!=std::string::npos,"edition fixture");
+                s.replace(pos,key.size(),"\"edition_language\":\""+code+"\"");return s;
+            };
+            for(const auto& code:{"cs","en","pl","unknown"}){
+                write(temp.path/"manifest.json",with_edition(manifest,code));
+                write(temp.path/"resources.json",with_edition(catalog,code));
+                Provider p(temp.path);
+                if(std::string(code)=="cs"||std::string(code)=="en")p.require_game_dataset();
+                else rejects([&]{p.require_game_dataset();},"unsupported game edition accepted");
+            }
+            auto partial=[](std::string s){auto pos=s.find("\"partial\":false");require(pos!=std::string::npos,"partial fixture");s.replace(pos,15,"\"partial\":true");return s;};
+            write(temp.path/"manifest.json",partial(manifest));
+            write(temp.path/"resources.json",partial(catalog));
+            Provider p(temp.path);
+            rejects([&]{p.require_game_dataset();},"partial dataset accepted");
+            write(temp.path/"manifest.json",manifest);write(temp.path/"resources.json",catalog);
         }
         {
             auto bad=std::string(manifest);bad.replace(bad.find("1.0.0"),5,"2.0.0");

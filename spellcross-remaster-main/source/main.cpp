@@ -1137,8 +1137,7 @@ namespace
         auto selectNative=[&](const fs::path& path)->bool{
             try{
                 sc::native_pak::Provider provider(path);
-                if(provider.partial()||(provider.edition()!="cz"&&provider.edition()!="en"))
-                    throw std::runtime_error("Select a complete CZ or EN PAK dataset.");
+                provider.require_game_dataset();
                 ini.SetValue("DATA","native_pak_path",ConfigPathValue(path,config_path,runtime_root).c_str());
                 ini.SetBoolValue("DATA","native_pak",true,nullptr,true);
                 ini.SetValue("STATE","last_map","");
@@ -2876,8 +2875,7 @@ bool MyApp::OnInit()
         try{
             const fs::path path=fs::absolute(fs::path(wxString(argv[++i]).ToStdWstring()));
             sc::native_pak::Provider provider(path);
-            if(provider.partial()||(provider.edition()!="cz"&&provider.edition()!="en"))
-                throw std::runtime_error("A complete CZ/EN PAK dataset is required.");
+            provider.require_game_dataset();
             ini.SetValue("DATA","native_pak_path",ConfigPathValue(path,fs::path(config_path),runtime_root).c_str());
             ini.SetBoolValue("DATA","native_pak",true,nullptr,true);
             if(!*ini.GetValue("DATA","spec_data_path",""))ini.SetValue("DATA","spec_data_path","data");
