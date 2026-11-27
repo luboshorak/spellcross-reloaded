@@ -1068,6 +1068,35 @@ bool SpellData::LoadCampaignLevel(const std::string& path,LevelData& out,std::st
         });
     }catch(const std::exception& e){if(error)*error=e.what();return false;}
 }
+bool SpellData::ReadNativeFrame(const std::string& archive,const std::string& name,
+    StrategicOriginalRenderer::IndexedAsset& out) const
+{
+    out={};if(!native_provider)return false;
+    try{
+        const auto& r=native_provider->scoped_resource(archive,name);
+        auto f=sc::native_pak::decode_frame(native_provider->resource_frame(r.id));
+        out.width=f.width;out.height=f.height;out.x=f.origin_x;out.y=f.origin_y;
+        out.indices=std::move(f.indices);out.opacity=std::move(f.opacity);
+        if(f.opaque_zero_display_index)out.opaque_zero_display_index=static_cast<int>(*f.opaque_zero_display_index);
+        return true;
+    }catch(const std::exception&){return false;}
+}
+bool SpellData::ReadNativeAdjacency(const std::string& name,std::vector<uint32_t>& out) const
+{
+    out.clear();if(!native_provider)return false;
+    try{
+        using namespace sc::native_pak;
+        auto& r=native_provider->scoped_resource("COMMON.FS",name);
+        auto j=parse_bytes(native_provider->payload(r.id));schema(j,"spellcross-retail-table");
+        if(j.at("kind").str()!="territory-adjacency"||j.at("masks").arr().size()!=32)return false;
+        for(const auto& mask:j.at("masks").arr()){
+            auto n=mask.num();if(n>0xffffffffu){out.clear();return false;}
+            out.push_back(static_cast<uint32_t>(n));
+        }
+        return true;
+    }catch(const std::exception&){out.clear();return false;}
+}
+
 bool SpellData::ReadNativeMask(const std::string& name,int& width,int& height,std::vector<uint8_t>& out) const
 {
     width=height=0;out.clear();

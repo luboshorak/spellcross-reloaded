@@ -39,7 +39,7 @@ bool StrategicOriginalRenderer::LoadExact(const AssetLoader& load,
         SetError(error, "Cannot load asset: " + name);
         return false;
     }
-    if(out.size() < expected)
+    if(out.size() < expected && !load.native_frame)
     {
         // Some project/runtime configurations expose raw compressed *.LZ even
         // though SpellData normally opens COMMON.FS with DELZ_ALL. Be liberal
@@ -336,7 +336,7 @@ bool StrategicOriginalRenderer::RenderStrategicMap(const AssetLoader& load,
     if(!LoadExact(load, "VMM_FULL.LZ", kScreenSpecificW * kScreenH, vmm, error)) return false;
     if(!LoadExact(load, LevelAsset("HMLA__%02d.LZ", state.level), kMapW * kMapH, hmla, error)) return false;
     if(!LoadExact(load, LevelAsset("LEVEL_%02d.LZ", state.level), kMapW * kMapH, level, error)) return false;
-    if(!load(LevelAsset("LEVEL_%02d.CLK", state.level), clk))
+    if(!load.native_frame&&!load(LevelAsset("LEVEL_%02d.CLK", state.level), clk))
     {
         SetError(error, "Cannot load CLK territory mask");
         return false;
@@ -346,7 +346,13 @@ bool StrategicOriginalRenderer::RenderStrategicMap(const AssetLoader& load,
 
     int clkW = 0, clkH = 0;
     std::vector<std::uint8_t> territoryMask;
-    if(!DecodeClk(clk, clkW, clkH, territoryMask) || clkW != kMapW || clkH != kMapH)
+    bool mask_ok=false;
+    if(load.native_frame){
+        IndexedAsset mask;
+        mask_ok=load.native_frame(LevelAsset("LEVEL_%02d.CLK",state.level),mask);
+        clkW=mask.width;clkH=mask.height;territoryMask=std::move(mask.indices);
+    }else mask_ok=DecodeClk(clk,clkW,clkH,territoryMask);
+    if(!mask_ok||clkW!=kMapW||clkH!=kMapH||territoryMask.size()!=std::size_t(kMapW)*kMapH)
     {
         SetError(error, "Invalid CLK territory mask dimensions");
         return false;

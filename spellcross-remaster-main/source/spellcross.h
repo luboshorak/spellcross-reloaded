@@ -24,6 +24,7 @@
 #include "spell_midi.h"
 #include "spell_texts.h"
 #include "spell_video.h"
+#include "strategic_original_renderer.h"
 
 namespace sc::native_pak { struct ScriptRecord; class Provider; }
 struct LevelData;
@@ -162,6 +163,9 @@ public:
     // consumers. No original archive bytes or legacy decompression.
     std::wstring NativeCampaignPath(const std::string& filename) const;
     bool LoadCampaignLevel(const std::string& path,LevelData& out,std::string* error=nullptr) const;
+    bool ReadNativeFrame(const std::string& archive,const std::string& name,
+        StrategicOriginalRenderer::IndexedAsset& frame) const;
+    bool ReadNativeAdjacency(const std::string& name,std::vector<uint32_t>& out) const;
     bool ReadNativeMask(const std::string& name,int& width,int& height,std::vector<uint8_t>& out) const;
     bool ReadNativeIndexed(const std::string& archive,const std::string& name,std::vector<uint8_t>& out) const;
 	SpellLang GetTextLanguage() const { return text_language; }

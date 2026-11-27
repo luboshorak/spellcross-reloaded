@@ -40,8 +40,19 @@ public:
     // - .LZ: *already decompressed* payload bytes (as exposed in the remake's
     //   extracted COMMON temp folder). Runtime integration can simply wrap the
     //   project's existing LZ/FS loader behind this callback.
-    using AssetLoader = std::function<bool(const std::string& name,
-                                           std::vector<std::uint8_t>& out)>;
+    struct IndexedAsset {
+        int width=0,height=0,x=0,y=0;
+        std::vector<std::uint8_t> indices,opacity;
+        int opaque_zero_display_index=-1;
+    };
+    struct AssetLoader : std::function<bool(const std::string&,std::vector<std::uint8_t>&)> {
+        using Base=std::function<bool(const std::string&,std::vector<std::uint8_t>&)>;
+        using Base::Base;
+        using Base::operator=;
+        // Set only for native datasets. Never feed native pixels into a
+        // legacy sparse ICO or run-length CLK decoder.
+        std::function<bool(const std::string&,IndexedAsset&)> native_frame;
+    };
 
     struct MapState
     {

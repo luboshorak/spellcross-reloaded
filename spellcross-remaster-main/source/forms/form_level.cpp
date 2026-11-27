@@ -220,8 +220,9 @@ namespace
 
     static OriginalMissionAssetSet OriginalDetectMissionAssetSet(SpellData* spellData)
     {
-        if (!spellData || !spellData->GetCommonFS())
-            return OriginalMissionAssetSet::Unknown;
+        if(!spellData)return OriginalMissionAssetSet::Unknown;
+        if(spellData->IsNativePak())return spellData->GetTextLanguage()==SpellLang::ENG?OriginalMissionAssetSet::English:OriginalMissionAssetSet::Czech;
+        if(!spellData->GetCommonFS())return OriginalMissionAssetSet::Unknown;
 
         int missionDefCount = 0;
         int czechOnlyPresent = 0;
@@ -560,9 +561,27 @@ namespace
         return true;
     }
 
+    static wxImage OriginalNativeImage(const StrategicOriginalRenderer::IndexedAsset& a,const OriginalUiPalette& pal)
+    {
+        if(a.width<=0||a.height<=0||a.indices.size()!=std::size_t(a.width)*a.height||a.opacity.size()!=a.indices.size())
+            return {};
+        wxImage image(a.width,a.height,true);image.InitAlpha();
+        for(int y=0;y<a.height;++y)for(int x=0;x<a.width;++x){
+            auto i=std::size_t(y)*a.width+x;
+            auto n=a.indices[i];
+            if(!n&&a.opacity[i]&&a.opaque_zero_display_index>=0)n=static_cast<uint8_t>(a.opaque_zero_display_index);
+            const auto& color=pal[n];image.SetRGB(x,y,color[0],color[1],color[2]);image.SetAlpha(x,y,a.opacity[i]);
+        }
+        return image;
+    }
     static wxImage OriginalLoadIcoLike(const StrategicOriginalRenderer::AssetLoader& load,
         const std::string& name, const OriginalUiPalette& pal)
     {
+        if(load.native_frame){
+            StrategicOriginalRenderer::IndexedAsset asset;
+            if(!load.native_frame(name,asset))return {};
+            return OriginalNativeImage(asset,pal);
+        }
         std::vector<std::uint8_t> bytes;
         if (!load || !load(name, bytes))
             return wxImage();
@@ -588,6 +607,12 @@ namespace
                     pixel[0] = colour[0]; pixel[1] = colour[1]; pixel[2] = colour[2];
                 }
         if (!statusAsset) return;
+        if(load.native_frame){
+            StrategicOriginalRenderer::IndexedAsset asset;
+            if(load.native_frame(statusAsset,asset))
+                OriginalBlitImage(image,OriginalNativeImage(asset,pal),cellX+1+asset.x,cellY+1+asset.y);
+            return;
+        }
         std::vector<std::uint8_t> bytes;
         if (!load || !load(statusAsset, bytes) || bytes.size() < 7) return;
         const wxImage icon = OriginalDecodeIcoLike(bytes, pal);
@@ -604,7 +629,7 @@ namespace
         if (!load || !load(name, bytes))
             return wxImage();
         const size_t expected = static_cast<size_t>(w) * h;
-        if (bytes.size() < expected && !bytes.empty())
+        if (bytes.size() < expected && !bytes.empty() && !load.native_frame)
         {
             LZWexpand delz(static_cast<int>(std::max<size_t>(expected + 64u, 4096u)));
             auto& decoded = delz.Decode(bytes.data(), bytes.data() + bytes.size());
@@ -636,7 +661,7 @@ namespace
         if (!load || !load(name, bytes))
             return wxImage();
         const size_t expected = static_cast<size_t>(w) * h;
-        if (bytes.size() < expected && !bytes.empty())
+        if (bytes.size() < expected && !bytes.empty() && !load.native_frame)
         {
             LZWexpand delz(static_cast<int>(std::max<size_t>(expected + 64u, 4096u)));
             auto& decoded = delz.Decode(bytes.data(), bytes.data() + bytes.size());
@@ -3191,7 +3216,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
     addAssetDir(std::filesystem::path(m_spellData->cd_data_path) / "COMMON");
     addAssetDir(std::filesystem::path(m_spellData->cd_data_path) / "common");
 
-    auto loader = [this, originalAssetDirs](const std::string& name, std::vector<std::uint8_t>& out) -> bool
+    StrategicOriginalRenderer::AssetLoader loader = [this, originalAssetDirs](const std::string& name, std::vector<std::uint8_t>& out) -> bool
     {
         out.clear();
 
@@ -3222,6 +3247,10 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         return false;
     };
 
+    if(m_spellData&&m_spellData->IsNativePak())
+        loader.native_frame=[this](const std::string& name,StrategicOriginalRenderer::IndexedAsset& out){
+            return m_spellData->ReadNativeFrame("COMMON.FS",name,out);
+        };
     StrategicOriginalRenderer renderer;
     StrategicOriginalRenderer::RgbImage rgb;
     std::string error;
@@ -18892,8 +18921,14 @@ static bool LoadSSDAdjacencyFromArchive(SpellData* spellData, int levelNum,
     int territoryMaxId, std::vector<uint32_t>& outAdj)
 {
     outAdj.assign(std::max(territoryMaxId + 1, 1), 0u);
-    if (!spellData || !spellData->GetCommonFS())
-        return false;
+    if (!spellData)return false;
+    if(spellData->IsNativePak()){
+        std::vector<uint32_t> masks;
+        if(!spellData->ReadNativeAdjacency(wxString::Format("LEVEL_%02d.SSD",levelNum).ToStdString(),masks))return false;
+        for(int t=1;t<=territoryMaxId&&t<static_cast<int>(masks.size());++t)outAdj[t]=masks[t];
+        return true;
+    }
+    if(!spellData->GetCommonFS())return false;
 
     const std::string ssdName = wxString::Format("LEVEL_%02d.SSD", levelNum).ToStdString();
     uint8_t* raw = nullptr;
@@ -19253,13 +19288,16 @@ static bool BuildStrategicCompositeFromFolder(const std::filesystem::path& folde
 static bool BuildStrategicScreenBitmap(SpellData* spellData, const char* resourceName, wxBitmap& outBmp)
 {
     outBmp = wxBitmap();
-    if (!spellData || !spellData->GetCommonFS() || !resourceName || !*resourceName)
-        return false;
-
-    uint8_t* raw = nullptr;
-    int rawSize = 0;
-    if (spellData->GetCommonFS()->GetFile(resourceName, &raw, &rawSize) ||
-        !raw || rawSize < kStrategicScreenW * kStrategicScreenH)
+    if (!spellData || !resourceName || !*resourceName)return false;
+    auto read=[&](const char* name,std::vector<uint8_t>& out){
+        if(spellData->IsNativePak())return spellData->ReadNativeIndexed("COMMON.FS",name,out);
+        if(!spellData->GetCommonFS())return false;
+        uint8_t* p=nullptr;int size=0;
+        if(spellData->GetCommonFS()->GetFile(name,&p,&size)||!p||size<=0)return false;
+        out.assign(p,p+size);return true;
+    };
+    std::vector<uint8_t> raw;
+    if(!read(resourceName,raw)||raw.size()<kStrategicScreenW*kStrategicScreenH)
         return false;
 
     wxImage img(kStrategicScreenW, kStrategicScreenH, true);
@@ -19285,10 +19323,8 @@ static bool BuildStrategicScreenBitmap(SpellData* spellData, const char* resourc
     auto blitLayer = [&](const char* layerName, int layerW, int layerH,
         int destX, int destY) -> bool
         {
-            uint8_t* pixels = nullptr;
-            int pixelCount = 0;
-            if (spellData->GetCommonFS()->GetFile(layerName, &pixels, &pixelCount) ||
-                !pixels || pixelCount < layerW * layerH)
+            std::vector<uint8_t> pixels;
+            if(!read(layerName,pixels)||pixels.size()<std::size_t(layerW)*layerH)
                 return false;
 
             for (int y = 0; y < layerH; ++y)
@@ -19506,7 +19542,32 @@ void StrategicLevelFrame::TryLoadBackground()
     int cw = 0, ch = 0;
     std::vector<unsigned char> cclk;
 
-    if (levelNum >= 0)
+    if(levelNum>=0&&m_spellData&&m_spellData->IsNativePak()){
+        // Build the map from native pixels and the already decoded territory
+        // mask; no temporary .CLK, .LZ or .PAL files.
+        StrategicOriginalRenderer::IndexedAsset level,fog,mask;
+        std::vector<uint8_t> palette;
+        auto read=[&](const char* fmt,auto& out){
+            return m_spellData->ReadNativeFrame("COMMON.FS",wxString::Format(fmt,levelNum).ToStdString(),out);
+        };
+        if(read("LEVEL_%02d.LZ",level)&&read("HMLA__%02d.LZ",fog)&&read("LEVEL_%02d.CLK",mask)&&
+           m_spellData->ReadNativeIndexed("COMMON.FS",wxString::Format("LEVEL_%02d.PAL",levelNum).ToStdString(),palette)&&
+           level.width==mask.width&&level.height==mask.height&&fog.width==mask.width&&fog.height==mask.height&&
+           level.indices.size()==mask.indices.size()&&fog.indices.size()==mask.indices.size()&&palette.size()==192){
+            cw=mask.width;ch=mask.height;cclk=std::move(mask.indices);
+            wxImage image(cw,ch);
+            for(int y=0;y<ch;++y)for(int x=0;x<cw;++x){
+                auto i=std::size_t(y)*cw+x;bool inside=cclk[i]!=0;
+                unsigned n=inside?level.indices[i]:fog.indices[i];
+                // Original strategic palette bank 128..191.
+                n%=64;
+                auto color=[&](unsigned c){return static_cast<unsigned char>(inside?palette[n*3+c]:palette[n*3+c]*0.82);};
+                image.SetRGB(x,y,color(0),color(1),color(2));
+            }
+            bmp=wxBitmap(image);composite_ok=bmp.IsOk();
+        }
+    }
+    else if (levelNum >= 0)
     {
         // Search in reasonable places: folder of DEF, and a few parents with common subfolders.
         std::vector<fs::path> dirs;
@@ -19567,7 +19628,7 @@ void StrategicLevelFrame::TryLoadBackground()
     }
 
     // Fallback: older simple LZ background (no CLK).
-    if (!bmp.IsOk())
+    if (!bmp.IsOk()&&(!m_spellData||!m_spellData->IsNativePak()))
         BuildLegacyLZBackgroundFromDef(defPath, bmp);
 
     if (bmp.IsOk())
