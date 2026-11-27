@@ -12,6 +12,7 @@
 #include <memory>
 #include <set>
 #include <limits>
+#include <iterator>
 
 namespace sc::native_pak {
 using Bytes=std::vector<std::uint8_t>;
@@ -110,7 +111,7 @@ public:
     }
 };
 struct Resource {
-    std::string id,name,package,format,status,kind,payload;
+    std::string id,name,package,format,status,kind,payload,atlas_entry;
 };
 struct Group {
     std::string name,package,entry;
@@ -173,9 +174,12 @@ public:
         for(const auto& r:cat.at("records").arr()){
             Resource x{r.at("id").str(),r.at("name").str(),r.at("package").str(),r.at("format").str(),r.at("status").str(),r.at("kind").str(),{}};
             if(auto p=r.get("payload"))x.payload=p->str();
+            if(auto a=r.get("atlas"))x.atlas_entry=a->at("entry").str();
             auto owner=packages_.find(x.package);
             if(x.id.empty()||owner==packages_.end()||r.at("category").str()!=owner->second.category||
-               (!x.payload.empty()&&!safe_entry(x.payload))||!records_.emplace(x.id,x).second)fail("Invalid catalog record");
+               (!x.payload.empty()&&!safe_entry(x.payload))||
+               (!x.atlas_entry.empty()&&(!safe_entry(x.atlas_entry)||!x.atlas_entry.starts_with("graphics/")||!x.atlas_entry.ends_with("/frames.json")))||
+               !records_.emplace(x.id,x).second)fail("Invalid catalog record");
             ++counts[x.package];names_[key(x.name)].push_back(x.id);leaves_[leaf(x.name)].push_back(x.id);
         }
         for(const auto& [file,p]:packages_)if(counts[file]!=p.count)fail("Catalog package count mismatch");
@@ -212,8 +216,9 @@ public:
             fail("Resource has no native payload: "+r.id);
         return checked(r).read(r.payload,limit);
     }
-    J atlas(const std::string& name){
-        const auto& g=group(name);auto& p=package(g.package);
+private:
+    J atlas_group(const Group& g){
+        auto& p=package(g.package);
         const auto& declared=p.manifest().at("graphics").arr();
         if(std::none_of(declared.begin(),declared.end(),[&](const J& j){return j.str()==g.entry;}))
             fail("Atlas not declared in package");
@@ -221,9 +226,13 @@ public:
         if(a.at("group").str()!=g.name||a.at("frames").arr().size()!=g.frames)fail("Atlas catalog mismatch");
         return a;
     }
-    FrameData frame(const std::string& name,std::size_t ordinal){
-        const auto& g=group(name);auto a=atlas(name);auto& p=package(g.package);
+    FrameData group_frame(const Group& g,const J& a,std::size_t ordinal){
+        auto& p=package(g.package);
         const auto& f=a.at("frames").arr().at(ordinal);
+        const auto& owner=resource(f.at("id").str());
+        if(owner.package!=g.package||owner.atlas_entry!=g.entry||owner.status!="converted")
+            fail("Atlas frame owner mismatch or unsupported resource");
+        checked(owner);
         if(auto synthetic=f.get("synthetic_placeholder");synthetic&&synthetic->boolean())fail("Synthetic frame is not an original graphic");
         const auto& rect=f.at("rect").arr();
         if(rect.size()!=4||!rect[2].num()||!rect[3].num()||rect[0].num()>2048||rect[1].num()>2048||
@@ -252,6 +261,28 @@ public:
             fail("Atlas plane dimensions differ");
         if(std::any_of(result.known.begin(),result.known.end(),[](auto n){return n>1;}))fail("Invalid known palette mask");
         return result;
+    }
+public:
+    J atlas(const std::string& name){return atlas_group(group(name));}
+    FrameData frame(const std::string& name,std::size_t ordinal){
+        const auto& g=group(name);auto a=atlas_group(g);return group_frame(g,a,ordinal);
+    }
+    // Resource-local frame ordinal, not an ordinal in the whole atlas group.
+    FrameData resource_frame(const std::string& name,std::uint64_t ordinal=0){
+        const auto& r=resource(name);
+        if(r.status!="converted"||r.atlas_entry.empty())fail("Resource has no native graphic");
+        for(const auto& g:groups_)if(g.package==r.package&&g.entry==r.atlas_entry){
+            auto a=atlas_group(g);const auto& frames=a.at("frames").arr();
+            std::size_t match=frames.size();
+            for(std::size_t i=0;i<frames.size();++i)
+                if(frames[i].at("id").str()==r.id&&frames[i].at("frame").num()==ordinal){
+                    if(match!=frames.size())fail("Duplicate resource frame");
+                    match=i;
+                }
+            if(match==frames.size())fail("Resource frame not found");
+            return group_frame(g,a,match);
+        }
+        fail("Resource atlas missing from catalog");
     }
 };
 }
