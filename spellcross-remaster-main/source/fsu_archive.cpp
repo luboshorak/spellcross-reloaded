@@ -12,6 +12,8 @@
 #define _HAS_STD_BYTE 0
 
 #include "fsu_archive.h"
+#include "native_pak/fsu.hpp"
+#include <memory>
 #include "sprites.h"
 #include "LZ_spell.h"
 #include "other.h"
@@ -63,6 +65,104 @@ FSUarchive::FSUarchive(std::wstring &path,std::function<void(std::string)> statu
 	for(auto & batch : lists)
 		list.insert(list.end(),batch.begin(),batch.end());
 
+}
+
+// Native FSU resource storage: construct existing renderable objects from
+// decoded atlas frames and explicit layout IDs, without opening UNITS.FSU.
+FSUarchive::FSUarchive(sc::native_pak::Provider& provider,const sc::native_pak::J* context,
+    std::function<void(std::string)> status_item)
+{
+    using namespace sc::native_pak;
+    std::vector<std::unique_ptr<FSU_resource>> pending;
+    std::map<std::string,const J*> contexts;
+    if(context){
+        schema(*context,"spellcross-fsu-context");
+        for(const auto& row:context->at("resources").arr())
+            if(!contexts.emplace(key(row.at("group").str()),&row).second)fail("Duplicate FSU context group");
+    }
+    std::set<std::string> names;
+    xmin=ymin=65536;xmax=ymax=-65536;
+    for(const auto& group:provider.groups()){
+        // Unit sprites have provenance UNITS.FSU::<group>/<frame>.
+        auto group_name=key(group.name);
+        if(group_name.find("UNITS.FSU::")==std::string::npos)continue;
+        auto atlas=provider.atlas(group.name);
+        auto layout=decode_fsu_layout(atlas);
+        auto resource=std::make_unique<FSU_resource>();
+        auto name=leaf(group.name);auto underscore=name.find('_');
+        if(underscore!=name.npos)name.resize(underscore);
+        if(name.empty()||name.size()>=sizeof(resource->name)||!names.insert(name).second)
+            fail("Invalid or duplicate native FSU group: "+name);
+        std::memset(resource->name,0,sizeof(resource->name));
+        std::memcpy(resource->name,name.data(),name.size());resource->offset=0;
+        if(group.frames>65535)fail("Native FSU group too large");
+        resource->tot_sprites=static_cast<uint16_t>(group.frames);
+        resource->list.reserve(resource->tot_sprites);
+        std::map<std::string,FSU_sprite*> frames;
+        visit_indexed(provider,group.name,[&](const J& meta,const IndexedFrame& f){
+            const auto& record=provider.resource(meta.at("id").str());
+            if(record.format!="FSU-SPRITE"||meta.at("frame").num()!=0)fail("Invalid FSU atlas record");
+            auto sprite=std::make_unique<FSU_sprite>();
+            auto frame_name=leaf(record.name);
+            if(frame_name.size()!=3)fail("Invalid native FSU frame name");
+            std::memcpy(sprite->name,frame_name.c_str(),4);
+            auto rows=sprite_rows(f,true,true);
+            sprite->y_size=static_cast<int>(f.height);sprite->y_ofs=f.origin_y;
+            sprite->x_min=rows.x_min;sprite->x_max=rows.x_max;
+            sprite->data=new uint8_t[rows.data.size()];
+            std::memcpy(sprite->data,rows.data.data(),rows.data.size());
+            if(!frames.emplace(record.id,sprite.get()).second)fail("Duplicate FSU frame");
+            xmin=(std::min)(xmin,sprite->x_min);xmax=(std::max)(xmax,sprite->x_max);
+            ymin=(std::min)(ymin,sprite->y_ofs);ymax=(std::max)(ymax,sprite->y_ofs+sprite->y_size);
+            resource->list.push_back(sprite.release());
+        });
+        std::set<std::string> used;
+        auto frame=[&](const std::string& id){
+            auto i=frames.find(id);if(i==frames.end())fail("FSU layout references missing frame");
+            used.insert(id);return i->second;
+        };
+        auto& stat=resource->stat;auto& anim=resource->anim;
+        stat.slopes=layout.static_slopes;stat.azimuths=layout.static_azimuths;
+        for(unsigned i=0;i<layout.static_slopes;++i){
+            stat.lists[i]=new FSU_sprite*[layout.static_azimuths]{};
+            for(unsigned k=0;k<layout.static_azimuths;++k)stat.lists[i][k]=frame(layout.stat[i][k]);
+            stat.fire_origin[i].resize(layout.static_azimuths);
+        }
+        anim.slopes=layout.animation_slopes;anim.azimuths=layout.animation_azimuths;anim.frames=layout.frames;
+        if(!layout.anim.empty()){
+            anim.lists=new FSU_sprite**[layout.anim.size()]{};
+            for(std::size_t i=0;i<layout.anim.size();++i){
+                anim.lists[i]=new FSU_sprite*[layout.frames]{};
+                for(unsigned k=0;k<layout.frames;++k)anim.lists[i][k]=frame(layout.anim[i][k]);
+            }
+            anim.fire_origin.resize(layout.anim.size());
+        }
+        if(used.size()!=frames.size())fail("FSU layout does not cover all frames");
+        // Preserve the supplied context if present; missing context has the
+        // same zero defaults as legacy FSU construction before LoadAuxData.
+        auto ci=contexts.find(name);
+        if(ci!=contexts.end()){
+            const auto& data=*ci->second;
+            auto point=[](const J& j){
+                const auto& a=j.arr();if(a.size()!=2)fail("Invalid FSU context coordinate");
+                return FSU_resource::Txy(signed_origin(a[0]),signed_origin(a[1]));
+            };
+            auto fill=[&](const J& row,std::vector<FSU_resource::Txy>& dst,FSU_resource::Txy& center){
+                const auto& origins=row.at("fire_origins").arr();
+                if(origins.size()!=dst.size())fail("FSU context azimuth count mismatch");
+                for(std::size_t i=0;i<origins.size();++i)dst[i]=point(origins[i]);
+                center=point(row.at("fire_center"));
+            };
+            const auto& rows=data.at("static").arr();
+            if(rows.size()!=layout.static_slopes)fail("FSU context slope count mismatch");
+            for(std::size_t i=0;i<rows.size();++i)fill(rows[i],stat.fire_origin[i],stat.fire_center[i]);
+            fill(data.at("animation"),anim.fire_origin,anim.fire_center);
+        }
+        if(status_item)status_item(name);
+        pending.push_back(std::move(resource));
+    }
+    if(pending.empty())fail("No native unit sprite groups found");
+    list.reserve(pending.size());for(auto& r:pending)list.push_back(r.release());
 }
 
 //---------------------------------------------------------------------------
@@ -609,6 +709,7 @@ FSU_resource::FSU_resource()
 	stat.azimuths = 0;
 	stat.slopes = 0;
 	anim.azimuths = 0;
+	anim.slopes = 0;
 	anim.frames = 0;	
 	anim.lists = NULL;
 }

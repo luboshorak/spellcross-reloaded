@@ -221,6 +221,7 @@ public:
         if(matches.empty())fail("Missing scoped resource: "+archive+"::"+name);
         return records_.at(unique(matches,archive+"::"+name));
     }
+    const std::vector<Group>& groups()const{return groups_;}
     const Group& group(const std::string& name)const{
         if(auto i=group_names_.find(key(name));i!=group_names_.end())return groups_.at(unique(i->second,name));
         if(auto i=group_leaves_.find(key(name));i!=group_leaves_.end())return groups_.at(unique(i->second,name));
@@ -255,7 +256,8 @@ private:
         if(a.at("group").str()!=g.name||a.at("frames").arr().size()!=g.frames)fail("Atlas catalog mismatch");
         return a;
     }
-    FrameData group_frame(const Group& g,const J& a,std::size_t ordinal){
+    struct PageCache {std::string indices,opacity;Bytes a,b;};
+    FrameData group_frame(const Group& g,const J& a,std::size_t ordinal,PageCache* cache=nullptr){
         auto& p=package(g.package);
         const auto& f=a.at("frames").arr().at(ordinal);
         const auto& owner=resource(f.at("id").str());
@@ -284,7 +286,11 @@ private:
             if(!n.starts_with("palettes/"))fail("Invalid palette locator");
             auto b=p.read(n,size);if(b.size()!=size)fail("Invalid palette size");return b;
         };
-        FrameData result{f,image(page.at("indices").str()),image(page.at("opacity").str()),
+        const auto& ip=page.at("indices").str();const auto& op=page.at("opacity").str();
+        if(cache&&(cache->indices!=ip||cache->opacity!=op)){
+            cache->a=image(ip);cache->b=image(op);cache->indices=ip;cache->opacity=op;
+        }
+        FrameData result{f,cache?cache->a:image(ip),cache?cache->b:image(op),
                          palette(pal.at("rgb").str(),768),palette(pal.at("known").str(),256)};
         if(!std::equal(result.indices_png.begin()+16,result.indices_png.begin()+24,result.opacity_png.begin()+16))
             fail("Atlas plane dimensions differ");
@@ -293,6 +299,11 @@ private:
     }
 public:
     J atlas(const std::string& name){return atlas_group(group(name));}
+    template<class Visitor> void visit_group(const std::string& name,Visitor visit){
+        const auto& g=group(name);auto a=atlas_group(g);PageCache cache;
+        for(std::size_t i=0;i<a.at("frames").arr().size();++i)
+            visit(group_frame(g,a,i,&cache));
+    }
     FrameData frame(const std::string& name,std::size_t ordinal){
         const auto& g=group(name);auto a=atlas_group(g);return group_frame(g,a,ordinal);
     }

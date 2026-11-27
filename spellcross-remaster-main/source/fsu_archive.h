@@ -97,6 +97,8 @@ public:
 };
 
 
+namespace sc::native_pak { class Provider; struct J; }
+
 class FSUarchive{
 	private:
 		// graphics resource list
@@ -117,6 +119,8 @@ class FSUarchive{
 		std::wstring GetAuxDataPath() {return(aux_data_path);};
 
 		FSUarchive(std::wstring &path,std::function<void(std::string)> status_item=NULL);
+		FSUarchive(sc::native_pak::Provider& provider,const sc::native_pak::J* context=nullptr,
+            std::function<void(std::string)> status_item=nullptr);
 		~FSUarchive();
 		FSU_resource* GetResource(const char* name);
 		int SaveAuxData(std::wstring path);

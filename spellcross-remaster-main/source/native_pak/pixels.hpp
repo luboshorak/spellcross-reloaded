@@ -39,12 +39,11 @@ inline wxImage decode_plane(const Bytes& data){
 }
 // The caller must register the wx PNG handler. No color interpolation,
 // palette remapping or shadow effect is applied to stored data planes.
-inline IndexedFrame decode_frame(const FrameData& data){
+inline IndexedFrame crop_frame(const FrameData& data,const wxImage& indices,const wxImage& opacity){
     const auto& rect=data.metadata.at("rect").arr();
     const auto& origin=data.metadata.at("origin").arr();
     if(rect.size()!=4||origin.size()!=2||data.rgb.size()!=768||data.known.size()!=256)
         fail("Invalid frame metadata");
-    auto indices=decode_plane(data.indices_png),opacity=decode_plane(data.opacity_png);
     auto x=rect[0].num(),y=rect[1].num(),w=rect[2].num(),h=rect[3].num();
     if(indices.GetSize()!=opacity.GetSize()||!w||!h||x>unsigned(indices.GetWidth())||y>unsigned(indices.GetHeight())||
        w>unsigned(indices.GetWidth())-x||h>unsigned(indices.GetHeight())-y)fail("Frame outside atlas");
@@ -61,6 +60,21 @@ inline IndexedFrame decode_frame(const FrameData& data){
         out.indices.push_back(a[pos]);out.opacity.push_back(b[pos]);
     }
     return out;
+}
+inline IndexedFrame decode_frame(const FrameData& data){
+    return crop_frame(data,decode_plane(data.indices_png),decode_plane(data.opacity_png));
+}
+// Batch traversal decodes a page pair once, retaining at most one pair.
+template<class Visitor> inline void visit_indexed(Provider& p,const std::string& group,Visitor visit){
+    std::uint64_t last=std::numeric_limits<std::uint64_t>::max();
+    wxImage indices,opacity;
+    p.visit_group(group,[&](const FrameData& data){
+        auto page=data.metadata.at("page").num();
+        if(page!=last){
+            indices=decode_plane(data.indices_png);opacity=decode_plane(data.opacity_png);last=page;
+        }
+        visit(data.metadata,crop_frame(data,indices,opacity));
+    });
 }
 // Diagnostic output only. Preserve the mask and apply the documented opaque
 // zero display remap. A shadow index stays an index; engine compositing is

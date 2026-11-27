@@ -1,5 +1,6 @@
 #include "../../source/native_pak/engine_campaign.hpp"
 #include "../../source/native_pak/units.hpp"
+#include "../../source/native_pak/fsu.hpp"
 #include <wx/init.h>
 #include <chrono>
 #include <iostream>
@@ -188,6 +189,13 @@ int main(){
         require(std::string(u.name)=="Tank"&&u.res3==17&&u.fire_flags==256&&u.die_action_params[2]==6&&u.exp_limits[11]==111,"native unit definition fields");
         rejects([&]{assign_unit(u,unit_json.at("units").arr().front(),0,false);},"CZ unit accepted EN fire flags");
         require(unit_source_bytes("\xc3\xa9")==std::string(1,char(0xe9)),"unit source bytes");
+        IndexedFrame sprite;sprite.width=3;sprite.height=1;sprite.origin_x=-2;
+        sprite.indices={0,253,4};sprite.opacity={255,255,0};
+        auto rows=sprite_rows(sprite,true,true);int offset{},len{};
+        std::memcpy(&offset,rows.data.data(),sizeof(int));std::memcpy(&len,rows.data.data()+sizeof(int),sizeof(int));
+        require(offset==-2&&len==2&&rows.data[2*sizeof(int)]==254&&rows.data[2*sizeof(int)+1]==253,"native FSU scanline and shadow");
+        auto layout=decode_fsu_layout(parse(R"({"fsu_layout":{"schema":"spellcross-fsu-layout","version":1,"static_slopes":1,"static_azimuths":2,"animation_slopes":0,"animation_azimuths":0,"frames_per_sequence":0,"azimuth_zero_degrees":90,"azimuth_direction":"clockwise","static_by_slope":[["A","B"]],"animation_by_azimuth_or_slope":[]}})"));
+        require(layout.stat[0][1]=="B"&&layout.static_azimuths==2,"native FSU layout");
         require(crc32(Bytes({'1','2','3','4','5','6','7','8','9'}))==0xcbf43926u,"CRC implementation");
         rejects([]{parse(R"({"x":1,"x":2})");},"duplicate JSON key accepted");
         std::cout<<"Native PAK lookup and indexed graphics passed without original data\n";
