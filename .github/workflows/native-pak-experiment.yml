@@ -36,3 +36,50 @@ jobs:
       - run: cmake -S spellcross-remaster-main/tools/native-pak-probe -B build/native-pak -G Ninja -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build/native-pak
       - run: ctest --test-dir build/native-pak --output-on-failure
+  engine-source-windows:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official wxWidgets MSVC x64 libraries
+        shell: pwsh
+        run: |
+          $wxRoot = Join-Path $env:RUNNER_TEMP 'wxwidgets'
+          New-Item -ItemType Directory -Path $wxRoot -Force | Out-Null
+          foreach ($asset in @('wxWidgets-3.2.8-headers.7z', 'wxMSW-3.2.8_vc14x_x64_Dev.7z', 'wxMSW-3.2.8_vc14x_x64_ReleaseDLL.7z')) {
+            $archive = Join-Path $env:RUNNER_TEMP $asset
+            Invoke-WebRequest "https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.8/$asset" -OutFile $archive
+            & 7z x $archive "-o$wxRoot" -y | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "wxWidgets extraction failed: $asset" }
+          }
+      - name: Compile native PAK engine integration with MSVC
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $devcmd = Join-Path $vs 'Common7/Tools/VsDevCmd.bat'
+          cmd /c "`"$devcmd`" -arch=x64 >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') }
+          }
+          $wxRoot = Join-Path $env:RUNNER_TEMP 'wxwidgets'
+          $core = Get-ChildItem $wxRoot -Recurse -Filter wxmsw32u_core.lib | Select-Object -First 1
+          $setup = Get-ChildItem $wxRoot -Recurse -Filter setup.h | Where-Object { $_.FullName -match '[\\/]mswu[\\/]wx[\\/]' } | Select-Object -First 1
+          $header = Get-ChildItem $wxRoot -Recurse -Filter wx.h | Where-Object { $_.Directory.Name -eq 'wx' } | Select-Object -First 1
+          if (!$core -or !$setup -or !$header) { throw 'wxWidgets release headers or libraries missing' }
+          $include = $header.Directory.Parent.FullName
+          $setupInclude = $setup.Directory.Parent.FullName
+          $source = Join-Path $PWD 'spellcross-remaster-main/source'
+          foreach ($file in @('map.cpp', 'spellcross.cpp', 'spell_font.cpp', 'level.cpp')) {
+            $object = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileName($file) + '.obj')
+            & cl.exe /nologo /c /std:c++23 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" (Join-Path $source $file) "/Fo:$object"
+            if ($LASTEXITCODE -ne 0) { throw "Engine source compilation failed: $file" }
+          }
+  legacy-level-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          c++ -std=c++23 spellcross-remaster-main/tests/test_original_level_events.cpp spellcross-remaster-main/source/level.cpp -o /tmp/level-events
+          /tmp/level-events
+          c++ -std=c++23 spellcross-remaster-main/tests/test_level_video_playlist.cpp spellcross-remaster-main/source/level.cpp -o /tmp/level-videos
+          /tmp/level-videos
