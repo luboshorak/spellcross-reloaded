@@ -13,6 +13,7 @@
 #include "LZ_spell.h"
 
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 //---------------------------------------------------------------------------
