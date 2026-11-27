@@ -2,6 +2,7 @@
 #include "../../source/native_pak/units.hpp"
 #include "../../source/native_pak/fsu.hpp"
 #include "../../source/native_pak/audio.hpp"
+#include "../../source/native_pak/ui_cache.hpp"
 #include <wx/init.h>
 #include <chrono>
 #include <iostream>
@@ -100,6 +101,17 @@ struct UnitFixture {
 };
 int main(){
     try{
+        UiCache<Bytes> cache(4,2);Bytes cached;bool ok=false;
+        cache.put("a",Bytes{1,2},true,2);cache.put("b",Bytes{3,4},true,2);
+        require(cache.find("a",cached,ok)&&ok&&cached==Bytes({1,2}),"UI cache hit");
+        cache.put("c",Bytes{5,6},true,2);
+        require(!cache.find("b",cached,ok)&&cache.bytes()==4&&cache.size()==2,"UI cache LRU");
+        cache.put("missing",{},false,0);
+        require(cache.find("missing",cached,ok)&&!ok&&cached.empty()&&cache.size()==2,"UI cache negative");
+        cache.put("large",Bytes{1,2,3,4,5},true,5);
+        require(!cache.find("large",cached,ok),"UI cache oversize");
+        UiCache<Bytes> other(4,2);
+        require(!other.find("c",cached,ok),"UI cache dataset isolation");
         wxInitializer init;
         require(init.IsOk(),"wx init");
         if(!wxImage::FindHandler(wxBITMAP_TYPE_PNG))wxImage::AddHandler(new wxPNGHandler);

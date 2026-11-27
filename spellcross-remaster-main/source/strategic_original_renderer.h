@@ -142,6 +142,11 @@ public:
                           std::vector<std::uint8_t>& values);
 
 private:
+    // The mask (including high-bit boundary pixels) uniquely identifies
+    // all seven hatch phases. Reuse across paints; never cache game state.
+    mutable std::vector<std::uint8_t> cached_hatch_mask_;
+    mutable std::array<std::vector<std::uint8_t>,7> cached_hatches_;
+    const std::vector<std::uint8_t>& Hatch(const std::vector<std::uint8_t>& mask,int count,int phase) const;
     using Palette = std::array<std::array<std::uint8_t,3>,256>;
 
     static bool LoadExact(const AssetLoader& load,

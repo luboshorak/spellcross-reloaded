@@ -566,12 +566,14 @@ namespace
     {
         if(a.width<=0||a.height<=0||a.indices.size()!=std::size_t(a.width)*a.height||a.opacity.size()!=a.indices.size())
             return {};
-        wxImage image(a.width,a.height,true);image.InitAlpha();
-        for(int y=0;y<a.height;++y)for(int x=0;x<a.width;++x){
-            auto i=std::size_t(y)*a.width+x;
+        wxImage image(a.width,a.height,false);
+        if(!image.IsOk())return {};
+        image.InitAlpha();
+        auto* rgb=image.GetData();auto* alpha=image.GetAlpha();
+        for(std::size_t i=0;i<a.indices.size();++i){
             auto n=a.indices[i];
             if(!n&&a.opacity[i]&&a.opaque_zero_display_index>=0)n=static_cast<uint8_t>(a.opaque_zero_display_index);
-            const auto& color=pal[n];image.SetRGB(x,y,color[0],color[1],color[2]);image.SetAlpha(x,y,a.opacity[i]);
+            const auto& color=pal[n];std::copy_n(color.data(),3,rgb+3*i);alpha[i]=a.opacity[i];
         }
         return image;
     }
@@ -3235,6 +3237,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         originalAssetDirs.push_back(d);
     };
 
+    if(!m_spellData->IsNativePak()){
     addAssetDir(std::filesystem::path(m_level.source_path).parent_path());
     addAssetDir(std::filesystem::current_path() / "temp" / "COMMON");
     addAssetDir(std::filesystem::current_path() / "temp" / "common");
@@ -3244,6 +3247,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
     addAssetDir(std::filesystem::path(m_spellData->cd_data_path));
     addAssetDir(std::filesystem::path(m_spellData->cd_data_path) / "COMMON");
     addAssetDir(std::filesystem::path(m_spellData->cd_data_path) / "common");
+    }
 
     StrategicOriginalRenderer::AssetLoader loader = [this, originalAssetDirs](const std::string& name, std::vector<std::uint8_t>& out) -> bool
     {
@@ -3280,7 +3284,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         loader.native_frame=[this](const std::string& name,StrategicOriginalRenderer::IndexedAsset& out){
             return m_spellData->ReadNativeFrame("COMMON.FS",name,out);
         };
-    StrategicOriginalRenderer renderer;
+    auto& renderer=m_originalStrategicRenderer;
     StrategicOriginalRenderer::RgbImage rgb;
     std::string error;
     bool rendered = false;

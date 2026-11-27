@@ -316,6 +316,18 @@ void StrategicOriginalRenderer::GenerateHatch(const std::vector<std::uint8_t>& t
     }
 }
 
+const std::vector<std::uint8_t>& StrategicOriginalRenderer::Hatch(
+    const std::vector<std::uint8_t>& mask,int count,int phase) const
+{
+    if(cached_hatch_mask_!=mask){
+        cached_hatch_mask_=mask;
+        for(auto& h:cached_hatches_)h.clear();
+    }
+    auto& h=cached_hatches_[static_cast<std::size_t>((phase%7+7)%7)];
+    if(h.empty())GenerateHatch(mask,kMapW,kMapH,count,h,phase);
+    return h;
+}
+
 bool StrategicOriginalRenderer::RenderStrategicMap(const AssetLoader& load,
                                                      const MapState& state,
                                                      RgbImage& out,
@@ -362,10 +374,8 @@ bool StrategicOriginalRenderer::RenderStrategicMap(const AssetLoader& load,
     for(std::uint8_t v : territoryMask)
         if(v > 0 && v < 128) territoryCount = std::max(territoryCount, static_cast<int>(v));
 
-    std::vector<std::uint8_t> hatch;
-    std::vector<std::uint8_t> hoverHatch;
-    GenerateHatch(territoryMask, kMapW, kMapH, territoryCount, hatch, 0);
-    GenerateHatch(territoryMask, kMapW, kMapH, territoryCount, hoverHatch, state.animationPhase);
+    const auto& hatch=Hatch(territoryMask,territoryCount,0);
+    const auto& hoverHatch=state.hoverTerritory>0?Hatch(territoryMask,territoryCount,state.animationPhase):hatch;
 
     // Indexed 640x480 canvas. BIG_MAP owns common right chrome; VMM owns left 575 px.
     std::vector<std::uint8_t> canvas = bigMap;

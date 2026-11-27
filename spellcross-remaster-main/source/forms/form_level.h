@@ -19,6 +19,7 @@
 #include <wx/scrolwin.h>
 
 #include "level.h"
+#include "../strategic_original_renderer.h"
 
 class MainFrame;
 class SpellData;
@@ -889,6 +890,7 @@ public:
     bool m_originalStrategicUi = false;
     bool m_originalStrategicDirty = true;
     wxBitmap m_originalStrategicBitmap;
+    StrategicOriginalRenderer m_originalStrategicRenderer;
     wxString m_originalStrategicError;
     wxString m_originalBriefingText;
     int m_originalBriefingScroll = 0;

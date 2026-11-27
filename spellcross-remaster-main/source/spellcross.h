@@ -25,6 +25,7 @@
 #include "spell_texts.h"
 #include "spell_video.h"
 #include "strategic_original_renderer.h"
+#include "native_pak/ui_cache.hpp"
 
 namespace sc::native_pak { struct ScriptRecord; class Provider; }
 struct LevelData;
@@ -148,6 +149,8 @@ private:
     int FinishAuxGraphics();
     void Release();
     std::unique_ptr<sc::native_pak::Provider> native_provider;
+    mutable sc::native_pak::UiCache<StrategicOriginalRenderer::IndexedAsset> native_ui_frames{64u*1024u*1024u,2048};
+    mutable sc::native_pak::UiCache<std::vector<uint8_t>> native_ui_palettes{1024u*1024u,512};
 
 	SpellLang text_language = SpellLang::CZE;
 	FSarchive* common_fs = nullptr;

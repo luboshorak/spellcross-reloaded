@@ -1083,6 +1083,9 @@ bool SpellData::ReadNativeFrame(const std::string& archive,const std::string& na
     StrategicOriginalRenderer::IndexedAsset& out) const
 {
     out={};if(!native_provider)return false;
+    const auto cache_key=sc::native_pak::key(archive)+"::"+sc::native_pak::key(name);
+    bool ok=false;
+    if(native_ui_frames.find(cache_key,out,ok))return ok;
     try{
         const auto& r=native_provider->scoped_resource(archive,name);
         auto f=sc::native_pak::decode_frame(native_provider->resource_frame(r.id));
@@ -1090,8 +1093,11 @@ bool SpellData::ReadNativeFrame(const std::string& archive,const std::string& na
         out.indices=std::move(f.indices);out.opacity=std::move(f.opacity);
         out.rgb=std::move(f.rgb);out.known=std::move(f.known);
         if(f.opaque_zero_display_index)out.opaque_zero_display_index=static_cast<int>(*f.opaque_zero_display_index);
+        native_ui_frames.put(cache_key,out,true,out.indices.size()+out.opacity.size()+out.rgb.size()+out.known.size());
         return true;
-    }catch(const std::exception&){return false;}
+    }catch(const std::exception&){
+        out={};native_ui_frames.put(cache_key,out,false,0);return false;
+    }
 }
 bool SpellData::ReadNativeAdjacency(const std::string& name,std::vector<uint32_t>& out) const
 {
@@ -1116,7 +1122,8 @@ bool SpellData::ReadNativeMask(const std::string& name,int& width,int& height,st
     try{
         auto& r=native_provider->scoped_resource("COMMON.FS",name);
         if(r.format!="CLK")return false;
-        auto f=sc::native_pak::decode_frame(native_provider->resource_frame(r.id));
+        StrategicOriginalRenderer::IndexedAsset f;
+        if(!ReadNativeFrame("COMMON.FS",name,f))return false;
         width=f.width;height=f.height;out=std::move(f.indices);return true;
     }catch(const std::exception&){return false;}
 }
@@ -1129,10 +1136,15 @@ bool SpellData::ReadNativeIndexed(const std::string& archive,const std::string& 
         using namespace sc::native_pak;
         Assets assets(*native_provider);const auto& r=assets.resolve(archive,name);
         if(r.payload.ends_with("/palette.rgb")||r.payload.ends_with("/filter.u8")){
-            out=native_provider->payload(r.id);return true;
+            bool ok=false;
+            if(native_ui_palettes.find(r.id,out,ok))return ok;
+            out=native_provider->payload(r.id);
+            native_ui_palettes.put(r.id,out,true,out.size());return true;
         }
         if(r.frame_count!=1||r.format=="CLK")return false;
-        out=assets.graphic(r.id).indices;return true;
+        StrategicOriginalRenderer::IndexedAsset f;
+        if(!ReadNativeFrame(archive,name,f))return false;
+        out=std::move(f.indices);return true;
     }catch(const std::exception&){return false;}
 }
 
