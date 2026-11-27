@@ -14,6 +14,8 @@
 #include "spell_texts.h"
 #include "other.h"
 #include "map.h"
+#include "native_pak/campaign.hpp"
+#include <memory>
 
 #include <fstream>
 #include <string>
@@ -42,6 +44,17 @@ SpellDefCmd::SpellDefCmd(std::string command, std::string params, std::string co
 	// cleanup params if empty
 	if(params.empty())
 		parameters->clear();
+}
+SpellDefCmd::SpellDefCmd(std::string command, std::vector<std::string> args)
+{
+    name=std::move(command);
+    full_command=name+"(";
+    for(std::size_t i=0;i<args.size();++i){
+        if(i)full_command+=",";
+        full_command+=args[i];
+    }
+    full_command+=")";
+    parameters=new std::vector<std::string>(std::move(args));
 }
 SpellDefCmd::~SpellDefCmd()
 {	
@@ -110,6 +123,45 @@ SpellDEF::SpellDEF(string str)
 {
 	data = str;
 }
+// Construct directly from ordered native commands. Convert UTF-8 argument
+// strings at the boundary because existing mission logic expects CP895.
+SpellDEF::SpellDEF(const std::vector<sc::native_pak::ScriptRecord>& records)
+    : native_script(true)
+{
+    std::vector<std::size_t> stack;
+    for(const auto& record:records){
+        if(record.kind=="unknown")
+            throw std::runtime_error("Unmapped native mission syntax at line "+std::to_string(record.line));
+        if(record.kind=="block"){
+            NativeSection section;
+            section.header=record.name;
+            if(!record.args.empty()){
+                section.header+="(";
+                for(std::size_t i=0;i<record.args.size();++i){
+                    if(i)section.header+=",";
+                    section.header+=record.args[i];
+                }
+                section.header+=")";
+            }
+            stack.push_back(native_sections.size());
+            native_sections.push_back(std::move(section));
+        }else if(record.kind=="end"){
+            if(stack.empty())throw std::runtime_error("Invalid native mission block");
+            stack.pop_back();
+        }else if(record.kind=="call"){
+            if(stack.empty())throw std::runtime_error("Native mission command outside section");
+            std::vector<std::string> args;
+            args.reserve(record.args.size());
+            for(const auto& arg:record.args){
+                auto wide=wxString::FromUTF8(arg.data(),arg.size());
+                if(!arg.empty()&&wide.empty())throw std::runtime_error("Invalid native mission UTF-8");
+                args.push_back(wstring2stringCP895(wide.ToStdWstring()));
+            }
+            native_sections[stack.back()].calls.emplace_back(record.name,std::move(args));
+        }
+    }
+    if(!stack.empty())throw std::runtime_error("Unclosed native mission section");
+}
 // destroy
 SpellDEF::~SpellDEF()
 {
@@ -119,6 +171,17 @@ SpellDEF::~SpellDEF()
 // returns vector of commands in given section
 SpellDefSection *SpellDEF::GetSection(std::string section)
 {
+    if(native_script){
+        for(const auto& entry:native_sections)if(entry.header==section){
+            auto result=std::make_unique<SpellDefSection>();
+            for(const auto& call:entry.calls){
+                auto cmd=std::make_unique<SpellDefCmd>(call.first,call.second);
+                result->Add(cmd.get());cmd.release();
+            }
+            return result.release();
+        }
+        return nullptr;
+    }
 	//vector<SpellDefCmd*> cmd_list;
 	SpellDefSection *sec_data = new SpellDefSection();
 	

@@ -238,6 +238,8 @@ typedef struct{
 
 
 // main spellcross map class
+namespace sc::native_pak { class Provider; }
+
 class SpellMap
 {
     friend struct SpellMapRestorationTestAccess;
@@ -973,6 +975,11 @@ public:
 		void Close();
 		int Create(SpellData* spelldata,const char* terr_name,int x,int y);
 		int Load(wstring &path, SpellData* spelldata);
+        // Native maps share existing gameplay setup, never serialize a DTA.
+        int LoadNative(sc::native_pak::Provider& provider,const std::string& mission_id,SpellData* spelldata);
+    private:
+        int FinishMapLoad(SpellDEF* definition,SpellData* spelldata);
+    public:
 		void RelinkUnit(MapUnit* u, MapXY oldPos, MapXY newPos);
 		int SaveDTA(std::wstring path);
 		int SaveDEF(std::wstring path);

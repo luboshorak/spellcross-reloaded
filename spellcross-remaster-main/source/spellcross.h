@@ -24,6 +24,8 @@
 #include "spell_texts.h"
 #include "spell_video.h"
 
+namespace sc::native_pak { struct ScriptRecord; }
+
 //using namespace std;
 
 class SpellDefCmd
@@ -34,6 +36,8 @@ class SpellDefCmd
 		vector<std::string> *parameters;
 		std::string comment;
 		std::string full_command;
+
+		SpellDefCmd(std::string command, std::vector<std::string> args);
 
 		SpellDefCmd(std::string command, std::string params, std::string comment);
 		~SpellDefCmd();
@@ -58,9 +62,16 @@ class SpellDEF
 {
 	private: 
 		string data;
+		struct NativeSection {
+			std::string header;
+			std::vector<std::pair<std::string,std::vector<std::string>>> calls;
+		};
+		bool native_script = false;
+		std::vector<NativeSection> native_sections;
 
 	public:
 		SpellDEF(string str);
+		SpellDEF(const std::vector<sc::native_pak::ScriptRecord>& records);
 		SpellDEF(wstring &path);
 		SpellDEF(uint8_t *data, int size);
 		~SpellDEF();

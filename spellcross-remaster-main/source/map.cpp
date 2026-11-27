@@ -21,6 +21,8 @@
 #include "strategic_formation_bonus_rules.h"
 #include "display_settings.h"
 #include "spellcross.h"
+#include "native_pak/campaign.hpp"
+#include <memory>
 #include "fs_archive.h"
 #include "fsu_archive.h"
 #include "spell_units.h"
@@ -2944,6 +2946,110 @@ int SpellMap::Load(wstring& path, SpellData* spelldata)
 	}
 
 
+    return FinishMapLoad(def,spelldata);
+}
+
+int SpellMap::LoadNative(sc::native_pak::Provider& provider,const std::string& mission_id,SpellData* game)
+{
+    using namespace sc::native_pak;
+    last_error.clear();
+    Close();
+    try{
+        if(!game||!game->sounds||!game->units||!game->texts)
+            fail("Native map requires initialized engine resources");
+        const auto& mission=provider.resource(mission_id);
+        auto def=std::make_unique<SpellDEF>(decode_script(parse_bytes(provider.payload(mission.id))));
+        std::unique_ptr<SpellDefSection> mission_data(def->GetSection("MissionData"));
+        if(!mission_data||!mission_data->Size())fail("Missing native MissionData");
+        std::string map_name;
+        for(auto* cmd:mission_data->GetData())if(cmd->name=="MissionMap"){
+            if(!map_name.empty()||cmd->parameters->size()!=1)fail("Invalid native MissionMap");
+            map_name=cmd->parameters->front();
+        }
+        if(map_name.empty()||map_name.find_first_of("/\\:")!=std::string::npos)
+            fail("Invalid native mission map name");
+        // Resolve in the mission's original archive scope. The native
+        // map is stored as map.json plus two independent layer planes.
+        auto split=mission.name.rfind("::");
+        if(split==std::string::npos)fail("Unscoped native mission record");
+        const auto owner=mission.name.substr(0,split);
+        if(!key(map_name).ends_with(".DTA")&&!key(map_name).ends_with(".MAP"))map_name+=".DTA";
+        const auto& map_resource=provider.scoped_resource(owner,map_name);
+        const auto m=load_map(provider,map_resource.id);
+        x_size=static_cast<int>(m.width);y_size=static_cast<int>(m.height);
+        std::memset(terrain_name,0,sizeof(terrain_name));
+        std::memcpy(terrain_name,m.terrain.data(),m.terrain.size());
+        terrain=game->GetTerrain(terrain_name);
+        if(!terrain)fail("Native map references missing terrain: "+m.terrain);
+        spelldata=game;
+        // Logical identifiers for diagnostics and retail navigation rules;
+        // these paths are not written to disk by the native loader.
+        map_path=std::filesystem::path(leaf(map_resource.name)).wstring();
+        def_path=std::filesystem::path(leaf(mission.name)).wstring();
+        m_retail_nav_padding=spellcross_tactical::IsOriginalMissionMapStem(
+            std::filesystem::path(map_path).stem().string());
+        auto sprite_list=[&](const std::vector<std::string>& names){
+            std::vector<Sprite*> result;result.reserve(names.size());
+            for(const auto& name:names){
+                auto* sprite=terrain->GetSprite(name.c_str());
+                if(!sprite)fail("Native map references missing sprite: "+name);
+                result.push_back(sprite);
+            }
+            return result;
+        };
+        auto ground=sprite_list(m.ground_sprites),objects=sprite_list(m.object_sprites);
+        tiles.resize(m.cells.size());L1_flags.resize(m.cells.size());
+        for(std::size_t i=0;i<m.cells.size();++i){
+            const auto& c=m.cells[i];
+            // Match the existing signed 16-bit DTA elevation shift.
+            const int elevation=c.elevation<8?int(c.elevation):int(c.elevation)-16;
+            tiles[i].SetL1(ground.at(c.ground),elevation);
+            tiles[i].SetL2(c.object?objects.at(c.object-1):nullptr,c.flags);
+        }
+        SyncL1flags();
+        std::vector<AnimL1*> anms;
+        for(const auto& name:m.anm.resources){
+            auto* animation=terrain->GetANM(name.c_str());
+            if(!animation)fail("Native map references missing ANM: "+name);
+            anms.push_back(animation);
+        }
+        for(const auto& a:m.anm.placements)
+            L3.emplace_back(anms.at(a.resource),a.x,a.y,a.frame_offset,a.frame_limit);
+        std::vector<AnimPNM*> pnms;
+        for(const auto& name:m.pnm.resources){
+            auto* animation=terrain->GetPNM(name.c_str());
+            if(!animation)fail("Native map references missing PNM: "+name);
+            pnms.push_back(animation);
+        }
+        for(const auto& a:m.pnm.placements)
+            L4.emplace_back(pnms.at(a.resource),a.x,a.y,a.x_offset,a.y_offset,a.frame_offset,a.frame_limit);
+        counter_attack_post_enemy.clear();counter_attack_post_player.clear();
+        for(auto tile:m.enemy_posts)counter_attack_post_enemy.emplace_back(tile%m.width,tile/m.width);
+        for(auto tile:m.player_posts)counter_attack_post_player.emplace_back(tile%m.width,tile/m.width);
+        sounds=new MapSounds(game,x_size,y_size);
+        auto add_sounds=[&](const SoundLayer& layer,MapSound::SoundType type){
+            std::vector<SpellSample*> samples;
+            for(const auto& name:layer.resources){
+                auto* sample=game->sounds->GetSample(name.c_str());
+                if(!sample&&game->sounds->GetSamplesCount()>0)fail("Native map references missing sample: "+name);
+                samples.push_back(sample);
+            }
+            for(const auto& s:layer.placements)
+                sounds->sounds.emplace_back(MapXY(s.tile%m.width,s.tile/m.width),samples.at(s.resource),type);
+        };
+        add_sounds(m.loop_sounds,MapSound::SoundType::LOOP);
+        sounds->InitSounds();sounds->UpdateMaps();
+        add_sounds(m.random_sounds,MapSound::SoundType::RANDOM);
+        return FinishMapLoad(def.release(),game);
+    }catch(const std::exception& e){
+        last_error=std::string("Native tactical map: ")+e.what();
+        Close();return 1;
+    }
+}
+
+int SpellMap::FinishMapLoad(SpellDEF* def,SpellData* spelldata)
+{
+    std::unique_ptr<SpellDEF> owned_definition(def);
 	//////////////////////////////////////
 	///// Other map arrays and stuff /////
 	//////////////////////////////////////
@@ -2974,7 +3080,7 @@ int SpellMap::Load(wstring& path, SpellData* spelldata)
 if (!mission_data || !mission_data->Size())
 {
 	last_error = "MissionData section not found in DEF file!";
-	delete def;
+	/* definition owned by FinishMapLoad */
 	Close();
 	return(1);
 }
@@ -2994,7 +3100,7 @@ if (!mission_data || !mission_data->Size())
 					if (!coor.IsSelected())
 					{
 						last_error = string_format("Position %d out of valid range in command '%s'!", xy, cmd->full_command.c_str());
-						delete def;
+						/* definition owned by FinishMapLoad */
 						Close();
 						return(1);
 					}
@@ -3013,7 +3119,7 @@ if (!mission_data || !mission_data->Size())
 					if (!coor.IsSelected())
 					{
 						last_error = string_format("Position %d out of valid range in command '%s'!", xy, cmd->full_command.c_str());
-						delete def;
+						/* definition owned by FinishMapLoad */
 						Close();
 						return(1);
 					}
@@ -3032,7 +3138,7 @@ if (!mission_data || !mission_data->Size())
 					if (!coor.IsSelected())
 					{
 						last_error = string_format("Position %d out of valid range in command '%s'!", xy, cmd->full_command.c_str());
-						delete def;
+						/* definition owned by FinishMapLoad */
 						Close();
 						return(1);
 					}
@@ -3046,7 +3152,7 @@ if (!mission_data || !mission_data->Size())
 				{
 					// failed - not enough parameters
 					last_error = string_format("Wrong parameter count in command '%s'!", cmd->full_command.c_str());
-					delete def;
+					/* definition owned by FinishMapLoad */
 					Close();
 					return(1);
 				}
@@ -3069,7 +3175,7 @@ if (!mission_data || !mission_data->Size())
 				{
 					last_error = string_format("Unknown unit type %d parameter in command '%s'!", unit_type_id, cmd->full_command.c_str());
 					delete unit;
-					delete def;
+					/* definition owned by FinishMapLoad */
 					Close();
 					return(1);
 				}
@@ -3081,7 +3187,7 @@ if (!mission_data || !mission_data->Size())
 				if (!unit->coor.IsSelected())
 				{
 					last_error = string_format("Unit position %d out of valid range in command '%s'!", xy, cmd->full_command.c_str());
-					delete def;
+					/* definition owned by FinishMapLoad */
 					Close();
 					return(1);
 				}
@@ -3098,7 +3204,7 @@ if (!mission_data || !mission_data->Size())
 				if (unit->behave == MapUnitType::Unknown)
 				{
 					last_error = string_format("Unit behaviour '%s' not recognized in command '%s'!", cmd->parameters->at(5).c_str(), cmd->full_command.c_str());
-					delete def;
+					/* definition owned by FinishMapLoad */
 					Close();
 					return(1);
 				}
@@ -3130,7 +3236,7 @@ if (!mission_data || !mission_data->Size())
 				{
 					// failed
 					last_error = events->GetLastError();
-					delete def;
+					/* definition owned by FinishMapLoad */
 					Close();
 					return(1);
 				}
@@ -3142,7 +3248,7 @@ if (!mission_data || !mission_data->Size())
 				{
 					// failed
 					last_error = events->GetLastError();
-					delete def;
+					/* definition owned by FinishMapLoad */
 					Close();
 					return(1);
 				}
@@ -3160,7 +3266,7 @@ if (!mission_data || !mission_data->Size())
 			{
 				// unknown stuff in MissionData
 				last_error = string_format("Unknown command '%s'!", cmd->full_command.c_str());
-				delete def;
+				/* definition owned by FinishMapLoad */
 				Close();
 				return(1);
 			}
@@ -3170,7 +3276,7 @@ if (!mission_data || !mission_data->Size())
 		if (!mission_params)
 		{
 			last_error = string_format("MissionParameters section not found in map DEF file!");
-			delete def;
+			/* definition owned by FinishMapLoad */
 			Close();
 			return(1);
 		}
@@ -3188,7 +3294,7 @@ if (!mission_data || !mission_data->Size())
 					{
 						last_error = string_format("%s command not found in MissionParameters section in map DEF file!", cmd_list[k].c_str());
 						delete mission_params;
-						delete def;
+						/* definition owned by FinishMapLoad */
 						Close();
 						return(1);
 					}
@@ -3197,7 +3303,7 @@ if (!mission_data || !mission_data->Size())
 					{
 						// resource not found - ignore because first mission has invalid record...
 						/*delete mission_params;
-						delete def;
+						/* definition owned by FinishMapLoad */
 						Close();
 						return(1);*/
 					}
@@ -3206,7 +3312,7 @@ if (!mission_data || !mission_data->Size())
 		}
 		delete mission_params;
 
-		delete def;
+		/* definition owned by FinishMapLoad */
 
 	}
 
