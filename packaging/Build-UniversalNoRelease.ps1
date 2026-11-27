@@ -342,6 +342,14 @@ Copy-Item -LiteralPath (Join-Path $editorAssets 'tree_randomizer') -Destination 
 if (-not $dumpbin) { throw 'dumpbin.exe not found. Required for safe runtime DLL bundling.' }
 if (-not $WxRoot) { throw 'Supply -WxRoot pointing to x64 wxWidgets/vcpkg installation.' }
 $wxBin = Join-Path $WxRoot 'bin'
+# FFmpeg may live in a different shared vcpkg installation than wxWidgets.
+$ffmpegRoot = if ($env:FFmpegRoot) { $env:FFmpegRoot } else { $WxRoot }
+if (-not (Test-Path -LiteralPath $ffmpegRoot -PathType Container)) {
+    throw "FFmpeg SDK root missing: $ffmpegRoot"
+}
+$ffmpegRoot = (Resolve-Path -LiteralPath $ffmpegRoot).Path.TrimEnd('\') + '\'
+$ffmpegBin = Join-Path $ffmpegRoot 'bin'
+
 if (-not (Test-Path -LiteralPath $wxBin -PathType Container)) {
     throw "Missing runtime DLL folder: $wxBin"
 }
@@ -359,9 +367,14 @@ function Copy-DllImports([string]$InitialBinary, [string]$Destination) {
             if ([string]$line -notmatch '^\s*([a-zA-Z0-9_.-]+\.dll)\s*$') { continue }
             $dllName = $Matches[1]
             $src = Join-Path $wxBin $dllName
+            if ($dllName -match '^(av(codec|format|util)[-0-9.]|sw(scale|resample)[-0-9.])' -or
+                -not (Test-Path -LiteralPath $src -PathType Leaf)) {
+                $candidate = Join-Path $ffmpegBin $dllName
+                if (Test-Path -LiteralPath $candidate -PathType Leaf) { $src = $candidate }
+            }
             if (-not (Test-Path -LiteralPath $src -PathType Leaf)) {
                 if ($dllName -match '^(wx(base|msw|expat|zlib|png|jpeg)|av(codec|format|util)[-0-9.]|sw(scale|resample)[-0-9.])') {
-                    throw "Required runtime dependency missing: $dllName in $wxBin"
+                    throw "Required runtime dependency missing: $dllName in $wxBin or $ffmpegBin"
                 }
                 continue # System DLL or system-installed MSVC redistributable
             }
@@ -385,28 +398,31 @@ if (Test-Path -LiteralPath $wxLicense -PathType Leaf) {
     Copy-Item -LiteralPath $wxLicense -Destination (Join-Path $licenseDir 'wxwidgets.txt') -Force
 }
 # Bundle copyright notices for DLLs copied from vcpkg.
-$info = Join-Path $WxRoot 'vcpkg\info'
-if (Test-Path -LiteralPath $info -PathType Container) {
-    $licenseDir = Join-Path $stage 'third-party-licenses'
-    New-Item -ItemType Directory -Path $licenseDir -Force | Out-Null
-    foreach ($manifest in (Get-ChildItem -LiteralPath $info -Filter '*_x64-windows.list' -File)) {
-        $providesDll = $false
-        foreach ($line in [System.IO.File]::ReadLines($manifest.FullName)) {
-            if ($line -match '/bin/([^/]+\.dll)$' -and $copiedDlls.Contains($Matches[1])) {
-                $providesDll = $true
-                break
+foreach ($sdkRoot in (@($WxRoot, $ffmpegRoot) | Select-Object -Unique)) {
+    $info = Join-Path $sdkRoot 'vcpkg\info'
+    if (Test-Path -LiteralPath $info -PathType Container) {
+        $licenseDir = Join-Path $stage 'third-party-licenses'
+        New-Item -ItemType Directory -Path $licenseDir -Force | Out-Null
+        foreach ($manifest in (Get-ChildItem -LiteralPath $info -Filter '*_x64-windows.list' -File)) {
+            $providesDll = $false
+            foreach ($line in [System.IO.File]::ReadLines($manifest.FullName)) {
+                if ($line -match '/bin/([^/]+\.dll)$' -and $copiedDlls.Contains($Matches[1])) {
+                    $providesDll = $true
+                    break
+                }
+            }
+            if (-not $providesDll) { continue }
+            if ($manifest.BaseName -notmatch '^(.+?)_[0-9]') { continue }
+            $port = $Matches[1]
+            $copyright = Join-Path $sdkRoot ('share\' + $port + '\copyright')
+            if (Test-Path -LiteralPath $copyright -PathType Leaf) {
+                Copy-Item -LiteralPath $copyright -Destination (Join-Path $licenseDir ($port + '.txt')) -Force
+            } else {
+                Write-Warning "License notice missing for vcpkg package $port"
             }
         }
-        if (-not $providesDll) { continue }
-        if ($manifest.BaseName -notmatch '^(.+?)_[0-9]') { continue }
-        $port = $Matches[1]
-        $copyright = Join-Path $WxRoot ('share\' + $port + '\copyright')
-        if (Test-Path -LiteralPath $copyright -PathType Leaf) {
-            Copy-Item -LiteralPath $copyright -Destination (Join-Path $licenseDir ($port + '.txt')) -Force
-        } else {
-            Write-Warning "License notice missing for vcpkg package $port"
-        }
     }
+    
 }
 # The patch updater is optional for a full ZIP/SFX build. Older/local
 # checkouts may not have Install-Patch.ps1; do not fail a complete build

@@ -40,7 +40,7 @@ jobs:
       - run: ctest --test-dir build/native-pak --output-on-failure
   engine-source-windows:
     runs-on: windows-2025-vs2026
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Download official wxWidgets MSVC x64 libraries
