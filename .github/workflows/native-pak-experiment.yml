@@ -78,6 +78,20 @@ jobs:
         shell: pwsh
         run: |
           $wxRoot = Join-Path $env:RUNNER_TEMP 'wxwidgets'
+          # Official vc14x archives can use a versioned library directory.
+          # The project and wx/msvc/setup.h expect lib/vc_x64_dll.
+          $core = Get-ChildItem $wxRoot -Recurse -Filter wxmsw32u_core.lib | Select-Object -First 1
+          if (!$core) { throw 'wxWidgets core library missing' }
+          $expectedLib = Join-Path $wxRoot 'lib/vc_x64_dll'
+          if (!(Test-Path (Join-Path $expectedLib 'mswu/wx/setup.h'))) {
+            if (!(Test-Path (Join-Path $core.Directory.FullName 'mswu/wx/setup.h'))) { throw 'wxWidgets setup.h missing beside core library' }
+            New-Item -ItemType Directory -Path (Split-Path $expectedLib) -Force | Out-Null
+            if (Test-Path $expectedLib) {
+              Copy-Item (Join-Path $core.Directory.FullName '*') $expectedLib -Recurse -Force
+            } else {
+              New-Item -ItemType Junction -Path $expectedLib -Target $core.Directory.FullName | Out-Null
+            }
+          }
           $project = Join-Path $PWD 'spellcross-remaster-main/source/spellcross_map_editor.vcxproj'
           $solutionDir = (Split-Path $project) + '\'
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
