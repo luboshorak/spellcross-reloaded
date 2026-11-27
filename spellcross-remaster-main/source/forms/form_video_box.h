@@ -9,6 +9,7 @@
 #include <wx/timer.h>
 #include <string>
 #include <memory>
+#include <chrono>
 
 
 class FormVideoBox
@@ -25,6 +26,7 @@ private:
     // The legacy video image is advanced on the GUI thread; the audio thread
     // never captures FormVideoBox or dispatches wxWidgets events.
     wxTimer m_video_timer;
+    std::chrono::steady_clock::time_point m_video_start;
     wxBitmap* m_frame;
     SpellVideo *m_video;
     int m_frame_id;

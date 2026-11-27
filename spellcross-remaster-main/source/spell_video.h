@@ -3,6 +3,8 @@
 #include <string>
 #include <tuple>
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include "fs_archive.h"
 #include "spell_sound.h"
 
@@ -47,7 +49,8 @@ private:
         CAN = 1,
         DPK,
         DP2,
-        SMK
+        SMK,
+        NativeRGB
     };
 
     SpellSample audio;
@@ -58,6 +61,10 @@ private:
     int y_size;
     double fps;
     SpellVideoType type;
+    std::filesystem::path native_rgb_path;
+    std::ifstream native_rgb_stream;
+    std::vector<uint8_t> native_rgb_frame;
+    int native_frame_count=0;
 
     int DecodeCAN(uint8_t* data,int len);
     int DecodeDPK(uint8_t* data,int len);
@@ -68,6 +75,10 @@ public:
     
     SpellVideo(FSarchive *fs, std::string name);
     SpellVideo(std::wstring path);
+    SpellVideo(sc::native_pak::Provider& provider,const std::string& requested);
+    ~SpellVideo();
+    bool IsNativeRGB() const {return type==SpellVideoType::NativeRGB;}
+    double GetNativeDuration() const;
 
     std::tuple<int,int> GetResolution();
     int GetFramesCount();

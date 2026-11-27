@@ -150,7 +150,9 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
     const fs::path requested(name);
     const std::string entry_name = requested.filename().string();
     std::string legacy_error;
-    if (!TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error))
+    if(spell_data&&spell_data->IsNativePak())
+        m_video=new SpellVideo(*spell_data->NativeProvider(),entry_name);
+    else if (!TryLoadLegacyVideo(spell_data, entry_name, m_video, legacy_error))
         throw runtime_error(string_format(
             "Cannot load original movie \"%s\" (%s). Check the selected retail MOVIE.FS/SPEAKER.FS sources.",
             entry_name.c_str(), legacy_error.c_str()));
@@ -222,9 +224,11 @@ FormVideoBox::FormVideoBox(wxPanel* parent,wxWindowID win_id,SpellData* spell_da
         m_background_mute = std::make_unique<SoundChannels::BackgroundMute>(
             *m_spelldata->sounds->channels);
 
-    m_sound = new SpellSound(m_spelldata->sounds->channels, m_video->GetSound(), true);
-    // Advance the image on the GUI thread using the sound stream clock.
-    m_sound->Play(false, false, nullptr, 0.010);
+    if(!m_video->IsNativeRGB()||m_video->GetSound()->samples>0){
+        m_sound=new SpellSound(m_spelldata->sounds->channels,m_video->GetSound(),true);
+        m_sound->Play(false,false,nullptr,0.010);
+    }
+    m_video_start=std::chrono::steady_clock::now();
     m_video_timer.SetOwner(form);
     form->Bind(wxEVT_TIMER, &FormVideoBox::OnVideoTimer, this);
     m_video_timer.Start(16);
@@ -265,10 +269,10 @@ FormVideoBox::~FormVideoBox()
 // allowed to capture FormVideoBox or post events to a closing wxWindow.
 void FormVideoBox::OnVideoTimer(wxTimerEvent& event)
 {
-    if (m_closing || !form || !m_sound || !m_video)
-        return;
-
-    const double time = m_sound->GetPlaybackTime();
+    if(m_closing||!form||!m_video||(!m_sound&&!m_video->IsNativeRGB()))return;
+    const double time=m_video->IsNativeRGB()
+        ? std::chrono::duration<double>(std::chrono::steady_clock::now()-m_video_start).count()
+        : m_sound->GetPlaybackTime();
     const int next_frame = m_video->GetFrameID(time);
     if (m_frame_id != next_frame)
     {
@@ -276,7 +280,7 @@ void FormVideoBox::OnVideoTimer(wxTimerEvent& event)
         form->Refresh();
     }
 
-    if (m_sound->isDone())
+    if (m_video->IsNativeRGB()?time>=m_video->GetNativeDuration():m_sound->isDone())
     {
         m_closing = true;
         form->Close();
@@ -355,7 +359,9 @@ void FormVideoBox::OnPaintTab(wxPaintEvent& event)
 
         // render 24bit RGB data to raw bmp buffer		
         uint8_t *buf = m_video->GetFrame(m_frame_id);
-        uint8_t *pal = m_video->GetPalette(m_frame_id);
+        const bool rgb=m_video->IsNativeRGB();
+        uint8_t *pal = rgb?nullptr:m_video->GetPalette(m_frame_id);
+        if(!buf){wxPaintDC pdc(form);pdc.DrawBitmap(*m_frame,wxPoint(0,0));return;}
         wxNativePixelData pdata(*m_frame);
         wxNativePixelData::Iterator p(pdata);
         p.OffsetY(pdata,corn->y_size);
@@ -366,18 +372,12 @@ void FormVideoBox::OnPaintTab(wxPaintEvent& event)
             int x_chunk = 0;
             for(int x = 0; x < frame_x*m_zoom; x++)
             {
-                uint8_t pix = *buf;
-                if(++x_chunk >= m_zoom)
-                {
-                    buf++;
-                    x_chunk = 0;
-                }
-                *scan++ = pal[pix*3 + 2];
-                *scan++ = pal[pix*3 + 1];
-                *scan++ = pal[pix*3 + 0];
+                const uint8_t* pixel=rgb?buf:pal+(*buf)*3;
+                *scan++=pixel[2];*scan++=pixel[1];*scan++=pixel[0];
+                if(++x_chunk>=m_zoom){buf+=rgb?3:1;x_chunk=0;}
             }
             if(++y_chunk < m_zoom)
-                buf -= frame_x;
+                buf -= frame_x*(rgb?3:1);
             else
                 y_chunk = 0;
             p.OffsetY(pdata,1);

@@ -262,6 +262,15 @@ public:
             fail("Resource has no native payload: "+r.id);
         return checked(r).read(r.payload,limit);
     }
+    Bytes movie(const std::string& id){
+        const auto& r=resource(id);
+        if(r.status!="converted"||!r.payload.starts_with("records/")||!r.payload.ends_with("/movie.json"))
+            fail("Not a native movie: "+r.id);
+        auto j=parse_bytes(payload(r.id));schema(j,"spellcross-movie");
+        if(j.at("entry").str()!="movie.mkv"||j.at("codec").str()!="FFV1")
+            fail("Unsupported native movie codec");
+        return checked(r).read(r.payload.substr(0,r.payload.find_last_of('/')+1)+"movie.mkv",512u*1024u*1024u);
+    }
     // Only the two modern tactical map layer payloads may be accessed here;
     // a general archive-entry escape hatch would bypass the native contract.
     Bytes map_plane(const std::string& id,const std::string& entry,std::size_t exact_size){
