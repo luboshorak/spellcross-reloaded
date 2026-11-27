@@ -1,6 +1,7 @@
 #include "../../source/native_pak/engine_campaign.hpp"
 #include "../../source/native_pak/units.hpp"
 #include "../../source/native_pak/fsu.hpp"
+#include "../../source/native_pak/audio.hpp"
 #include <wx/init.h>
 #include <chrono>
 #include <iostream>
@@ -196,6 +197,13 @@ int main(){
         require(offset==-2&&len==2&&rows.data[2*sizeof(int)]==254&&rows.data[2*sizeof(int)+1]==253,"native FSU scanline and shadow");
         auto layout=decode_fsu_layout(parse(R"({"fsu_layout":{"schema":"spellcross-fsu-layout","version":1,"static_slopes":1,"static_azimuths":2,"animation_slopes":0,"animation_azimuths":0,"frames_per_sequence":0,"azimuth_zero_degrees":90,"azimuth_direction":"clockwise","static_by_slope":[["A","B"]],"animation_by_azimuth_or_slope":[]}})"));
         require(layout.stat[0][1]=="B"&&layout.static_azimuths==2,"native FSU layout");
+        Bytes wave={'R','I','F','F',40,0,0,0,'W','A','V','E','f','m','t',' ',16,0,0,0,
+            1,0,1,0,0x11,0x2b,0,0,0x22,0x56,0,0,2,0,16,0,'d','a','t','a',4,0,0,0,0,128,255,127};
+        auto pcm=decode_wave(wave);
+        require(pcm.rate==11025&&pcm.channels==1&&pcm.samples==std::vector<std::int16_t>({-32768,32767}),"native signed PCM16");
+        wave.pop_back();rejects([&]{decode_wave(wave);},"truncated native WAV");
+        auto classes=decode_class_table(parse(R"({"schema":"spellcross-class-table","version":1,"table":"a_sounds.def","source_encoding":"byte-preserving JSON escapes","records":[{"id":2,"label":"attack","values":["A","#","B","C"]}]})"),"A_SOUNDS.DEF");
+        require(classes[0].id==2&&classes[0].values[1]=="#","native sound class ID and placeholder");
         require(crc32(Bytes({'1','2','3','4','5','6','7','8','9'}))==0xcbf43926u,"CRC implementation");
         rejects([]{parse(R"({"x":1,"x":2})");},"duplicate JSON key accepted");
         std::cout<<"Native PAK lookup and indexed graphics passed without original data\n";

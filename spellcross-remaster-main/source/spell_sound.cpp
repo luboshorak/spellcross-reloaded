@@ -9,6 +9,8 @@
 #define _HAS_STD_BYTE 0
 
 #include "spell_sound.h"
+#include "native_pak/audio.hpp"
+#include <memory>
 #include "fs_archive.h"
 #include "LZ_spell.h"
 #include "map.h"
@@ -167,14 +169,13 @@ double SoundChannels::GetPlaybackVolume(bool video_audio)
 // cleanup sounds
 SpellSounds::~SpellSounds()
 {
-    // cleanup sound effect channels
-    if(channels)
-        delete channels;
-
-    // cleanup samples
+    // Persistent sounds can close an owned stream in their destructor.
+    // Their channel pool must still exist at that point.
     for(auto & aux : aux_sounds)
         delete aux;
-    aux_sounds.clear();      
+    aux_sounds.clear();
+    delete channels;
+    channels=nullptr;
     samples.clear();
 }
 
@@ -346,6 +347,66 @@ SpellSounds::SpellSounds(FSarchive *common_fs, const std::wstring& samples_fs_pa
         else
             aux_sounds.push_back(NULL);
     }
+    LinkAuxSamples();
+}
+
+SpellSounds::SpellSounds(sc::native_pak::Provider& provider,int count,std::function<void(std::string)> status_item)
+    : channels(nullptr),aux_samples{}
+{
+    using namespace sc::native_pak;
+    Assets assets(provider);
+    const auto records=provider.archive_resources("SAMPLES.FS");
+    samples.reserve(records.size());
+    std::set<std::string> seen;
+    for(auto* r:records){
+        if(!r->payload.ends_with("/audio.wav"))continue;
+        auto name=leaf(r->name);
+        if(name.size()>=sizeof(SpellSample::name)||!seen.insert(name).second)
+            fail("Invalid or duplicate native sample: "+name);
+        auto pcm=decode_wave(assets.wave(r->id));
+        SpellSample sample;
+        std::memcpy(sample.name,name.c_str(),name.size()+1);
+        sample.fs=static_cast<int>(pcm.rate);sample.channels=static_cast<int>(pcm.channels);
+        sample.samples=static_cast<int>(pcm.samples.size()/pcm.channels);
+        sample.data=std::move(pcm.samples);
+        samples.push_back(std::move(sample));
+        if(status_item)status_item(name);
+    }
+    auto classes=[&](const char* name,unsigned slots){
+        auto rows=decode_class_table(assets.document(assets.resolve("COMMON.FS",name).id,"spellcross-class-table"),name);
+        std::vector<SpellSoundClassFile> result;
+        for(const auto& row:rows){
+            if(row.values.size()!=slots)fail("Wrong native sound class size");
+            if(row.id>=result.size())result.resize(row.id+1);
+            auto& dst=result[row.id];dst.index=static_cast<int>(row.id);dst.name=row.label;
+            for(const auto& v:row.values){
+                dst.items_names.push_back(v);
+                dst.items.push_back(v=="#"?nullptr:GetSample(key(v).c_str()));
+            }
+        }
+        for(auto& row:result)if(row.items.empty())row.items.resize(slots,nullptr);
+        return result;
+    };
+    attack_sounds=classes("A_SOUNDS.DEF",4);move_sounds=classes("M_SOUNDS.DEF",3);
+    report_sounds=classes("H_SOUNDS.DEF",3);object_sounds=classes("O_SOUNDS.DEF",2);
+    spec_sounds=classes("S_SOUNDS.DEF",1);hit_sounds=classes("Z_SOUNDS.DEF",2);
+    auto aux=decode_class_table(assets.document(assets.resolve("COMMON.FS","SAMPLES.DEF").id,"spellcross-class-table"),"SAMPLES.DEF");
+    auto pool=std::make_unique<SoundChannels>(samples.empty()?0:count);
+    std::vector<std::unique_ptr<SpellSound>> pending;
+    pending.reserve(aux.size());
+    for(const auto& row:aux){
+        if(row.id!=pending.size()||row.values.empty())fail("Invalid native auxiliary sound order");
+        auto* sample=row.values[0]=="#"?nullptr:GetSample(key(row.values[0]).c_str());
+        if(sample)pending.push_back(std::make_unique<SpellSound>(pool.get(),sample));
+        else pending.emplace_back();
+    }
+    aux_sounds.reserve(pending.size());channels=pool.release();
+    for(auto& item:pending)aux_sounds.push_back(item.release());
+    LinkAuxSamples();
+}
+
+void SpellSounds::LinkAuxSamples()
+{
     if(aux_sounds.size() >= 44)
     {
         // assign shortcuts

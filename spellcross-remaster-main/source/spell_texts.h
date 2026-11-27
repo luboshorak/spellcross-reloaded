@@ -30,9 +30,12 @@ public:
     SpellSample *audio;
 
     SpellTextRec(std::string str,SpellLang lang,const char* name=NULL,SpellSample *audio=NULL);
+    SpellTextRec(std::wstring display,SpellLang lang,const char* name,SpellSample* audio=nullptr);
     SpellTextChunks WordWrap(SpellFont *font, int x_limit);
 };
 
+
+namespace sc::native_pak { class Provider; }
 
 class SpellTexts
 {
@@ -44,6 +47,7 @@ private:
 public:
     
     SpellTexts(FSarchive *fs,SpellLang lang,SpellSounds *sounds=NULL);
+    SpellTexts(sc::native_pak::Provider& provider,SpellLang lang,SpellSounds* sounds=nullptr);
     ~SpellTexts();
     SpellTextRec* GetText(int index);
     SpellTextRec* GetText(const char* name);

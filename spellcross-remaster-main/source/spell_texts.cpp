@@ -2,6 +2,8 @@
 #define _HAS_STD_BYTE 0
 
 #include "spell_texts.h"
+#include "native_pak/assets.hpp"
+#include <memory>
 #include "other.h"
 #include <stdexcept>
 #include <string>
@@ -89,6 +91,13 @@ SpellTextRec::SpellTextRec(std::string str, SpellLang lang, const char* name,Spe
 }
 
 
+// Native narrative payload is already display-normalized UTF-8 by the converter.
+SpellTextRec::SpellTextRec(std::wstring display,SpellLang language,const char* resource,SpellSample* narration)
+    : name(resource?resource:""),text(std::move(display)),lang(language),audio(narration)
+{
+    raw_text=wstring2stringCP895(text);
+}
+
 SpellTextChunks SpellTextRec::WordWrap(SpellFont* font,int x_limit)
 {
     wchar_t *pstr = (wchar_t*)text.c_str();
@@ -162,6 +171,28 @@ SpellTexts::SpellTexts(FSarchive* fs, SpellLang lang,SpellSounds* sounds)
         auto txt = new SpellTextRec(str,lang,src->name.c_str(),narration);
         list.push_back(txt);
     }
+}
+
+SpellTexts::SpellTexts(sc::native_pak::Provider& provider,SpellLang language,SpellSounds* sounds)
+    : lang(language)
+{
+    using namespace sc::native_pak;
+    Assets assets(provider);
+    auto records=provider.archive_resources("TEXTS.FS");
+    if(records.empty())fail("Missing native narrative text archive");
+    std::vector<std::unique_ptr<SpellTextRec>> pending;
+    pending.reserve(records.size());
+    std::set<std::string> seen;
+    for(auto* r:records){
+        auto name=leaf(r->name);
+        if(!seen.insert(name).second)fail("Duplicate native narrative name: "+name);
+        auto utf8=assets.text(r->id);
+        auto display=wxString::FromUTF8(utf8.data(),utf8.size());
+        if(!utf8.empty()&&display.empty())fail("Invalid native narrative UTF-8");
+        auto* narration=sounds&&name.starts_with("U")?sounds->GetSample(name.c_str()):nullptr;
+        pending.push_back(std::make_unique<SpellTextRec>(display.ToStdWstring(),language,name.c_str(),narration));
+    }
+    list.reserve(pending.size());for(auto& r:pending)list.push_back(r.release());
 }
 
 // cleanup string table

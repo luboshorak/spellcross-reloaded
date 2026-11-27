@@ -13,6 +13,7 @@
 #include <set>
 #include <limits>
 #include <iterator>
+#include <tuple>
 
 namespace sc::native_pak {
 using Bytes=std::vector<std::uint8_t>;
@@ -112,6 +113,8 @@ public:
 };
 struct Resource {
     std::string id,name,package,format,status,kind,payload,atlas_entry;
+    std::string source_entry;
+    std::uint64_t source_offset{};
 };
 struct Group {
     std::string name,package,entry;
@@ -174,6 +177,9 @@ public:
         for(const auto& r:cat.at("records").arr()){
             Resource x{r.at("id").str(),r.at("name").str(),r.at("package").str(),r.at("format").str(),r.at("status").str(),r.at("kind").str(),{}};
             if(auto p=r.get("payload"))x.payload=p->str();
+            if(auto o=r.get("original")){
+                x.source_entry=o->at("entry").str();x.source_offset=o->at("offset").num();
+            }
             if(auto a=r.get("atlas"))x.atlas_entry=a->at("entry").str();
             auto owner=packages_.find(x.package);
             if(x.id.empty()||owner==packages_.end()||r.at("category").str()!=owner->second.category||
@@ -220,6 +226,21 @@ public:
         }
         if(matches.empty())fail("Missing scoped resource: "+archive+"::"+name);
         return records_.at(unique(matches,archive+"::"+name));
+    }
+    // Source order is required for callers which persist numeric text IDs.
+    // The catalog's stable-ID sort is not the original archive order.
+    std::vector<const Resource*> archive_resources(const std::string& archive)const{
+        std::vector<const Resource*> result;
+        for(const auto& [id,r]:records_){
+            auto n=key(r.name);auto split=n.rfind("::");
+            if(split==n.npos)continue;
+            auto owner=n.substr(0,split);
+            if(owner==key(archive)||leaf(owner)==key(archive))result.push_back(&r);
+        }
+        std::stable_sort(result.begin(),result.end(),[](auto* a,auto* b){
+            return std::tie(a->source_entry,a->source_offset,a->id)<std::tie(b->source_entry,b->source_offset,b->id);
+        });
+        return result;
     }
     const std::vector<Group>& groups()const{return groups_;}
     const Group& group(const std::string& name)const{

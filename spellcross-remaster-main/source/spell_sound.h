@@ -161,6 +161,8 @@ public:
 };
 
 
+namespace sc::native_pak { class Provider; }
+
 class SpellSounds
 {
 private:
@@ -176,6 +178,7 @@ private:
     std::vector<SpellSound*> aux_sounds;
     
     vector<SpellSoundClassFile> ParseSoundClasses(std::string text);
+    void LinkAuxSamples();
     void ParseSoundClasses2(FSarchive* fs,const char* name,vector<SpellSoundClassFile>* cls);
 
 public:
@@ -183,6 +186,7 @@ public:
     SoundChannels* channels;
     
     SpellSounds(FSarchive* common_fs,const std::wstring &samples_fs_path, int count=16,std::function<void(std::string)> status_list=NULL,std::function<void(std::string)> status_item=NULL);
+    SpellSounds(sc::native_pak::Provider& provider,int count=16,std::function<void(std::string)> status_item=nullptr);
     ~SpellSounds();
     SpellSample* GetSample(const char *name);
     SpellSample* GetSample(int id);
