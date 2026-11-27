@@ -10,6 +10,9 @@
 #define _HAS_STD_BYTE 0
 
 #include "sprites.h"
+#include "native_pak/audio.hpp"
+#include "native_pak/fsu.hpp"
+#include <memory>
 #include "flat_tile_rotation.h"
 #include "other.h"
 #include "fs_archive.h"
@@ -1509,6 +1512,53 @@ SpellL2classes::SpellL2classes(FSarchive* fs,SpellSounds* sounds,std::function<v
 	
 }
 
+SpellL2classes::SpellL2classes(sc::native_pak::Provider& provider,SpellSounds* sounds,const std::string& extension)
+{
+    using namespace sc::native_pak;
+    Assets assets(provider);
+    std::vector<std::unique_ptr<SpellL2classRec>> walls,bridges,special;
+    auto read=[&](const std::string& stem,bool is_special,auto& out){
+        auto name=stem+".DEF";
+        auto json=assets.document(assets.resolve("COMMON.FS",name).id,"spellcross-class-table");
+        auto classes=decode_class_table(json,name);
+        auto language=assets.language(assets.resolve("COMMON.FS",stem+extension).id);
+        if(language.entries.size()!=classes.size())fail("Native object language count mismatch: "+stem);
+        if(!is_special)std::sort(classes.begin(),classes.end(),[](const auto& a,const auto& b){return a.id<b.id;});
+        for(const auto& row:classes){
+            // SPECOBJ labels carry a sprite pattern; the legacy constructor
+            // indexes them in source order. Wall/bridge IDs are numeric.
+            if(!is_special&&row.id!=out.size())fail("Native object class IDs must be contiguous");
+            auto obj=std::make_unique<SpellL2classRec>();
+            obj->index=static_cast<int>(out.size());
+            if(row.values.size()!=3)fail("Invalid native object class size");
+            obj->defence=std::stoi(row.values[0]);obj->hp=std::stoi(row.values[1]);
+            obj->sound_class_id=std::stoi(row.values[2]);
+            if(is_special){
+                auto end=row.label.find_first_of(" \t");
+                obj->tag=row.label.substr(0,end);
+                if(obj->tag.size()!=8||!key(obj->tag).starts_with("SOAX"))fail("Invalid native special object tag");
+                obj->tag[3]='?';
+            }else obj->tag=std::to_string(row.id);
+            auto delimiter=row.label.find(is_special?'-':':');
+            obj->label=delimiter==row.label.npos?row.label:row.label.substr(delimiter+1);
+            const auto& text=language.entries[out.size()];
+            auto w=wxString::FromUTF8(text.data(),text.size());
+            if(!text.empty()&&w.empty())fail("Invalid native object name UTF-8");
+            obj->name=wstring2stringCP895(w.ToStdWstring());
+            if(sounds){
+                obj->sound_hit=sounds->GetObjectHitClass(obj->sound_class_id);
+                obj->sound_destruct=sounds->GetObjectDestructClass(obj->sound_class_id);
+            }
+            out.push_back(std::move(obj));
+        }
+    };
+    read("MURY",false,walls);read("MOSTY",false,bridges);read("SPECOBJ",true,special);
+    wall_list.reserve(walls.size());bridge_list.reserve(bridges.size());spec_list.reserve(special.size());
+    for(auto& obj:walls)wall_list.push_back(obj.release());
+    for(auto& obj:bridges)bridge_list.push_back(obj.release());
+    for(auto& obj:special)spec_list.push_back(obj.release());
+}
+
 DestructibleRec::DestructibleRec()
 {
 	destructible = NULL;
@@ -1772,6 +1822,12 @@ int Terrain::Load(FSarchive *terrain_fs, uint8_t map_pal[][3],SpellGraphics* gre
 		}
 	}
 	
+    LinkDestructibleClasses(gres,L2);
+    return 0;
+}
+
+void Terrain::LinkDestructibleClasses(SpellGraphics* gres,SpellL2classes* L2)
+{
 	if(L2)
 	{
 		// try pair sprites with class definitions (MURY.DEF, MOSTY.DEF or SPECOBJ.DEF)
@@ -1800,7 +1856,110 @@ int Terrain::Load(FSarchive *terrain_fs, uint8_t map_pal[][3],SpellGraphics* gre
 	// fix sprite land types (marks objects as 0-type)
 	FixSpriteLandTypes();
 
-	return(0);	
+
+}
+
+int Terrain::LoadNative(sc::native_pak::Provider& provider,const std::string& archive,
+    uint8_t map_pal[][3],SpellGraphics* gres,SpellL2classes* L2,
+    std::function<void(std::string)> status_item)
+{
+    using namespace sc::native_pak;
+    if(!sprites.empty()||!anms.empty()||!pnms.empty())fail("Native terrain already initialized");
+    auto records=provider.archive_resources(archive);
+    if(records.empty())fail("Missing native terrain: "+archive);
+    name=archive.substr(0,archive.find('.'));
+    std::memcpy(pal,map_pal,256*3);
+    std::map<std::string,const Resource*> graphics;
+    for(auto* r:records){
+        auto n=leaf(r->name);
+        if(r->format=="DTA"||r->format=="ANM"||r->format=="PNM"){
+            // One explicitly documented, damaged retail tile was represented
+            // as a transparent sentinel by converter 1.0.0. Never generalize.
+            bool sentinel=key(archive)=="DEVAST.FS"&&n=="DMA0_270.DTA"&&r->status=="failed"&&
+                r->assessment=="placeholder"&&r->source_size==2248;
+            if(!sentinel&&(r->status!="converted"||r->atlas_entry.empty()||!r->frame_count))
+                fail("Unsupported native terrain graphic: "+n);
+            graphics.emplace(r->id,r);
+        }else if(r->format=="PAL"){
+            if(r->payload.ends_with("/palette.rgb")){
+                auto bytes=provider.payload(r->id,768);
+                if(n=="MAP.PAL"){
+                    if(bytes.size()!=384)fail("Invalid native map palette");
+                    std::memcpy(&pal[0][0],bytes.data(),384);
+                }else if(n=="CYCLE.PAL"){
+                    if(bytes.size()!=30)fail("Invalid native cycle palette");
+                    std::memcpy(&pal[240][0],bytes.data(),30);
+                }
+            }else if(r->payload.ends_with("/filter.u8")){
+                auto bytes=provider.payload(r->id,256);
+                if(bytes.size()!=256)fail("Invalid native terrain filter");
+                filter.AddFilter(bytes.data(),n.c_str());
+            }
+        }
+    }
+    std::map<std::string,std::vector<IndexedFrame>> frames;
+    for(const auto& group:provider.groups()){
+        if(std::none_of(graphics.begin(),graphics.end(),[&](const auto& pair){
+            const auto* r=pair.second;return r->status=="converted"&&r->package==group.package&&r->atlas_entry==group.entry;
+        }))continue;
+        visit_indexed_if(provider,group.name,[&](const Resource& r){
+            return r.status=="converted"&&graphics.contains(r.id);
+        },[&](const J& meta,IndexedFrame frame){
+            auto& out=frames[meta.at("id").str()];
+            if(meta.at("frame").num()!=out.size())fail("Native terrain frame order mismatch");
+            out.push_back(std::move(frame));
+        });
+    }
+    auto make_sprite=[&](const IndexedFrame& f,const std::string& n){
+        auto s=std::make_unique<Sprite>();auto rows=sprite_rows(f,true,false);
+        s->name=n;s->x_size=f.width;s->y_size=f.height;s->x_ofs=f.origin_x;s->y_ofs=f.origin_y;
+        s->data=std::move(rows.data);s->has_transp=rows.transparent;
+        // The v1 atlas preserves pixels/origin, not the editor-only land_type
+        // byte. The tactical engine uses the existing context's terrain flags.
+        s->land_type=0;
+        s->is_destructed=s->two_stage_desctruct=s->is_target=0;
+        s->SetGlyphFlags(0);s->SetMapFlags(0);
+        return s;
+    };
+    // Preserve original archive order (including animation IDs used by the
+    // existing context files and virtual sprite rotations).
+    std::set<std::string> seen;
+    for(auto* r:records){
+        if(!graphics.contains(r->id))continue;
+        auto full=leaf(r->name);auto n=full.substr(0,full.rfind('.'));
+        if(!seen.insert(full).second||n.empty()||n.size()>MAX_SPRITE_NAME)fail("Duplicate/invalid native terrain name");
+        auto& f=frames[r->id];
+        if(r->status=="failed"){
+            IndexedFrame placeholder;placeholder.width=80;placeholder.height=1;
+            placeholder.indices.resize(80);placeholder.opacity.resize(80);
+            f.push_back(std::move(placeholder));
+            if(status_item)status_item("Known transparent retail sentinel: "+full);
+        }else if(f.size()!=r->frame_count)fail("Incomplete native terrain frames: "+full);
+        if(r->format=="DTA"){
+            if(f.size()!=1)fail("Unexpected native terrain frame count");
+            auto s=make_sprite(f.front(),n);s->SetIndex(static_cast<int>(sprites.size()));
+            sprites.push_back(s.get());s.release();
+        }else if(r->format=="ANM"){
+            auto a=std::make_unique<AnimL1>();std::memcpy(a->name,n.c_str(),n.size()+1);
+            a->frames.reserve(f.size());
+            for(const auto& frame:f)a->frames.push_back(make_sprite(frame,n).release());
+            a->x_size=a->frames.front()->x_size;a->y_size=a->frames.front()->y_size;a->y_ofs=a->frames.front()->y_ofs;
+            anms.push_back(a.get());a.release();
+        }else{
+            auto a=std::make_unique<AnimPNM>();std::memcpy(a->name,n.c_str(),n.size()+1);
+            a->index=static_cast<int>(pnms.size());a->x_min=a->y_min=65536;a->x_max=a->y_max=-65536;
+            a->frames.reserve(f.size());
+            for(const auto& frame:f){
+                a->x_min=(std::min)(a->x_min,frame.origin_x);a->x_max=(std::max)(a->x_max,frame.origin_x+int(frame.width));
+                a->y_min=(std::min)(a->y_min,frame.origin_y);a->y_max=(std::max)(a->y_max,frame.origin_y+int(frame.height));
+                a->frames.push_back(make_sprite(frame,n).release());
+            }
+            pnms.push_back(a.get());a.release();
+        }
+        f.clear();if(status_item)status_item(full);
+    }
+    if(sprites.empty())fail("Native terrain contains no sprites");
+    LinkDestructibleClasses(gres,L2);return 0;
 }
 
 // Resolve a projected 90-degree flat tile rotation into a real Sprite object.

@@ -63,6 +63,8 @@ public:
 	std::string alt_name;
 };
 
+namespace sc::native_pak { class Provider; }
+
 class SpellL2classes
 {
 private:
@@ -71,6 +73,8 @@ private:
 	std::vector<SpellL2classRec*> spec_list;
 public:
 	SpellL2classes(FSarchive* fs,SpellSounds* sounds,std::function<void(std::string)> status_list=NULL,std::function<void(std::string)> status_item=NULL);
+	SpellL2classes(sc::native_pak::Provider& provider,SpellSounds* sounds,
+        const std::string& language_extension);
 	~SpellL2classes();
 	DestructibleRec GetClass(const char *sprite_name);
 
@@ -468,6 +472,7 @@ private:
 	// tools list
 	std::vector<SpellToolsGroup*> tools;
 
+	void LinkDestructibleClasses(SpellGraphics* gres,SpellL2classes* L2);
 	void RandomizeSpriteContextTh(std::vector<Sprite*> *spr,int ofs,int step);
 	int SwapToolSetItems(int toolset_id,int posa,int posb);
 	int SwapToolSets(int posa,int posb);
@@ -503,6 +508,11 @@ public:
 	Terrain();
 	~Terrain();
 	int Load(FSarchive *terrain_fs, uint8_t map_pal[][3], SpellGraphics *gres, SpellL2classes* L2=NULL,std::function<void(std::string)> status_item=NULL);
+    // Native game path. Editor-only land_type is not present in the v1
+    // terrain atlas; gameplay uses the existing context flags instead.
+    int LoadNative(sc::native_pak::Provider& provider,const std::string& archive,
+        uint8_t map_pal[][3],SpellGraphics* gres,SpellL2classes* L2,
+        std::function<void(std::string)> status_item=nullptr);
 	Sprite* GetSprite(const char* name);
 	// On-demand rotated flat L1 sprite; original FS archives are untouched.
 	Sprite* GetFlatRotatedSprite(Sprite* current, int quarterTurns);

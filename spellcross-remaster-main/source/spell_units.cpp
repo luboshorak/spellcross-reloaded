@@ -1004,7 +1004,11 @@ UnitBonuses::UnitBonuses(string bonuses_def)
 {
 	// try load DEF data
 	SpellDEF bonuses(bonuses_def);
-
+    Load(bonuses);
+}
+UnitBonuses::UnitBonuses(SpellDEF& bonuses){Load(bonuses);}
+void UnitBonuses::Load(SpellDEF& bonuses)
+{
 	// for each bonus:
 	list.resize(13);
 	for(int k = 1; k <= 12; k++)

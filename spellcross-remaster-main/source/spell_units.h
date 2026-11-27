@@ -40,13 +40,17 @@ public:
 	UnitBonus();
 };
 
+class SpellDEF;
+
 class UnitBonuses
 {
 private:
 	vector<UnitBonus> list;
+	void Load(SpellDEF& bonuses);
 
 public:
 	UnitBonuses(string bonuses_def);
+	UnitBonuses(SpellDEF& bonuses);
 	UnitBonus* GetBonus(int level);
 };
 

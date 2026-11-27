@@ -113,8 +113,8 @@ public:
 };
 struct Resource {
     std::string id,name,package,format,status,kind,payload,atlas_entry;
-    std::string source_entry;
-    std::uint64_t source_offset{},frame_count{};
+    std::string source_entry,assessment;
+    std::uint64_t source_offset{},source_size{},frame_count{};
 };
 struct Group {
     std::string name,package,entry;
@@ -179,7 +179,9 @@ public:
             if(auto p=r.get("payload"))x.payload=p->str();
             if(auto o=r.get("original")){
                 x.source_entry=o->at("entry").str();x.source_offset=o->at("offset").num();
+                x.source_size=o->at("size").num();
             }
+            if(auto a=r.get("assessment"))x.assessment=a->str();
             if(auto a=r.get("atlas")){x.atlas_entry=a->at("entry").str();x.frame_count=a->at("frames").num();}
             auto owner=packages_.find(x.package);
             if(x.id.empty()||owner==packages_.end()||r.at("category").str()!=owner->second.category||
