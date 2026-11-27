@@ -3302,10 +3302,7 @@ if (!mission_data || !mission_data->Size())
 					if (!spelldata->texts->GetText(*cmd_dest[k]))
 					{
 						// resource not found - ignore because first mission has invalid record...
-						/*delete mission_params;
-						/* definition owned by FinishMapLoad */
-						Close();
-						return(1);*/
+						// Intentionally tolerate missing retail mission outcome text.
 					}
 				}
 			}
