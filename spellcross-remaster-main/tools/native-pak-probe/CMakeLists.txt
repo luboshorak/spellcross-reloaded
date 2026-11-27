@@ -12,4 +12,17 @@ if(BUILD_TESTING)
   add_executable(native_pak_tests tests.cpp ../../source/level.cpp ../../source/strategic_original_renderer.cpp ../../source/LZ_spell.cpp)
   target_link_libraries(native_pak_tests PRIVATE ${wxWidgets_LIBRARIES})
   add_test(NAME native_pak COMMAND native_pak_tests)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil libswscale libswresample)
+  find_program(FFMPEG_FIXTURE_TOOL ffmpeg REQUIRED)
+  add_executable(native_movie_test movie_test.cpp)
+  target_link_libraries(native_movie_test PRIVATE PkgConfig::LIBAV)
+  add_test(NAME native_movie_fixture COMMAND "${FFMPEG_FIXTURE_TOOL}" -nostdin -hide_banner -loglevel error -y
+    -f lavfi -i testsrc=size=16x16:rate=8:duration=0.5
+    -f lavfi -i sine=frequency=440:sample_rate=8000:duration=0.5
+    -c:v ffv1 -pix_fmt bgr0 -threads 1 -c:a flac -sample_fmt s16
+    "${CMAKE_CURRENT_BINARY_DIR}/movie-fixture.mkv")
+  set_tests_properties(native_movie_fixture PROPERTIES FIXTURES_SETUP native_movie_fixture)
+  add_test(NAME native_movie_decode COMMAND native_movie_test "${CMAKE_CURRENT_BINARY_DIR}/movie-fixture.mkv")
+  set_tests_properties(native_movie_decode PROPERTIES FIXTURES_REQUIRED native_movie_fixture)
 endif()

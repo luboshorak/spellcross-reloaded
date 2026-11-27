@@ -8,9 +8,7 @@
 
 #include "spell_video.h"
 #include "native_pak/provider.hpp"
-#include <wx/filename.h>
-#include <wx/stdpaths.h>
-#include <wx/utils.h>
+#include "native_pak/movie_decoder.hpp"
 #include <cmath>
 #include <locale>
 #include <sstream>
@@ -125,35 +123,6 @@ std::vector<std::string> SpellVideoResources::GetNames(std::string wild)
 }
 
 
-namespace {
-struct NativeMediaTemp {
-    std::filesystem::path path;
-    explicit NativeMediaTemp(const wxString& prefix){
-        auto name=wxFileName::CreateTempFileName(prefix);
-        if(name.empty())sc::native_pak::fail("Cannot create native video temporary file");
-        path=std::filesystem::path(name.ToStdWstring());
-    }
-    ~NativeMediaTemp(){if(!path.empty()){std::error_code ec;std::filesystem::remove(path,ec);}}
-};
-void RunNativeFfmpeg(const std::vector<std::wstring>& args){
-    namespace fs=std::filesystem;
-    auto dir=fs::path(wxStandardPaths::Get().GetExecutablePath().ToStdWstring()).parent_path();
-#ifdef _WIN32
-    const auto exe=dir/L"ffmpeg.exe";
-    std::wstring program=fs::is_regular_file(exe)?exe.wstring():L"ffmpeg.exe";
-#else
-    const auto exe=dir/L"ffmpeg";
-    std::wstring program=fs::is_regular_file(exe)?exe.wstring():L"ffmpeg";
-#endif
-    std::vector<const wchar_t*> argv;argv.reserve(args.size()+2);
-    argv.push_back(program.c_str());
-    for(const auto& arg:args)argv.push_back(arg.c_str());
-    argv.push_back(nullptr);
-    const auto rc=wxExecute(argv.data(),wxEXEC_SYNC);
-    if(rc!=0)
-        sc::native_pak::fail("Native MKV decoding failed (exit "+std::to_string(rc)+"). Install FFmpeg or put it beside Spellcross.");
-}
-}
 SpellVideo::SpellVideo(sc::native_pak::Provider& provider,const std::string& requested)
     : x_size(0),y_size(0),fps(0),type(SpellVideoType::NativeRGB)
 {
@@ -177,39 +146,22 @@ SpellVideo::SpellVideo(sc::native_pak::Provider& provider,const std::string& req
     if(!(rate_stream>>fps)||!rate_stream.eof()||!std::isfinite(fps)||fps<=0||fps>240)
         fail("Invalid native movie frame rate");
     x_size=static_cast<int>(w);y_size=static_cast<int>(h);native_frame_count=static_cast<int>(count);
-    NativeMediaTemp input("spellcross-movie-"),raw("spellcross-rgb-"),pcm("spellcross-pcm-");
-    {
-        auto movie=provider.movie(r->id);
-        std::ofstream out(input.path,std::ios::binary|std::ios::trunc);
-        if(!out.write(reinterpret_cast<const char*>(movie.data()),movie.size()))fail("Cannot stage native MKV");
-        out.close();if(!out)fail("Cannot close native MKV");
-    }
-    RunNativeFfmpeg({L"-nostdin",L"-hide_banner",L"-loglevel",L"error",L"-y",L"-i",input.path.wstring(),
-        L"-map",L"0:v:0",L"-vsync",L"0",L"-frames:v",std::to_wstring(count),L"-f",L"rawvideo",L"-pix_fmt",L"rgb24",raw.path.wstring()});
-    const auto frame_bytes=w*h*3;
-    if(fs::file_size(raw.path)!=frame_bytes*count)fail("Native RGB frame count mismatch");
+    media::MovieSpec spec{x_size,y_size,native_frame_count};
     if(!std::holds_alternative<std::nullptr_t>(j.at("audio_codec").v)){
         if(j.at("audio_codec").str()!="FLAC")fail("Unsupported native movie audio");
         auto sr=j.at("sample_rate").num(),ch=j.at("channels").num(),n=j.at("sample_frames").num();
         if(sr<4000||sr>192000||(ch!=1&&ch!=2)||!n||n>128u*1024u*1024u/ch)
             fail("Invalid native movie audio geometry");
-        RunNativeFfmpeg({L"-nostdin",L"-hide_banner",L"-loglevel",L"error",L"-y",L"-i",input.path.wstring(),
-            L"-map",L"0:a:0",L"-f",L"s16le",L"-acodec",L"pcm_s16le",pcm.path.wstring()});
-        if(fs::file_size(pcm.path)!=n*ch*2)fail("Native audio length mismatch");
-        std::ifstream in(pcm.path,std::ios::binary);
-        audio.data.resize(n*ch);
-        if(!in.read(reinterpret_cast<char*>(audio.data.data()),audio.data.size()*2))fail("Native movie PCM read failed");
-        audio.fs=static_cast<int>(sr);audio.channels=static_cast<int>(ch);audio.samples=static_cast<int>(n);
+        spec.sample_rate=static_cast<int>(sr);
+        spec.channels=static_cast<int>(ch);
+        spec.samples=static_cast<int>(n);
     }
-    native_rgb_frame.resize(frame_bytes);
-    native_rgb_stream.open(raw.path,std::ios::binary);
-    if(!native_rgb_stream)fail("Cannot read decoded native video frames");
-    native_rgb_path=std::move(raw.path);raw.path.clear();
+    auto decoded=media::decode(provider.movie(r->id),spec);
+    native_rgb_frames=std::move(decoded.rgb);
+    audio.data=std::move(decoded.pcm);
+    audio.fs=spec.sample_rate;audio.channels=spec.channels;audio.samples=spec.samples;
 }
-SpellVideo::~SpellVideo(){
-    if(native_rgb_stream.is_open())native_rgb_stream.close();
-    if(!native_rgb_path.empty()){std::error_code ec;std::filesystem::remove(native_rgb_path,ec);}
-}
+SpellVideo::~SpellVideo()=default;
 double SpellVideo::GetNativeDuration()const{
     const double video=native_frame_count/fps;
     const double sound=audio.fs>0?double(audio.samples)/audio.fs:0.0;
@@ -697,9 +649,8 @@ uint8_t* SpellVideo::GetFrame(int id)
 {
     if(IsNativeRGB()){
         if(id<0||id>=native_frame_count)return nullptr;
-        native_rgb_stream.clear();native_rgb_stream.seekg(std::streamoff(id)*native_rgb_frame.size());
-        if(!native_rgb_stream.read(reinterpret_cast<char*>(native_rgb_frame.data()),native_rgb_frame.size()))return nullptr;
-        return native_rgb_frame.data();
+        const auto stride=static_cast<std::size_t>(x_size)*y_size*3;
+        return native_rgb_frames.data()+static_cast<std::size_t>(id)*stride;
     }
 	if(id < 0 || frames.empty())
 		return(NULL);

@@ -360,8 +360,8 @@ function Copy-DllImports([string]$InitialBinary, [string]$Destination) {
             $dllName = $Matches[1]
             $src = Join-Path $wxBin $dllName
             if (-not (Test-Path -LiteralPath $src -PathType Leaf)) {
-                if ($dllName -match '^wx(base|msw|expat|zlib|png|jpeg)') {
-                    throw "wxWidgets dependency missing: $dllName in $wxBin"
+                if ($dllName -match '^(wx(base|msw|expat|zlib|png|jpeg)|av(codec|format|util)[-0-9.]|sw(scale|resample)[-0-9.])') {
+                    throw "Required runtime dependency missing: $dllName in $wxBin"
                 }
                 continue # System DLL or system-installed MSVC redistributable
             }

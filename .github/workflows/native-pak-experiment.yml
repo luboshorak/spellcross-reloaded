@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev ninja-build xvfb xauth
+      - run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev ninja-build xvfb xauth pkg-config libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev ffmpeg
       - run: cmake -S spellcross-remaster-main/tools/native-pak-probe -B build/native-pak -G Ninja -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build/native-pak
       - run: xvfb-run -a ctest --test-dir build/native-pak --output-on-failure
@@ -33,6 +33,8 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-wxwidgets3.2-msw
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-ffmpeg
       - run: cmake -S spellcross-remaster-main/tools/native-pak-probe -B build/native-pak -G Ninja -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build/native-pak
       - run: ctest --test-dir build/native-pak --output-on-failure
@@ -52,6 +54,14 @@ jobs:
             & 7z x $archive "-o$wxRoot" -y | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "wxWidgets extraction failed: $asset" }
           }
+      - name: Install shared LGPL FFmpeg SDK
+        shell: pwsh
+        run: |
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
+          if (!$vcpkg) { $vcpkg = 'C:\vcpkg' }
+          & (Join-Path $vcpkg 'vcpkg.exe') install 'ffmpeg[core,avcodec,avformat,swscale,swresample]:x64-windows'
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg SDK install failed' }
+          "FFmpegRoot=$(Join-Path $vcpkg 'installed/x64-windows')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Compile native PAK engine integration with MSVC
         shell: pwsh
         run: |
@@ -71,7 +81,7 @@ jobs:
           $source = Join-Path $PWD 'spellcross-remaster-main/source'
           foreach ($file in @('map.cpp', 'spellcross.cpp', 'spell_font.cpp', 'level.cpp', 'spell_units.cpp', 'fsu_archive.cpp', 'spell_sound.cpp', 'spell_texts.cpp', 'spell_graphics.cpp', 'spell_midi.cpp', 'sprites.cpp', 'spell_video.cpp', 'main.cpp', 'forms/form_loader.cpp', 'forms/form_mmenu.cpp', 'forms/form_level.cpp', 'strategic_original_renderer.cpp', 'forms/form_video_box.cpp')) {
             $object = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileName($file) + '.obj')
-            & cl.exe /nologo /c /std:c++23 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" (Join-Path $source $file) "/Fo:$object"
+            & cl.exe /nologo /c /std:c++23 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" "/I$env:FFmpegRoot/include" (Join-Path $source $file) "/Fo:$object"
             if ($LASTEXITCODE -ne 0) { throw "Engine source compilation failed: $file" }
           }
       - name: Link complete Spellcross executable
@@ -97,7 +107,7 @@ jobs:
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
           $msbuild = & $vswhere -latest -products '*' -find 'MSBuild/Current/Bin/MSBuild.exe' | Select-Object -First 1
           if (!$msbuild) { throw 'MSBuild not found' }
-          & $msbuild $project /m /t:Build /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$wxRoot\" "/p:SolutionDir=$solutionDir" /p:VcpkgEnabled=false /v:minimal
+          & $msbuild $project /m /t:Build /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$wxRoot\" "/p:SolutionDir=$solutionDir" "/p:FFmpegRoot=$env:FFmpegRoot" /p:VcpkgEnabled=false /v:minimal
           if ($LASTEXITCODE -ne 0) { throw 'Complete game link failed' }
           if (!(Test-Path 'spellcross-remaster-main/builds/x64/Release/Spellcross.exe')) { throw 'Game EXE missing' }
   legacy-level-regression:

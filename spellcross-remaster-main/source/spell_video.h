@@ -61,9 +61,7 @@ private:
     int y_size;
     double fps;
     SpellVideoType type;
-    std::filesystem::path native_rgb_path;
-    std::ifstream native_rgb_stream;
-    std::vector<uint8_t> native_rgb_frame;
+    std::vector<uint8_t> native_rgb_frames;
     int native_frame_count=0;
 
     int DecodeCAN(uint8_t* data,int len);

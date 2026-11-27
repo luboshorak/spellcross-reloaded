@@ -273,6 +273,10 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <!-- Use shared LGPL FFmpeg libraries. FFmpegRoot may point to a separate SDK. -->
+  <PropertyGroup>
+    <FFmpegRoot Condition="'$(FFmpegRoot)'==''">$(wxwin)</FFmpegRoot>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
@@ -429,7 +433,25 @@
       <AdditionalDependencies>dsound.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(FFmpegRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(FFmpegRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>avformat.lib;avcodec.lib;avutil.lib;swscale.lib;swresample.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="CheckNativeMovieSdk" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(FFmpegRoot)\include\libavcodec\avcodec.h') Or !Exists('$(FFmpegRoot)\lib\avcodec.lib')" Text="Native video needs shared FFmpeg SDK (vcpkg ffmpeg[core,avcodec,avformat,swscale,swresample]:x64-windows). Set FFmpegRoot or install it alongside wxWidgets." />
+  </Target>
+  <Target Name="CopyNativeMovieRuntime" AfterTargets="Build">
+    <ItemGroup>
+      <NativeMovieDll Include="$(FFmpegRoot)\bin\avcodec*.dll;$(FFmpegRoot)\bin\avformat*.dll;$(FFmpegRoot)\bin\avutil*.dll;$(FFmpegRoot)\bin\swscale*.dll;$(FFmpegRoot)\bin\swresample*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NativeMovieDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
   <Target Name="CopyBundledRuntimeData" AfterTargets="Build">
     <ItemGroup>
       <BundledRuntimeData Include="$(ProjectDir)..\data\C_NAMES.DEF;$(ProjectDir)..\data\DEVAST.fs;$(ProjectDir)..\data\PUST.fs;$(ProjectDir)..\data\T11.FS;$(ProjectDir)..\data\font_spellcross_7pix.fnt;$(ProjectDir)..\data\font_spellcross_14pix.fnt;$(ProjectDir)..\data\units.fsa;$(ProjectDir)..\data\units.json" />
