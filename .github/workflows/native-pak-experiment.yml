@@ -1,0 +1,38 @@
+name: Native PAK experiment
+on:
+  push:
+    branches:
+      - experiment/native-pak-runtime
+  pull_request:
+    branches:
+      - experiment/native-pak-runtime
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev ninja-build xvfb xauth
+      - run: cmake -S spellcross-remaster-main/tools/native-pak-probe -B build/native-pak -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build/native-pak
+      - run: xvfb-run -a ctest --test-dir build/native-pak --output-on-failure
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-wxwidgets3.2-msw
+      - run: cmake -S spellcross-remaster-main/tools/native-pak-probe -B build/native-pak -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build/native-pak
+      - run: ctest --test-dir build/native-pak --output-on-failure
