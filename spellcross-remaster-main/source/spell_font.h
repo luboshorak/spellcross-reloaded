@@ -57,6 +57,9 @@ public:
     };
     
     SpellFont(uint8_t* data,int len);
+    // Construct from decoded bitmap glyphs; no FNT decoding in this path.
+    SpellFont(std::vector<std::vector<std::vector<uint8_t>>> glyphs,
+        unsigned first_code,unsigned spacing,unsigned default_height,std::string name);
     SpellFont(std::wstring font_path);
     void SetFilter(uint8_t *filter);
     int Merge(SpellFont& font);

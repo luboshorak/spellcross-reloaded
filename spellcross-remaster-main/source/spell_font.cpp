@@ -193,6 +193,41 @@ SpellFont::SpellFont(uint8_t* data, int len)
 
 
 
+// Native glyph construction retains retail byte-code positions and spacing.
+SpellFont::SpellFont(std::vector<std::vector<std::vector<uint8_t>>> glyphs,
+    unsigned first_code,unsigned spacing,unsigned default_height,std::string name)
+    : m_max_y(0),m_max_x(0),m_symbol_gap_x(0),m_font_name(std::move(name)),
+      m_filter(nullptr),next_y(0)
+{
+    if(first_code>255 || glyphs.empty() || glyphs.size()>256-first_code ||
+        spacing>255 || !default_height || default_height>255)
+        throw std::runtime_error("Invalid native font metadata");
+    m_symbol_gap_x=static_cast<int>(spacing);
+    m_symbols.reserve(256);
+    for(unsigned i=0;i<first_code;++i)
+        m_symbols.emplace_back(static_cast<int>(default_height),1);
+    for(auto& glyph:glyphs)
+    {
+        if(glyph.empty() || glyph.size()>255 || glyph.front().empty() || glyph.front().size()>255)
+            throw std::runtime_error("Invalid native glyph geometry");
+        const auto width=glyph.front().size();
+        for(const auto& row:glyph)
+            if(row.size()!=width || std::any_of(row.begin(),row.end(),[](uint8_t n){return n>1;}))
+                throw std::runtime_error("Invalid native glyph data");
+        const auto code=m_symbols.size();
+        m_symbols.emplace_back(1,1);
+        m_symbols.back().pixels=std::move(glyph);
+        if(code>=32){
+            m_max_x=(std::max)(m_max_x,static_cast<int>(width));
+            m_max_y=(std::max)(m_max_y,m_symbols.back().GetHeight());
+        }
+    }
+    if(!m_max_y)m_max_y=static_cast<int>(default_height);
+    // Existing renderers address any unsigned byte directly; pad absent codes
+    // with blank glyphs instead of permitting out-of-bounds indexing.
+    while(m_symbols.size()<256)m_symbols.emplace_back(m_max_y,1);
+}
+
 // load font from file
 SpellFont::SpellFont(std::wstring font_path)
 {

@@ -204,6 +204,23 @@ public:
         if(auto i=leaves_.find(key(name));i!=leaves_.end())return records_.at(unique(i->second,name));
         fail("Missing resource: "+name);
     }
+    // Resolve a retail basename in its original archive scope, independent of
+    // whether the dataset came from an ISO, installer or installed directory.
+    // Never use conversion status to silently choose between duplicate records.
+    const Resource& scoped_resource(const std::string& archive,const std::string& name)const{
+        auto i=leaves_.find(key(name));
+        if(i==leaves_.end())fail("Missing scoped resource: "+archive+"::"+name);
+        std::vector<std::string> matches;
+        for(const auto& id:i->second){
+            const auto& r=records_.at(id);
+            auto n=key(r.name);auto split=n.rfind("::");
+            if(split==n.npos)continue;
+            auto owner=n.substr(0,split);
+            if(owner==key(archive)||leaf(owner)==key(archive))matches.push_back(id);
+        }
+        if(matches.empty())fail("Missing scoped resource: "+archive+"::"+name);
+        return records_.at(unique(matches,archive+"::"+name));
+    }
     const Group& group(const std::string& name)const{
         if(auto i=group_names_.find(key(name));i!=group_names_.end())return groups_.at(unique(i->second,name));
         if(auto i=group_leaves_.find(key(name));i!=group_leaves_.end())return groups_.at(unique(i->second,name));

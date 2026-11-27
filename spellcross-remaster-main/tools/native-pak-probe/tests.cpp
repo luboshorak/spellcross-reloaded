@@ -1,4 +1,4 @@
-#include "../../source/native_pak/pixels.hpp"
+#include "../../source/native_pak/assets.hpp"
 #include <wx/init.h>
 #include <chrono>
 #include <iostream>
@@ -68,6 +68,17 @@ int main(){
             rejects([&]{p.payload("TEST.TXT");},"ambiguous leaf was accepted");
             rejects([&]{p.payload("DATA/OTHER.FS::TEST.TXT#1");},"failed resource was accepted");
             rejects([&]{p.payload("missing");},"missing resource was accepted");
+            Assets assets(p);
+            require(assets.resolve("COMMON.FS","test.txt").id=="DATA/COMMON.FS::TEST.TXT#1","scoped lookup");
+            require(assets.text(assets.resolve("COMMON.FS","test.txt").id)=="native","typed UTF-8 resource");
+            rejects([&]{assets.resolve("MISSING.FS","TEST.TXT");},"missing scope accepted");
+            rejects([&]{assets.wave("DATA/COMMON.FS::TEST.TXT#1");},"wrong media type accepted");
+            auto language=decode_language_table(parse(R"({"schema":"spellcross-language-table","version":1,"language":"cz","entries":[{"id":0,"text":"A"},{"id":1,"text":"B"}]})"));
+            require(language.entries==std::vector<std::string>({"A","B"}),"language table ordering");
+            rejects([]{decode_language_table(parse(R"({"schema":"spellcross-language-table","version":1,"language":"en","entries":[{"id":1,"text":"A"}]})"));},"unordered language table accepted");
+            IndexedFrame glyph;glyph.width=2;glyph.height=2;glyph.indices={0,1,1,0};
+            require(font_rows(glyph)==std::vector<std::vector<std::uint8_t>>({{0,1},{1,0}}),"font planes");
+            glyph.indices[0]=2;rejects([&]{font_rows(glyph);},"nonbinary glyph accepted");
             auto frame=decode_frame(p.resource_frame("MAINMENU.LZ"));
             require(frame.width==2&&frame.height==2&&frame.origin_x==-3&&frame.origin_y==4,"frame geometry");
             require(frame.indices==Bytes({0,1,253,2})&&frame.opacity==Bytes({255,0,255,255}),"exact data planes");
