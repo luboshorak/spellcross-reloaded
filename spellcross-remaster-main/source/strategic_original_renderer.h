@@ -42,7 +42,7 @@ public:
     //   project's existing LZ/FS loader behind this callback.
     struct IndexedAsset {
         int width=0,height=0,x=0,y=0;
-        std::vector<std::uint8_t> indices,opacity;
+        std::vector<std::uint8_t> indices,opacity,rgb,known;
         int opaque_zero_display_index=-1;
     };
     struct AssetLoader : std::function<bool(const std::string&,std::vector<std::uint8_t>&)> {

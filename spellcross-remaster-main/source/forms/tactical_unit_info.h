@@ -169,7 +169,14 @@ private:
 
     bool ReadFile(const std::string& name, std::vector<uint8_t>& out) const
     {
-        if (!m_data || !m_data->info) return false;
+        if(!m_data)return false;
+        if(m_data->IsNativePak()){
+            if(m_data->ReadNativeIndexed("INFO.FS",name,out))return true;
+            std::wstring text;
+            if(!m_data->ReadNativeText("INFO.FS",name,text))return false;
+            auto bytes=wstring2stringCP895(text);out.assign(bytes.begin(),bytes.end());return true;
+        }
+        if(!m_data->info)return false;
         uint8_t* raw = nullptr;
         int size = 0;
         if (m_data->info->GetFile(name.c_str(), &raw, &size) != 0 ||
@@ -179,9 +186,26 @@ private:
         return true;
     }
 
+    wxBitmap NativeInfoBitmap(const std::string& name,bool transparent) const
+    {
+        StrategicOriginalRenderer::IndexedAsset a;
+        if(!m_data->ReadNativeFrame("INFO.FS",name,a)||a.width<=0||a.height<=0||
+            a.indices.size()!=std::size_t(a.width)*a.height||a.opacity.size()!=a.indices.size()||a.rgb.size()!=768)
+            return {};
+        wxImage image(a.width,a.height,false);
+        if(transparent)image.InitAlpha();
+        for(std::size_t i=0;i<a.indices.size();++i){
+            unsigned index=a.indices[i];
+            if(!index&&a.opacity[i]&&a.opaque_zero_display_index>=0)index=static_cast<unsigned>(a.opaque_zero_display_index);
+            std::copy_n(a.rgb.data()+index*3,3,image.GetData()+i*3);
+            if(transparent)image.GetAlpha()[i]=a.opacity[i];
+        }
+        return wxBitmap(image);
+    }
     wxBitmap MakeInfoBitmap(const char* name, int width, int height,
         bool transparent)
     {
+        if(m_data&&m_data->IsNativePak())return NativeInfoBitmap(name,transparent);
         if (m_infoPalette.size() < 256 * 3) return wxBitmap();
         std::vector<uint8_t> input;
         if (!ReadFile(name, input)) return wxBitmap();
@@ -212,8 +236,8 @@ private:
 
     void LoadChrome()
     {
-        if (!ReadFile("PALETA.NRM", m_infoPalette) ||
-            m_infoPalette.size() < 256 * 3)
+        if ((!m_data||!m_data->IsNativePak())&&(!ReadFile("PALETA.NRM", m_infoPalette) ||
+            m_infoPalette.size() < 256 * 3))
             return;
         m_background = MakeInfoBitmap("IBG_768.LZ", 1024, 768, false);
         m_panel = MakeInfoBitmap("INFOPAN.LZ", 640, 480, true);
@@ -225,6 +249,7 @@ private:
         m_picture = wxBitmap();
         if (m_pictures.empty()) return;
         const std::string& stem = m_pictures[m_pictureIndex];
+        if(m_data&&m_data->IsNativePak()){m_picture=NativeInfoBitmap(stem+".LZ",false);return;}
         std::vector<uint8_t> compressed, pal;
         if (!ReadFile(stem + ".LZ", compressed) ||
             !ReadFile(stem + ".PAL", pal) || pal.size() < 192 * 3)

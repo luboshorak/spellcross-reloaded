@@ -1089,6 +1089,7 @@ bool SpellData::ReadNativeFrame(const std::string& archive,const std::string& na
         auto f=sc::native_pak::decode_frame(native_provider->resource_frame(r.id));
         out.width=f.width;out.height=f.height;out.x=f.origin_x;out.y=f.origin_y;
         out.indices=std::move(f.indices);out.opacity=std::move(f.opacity);
+        out.rgb=std::move(f.rgb);out.known=std::move(f.known);
         if(f.opaque_zero_display_index)out.opaque_zero_display_index=static_cast<int>(*f.opaque_zero_display_index);
         return true;
     }catch(const std::exception&){return false;}
