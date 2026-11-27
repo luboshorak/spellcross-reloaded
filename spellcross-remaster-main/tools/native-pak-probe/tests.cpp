@@ -3,6 +3,7 @@
 #include "../../source/native_pak/fsu.hpp"
 #include "../../source/native_pak/audio.hpp"
 #include "../../source/native_pak/ui_cache.hpp"
+#include "../../source/strategic_original_renderer.h"
 #include <wx/init.h>
 #include <chrono>
 #include <iostream>
@@ -112,6 +113,49 @@ int main(){
         require(!cache.find("large",cached,ok),"UI cache oversize");
         UiCache<Bytes> other(4,2);
         require(!other.find("c",cached,ok),"UI cache dataset isolation");
+        {
+            using R=StrategicOriginalRenderer;
+            Bytes mask(R::kMapW*R::kMapH,1);
+            // Encode the very same synthetic territory mask in the legacy
+            // CLK run representation for pixel-for-pixel regression testing.
+            Bytes clk(4+R::kMapH*2);
+            auto put16=[&](std::size_t p,unsigned v){clk[p]=v&255;clk[p+1]=v>>8;};
+            put16(0,R::kMapH);put16(2,R::kMapW);
+            for(int y=0;y<R::kMapH;++y){
+                put16(4+y*2,static_cast<unsigned>(clk.size()));
+                clk.insert(clk.end(),{180,1,1,129,198,2});
+                auto pos=mask.begin()+y*R::kMapW;
+                pos[180]=129;std::fill(pos+181,pos+R::kMapW,2);
+            }
+            R::AssetLoader legacy=[&](const std::string& n,Bytes& out){
+                if(n.ends_with(".CLK")){out=clk;return true;}
+                if(n.ends_with(".PAL")){out.assign(768,80);return true;}
+                out.assign(R::kScreenW*R::kScreenH,140);return true;
+            };
+            R::AssetLoader native=legacy;
+            native.native_frame=[&](const std::string& n,R::IndexedAsset& out){
+                if(!n.ends_with(".CLK"))return false;
+                out.width=R::kMapW;out.height=R::kMapH;out.indices=mask;return true;
+            };
+            R cached_renderer;R::MapState state;
+            state.territories={R::TerritoryVisualState::Hidden,R::TerritoryVisualState::EnemyHatched,R::TerritoryVisualState::Revealed};
+            state.hoverTerritory=1;
+            Bytes first;
+            for(int phase=0;phase<8;++phase){
+                state.animationPhase=phase;
+                R::RgbImage expected,actual;
+                require(R{}.RenderStrategicMap(legacy,state,expected),"legacy strategic fixture");
+                require(cached_renderer.RenderStrategicMap(native,state,actual),"native strategic fixture");
+                require(expected.rgb==actual.rgb,"native and legacy hover phase mismatch");
+                if(!phase)first=actual.rgb;
+                if(phase==1)require(first!=actual.rgb,"territory hover must animate");
+                if(phase==7)require(first==actual.rgb,"territory phase wrap");
+            }
+            // Same renderer, different level/mask: stale hatches are forbidden.
+            std::fill(mask.begin(),mask.end(),2);
+            R::RgbImage expected,actual;
+            require(R{}.RenderStrategicMap(native,state,expected)&&cached_renderer.RenderStrategicMap(native,state,actual)&&expected.rgb==actual.rgb,"hatch cache invalidation");
+        }
         wxInitializer init;
         require(init.IsOk(),"wx init");
         if(!wxImage::FindHandler(wxBITMAP_TYPE_PNG))wxImage::AddHandler(new wxPNGHandler);

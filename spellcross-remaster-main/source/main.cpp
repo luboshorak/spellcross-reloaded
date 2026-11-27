@@ -1138,9 +1138,12 @@ namespace
             try{
                 sc::native_pak::Provider provider(path);
                 provider.require_game_dataset();
-                ini.SetValue("DATA","native_pak_path",ConfigPathValue(path,config_path,runtime_root).c_str());
+                const auto configured=ConfigPathValue(path,config_path,runtime_root);
+                const bool changed=!ini.GetBoolValue("DATA","native_pak",false)||
+                    configured!=ini.GetValue("DATA","native_pak_path","");
+                ini.SetValue("DATA","native_pak_path",configured.c_str());
                 ini.SetBoolValue("DATA","native_pak",true,nullptr,true);
-                ini.SetValue("STATE","last_map","");
+                if(changed)ini.SetValue("STATE","last_map","");
                 if(!saveNow())throw std::runtime_error("Cannot save PAK configuration.");
                 return true;
             }catch(const std::exception& e){

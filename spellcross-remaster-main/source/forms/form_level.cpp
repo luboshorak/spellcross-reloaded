@@ -3149,13 +3149,14 @@ static int StrategicLevelNumberFromPath(const std::string& sourcePath)
     return -1;
 }
 
-void StrategicLevelFrame::RefreshOriginalStrategicView()
+void StrategicLevelFrame::RefreshOriginalStrategicView(bool schedulePaint)
 {
     if (!m_originalStrategicPanel)
         return;
     if (!m_originalStrategicDirty && m_originalStrategicBitmap.IsOk())
         return;
 
+    m_originalStrategicScaled=wxBitmap();
     m_originalStrategicError.clear();
     m_originalScrollbarValue = nullptr;
 
@@ -3164,7 +3165,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         m_originalStrategicBitmap = wxBitmap();
         m_originalStrategicError = "Original UI: SpellData is not available.";
         m_originalStrategicDirty = false;
-        m_originalStrategicPanel->Refresh();
+        if(schedulePaint)m_originalStrategicPanel->Refresh(false);
         return;
     }
 
@@ -3175,7 +3176,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         m_originalStrategicError = "Original UI: cannot determine LEVEL_XX from: " +
             wxString::FromUTF8(m_level.source_path.c_str());
         m_originalStrategicDirty = false;
-        m_originalStrategicPanel->Refresh();
+        if(schedulePaint)m_originalStrategicPanel->Refresh(false);
         return;
     }
     if (levelNum < 2)
@@ -3185,7 +3186,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
             "Original UI: LEVEL_%02d is the intro/tactical level and has no original strategic map.",
             levelNum);
         m_originalStrategicDirty = false;
-        m_originalStrategicPanel->Refresh();
+        if(schedulePaint)m_originalStrategicPanel->Refresh(false);
         return;
     }
 
@@ -3347,7 +3348,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
         m_originalStrategicError = "Original UI renderer: " + wxString::FromUTF8(error.c_str());
         m_originalStrategicDirty = false;
         m_originalStrategicPanel->SetToolTip(m_originalStrategicError);
-        m_originalStrategicPanel->Refresh();
+        if(schedulePaint)m_originalStrategicPanel->Refresh(false);
         return;
     }
 
@@ -5432,7 +5433,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
 
     m_originalStrategicDirty = false;
     m_originalStrategicPanel->SetToolTip(m_originalStrategicError);
-    m_originalStrategicPanel->Refresh();
+    if(schedulePaint)m_originalStrategicPanel->Refresh(false);
 }
 
 void StrategicLevelFrame::OnOriginalStrategicPaint(wxPaintEvent&)
@@ -5441,7 +5442,7 @@ void StrategicLevelFrame::OnOriginalStrategicPaint(wxPaintEvent&)
         return;
 
     if (m_originalStrategicDirty || !m_originalStrategicBitmap.IsOk())
-        RefreshOriginalStrategicView();
+        RefreshOriginalStrategicView(false);
 
     wxAutoBufferedPaintDC dc(m_originalStrategicPanel);
     dc.SetBackground(*wxBLACK_BRUSH);
@@ -5486,13 +5487,17 @@ void StrategicLevelFrame::OnOriginalStrategicPaint(wxPaintEvent&)
     const int drawY = (client.y - drawH) / 2;
     m_originalStrategicDrawRect = wxRect(drawX, drawY, drawW, drawH);
 
-    wxBitmap drawBmp = spellcross_display::AdjustBitmap(m_originalStrategicBitmap);
-    if (drawW != StrategicOriginalRenderer::kScreenW || drawH != StrategicOriginalRenderer::kScreenH)
-        drawBmp = wxBitmap(drawBmp.ConvertToImage().Scale(
-            drawW, drawH, spellcross_display::ResizeQuality()));
-
-    if (drawBmp.IsOk())
-        dc.DrawBitmap(drawBmp, drawX, drawY, false);
+    const auto revision=spellcross_display::Revision();
+    if(!m_originalStrategicScaled.IsOk()||m_originalStrategicScaledW!=drawW||
+       m_originalStrategicScaledH!=drawH||m_originalStrategicDisplayRevision!=revision){
+        auto drawBmp=spellcross_display::AdjustBitmap(m_originalStrategicBitmap);
+        if(drawBmp.IsOk()&&(drawW!=StrategicOriginalRenderer::kScreenW||drawH!=StrategicOriginalRenderer::kScreenH))
+            drawBmp=wxBitmap(drawBmp.ConvertToImage().Scale(drawW,drawH,spellcross_display::ResizeQuality()));
+        m_originalStrategicScaled=drawBmp;m_originalStrategicScaledW=drawW;m_originalStrategicScaledH=drawH;
+        m_originalStrategicDisplayRevision=revision;
+    }
+    if(m_originalStrategicScaled.IsOk())
+        dc.DrawBitmap(m_originalStrategicScaled,drawX,drawY,false);
 }
 
 void StrategicLevelFrame::OnOriginalStrategicLeftDown(wxMouseEvent& ev)
@@ -19658,21 +19663,23 @@ void StrategicLevelFrame::TryLoadBackground()
         auto read=[&](const char* fmt,auto& out){
             return m_spellData->ReadNativeFrame("COMMON.FS",wxString::Format(fmt,levelNum).ToStdString(),out);
         };
-        if(read("LEVEL_%02d.LZ",level)&&read("HMLA__%02d.LZ",fog)&&read("LEVEL_%02d.CLK",mask)&&
+        if(read("LEVEL_%02d.CLK",mask)&&mask.width>0&&mask.height>0&&
+           mask.indices.size()==std::size_t(mask.width)*mask.height){
+            cw=mask.width;ch=mask.height;cclk=std::move(mask.indices);composite_ok=true;
+        }
+        std::array<unsigned char,768> expanded{};
+        if(composite_ok&&read("LEVEL_%02d.LZ",level)&&read("HMLA__%02d.LZ",fog)&&
            m_spellData->ReadNativeIndexed("COMMON.FS",wxString::Format("LEVEL_%02d.PAL",levelNum).ToStdString(),palette)&&
-           level.width==mask.width&&level.height==mask.height&&fog.width==mask.width&&fog.height==mask.height&&
-           level.indices.size()==mask.indices.size()&&fog.indices.size()==mask.indices.size()&&palette.size()==192){
-            cw=mask.width;ch=mask.height;cclk=std::move(mask.indices);
+           level.width==cw&&level.height==ch&&fog.width==cw&&fog.height==ch&&
+           level.indices.size()==cclk.size()&&fog.indices.size()==cclk.size()&&ExpandPaletteTo256(palette,expanded)){
             wxImage image(cw,ch);
             for(int y=0;y<ch;++y)for(int x=0;x<cw;++x){
                 auto i=std::size_t(y)*cw+x;bool inside=cclk[i]!=0;
                 unsigned n=inside?level.indices[i]:fog.indices[i];
-                // Original strategic palette bank 128..191.
-                n%=64;
-                auto color=[&](unsigned c){return static_cast<unsigned char>(inside?palette[n*3+c]:palette[n*3+c]*0.82);};
+                auto color=[&](unsigned c){return static_cast<unsigned char>(inside?expanded[n*3+c]:std::lround(expanded[n*3+c]*0.82));};
                 image.SetRGB(x,y,color(0),color(1),color(2));
             }
-            bmp=wxBitmap(image);composite_ok=bmp.IsOk();
+            bmp=wxBitmap(image);
         }
     }
     else if (levelNum >= 0)
@@ -19743,9 +19750,10 @@ void StrategicLevelFrame::TryLoadBackground()
     {
         m_bgBitmap = bmp;
         m_hasBg = true;
+    }
 
-        if (composite_ok && !cclk.empty() && cw > 0 && ch > 0)
-        {
+    if (composite_ok && !cclk.empty() && cw > 0 && ch > 0)
+    {
             m_clkValues = std::move(cclk);
             m_clkW = cw;
             m_clkH = ch;
@@ -19774,7 +19782,6 @@ void StrategicLevelFrame::TryLoadBackground()
 
             ApplyTerritoryVisibility();
             MarkOverlayDirty();
-        }
     }
 
     // A failed/partial asset lookup must remain usable: restore the explicit
@@ -20513,7 +20520,23 @@ void StrategicLevelFrame::LoadRanksTable()
     if (!m_ranks.empty())
         return;
 
-    wxString p = FindHodnostiDefPath();
+    if(m_spellData&&m_spellData->IsNativePak()){
+        try{
+            for(const auto& row:NativeStrategicScript(m_spellData,"HODNOSTI.DEF")){
+                if(row.kind!="call"||row.keyword!="definecommander"||row.args.size()!=5)continue;
+                CommanderRankRec r;
+                r.rank=std::stoi(row.args[0]);r.max_units=std::stoi(row.args[1]);
+                r.actions_required=std::stoi(row.args[2]);r.exp_required=std::stoi(row.args[3]);
+                r.max_commanders=std::stoi(row.args[4]);m_ranks.push_back(r);
+            }
+            if(m_ranks.size()!=9)throw std::runtime_error("Unexpected commander rank count");
+            std::sort(m_ranks.begin(),m_ranks.end(),[](const auto& a,const auto& b){return a.rank<b.rank;});
+            return;
+        }catch(const std::exception& e){m_ranks.clear();wxLogWarning("Native rank table: %s",wxString::FromUTF8(e.what()));}
+    }
+    // Use built-in known retail defaults if the optional rank script is absent;
+    // never consult stale loose retail data in native mode.
+    wxString p = m_spellData&&m_spellData->IsNativePak()?wxString{}:FindHodnostiDefPath();
     if (p.empty())
     {
         // Exact values from the original COMMON.FS/HODNOSTI.DEF.

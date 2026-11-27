@@ -138,7 +138,7 @@ public:
     void OnStrategicUiCurrent(wxCommandEvent& ev);
     void OnStrategicUiOriginal(wxCommandEvent& ev);
     void SetOriginalStrategicUi(bool enabled);
-    void RefreshOriginalStrategicView();
+    void RefreshOriginalStrategicView(bool schedulePaint=true);
     void OnOriginalStrategicPaint(wxPaintEvent& ev);
     void OnOriginalStrategicLeftDown(wxMouseEvent& ev);
     void OnOriginalStrategicRightDown(wxMouseEvent& ev);
@@ -891,6 +891,9 @@ public:
     bool m_originalStrategicDirty = true;
     wxBitmap m_originalStrategicBitmap;
     StrategicOriginalRenderer m_originalStrategicRenderer;
+    wxBitmap m_originalStrategicScaled;
+    std::uint64_t m_originalStrategicDisplayRevision=0;
+    int m_originalStrategicScaledW=0,m_originalStrategicScaledH=0;
     wxString m_originalStrategicError;
     wxString m_originalBriefingText;
     int m_originalBriefingScroll = 0;

@@ -1477,6 +1477,11 @@ int SpellMap::LoadGameStateFromFile(const std::wstring& path)
 	// In a portable release the same map may be extracted under temp/COMMON
 	// or live beside the configured original data. Do not rewrite the save:
 	// recover the source map using its basename when the old path is gone.
+    if(spelldata->IsNativePak()){
+        const auto logical=spelldata->NativeCampaignPath(std::filesystem::path(map_path_w).filename().string());
+        if(logical.empty()){last_error="Tactical save mission is absent from the selected PAK dataset.";return 4;}
+        map_path_w=logical;
+    }else
 	{
 		namespace fs = std::filesystem;
 		std::error_code ec;
