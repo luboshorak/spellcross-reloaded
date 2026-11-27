@@ -69,7 +69,7 @@ jobs:
           $include = $header.Directory.Parent.FullName
           $setupInclude = $setup.Directory.Parent.FullName
           $source = Join-Path $PWD 'spellcross-remaster-main/source'
-          foreach ($file in @('map.cpp', 'spellcross.cpp', 'spell_font.cpp', 'level.cpp', 'spell_units.cpp', 'fsu_archive.cpp', 'spell_sound.cpp', 'spell_texts.cpp')) {
+          foreach ($file in @('map.cpp', 'spellcross.cpp', 'spell_font.cpp', 'level.cpp', 'spell_units.cpp', 'fsu_archive.cpp', 'spell_sound.cpp', 'spell_texts.cpp', 'spell_graphics.cpp', 'spell_midi.cpp')) {
             $object = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileName($file) + '.obj')
             & cl.exe /nologo /c /std:c++23 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" (Join-Path $source $file) "/Fo:$object"
             if ($LASTEXITCODE -ne 0) { throw "Engine source compilation failed: $file" }

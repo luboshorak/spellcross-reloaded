@@ -9,6 +9,8 @@
 //#define _HAS_STD_BYTE 0
 
 #include "spell_midi.h"
+#include "native_pak/assets.hpp"
+#include <memory>
 #include "other.h"
 
 #include <string>
@@ -95,6 +97,28 @@ SpellMIDI::SpellMIDI(const std::wstring& music_fs_path, std::function<void(std::
         }
     }
     delete music_fs;
+}
+
+SpellMIDI::SpellMIDI(sc::native_pak::Provider& provider,std::function<void(std::string)> status_item)
+    : m_port(nullptr),m_player(nullptr),m_volume(0.5),m_file(nullptr)
+{
+    using namespace sc::native_pak;
+    Assets assets(provider);
+    std::vector<std::unique_ptr<SpellMIDIfile>> pending;
+    for(auto* r:provider.archive_resources("MUSIC.FS")){
+        if(!r->payload.ends_with("/music.mid"))continue;
+        auto bytes=assets.midi(r->id);
+        auto name=leaf(r->name);
+        // Existing campaign references use lower-case musNN.
+        for(auto& c:name)if(c>='A'&&c<='Z')c=char(c-'A'+'a');
+        pending.push_back(std::make_unique<SpellMIDIfile>(bytes,name));
+        if(status_item)status_item(name);
+    }
+    if(pending.empty())return; // e.g. original English edition lacks MUSIC.FS
+    auto port=std::make_unique<cxxmidi::output::Default>(0);
+    auto player=std::make_unique<cxxmidi::player::PlayerAsync>(port.get());
+    m_midi.reserve(pending.size());m_port=port.release();m_player=player.release();
+    for(auto& track:pending)m_midi.push_back(track.release());
 }
 
 // cleanup MIDI engine

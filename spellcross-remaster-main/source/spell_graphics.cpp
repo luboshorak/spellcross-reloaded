@@ -9,6 +9,8 @@
 #define _HAS_STD_BYTE 0
 
 #include "spell_graphics.h"
+#include "native_pak/fsu.hpp"
+#include <memory>
 #include "sprites.h"
 #include "other.h"
 
@@ -65,6 +67,55 @@ int SpellGraphics::AddRaw(uint8_t* data,int dlen,int x_size,int y_size,const cha
 	grp.pal = pal;
 
 	return(0);
+}
+
+// Native UI graphics enter the existing indexed renderer without a legacy
+// ICO/CUR/LZ decoder. Palette bank selection remains the caller's job.
+void SpellGraphics::AddNativeFrame(const sc::native_pak::IndexedFrame& f,const char* name,
+    uint8_t pal[][3],bool with_ext,bool fix_black)
+{
+    using namespace sc::native_pak;
+    if(!f.width||!f.height||f.indices.size()!=std::size_t(f.width)*f.height||f.opacity.size()!=f.indices.size())
+        fail("Invalid native graphics frame");
+    SpellGraphicItem item;
+    auto length=with_ext?std::strlen(name):std::strcspn(name,".");
+    if(length>=sizeof(item.name))fail("Native graphic name exceeds engine field");
+    std::memcpy(item.name,name,length);item.name[length]=0;
+    item.x_size=f.width;item.y_size=f.height;item.x_ofs=f.origin_x;item.y_ofs=f.origin_y;item.pal=pal;
+    item.pixels=f.indices;
+    for(std::size_t i=0;i<item.pixels.size();++i){
+        if(!f.opacity[i])item.pixels[i]=0;
+        else if(f.opacity[i]!=255)fail("Unsupported partial native UI opacity");
+        else if(!item.pixels[i]&&(fix_black||f.opaque_zero_display_index))
+            item.pixels[i]=static_cast<uint8_t>(f.opaque_zero_display_index.value_or(254));
+    }
+    items.push_back(std::move(item));
+}
+
+void SpellGraphics::AddNativePNM(const std::vector<sc::native_pak::IndexedFrame>& frames,const char* name)
+{
+    using namespace sc::native_pak;
+    auto animation=std::make_unique<AnimPNM>();
+    auto length=std::strcspn(name,".");
+    if(!length||length>=sizeof(animation->name)||frames.empty())fail("Invalid native PNM");
+    std::memcpy(animation->name,name,length);animation->name[length]=0;
+    animation->x_min=animation->y_min=65536;animation->x_max=animation->y_max=-65536;
+    animation->index=static_cast<int>(pnms.size());
+    animation->frames.reserve(frames.size());
+    for(const auto& f:frames){
+        auto sprite=std::make_unique<Sprite>();
+        sprite->name=animation->name;
+        auto rows=sprite_rows(f,true,false);
+        sprite->data=std::move(rows.data);
+        sprite->x_size=f.width;sprite->y_size=f.height;sprite->x_ofs=f.origin_x;sprite->y_ofs=f.origin_y;
+        sprite->has_transp=1;sprite->land_type=0;
+        animation->x_min=(std::min)(animation->x_min,f.origin_x);
+        animation->x_max=(std::max)(animation->x_max,f.origin_x+int(f.width));
+        animation->y_min=(std::min)(animation->y_min,f.origin_y);
+        animation->y_max=(std::max)(animation->y_max,f.origin_y+int(f.height));
+        animation->frames.push_back(sprite.release());
+    }
+    pnms.push_back(animation.get());animation.release();
 }
 
 // load ICO/PNM file (same as for PNM animations frames)

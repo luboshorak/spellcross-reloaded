@@ -65,16 +65,19 @@ inline IndexedFrame decode_frame(const FrameData& data){
     return crop_frame(data,decode_plane(data.indices_png),decode_plane(data.opacity_png));
 }
 // Batch traversal decodes a page pair once, retaining at most one pair.
-template<class Visitor> inline void visit_indexed(Provider& p,const std::string& group,Visitor visit){
+template<class Predicate,class Visitor> inline void visit_indexed_if(Provider& p,const std::string& group,Predicate selected,Visitor visit){
     std::uint64_t last=std::numeric_limits<std::uint64_t>::max();
     wxImage indices,opacity;
-    p.visit_group(group,[&](const FrameData& data){
+    p.visit_group_if(group,selected,[&](const FrameData& data){
         auto page=data.metadata.at("page").num();
         if(page!=last){
             indices=decode_plane(data.indices_png);opacity=decode_plane(data.opacity_png);last=page;
         }
         visit(data.metadata,crop_frame(data,indices,opacity));
     });
+}
+template<class Visitor> inline void visit_indexed(Provider& p,const std::string& group,Visitor visit){
+    visit_indexed_if(p,group,[](const Resource&){return true;},std::move(visit));
 }
 // Diagnostic output only. Preserve the mask and apply the documented opaque
 // zero display remap. A shadow index stays an index; engine compositing is

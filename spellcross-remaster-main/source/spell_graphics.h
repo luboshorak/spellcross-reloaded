@@ -10,6 +10,7 @@ using namespace std;
 
 // forward refs
 class AnimPNM;
+namespace sc::native_pak { struct IndexedFrame; }
 
 
 class SpellGraphicItem
@@ -63,6 +64,9 @@ public:
 
 	// PNM animations	
 	int AddPNM(uint8_t* data,int dlen,const char* name);
+    void AddNativeFrame(const sc::native_pak::IndexedFrame& frame,const char* name,uint8_t pal[][3],
+        bool with_ext=false,bool fix_black=false);
+    void AddNativePNM(const std::vector<sc::native_pak::IndexedFrame>& frames,const char* name);
 	AnimPNM *GetPNM(const char *name);
 
 	// direct links to common items

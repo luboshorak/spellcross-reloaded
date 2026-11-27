@@ -29,6 +29,8 @@ public:
     int SaveAs(std::wstring path);
 };
 
+namespace sc::native_pak { class Provider; }
+
 class SpellMIDI
 {
 private:
@@ -48,6 +50,7 @@ private:
 public:
 
     SpellMIDI(const std::wstring &music_fs_path, std::function<void(std::string)> status_list=NULL, std::function<void(std::string)> status_item=NULL);
+    SpellMIDI(sc::native_pak::Provider& provider,std::function<void(std::string)> status_item=nullptr);
     ~SpellMIDI();
     
     int Play(SpellMIDIfile *midi);

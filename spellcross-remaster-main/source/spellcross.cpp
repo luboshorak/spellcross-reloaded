@@ -15,6 +15,7 @@
 #include "other.h"
 #include "map.h"
 #include "native_pak/campaign.hpp"
+#include "native_pak/fsu.hpp"
 #include <memory>
 
 #include <fstream>
@@ -1214,6 +1215,64 @@ int SpellData::LoadAuxGraphics(FSarchive *fs,std::function<void(std::string)> st
 			status_item(name);
 	}
 
+    return FinishAuxGraphics();
+}
+
+// Common tactical HUD / projectiles / cursor bootstrap for the native path.
+// Exactly the same resource set and palette choices as LoadAuxGraphics.
+int SpellData::LoadNativeAuxGraphics(sc::native_pak::Provider& provider,std::function<void(std::string)> status_item)
+{
+    using namespace sc::native_pak;
+    struct Selection{const Resource* r;bool with_ext,fix_black,strategic;};
+    std::map<std::string,Selection> selected;
+    std::set<std::string> seen;
+    for(auto* r:provider.archive_resources("COMMON.FS")){
+        auto name=leaf(r->name);
+        const char* n=name.c_str();
+        bool ext=wildcmp("*.GFK",n)||wildcmp("RAM*.DTA",n)||wildcmp("*.CUR",n);
+        bool black=name=="I_ATTACK"||name=="I_LOWER"||name=="I_MOVE"||name=="I_UPPER"||name=="I_SELECT"||name=="I_TAB";
+        bool strategic=wildcmp("VM*.ICO",n)||wildcmp("VM*.BTN",n)||name=="LASTTERT.ICO";
+        bool raw=wildcmp("I_*.LZ",n)||name=="LISTA_0.LZ"||name=="LISTA_1.LZ"||name=="LISTA_0B.LZ0"||
+            name=="LISTAPAT.LZ"||name=="GU_LISTA.LZ"||name=="LEV_GFK.LZ"||name=="M_ACCOMP.LZ"||
+            name=="M_FAILED.LZ"||name=="WM_STAT.LZ"||name=="OPT_BAR.LZ"||name=="MAP_OPT.LZ";
+        if(!ext&&!black&&!raw&&!wildcmp("*.ICO",n)&&!wildcmp("*.BTN",n)&&!wildcmp("*.PNM",n))continue;
+        if(!seen.insert(name).second||r->status!="converted"||r->atlas_entry.empty()||!r->frame_count)
+            fail("Missing/duplicate native common graphic: "+name);
+        selected.emplace(r->id,Selection{r,ext,black,strategic});
+    }
+    std::map<std::string,std::vector<IndexedFrame>> animations;
+    std::set<std::string> loaded;
+    for(const auto& group:provider.groups()){
+        if(std::none_of(selected.begin(),selected.end(),[&](const auto& pair){
+            const auto* r=pair.second.r;return r->package==group.package&&r->atlas_entry==group.entry;
+        }))continue;
+        visit_indexed_if(provider,group.name,[&](const Resource& r){return selected.contains(r.id);},
+            [&](const J& meta,IndexedFrame frame){
+                auto id=meta.at("id").str();const auto& s=selected.at(id);auto name=leaf(s.r->name);
+                auto ordinal=meta.at("frame").num();
+                if(s.r->format=="PNM"){
+                    auto& frames=animations[id];
+                    if(ordinal!=frames.size())fail("Native PNM frame order mismatch");
+                    frames.push_back(std::move(frame));
+                }else{
+                    if(ordinal||!loaded.insert(id).second)fail("Unexpected native UI frame");
+                    gres.AddNativeFrame(frame,name.c_str(),s.strategic?strategy_pal:map_pal,s.with_ext,s.fix_black);
+                    if(status_item)status_item(name);
+                }
+            });
+    }
+    for(const auto& [id,frames]:animations){
+        const auto& r=*selected.at(id).r;
+        if(frames.size()!=r.frame_count||!loaded.insert(id).second)fail("Incomplete native PNM");
+        auto name=leaf(r.name);gres.AddNativePNM(frames,name.c_str());
+        if(status_item)status_item(name);
+    }
+    if(loaded.size()!=selected.size())fail("Incomplete common graphic load");
+    return FinishAuxGraphics();
+}
+
+int SpellData::FinishAuxGraphics()
+{
 	// make round LED indicators for mission HUD
 	gres.AddLED(204,"RLED_OFF",map_pal);
 	gres.AddLED(253,"RLED_ON",map_pal);

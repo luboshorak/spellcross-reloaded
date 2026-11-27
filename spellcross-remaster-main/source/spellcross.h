@@ -24,7 +24,7 @@
 #include "spell_texts.h"
 #include "spell_video.h"
 
-namespace sc::native_pak { struct ScriptRecord; }
+namespace sc::native_pak { struct ScriptRecord; class Provider; }
 
 //using namespace std;
 
@@ -141,6 +141,8 @@ class SpellData
 private:
 	int GenerateSpecialTiles();
 	int LoadAuxGraphics(FSarchive* fs,std::function<void(std::string)> status_item=NULL);
+    int LoadNativeAuxGraphics(sc::native_pak::Provider& provider,std::function<void(std::string)> status_item=NULL);
+    int FinishAuxGraphics();
 
 	SpellLang text_language = SpellLang::CZE;
 	FSarchive* common_fs;
