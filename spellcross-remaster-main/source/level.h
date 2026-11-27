@@ -125,6 +125,7 @@ struct LevelEvent {
 struct LevelData {
     std::string source_path;
 
+    std::vector<int> start_territories; // ordered Start(n) directives
     int start_territory = -1;   // Start(n)
     int end_territory = -1;     // End(n)
 

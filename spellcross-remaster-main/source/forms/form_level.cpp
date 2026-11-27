@@ -42,6 +42,7 @@
 #include <limits>
 #include "LZ_spell.h"
 #include "../strategic_original_renderer.h"
+#include "../native_pak/campaign.hpp"
 #include "../spell_ui_locale.h"
 #include "../runtime_diagnostics.h"
 #include "../strategic_countdown_rules.h"
@@ -1526,6 +1527,21 @@ namespace
         std::string m_type;
     };
 
+    std::vector<sc::native_pak::ScriptRecord> NativeStrategicScript(const SpellData* data,const std::string& name)
+    {
+        auto& p=*data->NativeProvider();
+        return sc::native_pak::decode_script(sc::native_pak::parse_bytes(
+            p.payload(p.scoped_resource("COMMON.FS",name).id)));
+    }
+    std::set<int> NativeResearchFlags(const SpellData* data,const std::string& name)
+    {
+        std::set<int> result;
+        for(const auto& row:NativeStrategicScript(data,name))
+            if(row.kind=="call"&&row.keyword=="setresearchflag"&&row.args.size()==1)
+                result.insert(std::stoi(row.args[0]));
+        return result;
+    }
+
     // Parse SetResearchFlag(N) entries from a LEVEL_XX.DEF file
     std::set<int> ParseResearchFlagsFromDef(const std::filesystem::path& defPath)
     {
@@ -1542,7 +1558,7 @@ namespace
     }
 
     // Get cumulative research flags from LEVEL_01.DEF up to current level
-    std::set<int> GetCumulativeResearchFlags(const std::filesystem::path& currentLevelPath)
+    std::set<int> GetCumulativeResearchFlags(const std::filesystem::path& currentLevelPath,const SpellData* data=nullptr)
     {
         std::set<int> cumulative;
         namespace fs = std::filesystem;
@@ -1562,6 +1578,15 @@ namespace
         if (currentLevel <= 0)
             return cumulative;
 
+        if(data&&data->IsNativePak()){
+            for(int lvl=1;lvl<=currentLevel;++lvl){
+                try{
+                    const auto flags=NativeResearchFlags(data,wxString::Format("LEVEL_%02d.DEF",lvl).ToStdString());
+                    cumulative.insert(flags.begin(),flags.end());
+                }catch(const std::exception& e){wxLogWarning("Native research flags: %s",wxString::FromUTF8(e.what()));}
+            }
+            return cumulative;
+        }
         // Load flags from LEVEL_01.DEF up to current level
         for (int lvl = 1; lvl <= currentLevel; ++lvl)
         {
@@ -2382,6 +2407,7 @@ static void try_append_text_set(wxString& info, SpellTexts* texts,
 // (In the original game, those typically represent the already-secured / home region.)
 static std::filesystem::path FindTextsDirForLevel(const LevelData& level, const SpellData* spellData = nullptr)
 {
+    if(spellData&&spellData->IsNativePak())return {};
     namespace fs = std::filesystem;
     std::error_code ec;
 
@@ -2471,7 +2497,10 @@ static bool HasBriefingForMissionToken(SpellTexts* texts,
 static std::vector<int> ReadExplicitStartTerritories(const LevelData& level)
 {
     std::vector<int> result;
-    std::ifstream input(level.source_path, std::ios::binary);
+    for(int id:level.start_territories)
+        if(std::any_of(level.territories.begin(),level.territories.end(),[&](const LevelTerritory& t){return t.id==id;}))result.push_back(id);
+    std::ifstream input;
+    if(level.start_territories.empty())input.open(level.source_path,std::ios::binary);
     if (input)
     {
         // Original DEFs may contain several Start(n) directives, while the
@@ -2627,7 +2656,7 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
     {
         namespace fs = std::filesystem;
         fs::path defPath = fs::path(m_level.source_path);
-        m_levelResearchFlags = GetCumulativeResearchFlags(defPath);
+        m_levelResearchFlags = GetCumulativeResearchFlags(defPath,m_spellData);
     }
 
     BuildMenu();
@@ -2797,7 +2826,7 @@ void StrategicLevelFrame::StartFreshGameMode(const std::vector<LevelData::Player
     {
         namespace fs = std::filesystem;
         fs::path defPath = fs::path(m_level.source_path);
-        m_levelResearchFlags = GetCumulativeResearchFlags(defPath);
+        m_levelResearchFlags = GetCumulativeResearchFlags(defPath,m_spellData);
     }
 
     // Apply territory visibility
@@ -8292,6 +8321,36 @@ bool StrategicLevelFrame::EnsureUpgradeDefsLoaded() const
         return true;
 
     m_upgradeDefs.clear();
+    if(m_spellData&&m_spellData->IsNativePak()){
+        try{
+            UpgradeDefRec cur;int id=-1;
+            for(const auto& r:NativeStrategicScript(m_spellData,"UPGRADES.DEF")){
+                if(r.kind=="block"&&r.keyword=="upgrade"&&!r.args.empty()){
+                    cur=UpgradeDefRec{};id=std::stoi(r.args[0]);cur.id=id;
+                }else if(r.kind=="end"&&id>=0){
+                    auto name=m_spellData->GetOriginalText("UPGRADES",id);
+                    if(!name.empty())cur.title=wxString(char2wstringCP895(name.c_str()));
+                    m_upgradeDefs[id]=std::move(cur);id=-1;
+                }else if(r.kind=="call"&&id>=0&&!r.args.empty()){
+                    auto& k=r.keyword;auto& a=r.args;
+                    if(k=="upgradeprice")cur.price=std::stoi(a[0]);
+                    else if(k=="upgradetime")cur.time=std::stoi(a[0]);
+                    else if(k=="move")cur.move=std::stoi(a[0]);
+                    else if(k=="defence")cur.defence=std::stoi(a[0]);
+                    else if(k=="attack")cur.attack=std::stoi(a[0]);
+                    else if(k=="attackpt")cur.attackCount=std::stoi(a[0]);
+                    else if(k=="range")cur.range=std::stoi(a[0]);
+                    else if(k=="flags"){
+                        cur.kind=a[0]=="Engine"?UpgradeDefRec::Engine:a[0]=="Weapon"?UpgradeDefRec::Weapon:
+                            a[0]=="Armor"?UpgradeDefRec::Armor:UpgradeDefRec::Unknown;
+                    }else if(k=="suitabletypes"){
+                        for(const auto& value:a)cur.suitableTypes.insert(std::stoi(value));
+                    }
+                }
+            }
+        }catch(const std::exception& e){m_upgradeDefs.clear();wxLogWarning("Native upgrades: %s",wxString::FromUTF8(e.what()));}
+        m_upgradeDefsLoaded=true;return !m_upgradeDefs.empty();
+    }
 
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -10372,7 +10431,13 @@ void StrategicLevelFrame::RefreshUnitsInfo(int unitIndex)
 
     case UNITS_TAB_INFO:
         // Load unit description from INFO files (if available)
-        if (m_spellData && m_spellData->units && m_spellData->info)
+        if(m_spellData&&m_spellData->IsNativePak()&&m_spellData->units){
+            if(auto* unit=m_spellData->units->GetUnit(u.unit_id)){
+                std::wstring description;
+                if(m_spellData->ReadNativeText("INFO.FS",std::string(unit->info)+SpellLanguageExtension(m_spellData->GetTextLanguage()),description))
+                    info+="\n"+wxString(description);
+            }
+        }else if (m_spellData && m_spellData->units && m_spellData->info)
         {
             auto* unitRec = m_spellData->units->GetUnit(u.unit_id);
             if (unitRec)
@@ -14333,7 +14398,25 @@ void StrategicLevelFrame::EnsureResearchLoaded()
         std::vector<int> prereqs;
     };
     std::unordered_map<int, DefRec> defById;
-
+    const bool native=m_spellData&&m_spellData->IsNativePak();
+    if(native){
+        try{
+            DefRec cur;int id=-1;
+            for(const auto& r:NativeStrategicScript(m_spellData,"RESEARCH.DEF")){
+                if(r.kind=="block"&&r.keyword=="item"&&!r.args.empty()){cur=DefRec{};id=std::stoi(r.args[0]);}
+                else if(r.kind=="end"&&id>=0){defById[id]=std::move(cur);id=-1;}
+                else if(r.kind=="call"&&id>=0&&!r.args.empty()){
+                    const auto& k=r.keyword;const auto& a=r.args;
+                    if(k=="group")cur.group=wxString::FromUTF8(a[0]);
+                    else if(k=="flags")cur.flags=wxString::FromUTF8(a[0]);
+                    else if(k=="level")cur.level=std::stoi(a[0]);
+                    else if(k=="time")cur.time=std::stoi(a[0]);
+                    else if(k=="data")cur.data=std::stoi(a[0]);
+                    else if(k=="orconnections")for(const auto& v:a)cur.prereqs.push_back(std::stoi(v));
+                }
+            }
+        }catch(const std::exception& e){defById.clear();wxLogWarning("Native research: %s",wxString::FromUTF8(e.what()));}
+    }else
     {
         std::string raw = loadExtracted(commonDirs, "RESEARCH.DEF");
         if (raw.empty()) raw = loadArchiveMember(L"COMMON.FS", "RESEARCH.DEF");
@@ -14426,7 +14509,16 @@ void StrategicLevelFrame::EnsureResearchLoaded()
     // Prefer the actual source path to another installation's temp directory.
     std::vector<fs::path> campaignDirs = {fs::path(m_level.source_path).parent_path()};
     campaignDirs.insert(campaignDirs.end(), commonDirs.begin(), commonDirs.end());
-    for (const auto& dir : campaignDirs)
+    if(native){
+        try{
+            std::set<int> allFlags;
+            for(int lvl=1;lvl<=kRetailCampaignChapterCount;++lvl){
+                auto flags=NativeResearchFlags(m_spellData,wxString::Format("LEVEL_%02d.DEF",lvl).ToStdString());
+                allFlags.insert(flags.begin(),flags.end());
+            }
+            m_campaignScriptedUnitFlags=std::move(allFlags);m_campaignUnlockScriptsComplete=true;
+        }catch(const std::exception& e){wxLogWarning("Native chapter unlocks: %s",wxString::FromUTF8(e.what()));}
+    }else for (const auto& dir : campaignDirs)
     {
         if (dir.empty() || !fs::is_directory(dir, ec)) continue;
         if (collectFromDirectory(dir))
@@ -14438,7 +14530,7 @@ void StrategicLevelFrame::EnsureResearchLoaded()
 
     // Clean installations usually keep scripts only inside COMMON.FS.
     // Open that archive once and collect all chapter unlocks in one pass.
-    if (!m_campaignUnlockScriptsComplete)
+    if (!native&&!m_campaignUnlockScriptsComplete)
     {
         for (const auto& pth : archiveCandidates(L"COMMON.FS"))
         {
@@ -14510,7 +14602,19 @@ void StrategicLevelFrame::EnsureResearchLoaded()
             else              textById[id].brf = decoded;
         };
 
-    for (const auto& researchDir : researchDirs)
+    if(native){
+        for(const auto* r:m_spellData->NativeProvider()->archive_resources("RESEARCH.FS")){
+            auto fn=sc::native_pak::leaf(r->name);std::smatch m;
+            if(!std::regex_match(fn,m,rxTextFile)||!m[2].matched)continue;
+            std::wstring raw;
+            if(!m_spellData->ReadNativeText("RESEARCH.FS",fn,raw))continue;
+            int id=std::stoi(m[2].str());
+            // Native UTF-8 is decoded once; retain the established wrapping.
+            auto decoded=DecodeCp895Text(wstring2stringCP895(raw));
+            if(sc::native_pak::key(m[3].str())=="INF")textById[id].inf=decoded;
+            else textById[id].brf=decoded;
+        }
+    }else for (const auto& researchDir : researchDirs)
     {
         if (!fs::exists(researchDir, ec) || !fs::is_directory(researchDir, ec)) continue;
         for (auto it = fs::directory_iterator(researchDir, ec); it != fs::directory_iterator(); ++it)
@@ -14524,7 +14628,7 @@ void StrategicLevelFrame::EnsureResearchLoaded()
         if (!textById.empty()) break;
     }
 
-    for (const auto& pth : archiveCandidates(L"RESEARCH.FS"))
+    if(!native)for (const auto& pth : archiveCandidates(L"RESEARCH.FS"))
     {
         if (pth.empty() || !fs::exists(pth, ec) || fs::is_directory(pth, ec)) continue;
         try
@@ -18605,7 +18709,7 @@ void StrategicLevelFrame::LoadPlayerStateFromPreviousLevel()
     {
         namespace fs = std::filesystem;
         fs::path defPath = fs::path(m_level.source_path);
-        m_levelResearchFlags = GetCumulativeResearchFlags(defPath);
+        m_levelResearchFlags = GetCumulativeResearchFlags(defPath,m_spellData);
     }
 
     // Statistics have already been loaded from the exact previous-level save

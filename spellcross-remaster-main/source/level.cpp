@@ -233,8 +233,10 @@ bool LevelLoader::LoadLevelRecords(const std::string& path,const std::vector<Lev
                 // The FIRST is the original command sector; overwriting it
                 // with the final Start(n) made counter-attacks target command.
                 int v = 0;
-                if (parse_int(args[0], v) && out.start_territory < 0)
-                    out.start_territory = v;
+                if(parse_int(args[0],v)){
+                    out.start_territories.push_back(v);
+                    if(out.start_territory<0)out.start_territory=v;
+                }
                 continue;
             }
             if (keyword_equal(cmd, "End") && args.size() >= 1) {

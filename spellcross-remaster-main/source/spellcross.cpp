@@ -1068,6 +1068,18 @@ bool SpellData::LoadCampaignLevel(const std::string& path,LevelData& out,std::st
         });
     }catch(const std::exception& e){if(error)*error=e.what();return false;}
 }
+bool SpellData::ReadNativeText(const std::string& archive,const std::string& name,std::wstring& out) const
+{
+    out.clear();if(!native_provider)return false;
+    try{
+        sc::native_pak::Assets assets(*native_provider);
+        const auto& r=assets.resolve(archive,name);
+        auto s=assets.text(r.id);
+        auto w=wxString::FromUTF8(s.data(),s.size());
+        if(!s.empty()&&w.empty())return false;
+        out=w.ToStdWstring();return true;
+    }catch(const std::exception&){return false;}
+}
 bool SpellData::ReadNativeFrame(const std::string& archive,const std::string& name,
     StrategicOriginalRenderer::IndexedAsset& out) const
 {

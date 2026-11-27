@@ -74,6 +74,18 @@ jobs:
             & cl.exe /nologo /c /std:c++23 /EHsc /MD /utf-8 /D_UNICODE /DUNICODE /D__WXMSW__ /DWXUSINGDLL /DNOMINMAX /D_HAS_STD_BYTE=0 /D_WINSOCKAPI_ /D__WINDOWS_DS__ /D_CRT_SECURE_NO_WARNINGS "/I$source" "/I$include" "/I$setupInclude" (Join-Path $source $file) "/Fo:$object"
             if ($LASTEXITCODE -ne 0) { throw "Engine source compilation failed: $file" }
           }
+      - name: Link complete Spellcross executable
+        shell: pwsh
+        run: |
+          $wxRoot = Join-Path $env:RUNNER_TEMP 'wxwidgets'
+          $project = Join-Path $PWD 'spellcross-remaster-main/source/spellcross_map_editor.vcxproj'
+          $solutionDir = (Split-Path $project) + '\'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $msbuild = & $vswhere -latest -products '*' -find 'MSBuild/Current/Bin/MSBuild.exe' | Select-Object -First 1
+          if (!$msbuild) { throw 'MSBuild not found' }
+          & $msbuild $project /m /t:Build /p:Configuration=Release /p:Platform=x64 "/p:wxwin=$wxRoot\" "/p:SolutionDir=$solutionDir" /p:VcpkgEnabled=false /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Complete game link failed' }
+          if (!(Test-Path 'spellcross-remaster-main/builds/x64/Release/Spellcross.exe')) { throw 'Game EXE missing' }
   legacy-level-regression:
     runs-on: ubuntu-latest
     steps:

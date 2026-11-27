@@ -163,6 +163,7 @@ public:
     // consumers. No original archive bytes or legacy decompression.
     std::wstring NativeCampaignPath(const std::string& filename) const;
     bool LoadCampaignLevel(const std::string& path,LevelData& out,std::string* error=nullptr) const;
+    bool ReadNativeText(const std::string& archive,const std::string& name,std::wstring& text) const;
     bool ReadNativeFrame(const std::string& archive,const std::string& name,
         StrategicOriginalRenderer::IndexedAsset& frame) const;
     bool ReadNativeAdjacency(const std::string& name,std::vector<uint32_t>& out) const;
