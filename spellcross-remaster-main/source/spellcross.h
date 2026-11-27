@@ -126,11 +126,11 @@ struct SpellDataFiles
 {
 	std::wstring data_root;
 	std::wstring cd_root;
-	std::wstring common_fs = nullptr;
+	std::wstring common_fs;
 	std::wstring terrain_t11_fs;
 	std::wstring terrain_pust_fs;
 	std::wstring terrain_devast_fs;
-	std::wstring units_fsu = nullptr;
+	std::wstring units_fsu;
 	std::wstring texts_fs;
 	std::wstring info_fs;
 	std::wstring samples_fs; // optional; empty = silent SFX mode
