@@ -7,6 +7,7 @@
 //=============================================================================
 
 #include "spell_video.h"
+#include "native_pak/provider.hpp"
 #include "other.h"
 #include "LZ_spell.h"
 #include "riff_loader.h"
@@ -83,6 +84,20 @@ SpellVideoResources::SpellVideoResources(std::vector<std::wstring> folders)
 		else
 			delete fs;
 	}
+}
+
+// Index modern movie records only. The actual player must use their MKV
+// payloads, not the legacy FS pointer (which is intentionally null).
+SpellVideoResources::SpellVideoResources(sc::native_pak::Provider& provider)
+{
+    using namespace sc::native_pak;
+    std::set<std::string> names;
+    for(const auto& [id,r]:provider.resources()){
+        if(r.status!="converted"||!r.payload.ends_with("/movie.json"))continue;
+        auto name=leaf(r.name);
+        if(!names.insert(name).second)fail("Ambiguous native movie name: "+name);
+        vid_list.emplace_back(name,nullptr);
+    }
 }
 
 // destructor

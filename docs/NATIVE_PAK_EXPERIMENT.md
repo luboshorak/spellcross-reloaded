@@ -53,3 +53,9 @@ git pull --ff-only origin experiment/native-pak-runtime
 git merge origin/main
 git push origin experiment/native-pak-runtime
 ```
+
+## Native engine integration (in progress)
+
+The native SpellData constructor now assembles typed core resources from a complete CZ/EN PAK dataset. It uses native palettes, indexed graphics, terrain and unit sprites, object/experience tables, sound classes, PCM samples, MIDI, fonts, language tables and narrative text. Native map construction and strategic level interpretation use the existing gameplay code. Project-authored target/gold filter supplements are preconverted into compiled-in indexed data; existing project-only FSA and auxiliary fonts remain explicit application resources, not retail archive fallback.
+
+This constructor is not yet exposed by the normal startup wizard: UI consumers still need native resource routing, native MKV playback, INFO art, strategic save/load and mission dispatch wiring. The v1 atlas does not carry the original terrain editor land_type byte; native terrain currently sets it to zero while tactical flags come from the existing project context. Do not claim editor parity or full campaign acceptance. Windows engine-source CI compiles individual translation units but does not link or play a complete game. No changes to main are authorized.

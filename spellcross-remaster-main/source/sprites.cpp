@@ -12,6 +12,7 @@
 #include "sprites.h"
 #include "native_pak/audio.hpp"
 #include "native_pak/fsu.hpp"
+#include "native_pak/aux_terrain.hpp"
 #include <memory>
 #include "flat_tile_rotation.h"
 #include "other.h"
@@ -1959,6 +1960,15 @@ int Terrain::LoadNative(sc::native_pak::Provider& provider,const std::string& ar
         f.clear();if(status_item)status_item(full);
     }
     if(sprites.empty())fail("Native terrain contains no sprites");
+    // Match the explicit project supplements from the original terrain loader.
+    if(!GetSprite("TARGET")){
+        auto s=make_sprite(target_tile(),"TARGET");s->SetIndex(static_cast<int>(sprites.size()));
+        sprites.push_back(s.get());s.release();
+    }
+    if(key(archive)=="T11.FS"){
+        auto gold=Bytes(std::begin(aux_gold_filter),std::end(aux_gold_filter));
+        filter.AddFilter(gold.data(),"goldpal.pal");
+    }
     LinkDestructibleClasses(gres,L2);return 0;
 }
 

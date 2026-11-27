@@ -16,6 +16,8 @@
 #include "map.h"
 #include "native_pak/campaign.hpp"
 #include "native_pak/fsu.hpp"
+#include "native_pak/engine_font.hpp"
+#include "native_pak/units.hpp"
 #include <memory>
 
 #include <fstream>
@@ -522,7 +524,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	try{
 		common_fs = new FSarchive(common_path,FSarchive::Options::DELZ_ALL);
 	}catch(const runtime_error& error){
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Loading COMMON.FS archive failed (%s)!",error.what()));
@@ -533,7 +535,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		status_list("Exporting COMMON.FS to temp cache...");
 	if(common_fs->DumpToFolder(temp_root, true, true, true))
 	{
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - export failed!");
 		throw runtime_error("Caching COMMON.FS contents to temp folder failed!");
@@ -545,7 +547,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	try{
 		sounds = new SpellSounds(common_fs,files.samples_fs,16,status_list,status_item);
 	}catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Loading sound samples filed (%s)!",error.what()));
@@ -558,7 +560,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		midi = new SpellMIDI(files.music_fs,status_list,status_item);
 	}
 	catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Loading MIDI files (%s)!",error.what()));
@@ -570,7 +572,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	try{
 		L2_classes = new SpellL2classes(common_fs,sounds,status_list,status_item);
 	}catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Loading destructible object classes failed (%s)!",error.what()));
@@ -583,7 +585,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		string bonus_def = common_fs->GetFile("BONUSES.DEF");
 		unit_bonuses = new UnitBonuses(bonus_def);
 	}catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Loading unit bonuses failed (%s)!",error.what()));
@@ -594,7 +596,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		status_list("Loading palette files...");
 	if(common_fs->GetFile("UNITS.PAL",&data,&size) || size != 96*3)
 	{
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - missing UNITS.PAL!");
 		throw runtime_error("UNITS.PAL not found in COMMON.FS!");
@@ -603,7 +605,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	// load SYSTEM.PAL palette chunk for maps
 	if(common_fs->GetFile("SYSTEM.PAL",&data,&size) || size != 32*3)
 	{
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - missing SYSTEM.PAL!");
 		throw runtime_error("SYSTEM.PAL not found in COMMON.FS!");
@@ -639,7 +641,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	// load CURSOR.PAL palette chunk for maps - ###todo: not sure where to place this
 	/*if(common_fs->GetFile("CURSOR.PAL",&data,&size) || size != 6*3)
 	{
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - missing CURSOR.PAL!");
 		throw runtime_error("CURSOR.PAL not found in COMMON.FS!");
@@ -651,7 +653,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		status_list("Loading common graphics resources...");
 	if(LoadAuxGraphics(common_fs,status_item))
 	{
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error("Loading common graphics resources failed!");
@@ -677,7 +679,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		try{
 			terrain_fs = new FSarchive(path);
 		}catch(const runtime_error& error) {
-			this->~SpellData();
+			Release();
 			if(status_list)
 				status_list("   - failed!");
 			throw runtime_error(string_format("Loading \"%ls\" archive failed (%s)!",path,error.what()));
@@ -696,7 +698,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 			status_list("   - caching terrain data to temp...");
 		if(terrain_fs->DumpToFolder(temp_root, true, true, true))
 		{
-			this->~SpellData();
+			Release();
 			if(status_list)
 				status_list("   - export failed!");
 			throw runtime_error(string_format("Caching terrain archive ''%s'' failed!",name.c_str()));
@@ -706,7 +708,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		Terrain* new_terrain = new Terrain();
 		if(new_terrain->Load(terrain_fs, map_pal, &gres, L2_classes, status_item))
 		{
-			this->~SpellData();
+			Release();
 			if(status_list)
 				status_list(" - failed!");
 			throw runtime_error(string_format("Loading terrain \"%s\" failed!",name.c_str()));
@@ -728,7 +730,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	try{
 		units_fsu = new FSUarchive(fsu_path, status_item);
 	}catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Loading UNITS.FSU units graphics failed (%s)!",error.what()));
@@ -740,7 +742,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		status_list("Loading units definitions (JEDNOTKY.DEF)...");
 	if(common_fs->GetFile("JEDNOTKY.DEF", &data, &size))
 	{		
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - loading failed!");
 		throw runtime_error("JEDNOTKY.DEF not found in COMMON.FS!");
@@ -748,7 +750,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	try{
 		units = new SpellUnits(data, size, units_fsu, &gres, sounds, unit_bonuses);
 	}catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - decoding failed!");
 		throw runtime_error(string_format("Decoding JEDNOTKY.DEF failed (%s)!",error.what()));
@@ -849,7 +851,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	if(common_fs->GetFile(fontResource,&data,&size))
 	{
 		// failed
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - loading main spellcross font file failed!");
 		throw runtime_error(string_format("Font file %s not found in COMMON.FS!", fontResource));
@@ -857,7 +859,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	try{
 		font = new SpellFont(data, size);
 	}catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Decoding font file failed (%s)!",error.what()));
@@ -877,7 +879,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		texts = new SpellTexts(texts_fs, text_language, sounds);
 	}catch(const runtime_error& error) {
 		delete texts_fs;
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Decoding string tables failed (%s)!",error.what()));
@@ -892,7 +894,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	try{
 		info = new FSarchive(info_path);
 	}catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Decoding INFO.FS failed (%s)!",error.what()));
@@ -904,7 +906,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		status_list("Loading special tiles (selection, etc.)...");
 	if(GenerateSpecialTiles())
 	{
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error("Loading special selection tiles failed!");
@@ -952,7 +954,7 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 		videos = new SpellVideoResources(vid_paths);
 	}
 	catch(const runtime_error& error) {
-		this->~SpellData();
+		Release();
 		if(status_list)
 			status_list(" - failed!");
 		throw runtime_error(string_format("Loading video resources from MOVIE.FS and SPEAKER.FS failed (%s)!",error.what()));
@@ -960,8 +962,109 @@ SpellData::SpellData(const SpellDataFiles& files,wstring& spec_path,std::functio
 	
 }
 
+// Native core bootstrapping. This path never opens retail FS/FSU files.
+SpellData::SpellData(const std::wstring& pak_directory,const std::wstring& spec_path,
+    std::function<void(std::string)> status_list,std::function<void(std::string)> status_item)
+    : native_provider(std::make_unique<sc::native_pak::Provider>(std::filesystem::path(pak_directory)))
+{
+    using namespace sc::native_pak;
+    auto& p=*native_provider;
+    if(p.partial())fail("A complete PAK dataset is required for the native game");
+    if(p.edition()!="cz"&&p.edition()!="en")fail("Native runtime currently accepts CZ and EN datasets");
+    text_language=p.edition()=="en"?SpellLang::ENG:SpellLang::CZE;
+    data_path=spell_data_root=pak_directory;cd_data_path.clear();
+    std::memset(map_pal,0,sizeof(map_pal));std::memset(strategy_pal,0,sizeof(strategy_pal));
+    Assets assets(p);
+    auto step=[&](const char* name){if(status_list)status_list(name);};
+    auto common=[&](const std::string& name)->const Resource&{return assets.resolve("COMMON.FS",name);};
+    auto palette=[&](const char* name,uint8_t* dest,std::size_t count){
+        auto bytes=p.payload(common(name).id,count);
+        if(bytes.size()!=count)fail(std::string("Native palette size mismatch: ")+name);
+        std::memcpy(dest,bytes.data(),count);
+    };
+    try{
+        step("Loading native palette banks");
+        palette("UNITS.PAL",&map_pal[128][0],96*3);palette("SYSTEM.PAL",&map_pal[224][0],32*3);
+        palette("STRATEGY.PAL",&strategy_pal[0][0],256*3);
+        palette("_SHARED1.PAL",&strategy_pal[0][0],128*3);
+        palette("BIG_MAP.PAL",&strategy_pal[192][0],64*3);
+        step("Loading native sounds and music");
+        sounds=new SpellSounds(p,16,status_item);midi=new SpellMIDI(p,status_item);
+        step("Loading native object classes and bonuses");
+        L2_classes=new SpellL2classes(p,sounds,SpellLanguageExtension(text_language));
+        SpellDEF bonus_def(decode_script(parse_bytes(p.payload(common("BONUSES.DEF").id))));
+        unit_bonuses=new UnitBonuses(bonus_def);
+        step("Loading native tactical graphics");
+        if(LoadNativeAuxGraphics(p,status_item))fail("Native auxiliary graphics failed");
+        step("Loading native terrain");
+        for(const auto* archive:{"T11.FS","PUST.FS","DEVAST.FS"}){
+            auto t=std::make_unique<Terrain>();
+            if(t->LoadNative(p,archive,map_pal,&gres,L2_classes,status_item))fail("Native terrain failed");
+            terrain.push_back(t.get());t.release();
+        }
+        step("Loading native unit sprites");
+        std::optional<J> context;
+        if(auto r=p.optional_leaf("UNITS.FSA"))
+            context=assets.document(r->id,"spellcross-fsu-context");
+        units_fsu=new FSUarchive(p,context?&*context:nullptr,status_item);
+        if(!context){
+            // Project-supplied auxiliary coordinates, not retail game data.
+            auto path=(std::filesystem::path(spec_path)/"units.fsa").wstring();
+            if(units_fsu->LoadAuxData(path))fail("Native unit fire origins require project units.fsa or PAK context");
+        }
+        step("Loading native unit definitions");
+        units=new SpellUnits(assets.document(common("JEDNOTKY.DEF").id,"spellcross-units"),units_fsu,&gres,sounds,unit_bonuses);
+        if(units->IsEnglish()!=(text_language==SpellLang::ENG))fail("Native edition and unit layout mismatch");
+        step("Loading native language tables");
+        for(const auto* stem:{"BIG_MAP","BUTTONS","DISPLAY","HODNOSTI","INFOTEXT","MESIACE","MOSTY","MURY","OTHER","RESEARCH","SELTAB","SPECOBJ","UNITS","UPGRADES"}){
+            auto name=std::string(stem)+SpellLanguageExtension(text_language);
+            auto table=assets.language(common(name).id);
+            std::vector<std::string> lines;
+            for(const auto& text:table.entries){
+                auto wide=wxString::FromUTF8(text.data(),text.size());
+                if(!text.empty()&&wide.empty())fail("Invalid native language table UTF-8");
+                lines.push_back(wstring2stringCP895(wide.ToStdWstring()));
+            }
+            original_language_tables.emplace(stem,std::move(lines));
+        }
+        if(!ApplyOriginalUnitNames(units,original_language_tables.at("UNITS")))fail("Native unit names do not match definitions");
+        if(original_language_tables.at("HODNOSTI").size()!=18)fail("Invalid native rank table");
+        step("Loading native font and mission text");
+        font=make_engine_font(assets,common(SpellMainFontResource(text_language)).id).release();
+        // These two fonts are supplemental project-authored data, not retail
+        // archives. Retain the same optional glyph extensions as the legacy UI.
+        try{font7=new SpellFont((std::filesystem::path(spec_path)/"font_spellcross_7pix.fnt").wstring());}
+        catch(const std::exception&){font7=nullptr;}
+        try{SpellFont extra((std::filesystem::path(spec_path)/"font_spellcross_14pix.fnt").wstring());font->Merge(extra);}
+        catch(const std::exception&){}
+        texts=new SpellTexts(p,text_language,sounds);
+        for(auto* t:terrain){t->font=font;t->font7=font7;}
+        if(GenerateSpecialTiles())fail("Native special tiles failed");
+        // Index native movies; actual MKV playback and INFO consumers still
+        // require migration before exposing the gameplay startup mode.
+        videos=new SpellVideoResources(p);
+        step("Native core resources initialized");
+    }catch(...){Release();throw;}
+}
+
+bool SpellData::ReadNativeIndexed(const std::string& archive,const std::string& name,std::vector<uint8_t>& out) const
+{
+    out.clear();
+    if(!native_provider)return false;
+    try{
+        using namespace sc::native_pak;
+        Assets assets(*native_provider);const auto& r=assets.resolve(archive,name);
+        if(r.payload.ends_with("/palette.rgb")||r.payload.ends_with("/filter.u8")){
+            out=native_provider->payload(r.id);return true;
+        }
+        if(r.frame_count!=1||r.format=="CLK")return false;
+        out=assets.graphic(r.id).indices;return true;
+    }catch(const std::exception&){return false;}
+}
+
 // cleanup spellcross data
-SpellData::~SpellData()
+SpellData::~SpellData(){Release();}
+void SpellData::Release()
 {
 	// destroy terrain data
 	for(auto & terr : terrain)

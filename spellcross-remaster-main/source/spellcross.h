@@ -13,6 +13,7 @@
 #include <list>
 #include <string>
 #include <unordered_map>
+#include <memory>
 #include "fs_archive.h"
 #include "fsu_archive.h"
 #include "sprites.h"
@@ -125,11 +126,11 @@ struct SpellDataFiles
 {
 	std::wstring data_root;
 	std::wstring cd_root;
-	std::wstring common_fs;
+	std::wstring common_fs = nullptr;
 	std::wstring terrain_t11_fs;
 	std::wstring terrain_pust_fs;
 	std::wstring terrain_devast_fs;
-	std::wstring units_fsu;
+	std::wstring units_fsu = nullptr;
 	std::wstring texts_fs;
 	std::wstring info_fs;
 	std::wstring samples_fs; // optional; empty = silent SFX mode
@@ -143,15 +144,22 @@ private:
 	int LoadAuxGraphics(FSarchive* fs,std::function<void(std::string)> status_item=NULL);
     int LoadNativeAuxGraphics(sc::native_pak::Provider& provider,std::function<void(std::string)> status_item=NULL);
     int FinishAuxGraphics();
+    void Release();
+    std::unique_ptr<sc::native_pak::Provider> native_provider;
 
 	SpellLang text_language = SpellLang::CZE;
 	FSarchive* common_fs;
-	FSarchive* terrain_fs;
+	FSarchive* terrain_fs = nullptr;
 	// Original retail CP895 tables, grouped by COMMON.FS resource stem.
 	std::unordered_map<std::string, std::vector<std::string>> original_language_tables;
 
 public:
 	FSarchive* GetCommonFS() { return common_fs; }
+    bool IsNativePak() const { return bool(native_provider); }
+    sc::native_pak::Provider* NativeProvider() const { return native_provider.get(); }
+    // Read modern indexed image or palette/filter bytes for existing UI
+    // consumers. No original archive bytes or legacy decompression.
+    bool ReadNativeIndexed(const std::string& archive,const std::string& name,std::vector<uint8_t>& out) const;
 	SpellLang GetTextLanguage() const { return text_language; }
 	std::string GetOriginalText(const char* resource_stem, size_t index) const;
 	// data paths
@@ -169,35 +177,40 @@ public:
 	// units graphics (FSU)
 	FSUarchive *units_fsu;
 	// units
-	SpellUnits* units;
+	SpellUnits* units = nullptr;
 	// palettes
 	uint8_t map_pal[256][3]; /* map environment common pal (index: 128 - 255) */
 	uint8_t strategy_pal[256][3]; /* strategic screens and VM_* resources */
 	// fonts
-	SpellFont* font;
-	SpellFont* font7;
+	SpellFont* font = nullptr;
+	SpellFont* font7 = nullptr;
 	// generic graphics
 	SpellGraphics gres;
 	// last path
 	wstring spell_data_root;
 	// info.fs
-	FSarchive* info;
+	FSarchive* info = nullptr;
 	// sound stuff
-	SpellSounds* sounds;
+	SpellSounds* sounds = nullptr;
 	// sound stuff
-	SpellMIDI* midi;
+	SpellMIDI* midi = nullptr;
 	// texts.fs
-	SpellTexts* texts;
+	SpellTexts* texts = nullptr;
 	// L2 object class parameters
-	SpellL2classes *L2_classes;
+	SpellL2classes *L2_classes = nullptr;
 	// unit bonuses (BONUSES.DEF)
-	UnitBonuses *unit_bonuses;
+	UnitBonuses *unit_bonuses = nullptr;
 	// videos
-	SpellVideoResources *videos;
+	SpellVideoResources *videos = nullptr;
 
 
 	SpellData(const SpellDataFiles& files, wstring& spec_path,std::function<void(std::string)> status_list=NULL,std::function<void(std::string)> status_item=NULL);
 	SpellData(wstring& data_path,wstring& cd_data_path,wstring& spec_path,std::function<void(std::string)> status_list=NULL,std::function<void(std::string)> status_item=NULL);
+    // Core native constructor; do not expose in the normal startup wizard
+    // until the remaining UI and video consumers have been switched.
+    SpellData(const std::wstring& pak_directory,const std::wstring& spec_path,
+        std::function<void(std::string)> status_list=nullptr,
+        std::function<void(std::string)> status_item=nullptr);
 	~SpellData();	
 	Terrain* GetTerrain(const char* name);
 	Terrain* GetTerrain(int index);

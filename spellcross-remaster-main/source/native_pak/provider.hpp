@@ -206,6 +206,11 @@ public:
     bool partial()const{return partial_;}
     std::size_t record_count()const{return records_.size();}
     std::size_t group_count()const{return groups_.size();}
+    const std::map<std::string,Resource>& resources()const{return records_;}
+    const Resource* optional_leaf(const std::string& name)const{
+        auto i=leaves_.find(key(name));if(i==leaves_.end())return nullptr;
+        return &records_.at(unique(i->second,name));
+    }
     const Resource& resource(const std::string& name)const{
         if(auto i=records_.find(name);i!=records_.end())return i->second;
         if(auto i=names_.find(key(name));i!=names_.end())return records_.at(unique(i->second,name));

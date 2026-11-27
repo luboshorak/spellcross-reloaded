@@ -18,6 +18,8 @@ public:
 };
 
 // list of all found spellcross video resources
+namespace sc::native_pak { class Provider; }
+
 class SpellVideoResources
 {
 private:
@@ -28,6 +30,7 @@ private:
 public:
 
     SpellVideoResources(std::vector<std::wstring> folders);
+    explicit SpellVideoResources(sc::native_pak::Provider& provider);
     ~SpellVideoResources();
 
     std::vector<std::string> GetNames(std::string wild="*");
