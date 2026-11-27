@@ -149,13 +149,9 @@ void RunNativeFfmpeg(const std::vector<std::wstring>& args){
     argv.push_back(program.c_str());
     for(const auto& arg:args)argv.push_back(arg.c_str());
     argv.push_back(nullptr);
-    wxArrayString output,errors;
-    auto rc=wxExecute(argv.data(),output,errors,wxEXEC_SYNC);
-    if(rc!=0){
-        std::string msg="Native MKV decoding failed. Install FFmpeg or put it beside Spellcross.";
-        if(!errors.empty())msg+=" "+errors.Last().ToStdString();
-        sc::native_pak::fail(msg);
-    }
+    const auto rc=wxExecute(argv.data(),wxEXEC_SYNC);
+    if(rc!=0)
+        sc::native_pak::fail("Native MKV decoding failed (exit "+std::to_string(rc)+"). Install FFmpeg or put it beside Spellcross.");
 }
 }
 SpellVideo::SpellVideo(sc::native_pak::Provider& provider,const std::string& requested)
