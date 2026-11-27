@@ -334,14 +334,18 @@ private:
 
 };
 
+namespace sc::native_pak { struct J; }
+
 class SpellUnits
 {
 private:
 	int is_eng;
 	vector<SpellUnitRec*> units;
+	void LinkResources(SpellUnitRec* unit,FSUarchive* fsu,SpellGraphics* graphics,SpellSounds* sounds,UnitBonuses* bonuses);
 
 public:	
 	SpellUnits(uint8_t* data, int dlen, FSUarchive *fsu, SpellGraphics *graphics,SpellSounds* sounds,UnitBonuses *bonuses);
+	SpellUnits(const sc::native_pak::J& definitions,FSUarchive* fsu,SpellGraphics* graphics,SpellSounds* sounds,UnitBonuses* bonuses);
 	~SpellUnits();
 	int Count();
 	SpellUnitRec* GetUnit(int uid);

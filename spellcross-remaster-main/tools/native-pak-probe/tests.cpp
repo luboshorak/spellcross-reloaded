@@ -1,4 +1,5 @@
 #include "../../source/native_pak/engine_campaign.hpp"
+#include "../../source/native_pak/units.hpp"
 #include <wx/init.h>
 #include <chrono>
 #include <iostream>
@@ -38,6 +39,63 @@ static constexpr auto pack_manifest=R"({"schema":"spellcross-pak","version":1,"c
 {"id":"DATA/OTHER.FS::TEST.TXT#1","name":"DATA/OTHER.FS::TEST.TXT","format":"TXT","status":"failed"}],
 "graphics":["graphics/0/frames.json"],"palettes":[{"rgb":"palettes/0.rgb","known":"palettes/0.known"}]})";
 static constexpr auto atlas=R"({"schema":"spellcross-atlas","version":1,"group":"DATA/COMMON.FS::MENU","pages":[{"indices":"graphics/0/page-0-indices.png","opacity":"graphics/0/page-0-opacity.png"}],"frames":[{"id":"DATA/COMMON.FS::MAINMENU.LZ#1","frame":0,"page":0,"rect":[0,0,2,2],"origin":[-3,4],"palette":0,"shadow_index":253,"opaque_zero_display_index":254,"trailing_bytes":0}]})";
+struct UnitFixture {
+    char name[28]{};
+    char info[28]{};
+    char gra[28]{};
+    char grb[28]{};
+    char icon[28]{};
+    char pnm_light_hit_name[28]{};
+    char anim_atack_light_name[28]{};
+    char pnm_light_shot_name[28]{};
+    char pnm_armored_hit_name[28]{};
+    char anim_atack_armor_name[28]{};
+    char pnm_armored_shot_name[28]{};
+    char pnm_air_hit_name[28]{};
+    char anim_atack_air_name[28]{};
+    char pnm_air_shot_name[28]{};
+    char projetile_name[28]{};
+    char action_fsu_name[28]{};
+    char die_anim_name[28]{};
+    int utype{};
+    int ap{};
+    int apfw{};
+    int apw{};
+    int cnt{};
+    int attack_light{};
+    int attack_armored{};
+    int attack_air{};
+    int attack_objects{};
+    int defence{};
+    int res2{};
+    int res3{};
+    int fire_range{};
+    int fire_flags{};
+    int aps{};
+    int anim_atack_light_frames{};
+    int anim_atack_armor_frames{};
+    int anim_atack_air_frames{};
+    int projectile_visible{};
+    int action_id{};
+    int action_fsu_frames{};
+    int action_ap{};
+    int sdir{};
+    int vis{};
+    int dig_turns{};
+    int die_anim_frames{};
+    int die_action_id{};
+    int smov{};
+    int slig{};
+    int sarm{};
+    int sair{};
+    int shit{};
+    int snd_action_id{};
+    int ssel{};
+    int exp_min{};
+    int exp_max{};
+    int type_id{},res1{},sind{},action_params[3]{},die_action_params[3]{},exp_limits[12]{};
+    int CalcExperiencePts(int level){return exp_min+level;}
+};
 int main(){
     try{
         wxInitializer init;
@@ -123,6 +181,13 @@ int main(){
         auto map=decode_map(map_json,Bytes{0,32,0,0},Bytes{1,7,0,0});
         require(map.cells.size()==2&&map.cells[0].elevation==2&&map.cells[0].object==1&&map.cells[0].flags==7&&map.pnm.placements[0].x_offset==-3&&map.loop_sounds.placements[0].tile==1&&map.player_posts[0]==1,"eight map layers");
         rejects([&]{decode_map(map_json,Bytes{1,0,0,0},Bytes{1,7,0,0});},"invalid map ground index accepted");
+        auto unit_json=parse(R"SC({"schema":"spellcross-units","version":1,"record_size":207,"units":[{"id":0,"name":"Tank","info":"","graphics":"","aux_graphics":"","icon":"","light_hit":"","light_animation":"","light_shot":"","armor_hit":"","armor_animation":"","armor_shot":"","air_hit":"","air_animation":"","air_shot":"","projectile":"","action_animation":"","die_animation":"","class_flags":1,"ap":1,"forest_move_ap":1,"move_ap":1,"count":1,"attack_light":1,"attack_armored":1,"attack_air":1,"attack_objects":1,"defence":1,"res2":1,"initiative":17,"fire_range":1,"fire_flags":256,"shot_ap":1,"light_frames":1,"armor_frames":1,"air_frames":1,"projectile_visible":1,"action_id":1,"action_frames":1,"action_ap":1,"direct_sight":1,"visible_count":1,"dig_turns":1,"die_frames":1,"die_action_id":1,"sound_move":1,"sound_light":1,"sound_armored":1,"sound_air":1,"sound_hit":1,"sound_action":1,"sound_selection":1,"exp_min":100,"exp_max":1,"action_params":[1,2,3],"die_action_params":[4,5,6]}]})SC");
+        UnitFixture u;
+        require(unit_edition(unit_json),"unit edition");
+        assign_unit(u,unit_json.at("units").arr().front(),0,true);
+        require(std::string(u.name)=="Tank"&&u.res3==17&&u.fire_flags==256&&u.die_action_params[2]==6&&u.exp_limits[11]==111,"native unit definition fields");
+        rejects([&]{assign_unit(u,unit_json.at("units").arr().front(),0,false);},"CZ unit accepted EN fire flags");
+        require(unit_source_bytes("\xc3\xa9")==std::string(1,char(0xe9)),"unit source bytes");
         require(crc32(Bytes({'1','2','3','4','5','6','7','8','9'}))==0xcbf43926u,"CRC implementation");
         rejects([]{parse(R"({"x":1,"x":2})");},"duplicate JSON key accepted");
         std::cout<<"Native PAK lookup and indexed graphics passed without original data\n";

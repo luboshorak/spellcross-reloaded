@@ -11,6 +11,8 @@
 #define _HAS_STD_BYTE 0
 
 #include "spell_units.h"
+#include "native_pak/units.hpp"
+#include <memory>
 #include "unit_health_display.h"
 #include "destructible_health.h"
 #include "spellcross.h"
@@ -29,6 +31,11 @@ SpellUnitRec::SpellUnitRec()
 {	
 	gr_base = NULL;
 	gr_aux = NULL;
+	gr_attack_light = gr_attack_armor = gr_attack_air = gr_action = gr_die = nullptr;
+	icon_glyph = nullptr;
+	action_button_glyph_b = nullptr;
+	sound_action = sound_level_up = nullptr;
+	bonuses = nullptr;
 	projectile = NULL;
 	pnm_light_hit = NULL;
 	pnm_armored_hit = NULL;
@@ -337,80 +344,103 @@ SpellUnits::SpellUnits(uint8_t* data, int dlen, FSUarchive *fsu, SpellGraphics *
 		for(int e = 0; e < 12; e++)
 			unit->exp_limits[e] = unit->CalcExperiencePts(e);
 
-		// --- assign FSU resources:
-		if(fsu)
-		{
-			unit->gr_base = fsu->GetResource(unit->gra);
-			unit->gr_aux = fsu->GetResource(unit->grb);
-			unit->gr_attack_light = fsu->GetResource(unit->anim_atack_light_name);
-			unit->gr_attack_armor = fsu->GetResource(unit->anim_atack_armor_name);
-			unit->gr_attack_air = fsu->GetResource(unit->anim_atack_air_name);
-			unit->gr_action = fsu->GetResource(unit->action_fsu_name);
-			unit->gr_die = fsu->GetResource(unit->die_anim_name);
-		}
-
-		// --- assign aux graphics
-		if(graphics)
-		{
-			// find unit icon
-			unit->icon_glyph = graphics->GetResource(unit->icon);
-
-			// find unit projectile
-			unit->projectile = graphics->GetProjectile(unit->projetile_name);
-
-			// find shot/hit PNMs
-			unit->pnm_air_hit = graphics->GetPNM(unit->pnm_air_hit_name);
-			unit->pnm_air_shot = graphics->GetPNM(unit->pnm_air_shot_name);
-			unit->pnm_light_hit = graphics->GetPNM(unit->pnm_light_hit_name);
-			unit->pnm_light_shot = graphics->GetPNM(unit->pnm_light_shot_name);
-			unit->pnm_armored_hit = graphics->GetPNM(unit->pnm_armored_hit_name);
-			unit->pnm_armored_shot = graphics->GetPNM(unit->pnm_armored_shot_name);
-
-			// assign special action button glyph
-			if(unit->isActionTurretUp())
-				unit->action_button_glyph = graphics->wm_glyph_up;
-			else if(unit->isActionTurretDown())
-				unit->action_button_glyph = graphics->wm_glyph_down;
-			else if(unit->isActionToggleRadar())
-			{
-				unit->action_button_glyph = graphics->wm_glyph_radar_up;
-				unit->action_button_glyph_b = graphics->wm_glyph_radar_down;
-			}
-			else if(unit->isActionTakeOff())
-				unit->action_button_glyph = graphics->wm_glyph_up;
-			else if(unit->isActionLand())
-				unit->action_button_glyph = graphics->wm_glyph_down;
-			else if(unit->isActionToFortres())
-				unit->action_button_glyph = graphics->wm_glyph_down;
-			else if(unit->isActionFromFortres())
-				unit->action_button_glyph = graphics->wm_glyph_up;
-			else if(unit->isActionCreateUnit())
-				unit->action_button_glyph = graphics->wm_glyph_place_unit;
-
-
-		}
-
-		// --- assign sounds
-		if(sounds)
-		{
-			unit->sound_move = sounds->GetMoveClass(unit->smov);
-			unit->sound_report = sounds->GetReportClass(unit->ssel);
-			unit->sound_contact = sounds->GetContactClass(unit->ssel);
-			unit->sound_hit = sounds->GetHitClass(unit->shit);
-			unit->sound_die = sounds->GetDieClass(unit->shit);
-			unit->sound_attack_light = sounds->GetAttackClass(unit->slig);
-			unit->sound_attack_armor = sounds->GetAttackClass(unit->sarm);
-			unit->sound_attack_air = sounds->GetAttackClass(unit->sair);			
-			unit->sound_action = sounds->GetSpecialClass(unit->snd_action_id);
-			unit->sound_level_up = sounds->aux_samples.unit_level_up;
-		}
-
-		// store BONUSES.DEF link
-		unit->bonuses = bonuses;
+		LinkResources(unit,fsu,graphics,sounds,bonuses);
 
 		// store unit to list
 		units.push_back(unit);
 	}
+
+}
+
+SpellUnits::SpellUnits(const sc::native_pak::J& definitions,FSUarchive* fsu,SpellGraphics* graphics,SpellSounds* sounds,UnitBonuses* bonuses)
+{
+    is_eng=sc::native_pak::unit_edition(definitions);
+    const auto& rows=definitions.at("units").arr();
+    std::vector<std::unique_ptr<SpellUnitRec>> pending;
+    pending.reserve(rows.size());
+    for(const auto& row:rows){
+        auto unit=std::make_unique<SpellUnitRec>();
+        sc::native_pak::assign_unit(*unit,row,static_cast<unsigned>(pending.size()),is_eng!=0);
+        LinkResources(unit.get(),fsu,graphics,sounds,bonuses);
+        pending.push_back(std::move(unit));
+    }
+    units.reserve(pending.size());
+    for(auto& unit:pending)units.push_back(unit.release());
+}
+
+void SpellUnits::LinkResources(SpellUnitRec* unit,FSUarchive* fsu,SpellGraphics* graphics,SpellSounds* sounds,UnitBonuses* bonuses)
+{
+	// --- assign FSU resources:
+	if(fsu)
+	{
+		unit->gr_base = fsu->GetResource(unit->gra);
+		unit->gr_aux = fsu->GetResource(unit->grb);
+		unit->gr_attack_light = fsu->GetResource(unit->anim_atack_light_name);
+		unit->gr_attack_armor = fsu->GetResource(unit->anim_atack_armor_name);
+		unit->gr_attack_air = fsu->GetResource(unit->anim_atack_air_name);
+		unit->gr_action = fsu->GetResource(unit->action_fsu_name);
+		unit->gr_die = fsu->GetResource(unit->die_anim_name);
+	}
+
+	// --- assign aux graphics
+	if(graphics)
+	{
+		// find unit icon
+		unit->icon_glyph = graphics->GetResource(unit->icon);
+
+		// find unit projectile
+		unit->projectile = graphics->GetProjectile(unit->projetile_name);
+
+		// find shot/hit PNMs
+		unit->pnm_air_hit = graphics->GetPNM(unit->pnm_air_hit_name);
+		unit->pnm_air_shot = graphics->GetPNM(unit->pnm_air_shot_name);
+		unit->pnm_light_hit = graphics->GetPNM(unit->pnm_light_hit_name);
+		unit->pnm_light_shot = graphics->GetPNM(unit->pnm_light_shot_name);
+		unit->pnm_armored_hit = graphics->GetPNM(unit->pnm_armored_hit_name);
+		unit->pnm_armored_shot = graphics->GetPNM(unit->pnm_armored_shot_name);
+
+		// assign special action button glyph
+		if(unit->isActionTurretUp())
+			unit->action_button_glyph = graphics->wm_glyph_up;
+		else if(unit->isActionTurretDown())
+			unit->action_button_glyph = graphics->wm_glyph_down;
+		else if(unit->isActionToggleRadar())
+		{
+			unit->action_button_glyph = graphics->wm_glyph_radar_up;
+			unit->action_button_glyph_b = graphics->wm_glyph_radar_down;
+		}
+		else if(unit->isActionTakeOff())
+			unit->action_button_glyph = graphics->wm_glyph_up;
+		else if(unit->isActionLand())
+			unit->action_button_glyph = graphics->wm_glyph_down;
+		else if(unit->isActionToFortres())
+			unit->action_button_glyph = graphics->wm_glyph_down;
+		else if(unit->isActionFromFortres())
+			unit->action_button_glyph = graphics->wm_glyph_up;
+		else if(unit->isActionCreateUnit())
+			unit->action_button_glyph = graphics->wm_glyph_place_unit;
+
+
+	}
+
+	// --- assign sounds
+	if(sounds)
+	{
+		unit->sound_move = sounds->GetMoveClass(unit->smov);
+		unit->sound_report = sounds->GetReportClass(unit->ssel);
+		unit->sound_contact = sounds->GetContactClass(unit->ssel);
+		unit->sound_hit = sounds->GetHitClass(unit->shit);
+		unit->sound_die = sounds->GetDieClass(unit->shit);
+		unit->sound_attack_light = sounds->GetAttackClass(unit->slig);
+		unit->sound_attack_armor = sounds->GetAttackClass(unit->sarm);
+		unit->sound_attack_air = sounds->GetAttackClass(unit->sair);			
+		unit->sound_action = sounds->GetSpecialClass(unit->snd_action_id);
+		unit->sound_level_up = sounds->aux_samples.unit_level_up;
+	}
+
+	// store BONUSES.DEF link
+	unit->bonuses = bonuses;
+
 
 }
 
