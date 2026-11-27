@@ -186,7 +186,18 @@ struct LevelData {
     std::string next_level_def;
 };
 
+// Ordered source-independent campaign syntax. Legacy DEF parsing and modern
+// JSON parsing both enter the same gameplay interpretation below.
+struct LevelSyntaxRecord {
+    enum class Kind { End, Block, Call, Unknown };
+    Kind kind = Kind::Unknown;
+    int line = 0;
+    std::string source, name;
+    std::vector<std::string> args;
+};
+
 class LevelLoader {
 public:
     bool LoadLevelDef(const std::string& path, LevelData& out, std::string* err = nullptr);
+    bool LoadLevelRecords(const std::string& logical_path,const std::vector<LevelSyntaxRecord>& records,LevelData& out);
 };

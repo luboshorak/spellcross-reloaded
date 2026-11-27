@@ -1,4 +1,4 @@
-#include "../../source/native_pak/campaign.hpp"
+#include "../../source/native_pak/engine_campaign.hpp"
 #include <wx/init.h>
 #include <chrono>
 #include <iostream>
@@ -105,6 +105,20 @@ int main(){
         }
         auto script=decode_script(parse(R"SC({"schema":"spellcross-script","version":1,"source_encoding":"UTF-8","records":[{"line":1,"depth":0,"kind":"block","source":"MissionData {","name":"MissionData","keyword":"missiondata","args":[]},{"line":2,"depth":1,"kind":"call","source":"MissionMap(M01_01)","name":"MissionMap","keyword":"missionmap","args":["M01_01"]},{"line":3,"depth":1,"kind":"call","source":"MissionMap(M01_02)","name":"MissionMap","keyword":"missionmap","args":["M01_02"]},{"line":4,"depth":0,"kind":"end","source":"}"}]})SC"));
         require(script.size()==4&&script[1].args[0]=="M01_01"&&script[2].args[0]=="M01_02","ordered script");
+        LevelLoader level_loader;LevelData level;
+        using Kind=LevelSyntaxRecord::Kind;
+        require(level_loader.LoadLevelRecords("LEVEL_02.DEF",{
+            {Kind::Block,1,"LevelInit {","LevelInit",{}},
+            {Kind::Call,2,"Start(2)","Start",{"2"}},
+            {Kind::Call,3,"Start(3)","Start",{"3"}},
+            {Kind::Call,4,"Territory(2,none,m02_01,mus00)","Territory",{"2","none","m02_01","mus00"}},
+            {Kind::Call,5,"DefineStrategicPoints(2,30,4)","DefineStrategicPoints",{"2","30","4"}},
+            {Kind::End,6,"}","",{}},
+            {Kind::Block,7,"Mission(M02_01A) {","Mission",{"M02_01A"}},
+            {Kind::Call,8,"Time(6)","Time",{"6"}},
+            {Kind::End,9,"}","",{}}
+        },level),"engine level syntax");
+        require(level.start_territory==2&&level.territories.size()==1&&level.territories[0].strategic_points_total==30&&level.territories[0].timeout_turns==6&&level.next_level_def=="LEVEL_03.DEF","shared strategic gameplay interpretation");
         auto map_json=parse(R"({"schema":"spellcross-tactical-map","version":1,"width":2,"height":1,"terrain":"T11","ground":{"entry":"ground.u16le","sprites":["PLA00"],"index_mask":4095,"elevation_shift":12},"objects":{"entry":"objects.u8x2","sprites":["TREE"],"zero_means_empty":true,"index_base":1},"anm":{"resources":["A"],"placements":[{"resource":0,"frame_offset":1,"frame_limit":3,"x":1,"y":0}]},"pnm":{"resources":["P"],"placements":[{"resource":0,"frame_offset":0,"frame_limit":1,"x":0,"y":0,"x_offset":-3,"y_offset":4}]},"enemy_counterattack_posts":[0],"player_counterattack_posts":[1],"loop_sounds":{"resources":["S"],"placements":[{"tile":1,"resource":0}]},"random_sounds":{"resources":[],"placements":[]}})");
         auto map=decode_map(map_json,Bytes{0,32,0,0},Bytes{1,7,0,0});
         require(map.cells.size()==2&&map.cells[0].elevation==2&&map.cells[0].object==1&&map.cells[0].flags==7&&map.pnm.placements[0].x_offset==-3&&map.loop_sounds.placements[0].tile==1&&map.player_posts[0]==1,"eight map layers");

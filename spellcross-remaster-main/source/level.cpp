@@ -121,6 +121,25 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
         return false;
     }
 
+    std::vector<LevelSyntaxRecord> records;
+    std::string raw;int lineNo=0;
+    while(std::getline(f,raw)){
+        ++lineNo;
+        auto line=trim(strip_comment_semicolon(raw));
+        if(line.empty())continue;
+        LevelSyntaxRecord r;r.line=lineNo;r.source=line;
+        if(line=="}")r.kind=LevelSyntaxRecord::Kind::End;
+        else if(line.find('{')!=std::string::npos&&parse_block_header(line,r.name,r.args))
+            r.kind=LevelSyntaxRecord::Kind::Block;
+        else if(parse_call(line,r.name,r.args))r.kind=LevelSyntaxRecord::Kind::Call;
+        records.push_back(std::move(r));
+    }
+    return LoadLevelRecords(path,records,out);
+}
+
+bool LevelLoader::LoadLevelRecords(const std::string& path,const std::vector<LevelSyntaxRecord>& records,LevelData& out)
+{
+    out=LevelData{};out.source_path=path;
     enum class Ctx { None, LevelInit, Mission, Event };
     Ctx ctx = Ctx::None;
 
@@ -146,20 +165,15 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
         }
         };
 
-    std::string raw;
-    int lineNo = 0;
     // Preserve SetSpecialTerritory even if a mod declares it before Territory().
     std::vector<int> specialTerritoryIds;
 
-    while (std::getline(f, raw)) {
-        lineNo++;
-
-        std::string line = strip_comment_semicolon(raw);
-        line = trim(line);
-        if (line.empty()) continue;
+    for(const auto& record:records){
+        const int lineNo=record.line;
+        const auto& line=record.source;
 
         // konec bloku
-        if (line == "}") {
+        if (record.kind==LevelSyntaxRecord::Kind::End) {
             if (ctx == Ctx::Mission) flush_mission();
             if (ctx == Ctx::Event) flush_event();
             ctx = Ctx::None;
@@ -167,10 +181,10 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
         }
 
         // start bloku?
-        if (line.find('{') != std::string::npos) {
-            std::string bname;
-            std::vector<std::string> hargs;
-            if (parse_block_header(line, bname, hargs)) {
+        if (record.kind==LevelSyntaxRecord::Kind::Block) {
+            const auto& bname=record.name;
+            const auto& hargs=record.args;
+            {
                 if (keyword_equal(bname, "LevelInit")) {
                     ctx = Ctx::LevelInit;
                     continue;
@@ -198,9 +212,9 @@ bool LevelLoader::LoadLevelDef(const std::string& path, LevelData& out, std::str
         }
 
         // uvnitř bloku: řádkové calls
-        std::string cmd;
-        std::vector<std::string> args;
-        if (!parse_call(line, cmd, args)) {
+        const auto& cmd=record.name;
+        const auto& args=record.args;
+        if (record.kind==LevelSyntaxRecord::Kind::Unknown) {
             // neznámý formát řádku
             out.unknown_lines.push_back("L" + std::to_string(lineNo) + ": " + line);
             continue;
