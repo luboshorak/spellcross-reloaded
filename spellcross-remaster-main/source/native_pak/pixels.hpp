@@ -2,6 +2,7 @@
 #include "provider.hpp"
 #include <optional>
 #include <wx/image.h>
+#include <wx/imagpng.h>
 #include <wx/mstream.h>
 
 namespace sc::native_pak {
