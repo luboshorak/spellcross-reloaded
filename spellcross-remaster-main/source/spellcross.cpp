@@ -17,6 +17,7 @@
 #include "native_pak/campaign.hpp"
 #include "native_pak/fsu.hpp"
 #include "native_pak/engine_font.hpp"
+#include "native_pak/engine_campaign.hpp"
 #include "native_pak/units.hpp"
 #include <memory>
 
@@ -1047,6 +1048,38 @@ SpellData::SpellData(const std::wstring& pak_directory,const std::wstring& spec_
     }catch(...){Release();throw;}
 }
 
+std::wstring SpellData::NativeCampaignPath(const std::string& filename) const
+{
+    if(!native_provider)return {};
+    try{
+        const auto& r=native_provider->scoped_resource("COMMON.FS",std::filesystem::path(filename).filename().string());
+        if(r.status!="converted"||(!r.payload.ends_with("/script.json")&&!r.payload.ends_with("/map.json")))return {};
+        // Logical identifier, not a file on disk.
+        return std::filesystem::path(sc::native_pak::leaf(r.name)).wstring();
+    }catch(const std::exception&){return {};}
+}
+bool SpellData::LoadCampaignLevel(const std::string& path,LevelData& out,std::string* error) const
+{
+    if(!native_provider){LevelLoader loader;return loader.LoadLevelDef(path,out,error);}
+    try{
+        const auto& r=native_provider->scoped_resource("COMMON.FS",std::filesystem::path(path).filename().string());
+        return sc::native_pak::load_level(*native_provider,r.id,out,[](const std::string& s){
+            return wstring2stringCP895(wxString::FromUTF8(s.data(),s.size()).ToStdWstring());
+        });
+    }catch(const std::exception& e){if(error)*error=e.what();return false;}
+}
+bool SpellData::ReadNativeMask(const std::string& name,int& width,int& height,std::vector<uint8_t>& out) const
+{
+    width=height=0;out.clear();
+    if(!native_provider)return false;
+    try{
+        auto& r=native_provider->scoped_resource("COMMON.FS",name);
+        if(r.format!="CLK")return false;
+        auto f=sc::native_pak::decode_frame(native_provider->resource_frame(r.id));
+        width=f.width;height=f.height;out=std::move(f.indices);return true;
+    }catch(const std::exception&){return false;}
+}
+
 bool SpellData::ReadNativeIndexed(const std::string& archive,const std::string& name,std::vector<uint8_t>& out) const
 {
     out.clear();
@@ -1088,6 +1121,9 @@ void SpellData::Release()
 	if(info)
 		delete info;
 	info = NULL;
+	// Object class sounds reference the shared channel pool.
+    if(L2_classes)delete L2_classes;
+    L2_classes=nullptr;
 	if(sounds)
 		delete sounds;
 	sounds = NULL;

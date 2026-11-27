@@ -2383,6 +2383,13 @@ int SpellMap::Create(SpellData* spelldata, const char* terr_name, int x, int y)
 // Load MAP from file
 int SpellMap::Load(wstring& path, SpellData* spelldata)
 {
+    if(spelldata&&spelldata->IsNativePak()){
+        try{
+            auto& p=*spelldata->NativeProvider();
+            const auto& r=p.scoped_resource("COMMON.FS",std::filesystem::path(path).filename().string());
+            return LoadNative(p,r.id,spelldata);
+        }catch(const std::exception& e){Close();last_error=e.what();return 1;}
+    }
 	last_error = "";
 
 	// loose old map data
@@ -2958,23 +2965,24 @@ int SpellMap::LoadNative(sc::native_pak::Provider& provider,const std::string& m
         if(!game||!game->sounds||!game->units||!game->texts)
             fail("Native map requires initialized engine resources");
         const auto& mission=provider.resource(mission_id);
-        auto def=std::make_unique<SpellDEF>(decode_script(parse_bytes(provider.payload(mission.id))));
-        std::unique_ptr<SpellDefSection> mission_data(def->GetSection("MissionData"));
-        if(!mission_data||!mission_data->Size())fail("Missing native MissionData");
-        std::string map_name;
-        for(auto* cmd:mission_data->GetData())if(cmd->name=="MissionMap"){
-            if(!map_name.empty()||cmd->parameters->size()!=1)fail("Invalid native MissionMap");
-            map_name=cmd->parameters->front();
+        std::unique_ptr<SpellDEF> def;
+        const sc::native_pak::Resource* map_record=&mission;
+        if(!mission.payload.ends_with("/map.json")){
+            def=std::make_unique<SpellDEF>(decode_script(parse_bytes(provider.payload(mission.id))));
+            std::unique_ptr<SpellDefSection> mission_data(def->GetSection("MissionData"));
+            if(!mission_data||!mission_data->Size())fail("Missing native MissionData");
+            std::string map_name;
+            for(auto* cmd:mission_data->GetData())if(cmd->name=="MissionMap"){
+                if(!map_name.empty()||cmd->parameters->size()!=1)fail("Invalid native MissionMap");
+                map_name=cmd->parameters->front();
+            }
+            if(map_name.empty()||map_name.find_first_of("/\\:")!=std::string::npos)fail("Invalid native mission map name");
+            auto split=mission.name.rfind("::");
+            if(split==std::string::npos)fail("Unscoped native mission record");
+            if(!key(map_name).ends_with(".DTA")&&!key(map_name).ends_with(".MAP"))map_name+=".DTA";
+            map_record=&provider.scoped_resource(mission.name.substr(0,split),map_name);
         }
-        if(map_name.empty()||map_name.find_first_of("/\\:")!=std::string::npos)
-            fail("Invalid native mission map name");
-        // Resolve in the mission's original archive scope. The native
-        // map is stored as map.json plus two independent layer planes.
-        auto split=mission.name.rfind("::");
-        if(split==std::string::npos)fail("Unscoped native mission record");
-        const auto owner=mission.name.substr(0,split);
-        if(!key(map_name).ends_with(".DTA")&&!key(map_name).ends_with(".MAP"))map_name+=".DTA";
-        const auto& map_resource=provider.scoped_resource(owner,map_name);
+        const auto& map_resource=*map_record;
         const auto m=load_map(provider,map_resource.id);
         x_size=static_cast<int>(m.width);y_size=static_cast<int>(m.height);
         std::memset(terrain_name,0,sizeof(terrain_name));
@@ -2985,7 +2993,7 @@ int SpellMap::LoadNative(sc::native_pak::Provider& provider,const std::string& m
         // Logical identifiers for diagnostics and retail navigation rules;
         // these paths are not written to disk by the native loader.
         map_path=std::filesystem::path(leaf(map_resource.name)).wstring();
-        def_path=std::filesystem::path(leaf(mission.name)).wstring();
+        def_path=def?std::filesystem::path(leaf(mission.name)).wstring():std::wstring{};
         m_retail_nav_padding=spellcross_tactical::IsOriginalMissionMapStem(
             std::filesystem::path(map_path).stem().string());
         auto sprite_list=[&](const std::vector<std::string>& names){

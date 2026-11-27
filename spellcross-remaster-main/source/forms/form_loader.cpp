@@ -252,7 +252,12 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
 
 	// try load spellcross data
 	try{
-		spell_data = new SpellData(files,spec_folder,bind(&FormLoader::UpdateList,this,placeholders::_1),bind(&FormLoader::UpdateItem,this,placeholders::_1));
+		if(ini.GetBoolValue("DATA","native_pak",false)){
+            auto pak=ResolveConfiguredPath(ini.GetValue("DATA","native_pak_path",""),config_file,exe_path).wstring();
+            UpdateList("Native PAK mode: "+wstring2string(pak));
+            spell_data=new SpellData(pak,spec_folder,bind(&FormLoader::UpdateList,this,placeholders::_1),bind(&FormLoader::UpdateItem,this,placeholders::_1));
+        }else
+            spell_data = new SpellData(files,spec_folder,bind(&FormLoader::UpdateList,this,placeholders::_1),bind(&FormLoader::UpdateItem,this,placeholders::_1));
 	}catch(const runtime_error& error){
 		UpdateList(std::string(error.what()));
 		LoaderExit(true);
@@ -281,7 +286,7 @@ void FormLoader::Loader(std::wstring config_path,SpellData* &spell_data)
 
 	// try load units.fsu aux metadata (optional)
 	UpdateList("Loading units aux data...");
-	if (spell_data->units_fsu->LoadAuxData(units_aux_data_path))
+	if (!spell_data->IsNativePak() && spell_data->units_fsu->LoadAuxData(units_aux_data_path))
 	{
 		// OPTIONAL: don't kill the whole loader, just continue
 		UpdateList(string_format(" - missing/failed, continuing without aux data (''%ls'')", units_aux_data_path.c_str()));

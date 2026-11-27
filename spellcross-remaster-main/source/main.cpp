@@ -67,6 +67,7 @@
 #include "other.h"
 #include "simpleini.h"
 #include "spellcross.h"
+#include "native_pak/provider.hpp"
 #include "spell_ui_locale.h"
 #include "display_settings.h"
 #include "map.h"
@@ -482,6 +483,12 @@ namespace
         return {};
     }
 
+
+    static std::filesystem::path FindCampaignFile(const SpellData* data,const std::string& filename)
+    {
+        if(data&&data->IsNativePak())return std::filesystem::path(data->NativeCampaignPath(filename));
+        return FindSpellDataFile(data?std::filesystem::path(data->spell_data_root):std::filesystem::path(),filename);
+    }
 
     static std::filesystem::path ResolveStartupConfigPath(const char* value,
         const std::filesystem::path& config_path,
@@ -1127,6 +1134,27 @@ namespace
             return ini.SaveFile(config_path.wstring().c_str()) == SI_OK;
         };
 
+        auto selectNative=[&](const fs::path& path)->bool{
+            try{
+                sc::native_pak::Provider provider(path);
+                if(provider.partial()||(provider.edition()!="cz"&&provider.edition()!="en"))
+                    throw std::runtime_error("Select a complete CZ or EN PAK dataset.");
+                ini.SetValue("DATA","native_pak_path",ConfigPathValue(path,config_path,runtime_root).c_str());
+                ini.SetBoolValue("DATA","native_pak",true,nullptr,true);
+                ini.SetValue("STATE","last_map","");
+                if(!saveNow())throw std::runtime_error("Cannot save PAK configuration.");
+                return true;
+            }catch(const std::exception& e){
+                wxMessageBox(wxString::FromUTF8(e.what()),"Native PAK dataset",wxOK|wxICON_ERROR);return false;
+            }
+        };
+        if(!forceSourceSelection&&ini.GetBoolValue("DATA","native_pak",false)){
+            const auto path=ResolveStartupConfigPath(ini.GetValue("DATA","native_pak_path",""),config_path,executable_dir);
+            if(selectNative(path))return true;
+            // Do not silently use legacy archives after a native failure.
+            return false;
+        }
+
         // Legacy directory config is still accepted and migrated automatically.
         const fs::path legacyData = ResolveStartupConfigPath(ini.GetValue("SPELCROS", "spell_path", ""), config_path, executable_dir);
         const fs::path legacyCd = ResolveStartupConfigPath(ini.GetValue("SPELCROS", "spellcd_path", ""), config_path, executable_dir);
@@ -1414,6 +1442,7 @@ namespace
             for (;;)
             {
                 wxArrayString options;
+                options.Add("Use a native Spellcross PAK dataset (experimental)");
                 options.Add("Select an ISO image file (*.iso) - no mounting needed");
                 options.Add("Use a CD, mounted ISO or extracted ISO folder");
                 options.Add("Use an existing Spellcross DATA folder");
@@ -1422,7 +1451,7 @@ namespace
                 options.Add("Download EN ISO (Spellcross_EN.iso) and import");
 
                 wxSingleChoiceDialog choice(nullptr,
-                    "Spellcross needs files from your original game.\n\n"
+                    "Choose a native PAK dataset or files from your original game.\n\n"
                     "Choose how to locate them. The ISO option opens the image "
                     "directly; you do not need to extract it first.",
                     "Spellcross - game data setup", options);
@@ -1430,7 +1459,15 @@ namespace
                 if (choice.ShowModal() != wxID_OK)
                     return false;
 
-                const int option = choice.GetSelection();
+                if(choice.GetSelection()==0){
+                    wxDirDialog pak(nullptr,"Select the PAK dataset directory (manifest.json and resources.json)",
+                        wxEmptyString,wxDD_DEFAULT_STYLE|wxDD_DIR_MUST_EXIST);
+                    if(pak.ShowModal()!=wxID_OK)continue;
+                    if(selectNative(fs::path(pak.GetPath().ToStdWstring())))return true;
+                    continue;
+                }
+                ini.SetBoolValue("DATA","native_pak",false,nullptr,true);
+                const int option = choice.GetSelection()-1;
                 if (option == 3)
                 {
                     if (!forceSourceSelection)
@@ -1752,7 +1789,7 @@ static std::filesystem::path ResolveStrategicLevelDefForSave(
     if (!savedDef.empty())
     {
         const fs::path exact(savedDef);
-        if (fs::exists(exact, ec) && fs::is_regular_file(exact, ec))
+        if ((!spellData||!spellData->IsNativePak())&&fs::exists(exact, ec) && fs::is_regular_file(exact, ec))
             return exact;
         ec.clear();
 
@@ -1760,7 +1797,7 @@ static std::filesystem::path ResolveStrategicLevelDefForSave(
         if (!filename.empty())
         {
             const fs::path root = spellData ? fs::path(spellData->spell_data_root) : fs::path();
-            const fs::path found = FindSpellDataFile(root, filename);
+            const fs::path found = FindCampaignFile(spellData, filename);
             if (!found.empty())
                 return found;
         }
@@ -1775,7 +1812,7 @@ static std::filesystem::path ResolveStrategicLevelDefForSave(
         std::replace(levelKey.begin(), levelKey.end(), '-', '_');
         std::string candidate = levelKey + ".def";
         const fs::path root = spellData ? fs::path(spellData->spell_data_root) : fs::path();
-        const fs::path found = FindSpellDataFile(root, candidate);
+        const fs::path found = FindCampaignFile(spellData, candidate);
         if (!found.empty())
             return found;
     }
@@ -1842,7 +1879,7 @@ static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::pa
         std::snprintf(levelDefName, sizeof(levelDefName), "LEVEL_%02d.DEF", levelNumber);
         const fs::path root = main->spell_data
             ? fs::path(main->spell_data->spell_data_root) : fs::path();
-        defPath = FindSpellDataFile(root, levelDefName);
+        defPath = FindCampaignFile(main->spell_data, levelDefName);
         if (defPath.empty())
         {
             wxMessageBox(
@@ -1870,7 +1907,7 @@ static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::pa
     LevelData lvl;
     std::string err;
     LevelLoader loader;
-    if (!loader.LoadLevelDef(defPath.string(), lvl, &err))
+    if (!(main->spell_data?main->spell_data->LoadCampaignLevel(defPath.string(),lvl,&err):loader.LoadLevelDef(defPath.string(),lvl,&err)))
     {
         wxMessageBox("Failed to load strategic LEVEL DEF:\n" + err,
             "Load strategic game", wxOK | wxICON_ERROR, main);
@@ -2833,7 +2870,23 @@ bool MyApp::OnInit()
     for (int i = 1; i < argc; ++i)
         if (wxString(argv[i]) == "--select-game-data")
             forceSourceSelection = true;
-    if (!EnsureSpellcrossSourceConfiguration(ini, fs::path(config_path),
+    bool explicitPak=false;
+    for(int i=1;i<argc;++i)if(wxString(argv[i])=="--native-pak"){
+        if(i+1>=argc){wxMessageBox("Missing --native-pak directory","Startup error",wxICON_ERROR);return false;}
+        try{
+            const fs::path path=fs::absolute(fs::path(wxString(argv[++i]).ToStdWstring()));
+            sc::native_pak::Provider provider(path);
+            if(provider.partial()||(provider.edition()!="cz"&&provider.edition()!="en"))
+                throw std::runtime_error("A complete CZ/EN PAK dataset is required.");
+            ini.SetValue("DATA","native_pak_path",ConfigPathValue(path,fs::path(config_path),runtime_root).c_str());
+            ini.SetBoolValue("DATA","native_pak",true,nullptr,true);
+            if(!*ini.GetValue("DATA","spec_data_path",""))ini.SetValue("DATA","spec_data_path","data");
+            ini.SetValue("STATE","last_map","");
+            if(ini.SaveFile(config_path.c_str())!=SI_OK)throw std::runtime_error("Cannot save PAK configuration.");
+            explicitPak=true;
+        }catch(const std::exception& e){wxMessageBox(wxString::FromUTF8(e.what()),"Native PAK",wxICON_ERROR);return false;}
+    }
+    if (!explicitPak&&!EnsureSpellcrossSourceConfiguration(ini, fs::path(config_path),
         runtime_root, executable_dir, forceSourceSelection))
         return false;
 
@@ -2860,7 +2913,7 @@ bool MyApp::OnInit()
     for (int i = 1; i < argc; ++i)
         if (wxString(argv[i]) == "--no-update-check")
             skipUpdateCheck = true;
-    if (!skipUpdateCheck && !ini.GetBoolValue("STATE", "suppress_update_prompt", false))
+    if (!spell_data->IsNativePak() && !skipUpdateCheck && !ini.GetBoolValue("STATE", "suppress_update_prompt", false))
     {
         std::string latestTag, updateError;
         if (spellcross_update::FetchLatestReleaseTag(latestTag, updateError))
@@ -2936,7 +2989,7 @@ bool MyApp::OnInit()
         startupDifficulty == (int)SpellMap::GameDifficulty::EASY)
         startupDifficulty = (int)SpellMap::GameDifficulty::NORMAL;
     spell_map->SetGameDifficulty((SpellMap::GameDifficulty)startupDifficulty);
-    if(!map_path.empty())
+    if(!map_path.empty()&&!spell_data->IsNativePak())
     {
         std::error_code mapEc;
         if(std::filesystem::is_regular_file(std::filesystem::path(map_path), mapEc) && !mapEc)
@@ -4387,7 +4440,7 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
         const fs::path dataRoot(spell_data->spell_data_root);
         fs::path levelDef;
         if (!expectedLevel.empty())
-            levelDef = FindSpellDataFile(dataRoot, expectedLevel);
+            levelDef = FindCampaignFile(spell_data, expectedLevel);
         if (levelDef.empty() && expectedLevel.empty() && !mission.empty())
         {
             // Compatibility for custom/legacy mission names without a
@@ -4407,7 +4460,7 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
         LevelData lvl;
         std::string err;
         LevelLoader loader;
-        if (!levelDef.empty() && loader.LoadLevelDef(levelDef.string(), lvl, &err))
+        if (!levelDef.empty() && spell_data->LoadCampaignLevel(levelDef.string(), lvl, &err))
         {
             destroyOldStrategic();
             auto* win = new StrategicLevelFrame(this, lvl, true);
@@ -4460,7 +4513,7 @@ bool MainFrame::LoadTacticalGameWithCampaignContext(const std::wstring& path)
                 LevelData lvl;
                 std::string err;
                 LevelLoader loader;
-                if (loader.LoadLevelDef(levelDefPath, lvl, &err))
+                if (spell_data->LoadCampaignLevel(levelDefPath, lvl, &err))
                 {
                     auto* candidate = new StrategicLevelFrame(this, lvl, true);
                     if (candidate->HasStrategicAutosave())
@@ -4634,8 +4687,7 @@ bool MainFrame::StartTutorialStage(int stage)
     if (!spell_data || stage < 1 || stage > 4)
         return false;
     const wxString mission = wxString::Format("TUT%02d.DEF", stage);
-    const auto path = FindSpellDataFile(std::filesystem::path(spell_data->spell_data_root),
-                                       mission.ToStdString());
+    const auto path = FindCampaignFile(spell_data, mission.ToStdString());
     if (path.empty())
     {
         wxMessageBox("Original tutorial resources are missing: " + mission,
@@ -4854,7 +4906,7 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 m_mission_end_req = SpellMap::MissionEndRequest();
 
                 std::filesystem::path root = std::filesystem::path(spell_data->spell_data_root);
-                auto def_path = FindSpellDataFile(root, "M01_01A.DEF");
+                auto def_path = FindCampaignFile(spell_data, "M01_01A.DEF");
                 if(def_path.empty())
                 {
                     wxMessageBox("Mission M01_01A.DEF not found.", "Main menu", wxOK | wxICON_WARNING, this);
@@ -4870,7 +4922,7 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                         LevelData lvlIntro;
                         std::string err;
                         LevelLoader loader;
-                        if (loader.LoadLevelDef(levelDefPath, lvlIntro, &err) &&
+                        if (spell_data->LoadCampaignLevel(levelDefPath, lvlIntro, &err) &&
                             !lvlIntro.intro_video.empty() && lvlIntro.intro_video != "none")
                         {
                             if (!FindWindowById(ID_VIDEO_BOX_WIN) && spell_data)
@@ -5930,7 +5982,7 @@ void MainFrame::OnTimer(wxTimerEvent& event)
                         LevelData currentLvl;
                         std::string err;
                         LevelLoader loader;
-                        if (loader.LoadLevelDef(levelDefPath, currentLvl, &err))
+                        if (spell_data->LoadCampaignLevel(levelDefPath, currentLvl, &err))
                         {
                             // Set outro video as movie_path so StartMissionEndFlow() plays it
                             if (m_mission_end_req.success)
@@ -6016,11 +6068,12 @@ static std::string find_def_candidate(const std::string& name, const SpellData* 
 
     std::error_code ec;
     const fs::path requested(name);
+    if(spellData&&spellData->IsNativePak())return FindCampaignFile(spellData,requested.filename().string()).string();
     if (fs::exists(requested, ec) && fs::is_regular_file(requested, ec))
         return fs::absolute(requested, ec).lexically_normal().string();
 
     const fs::path root = spellData ? fs::path(spellData->spell_data_root) : fs::path();
-    const fs::path found = FindSpellDataFile(root, requested.filename().string());
+    const fs::path found = FindCampaignFile(spellData, requested.filename().string());
     return found.empty() ? std::string() : found.string();
 }
 
@@ -6051,7 +6104,7 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
         std::snprintf(buf, sizeof(buf), "LEVEL_%02d.DEF", lvl);
         const std::string levelName(buf);
 
-        const fs::path candidate = FindSpellDataFile(root, levelName);
+        const fs::path candidate = FindCampaignFile(spellData, levelName);
         if (candidate.empty())
             continue;
 
@@ -6059,7 +6112,7 @@ static std::string FindLevelDefContainingMission(const std::string& missionStem,
         LevelData lvlData;
         std::string err;
         LevelLoader loader;
-        if (!loader.LoadLevelDef(candidate.string(), lvlData, &err))
+        if (!(spellData?spellData->LoadCampaignLevel(candidate.string(),lvlData,&err):loader.LoadLevelDef(candidate.string(),lvlData,&err)))
             continue;
 
         for (const auto& m : lvlData.missions)
@@ -6217,7 +6270,7 @@ void MainFrame::OpenStrategicAndLoadNext()
                 LevelData currentLvl;
                 std::string err;
                 LevelLoader loader;
-                if (loader.LoadLevelDef(levelDefPath, currentLvl, &err))
+                if (spell_data->LoadCampaignLevel(levelDefPath, currentLvl, &err))
                 {
                     // Determine next level DEF
                     std::string missionUpper = missionStem;
@@ -6253,7 +6306,7 @@ void MainFrame::OpenStrategicAndLoadNext()
         LevelData lvl;
         std::string err;
         LevelLoader loader;
-        if (!loader.LoadLevelDef(nextDef, lvl, &err))
+        if (!spell_data->LoadCampaignLevel(nextDef, lvl, &err))
         {
             wxMessageBox("Failed to load next level DEF:\n" + err, "Error", wxOK | wxICON_ERROR, this);
         }

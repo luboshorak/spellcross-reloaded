@@ -226,6 +226,12 @@ bool LoadBytesFromFS(FSarchive* fs, const char* name, std::vector<unsigned char>
     return true;
 }
 
+bool LoadMenuAsset(SpellData* data,const char* name,std::vector<unsigned char>& out){
+    if(!data)return false;
+    if(data->IsNativePak())return data->ReadNativeIndexed("COMMON.FS",name,out);
+    return LoadBytesFromFS(data->GetCommonFS(),name,out);
+}
+
 } // namespace
 
 FormMainMenu::FormMainMenu(wxPanel* parent,
@@ -384,13 +390,13 @@ bool FormMainMenu::LoadBackground()
 
     // Try loading from common_fs archive first (data is already decompressed by DELZ_ALL)
     FSarchive* cfs = m_spelldata->GetCommonFS();
-    bool got_img = LoadBytesFromFS(cfs, "MAINMENU.LZ", lzBytes);
+    bool got_img = LoadMenuAsset(m_spelldata, "MAINMENU.LZ", lzBytes);
     if (!got_img)
-        got_img = LoadBytesFromFS(cfs, "MAINMENU.BIN", lzBytes);
-    bool got_pal = LoadBytesFromFS(cfs, "MAINMENU.PAL", palBytes);
+        got_img = LoadMenuAsset(m_spelldata, "MAINMENU.BIN", lzBytes);
+    bool got_pal = LoadMenuAsset(m_spelldata, "MAINMENU.PAL", palBytes);
 
     // Fallback: search on disk
-    if (!got_img || !got_pal)
+    if ((!got_img || !got_pal)&&!m_spelldata->IsNativePak())
     {
         namespace fs = std::filesystem;
         fs::path root = fs::path(m_spelldata->spell_data_root);
@@ -428,6 +434,7 @@ bool FormMainMenu::LoadBackground()
 
     if (!DecodeMainMenuPixels(lzBytes, pixels, width, height))
     {
+        if(m_spelldata->IsNativePak())return false;
         LZWexpand delz(1024 * 1024);
         std::vector<uint8_t> decoded = delz.Decode((uint8_t*)lzBytes.data(), (uint8_t*)lzBytes.data() + lzBytes.size());
         std::vector<unsigned char> decoded_uc(decoded.begin(), decoded.end());
@@ -468,7 +475,7 @@ bool FormMainMenu::LoadPanel()
     };
     for (const char* name : archiveNames)
     {
-        if (LoadBytesFromFS(cfs, name, bytes))
+        if (LoadMenuAsset(m_spelldata, name, bytes))
         {
             got = true;
             break;
@@ -478,7 +485,7 @@ bool FormMainMenu::LoadPanel()
     // Fallback to loose/cache data. Important: temp\COMMON contains the
     // *decoded* members written by SpellData::DumpToFolder(), but preserves the
     // original .LZ filename. Do not blindly run LZW over such a file again.
-    if (!got)
+    if (!got&&!m_spelldata->IsNativePak())
     {
         namespace fs = std::filesystem;
         const fs::path root = fs::path(m_spelldata->spell_data_root);
@@ -589,9 +596,9 @@ void FormMainMenu::LoadNativeHover()
     {
         const std::string name = "MAINM_" + std::to_string(i) + ".LZ";
         std::vector<unsigned char> bytes;
-        bool loaded = LoadBytesFromFS(common, name.c_str(), bytes);
+        bool loaded = LoadMenuAsset(m_spelldata, name.c_str(), bytes);
 
-        if (!loaded)
+        if (!loaded&&!m_spelldata->IsNativePak())
         {
             const auto loose = FindMenuFile(
                 std::filesystem::path(m_spelldata->spell_data_root), name);
@@ -605,6 +612,7 @@ void FormMainMenu::LoadNativeHover()
         // copies may still be packed; tolerate a few trailing decoder bytes.
         if (bytes.size() < expected || bytes.size() > expected + 64)
         {
+            if(m_spelldata->IsNativePak())continue;
             LZWexpand lzw(32 * 1024);
             const auto decoded = lzw.Decode(bytes.data(), bytes.data() + bytes.size());
             if (decoded.size() < expected || decoded.size() > expected + 64)
@@ -630,8 +638,8 @@ bool FormMainMenu::LoadTutorialPanel()
     // Retail English COMMON.FS: TUTMNU.LZ decodes to a 250 x 214 indexed
     // graphic with BASIC / FIRST CONTACT / MISSION 1 / MISSION 2 buttons.
     std::vector<unsigned char> pixels;
-    bool found = LoadBytesFromFS(m_spelldata->GetCommonFS(), "TUTMNU.LZ", pixels);
-    if (!found)
+    bool found = LoadMenuAsset(m_spelldata, "TUTMNU.LZ", pixels);
+    if (!found&&!m_spelldata->IsNativePak())
     {
         const auto source = FindMenuFile(std::filesystem::path(m_spelldata->spell_data_root),
                                          "TUTMNU.LZ");
@@ -647,6 +655,7 @@ bool FormMainMenu::LoadTutorialPanel()
     constexpr size_t expected = 250u * 214u;
     if (pixels.size() < expected || pixels.size() > expected + 64)
     {
+        if(m_spelldata->IsNativePak())return false;
         LZWexpand lzw(128 * 1024);
         const auto decompressed = lzw.Decode(pixels.data(), pixels.data() + pixels.size());
         if (decompressed.size() < expected || decompressed.size() > expected + 64)
@@ -683,8 +692,8 @@ void FormMainMenu::LoadTutorialHover()
     {
         const std::string name = "T0" + std::to_string(i + 1) + ".LZ";
         std::vector<unsigned char> bytes;
-        bool loaded = LoadBytesFromFS(common, name.c_str(), bytes);
-        if (!loaded)
+        bool loaded = LoadMenuAsset(m_spelldata, name.c_str(), bytes);
+        if (!loaded&&!m_spelldata->IsNativePak())
         {
             const auto loose = FindMenuFile(
                 std::filesystem::path(m_spelldata->spell_data_root), name);
@@ -696,6 +705,7 @@ void FormMainMenu::LoadTutorialHover()
 
         if (bytes.size() < expected || bytes.size() > expected + 64)
         {
+            if(m_spelldata->IsNativePak())continue;
             LZWexpand lzw(32 * 1024);
             const auto decoded = lzw.Decode(bytes.data(), bytes.data() + bytes.size());
             if (decoded.size() < expected || decoded.size() > expected + 64)

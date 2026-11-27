@@ -26,6 +26,7 @@
 #include "spell_video.h"
 
 namespace sc::native_pak { struct ScriptRecord; class Provider; }
+struct LevelData;
 
 //using namespace std;
 
@@ -148,7 +149,7 @@ private:
     std::unique_ptr<sc::native_pak::Provider> native_provider;
 
 	SpellLang text_language = SpellLang::CZE;
-	FSarchive* common_fs;
+	FSarchive* common_fs = nullptr;
 	FSarchive* terrain_fs = nullptr;
 	// Original retail CP895 tables, grouped by COMMON.FS resource stem.
 	std::unordered_map<std::string, std::vector<std::string>> original_language_tables;
@@ -159,6 +160,9 @@ public:
     sc::native_pak::Provider* NativeProvider() const { return native_provider.get(); }
     // Read modern indexed image or palette/filter bytes for existing UI
     // consumers. No original archive bytes or legacy decompression.
+    std::wstring NativeCampaignPath(const std::string& filename) const;
+    bool LoadCampaignLevel(const std::string& path,LevelData& out,std::string* error=nullptr) const;
+    bool ReadNativeMask(const std::string& name,int& width,int& height,std::vector<uint8_t>& out) const;
     bool ReadNativeIndexed(const std::string& archive,const std::string& name,std::vector<uint8_t>& out) const;
 	SpellLang GetTextLanguage() const { return text_language; }
 	std::string GetOriginalText(const char* resource_stem, size_t index) const;
@@ -175,7 +179,7 @@ public:
 		Sprite solid[13];
 	} special;
 	// units graphics (FSU)
-	FSUarchive *units_fsu;
+	FSUarchive *units_fsu = nullptr;
 	// units
 	SpellUnits* units = nullptr;
 	// palettes
@@ -206,8 +210,7 @@ public:
 
 	SpellData(const SpellDataFiles& files, wstring& spec_path,std::function<void(std::string)> status_list=NULL,std::function<void(std::string)> status_item=NULL);
 	SpellData(wstring& data_path,wstring& cd_data_path,wstring& spec_path,std::function<void(std::string)> status_list=NULL,std::function<void(std::string)> status_item=NULL);
-    // Core native constructor; do not expose in the normal startup wizard
-    // until the remaining UI and video consumers have been switched.
+    // Experimental native constructor (no retail file fallback).
     SpellData(const std::wstring& pak_directory,const std::wstring& spec_path,
         std::function<void(std::string)> status_list=nullptr,
         std::function<void(std::string)> status_item=nullptr);

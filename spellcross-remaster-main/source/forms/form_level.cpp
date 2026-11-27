@@ -3195,6 +3195,7 @@ void StrategicLevelFrame::RefreshOriginalStrategicView()
     {
         out.clear();
 
+        if(m_spellData&&m_spellData->IsNativePak())return m_spellData->ReadNativeIndexed("COMMON.FS",name,out);
         // 1) Preferred source: live COMMON.FS archive.
         if (m_spellData && m_spellData->GetCommonFS())
         {
@@ -7575,7 +7576,7 @@ void StrategicLevelFrame::LoadStrategicGameFromSlot(int slot, bool notify)
         LevelData lvl;
         std::string err;
         LevelLoader loader;
-        if (!loader.LoadLevelDef(loaded_level_def, lvl, &err))
+        if (!(m_spellData?m_spellData->LoadCampaignLevel(loaded_level_def,lvl,&err):loader.LoadLevelDef(loaded_level_def,lvl,&err)))
         {
             if (notify)
                 spellcross_dialog_ui::ShowThemedMessage(L"Failed to load the level DEF from this save:\n" + wxString::FromUTF8(err),
@@ -16122,6 +16123,12 @@ std::wstring StrategicLevelFrame::ResolveMapDefPathForMissionToken(const std::st
     namespace fs = std::filesystem;
     std::error_code ec;
 
+    if(m_spellData&&m_spellData->IsNativePak()){
+        if(std::isdigit(static_cast<unsigned char>(mission_token.back()))){
+            auto a=m_spellData->NativeCampaignPath(mission_token+"A.DEF");if(!a.empty())return a;
+        }
+        return m_spellData->NativeCampaignPath(mission_token+".DEF");
+    }
     std::vector<std::filesystem::path> bases;
 
     // 1) Prefer runtime extracted location
@@ -16209,6 +16216,10 @@ std::wstring StrategicLevelFrame::ResolveMapDtaPathForMissionToken(const std::st
     if (!mission_token.empty() && std::isalpha(static_cast<unsigned char>(mission_token.back())))
         tokens.push_back(mission_token.substr(0, mission_token.size() - 1));
 
+    if(m_spellData&&m_spellData->IsNativePak()){
+        for(const auto& token:tokens){auto p=m_spellData->NativeCampaignPath(token+".DTA");if(!p.empty())return p;}
+        return {};
+    }
     for (const auto& base : bases)
     {
         if (base.empty() || !fs::exists(base, ec))
@@ -22422,7 +22433,8 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     };
     
     std::string defPath;
-    for (const auto& p : searchPaths)
+    if(m_spellData&&m_spellData->IsNativePak())defPath=std::filesystem::path(m_spellData->NativeCampaignPath(nextDef)).string();
+    else for (const auto& p : searchPaths)
     {
         std::error_code ec;
         if (fs::exists(p, ec))
@@ -22475,7 +22487,7 @@ void StrategicLevelFrame::AdvanceToNextLevel()
     LevelData lvl;
     std::string err;
     LevelLoader loader;
-    if (!loader.LoadLevelDef(defPath, lvl, &err))
+    if (!(m_spellData?m_spellData->LoadCampaignLevel(defPath,lvl,&err):loader.LoadLevelDef(defPath,lvl,&err)))
     {
         spellcross_dialog_ui::ShowThemedMessage(
             wxString::Format("Failed to load next level:\n%s", err.c_str()),
