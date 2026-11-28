@@ -164,3 +164,7 @@ has not yet been reproduced or confirmed fixed on the player's machine.
 ### Performance logging
 
 The graphics settings checkbox and Ctrl+Shift+F10 toggle the same session-only profiler. RENDER_PERF records are appended to Windows debug.log roughly once per second while enabled and rendering a stable profile. Configuration changes reset the measurement window. GPU counters are not measured.
+
+### Second filter review
+
+Retired Scale3x (ID 16). Added directional triangle interpolation, Soft EPX and soft CRT scanlines (visible at effective zoom >=200%). Existing IDs are preserved and the review dialog includes the new modes. CPU implementations, not imported GLSL. The legacy fast path remains unchanged.

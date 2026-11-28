@@ -109,7 +109,7 @@ int main()
     assert(Current().temperature == 3500);
     assert(Current().tactical_filter==spellcross_filters::Legacy && Current().tactical_sharpen==100);
     Settings filterSettings=defaults;
-    for(int id : {3,4,5,6,7,8,12,15}) { Settings retired=defaults; retired.tactical_filter=id;
+    for(int id : {3,4,5,6,7,8,12,15,16}) { Settings retired=defaults; retired.tactical_filter=id;
         assert(Normalize(retired).tactical_filter==spellcross_filters::Legacy); }
     filterSettings.tactical_filter=spellcross_filters::CubicSharp;
     filterSettings.tactical_dedither=true;

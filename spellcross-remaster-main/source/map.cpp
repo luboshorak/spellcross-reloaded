@@ -7100,7 +7100,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         const bool enlarged=zoom_percent*display_scale_percent>10000;
         const auto result=useRowCache ? filteredRows.Sample(x,ay) :
             settings.tactical_filter==spellcross_filters::Scale2x && enlarged ? filteredArt.SampleScale2x(ax,ay) :
-            settings.tactical_filter==spellcross_filters::Scale3x && enlarged ? filteredArt.SampleScale3x(ax,ay) :
+            settings.tactical_filter==spellcross_filters::SoftEPX && enlarged ? filteredArt.SampleSoftEPX(ax,ay) :
+            settings.tactical_filter==spellcross_filters::Triangular ? filteredArt.SampleTriangle(ax,ay) :
+            settings.tactical_filter==spellcross_filters::CRTScanline ?
+                filteredArt.SampleCRT(ax,ay,zoom_percent*display_scale_percent>=20000) :
             settings.tactical_filter==spellcross_filters::EdgeAdaptive ? filteredArt.SampleEdgeAdaptive(ax,ay) :
             filteredArt.Sample(ax,ay);
         if(explicitFilter)

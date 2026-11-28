@@ -14,11 +14,11 @@ namespace spellcross_filters
     // Never renumber persisted filter IDs. Retired IDs deliberately remain holes.
     enum Mode : int { Legacy=0, Nearest=1, SharpBilinear=2, Scale2x=9,
         Cosine=10, Smootherstep=11, RobidouxSharp=13, CubicSharp=14,
-        Scale3x=16, EdgeAdaptive=17, LastMode=EdgeAdaptive };
+        EdgeAdaptive=17, Triangular=18, SoftEPX=19, CRTScanline=20, LastMode=CRTScanline };
     inline constexpr const char* ModeNames[]={
         "Legacy", "Nearest", "Sharp Bilinear", nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, "Scale2x / EPX", "Cosine", "Smootherstep", nullptr, "Robidoux Sharp",
-        "Sharp Bicubic", nullptr, "Scale3x", "Edge-preserving bilinear"};
+        "Sharp Bicubic", nullptr, nullptr, "Edge-preserving bilinear", "Directional triangle", "Soft EPX", "CRT soft scanlines"};
     static_assert(sizeof(ModeNames)/sizeof(*ModeNames)==LastMode+1);
     inline bool Available(int mode)
     {
@@ -66,7 +66,7 @@ namespace spellcross_filters
     {
         std::array<int,4> index{};
         std::array<int,4> weight{};
-        int count=1, nearest=0, side=0, third=1;
+        int count=1, nearest=0, side=0, phase=128;
     };
     inline Axis MakeAxis(int target,int extent,int zoom,int display,int mode)
     {
@@ -82,14 +82,14 @@ namespace spellcross_filters
         const double fraction=pos-base;
         out.nearest=std::clamp(static_cast<int>(std::floor(pos+0.5)),0,extent-1);
         out.side=pos<out.nearest?-1:1;
-        out.third=std::clamp(static_cast<int>((pos-out.nearest+0.5)*3),0,2);
-        if(!Available(mode)||mode==Nearest||mode==Legacy||mode==Scale2x||mode==Scale3x)
+        out.phase=std::clamp(static_cast<int>((pos-out.nearest+0.5)*256),0,255);
+        if(!Available(mode)||mode==Nearest||mode==Legacy||mode==Scale2x||mode==SoftEPX)
         {
             out.index[0]=out.nearest;
             out.weight[0]=weightScale;
             return out;
         }
-        if(mode==SharpBilinear||mode==EdgeAdaptive||mode==Cosine||mode==Smootherstep)
+        if(mode==SharpBilinear||mode==EdgeAdaptive||mode==Cosine||mode==Smootherstep||mode==Triangular||mode==CRTScanline)
         {
             out.count=2;
             out.index[0]=base; out.index[1]=(std::min)(base+1,extent-1);
@@ -207,31 +207,51 @@ namespace spellcross_filters
                 return At(x+dx,y);
             return center;
         }
-        RGB SampleScale3x(const Axis& ax,const Axis& ay) const
+        RGB SampleSoftEPX(const Axis& ax,const Axis& ay) const
         {
-            const int x=ax.nearest,y=ay.nearest;
+            const int x=ax.nearest,y=ay.nearest,dx=ax.side,dy=ay.side;
             const auto center=At(x,y);
-            if(!Safe(x,y)||x<=0||y<=0||x>=width-1||y>=height-1) return center;
-            const auto* p=indices+Index(x,y);
-            const auto A=p[-width-1],B=p[-width],C=p[-width+1],D=p[-1],
-                E=p[0],F=p[1],G=p[width-1],H=p[width],I=p[width+1];
-            if(B==H||D==F) return center;
-            // Scale3x's 3x3 neighbourhood rules. Select an existing colour;
-            // never synthesize or copy a protected palette entry.
-            int dx=0,dy=0;
-            switch(ay.third*3+ax.third)
+            if(!Safe(x,y)||x<=0||y<=0||x>=width-1||y>=height-1||!dx||!dy) return center;
+            if(!Safe(x+dx,y)||!Safe(x,y+dy)||!Safe(x-dx,y)||!Safe(x,y-dy)) return center;
+            const auto& a=At(x+dx,y);
+            const auto& b=At(x,y+dy);
+            if(Distance(a,b)>32 || Distance(a,center)<48 || Distance(b,center)<48 ||
+               Distance(a,At(x-dx,y))<40 || Distance(b,At(x,y-dy))<40) return center;
+            const int coverage=std::clamp(((std::abs)(ax.phase-128)+(std::abs)(ay.phase-128)-100)*3,0,192);
+            const auto mean=Mean(a,b);
+            RGB result{};
+            for(int k=0;k<3;++k)
+                result[k]=static_cast<std::uint8_t>((int(center[k])*(256-coverage)+int(mean[k])*coverage+128)/256);
+            return result;
+        }
+        RGB SampleTriangle(const Axis& ax,const Axis& ay) const
+        {
+            const auto center=At(ax.nearest,ay.nearest);
+            if(!Safe(ax.nearest,ay.nearest)||ax.count!=2||ay.count!=2) return center;
+            const auto get=[&](int x,int y)->RGB { return Safe(x,y)?At(x,y):center; };
+            const RGB a=get(ax.index[0],ay.index[0]),b=get(ax.index[1],ay.index[0]),
+                      c=get(ax.index[0],ay.index[1]),d=get(ax.index[1],ay.index[1]);
+            const int u=ax.weight[1],v=ay.weight[1],s=weightScale;
+            const RGB *p=&a,*q=&b,*r=&d;
+            int wp=s-u,wq=u-v,wr=v;
+            if(Distance(a,d)<=Distance(b,c))
             {
-            case 0: if(D==B) dx=-1; break;
-            case 1: if((D==B&&E!=C)||(B==F&&E!=A)) dy=-1; break;
-            case 2: if(B==F) dx=1; break;
-            case 3: if((D==B&&E!=G)||(D==H&&E!=A)) dx=-1; break;
-            case 5: if((B==F&&E!=I)||(H==F&&E!=C)) dx=1; break;
-            case 6: if(D==H) dx=-1; break;
-            case 7: if((D==H&&E!=I)||(H==F&&E!=G)) dy=1; break;
-            case 8: if(H==F) dx=1; break;
-            default: break;
+                if(v>u) { q=&c; wp=s-v; wq=v-u; wr=u; }
             }
-            return Safe(x+dx,y+dy)?At(x+dx,y+dy):center;
+            else if(u+v<=s) { q=&b; r=&c; wp=s-u-v; wq=u; wr=v; }
+            else { p=&d; q=&b; r=&c; wp=u+v-s; wq=s-v; wr=s-u; }
+            RGB result{};
+            for(int k=0;k<3;++k)
+                result[k]=static_cast<std::uint8_t>(((*p)[k]*wp+(*q)[k]*wq+(*r)[k]*wr+s/2)/s);
+            return result;
+        }
+        RGB SampleCRT(const Axis& ax,const Axis& ay,bool enlarged) const
+        {
+            auto result=Sample(ax,ay);
+            if(!enlarged||!Safe(ax.nearest,ay.nearest)) return result;
+            const int edge=(std::abs)(ay.phase-128),gain=256-edge*edge/256;
+            for(auto& c:result) c=static_cast<std::uint8_t>((int(c)*gain+128)/256);
+            return result;
         }
         RGB SampleEdgeAdaptive(const Axis& ax,const Axis& ay) const
         {
