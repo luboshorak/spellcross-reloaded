@@ -11,6 +11,9 @@
 #include <wx/wx.h>
 #include <wx/choice.h>
 #include <wx/slider.h>
+#include <wx/checklst.h>
+#include <wx/filedlg.h>
+#include <wx/ffile.h>
 #include "spell_ui_locale.h"
 #include "strategic_ui_theme.h"
 #include "tactical_filters.h"
@@ -230,6 +233,59 @@ namespace spellcross_display
         return wxBitmap(image);
     }
 
+    // Temporary review tool, deliberately separate from gameplay settings.
+    inline void ReviewFilters(wxWindow* parent)
+    {
+        constexpr int count=spellcross_filters::LastMode+5;
+        static std::array<bool,count> rejected{};
+        wxDialog dialog(parent,wxID_ANY,spellcross_ui_locale::Tr("screen.review.title","Filter review (debug)"),
+            wxDefaultPosition,wxDefaultSize,wxDEFAULT_DIALOG_STYLE|wxRESIZE_BORDER);
+        auto* root=new wxBoxSizer(wxVERTICAL);
+        root->Add(new wxStaticText(&dialog,wxID_ANY,spellcross_ui_locale::Tr("screen.review.hint",
+            "Check only effects to remove. Export does not change rendering.")),0,wxALL,10);
+        auto* list=new wxCheckListBox(&dialog,wxID_ANY);
+        wxArrayString keys;
+        for(int mode=1;mode<=spellcross_filters::LastMode;++mode)
+        {
+            list->Append(wxString::FromUTF8(spellcross_filters::ModeNames[mode]));
+            keys.Add(wxString::Format("tactical_filter:%d",mode));
+        }
+        const char* extraKeys[]={"advanced_rendering","procedural_materials","procedural_upscaling","tactical_dedither","tactical_sharpen"};
+        const wxString extraLabels[]={
+            spellcross_ui_locale::Tr("screen.advanced_rendering","Advanced rendering"),
+            spellcross_ui_locale::Tr("screen.procedural_materials","Procedural materials"),
+            spellcross_ui_locale::Tr("screen.procedural_upscaling","Procedural upscaling"),
+            spellcross_ui_locale::Tr("screen.tactical_dedither","Dedither"),
+            spellcross_ui_locale::Tr("screen.tactical_sharpen","Sharpen")};
+        for(int i=0;i<5;++i) { list->Append(extraLabels[i]); keys.Add(wxString::FromUTF8(extraKeys[i])); }
+        for(unsigned i=0;i<list->GetCount();++i) list->Check(i,rejected[i]);
+        list->SetMinSize(dialog.FromDIP(wxSize(390,330)));
+        root->Add(list,1,wxALL|wxEXPAND,10);
+        auto* buttons=new wxBoxSizer(wxHORIZONTAL);
+        auto* exportButton=new wxButton(&dialog,wxID_ANY,spellcross_ui_locale::Tr("screen.review.export","Export rejected filters"));
+        auto* close=new wxButton(&dialog,wxID_OK,spellcross_ui_locale::Tr("dialog.ok","OK"));
+        buttons->Add(exportButton,0,wxRIGHT,8); buttons->Add(close,0);
+        root->Add(buttons,0,wxALL|wxALIGN_RIGHT,10);
+        const auto remember=[&]() { for(unsigned i=0;i<list->GetCount();++i) rejected[i]=list->IsChecked(i); };
+        exportButton->Bind(wxEVT_BUTTON,[&](wxCommandEvent&) {
+            remember();
+            wxFileDialog save(&dialog,spellcross_ui_locale::Tr("screen.review.export","Export rejected filters"),
+                wxEmptyString,"spellcross-filter-review.txt","Text (*.txt)|*.txt",
+                wxFD_SAVE|wxFD_OVERWRITE_PROMPT);
+            if(save.ShowModal()!=wxID_OK) return;
+            wxString report="Spellcross filter review v1\n# checked entries to remove\n";
+            for(unsigned i=0;i<list->GetCount();++i)
+                if(rejected[i]) report+=keys[i]+"\t"+list->GetString(i)+"\n";
+            wxFFile file(save.GetPath(),"wb");
+            if(!file.IsOpened()||!file.Write(report,wxConvUTF8)||!file.Close())
+                wxMessageBox("Export failed.", "Spellcross",wxOK|wxICON_ERROR,&dialog);
+        });
+        dialog.SetSizerAndFit(root);
+        dialog.CentreOnParent();
+        dialog.ShowModal();
+        remember();
+    }
+
     // All three top-level windows use this very same dialog and settings.
     // Changes preview live; Cancel restores the complete original state.
     inline bool ShowScreenDialog(wxWindow* parent, const std::function<void()>& refresh)
@@ -295,15 +351,8 @@ namespace spellcross_display
         addLabel(spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter (CPU)"));
         auto* filter = new wxChoice(&dialog, wxID_ANY);
         filter->Append(spellcross_ui_locale::Tr("screen.filter.legacy", "Existing renderer (default)"));
-        filter->Append("Nearest");
-        filter->Append("Sharp Bilinear");
-        filter->Append("Catmull-Rom");
-        filter->Append("Lanczos 2");
-        filter->Append("Bilinear");
-        filter->Append("Hermite");
-        filter->Append("Mitchell-Netravali");
-        filter->Append("Cubic B-spline");
-        filter->Append("Scale2x / EPX");
+        for(int mode=1;mode<=spellcross_filters::LastMode;++mode)
+            filter->Append(wxString::FromUTF8(spellcross_filters::ModeNames[mode]));
         filter->SetSelection(original.tactical_filter);
         root->Add(filter, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
         auto* dedither = new wxCheckBox(&dialog, wxID_ANY,
@@ -314,6 +363,11 @@ namespace spellcross_display
         auto* sharpen = new spellcross_strategic_ui::Slider(&dialog,
             wxID_ANY, original.tactical_sharpen, 0, 100);
         root->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
+
+        auto* review=new wxButton(&dialog,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.review.title","Filter review (debug)"));
+        review->Bind(wxEVT_BUTTON,[&](wxCommandEvent&) { ReviewFilters(&dialog); });
+        root->Add(review,0,wxLEFT|wxRIGHT|wxBOTTOM,dialog.FromDIP(14));
 
         auto* buttons = new wxBoxSizer(wxHORIZONTAL);
         buttons->AddStretchSpacer();

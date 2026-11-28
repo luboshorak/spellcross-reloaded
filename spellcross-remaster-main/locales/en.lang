@@ -311,6 +311,9 @@ screen.tactical_filter=Battlefield scaling filter (CPU)
 screen.filter.legacy=Existing renderer (default)
 screen.tactical_dedither=Reduce palette dithering
 screen.tactical_sharpen=Adaptive sharpening (%)
+screen.review.title=Filter review (debug)
+screen.review.hint=Check only effects to remove. Export does not change rendering.
+screen.review.export=Export rejected filters
 
 # About window and optional updates
 about.title=About Spellcross Reloaded

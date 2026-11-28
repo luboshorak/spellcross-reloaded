@@ -311,6 +311,9 @@ screen.tactical_filter=Filtr zvětšení bojiště (CPU)
 screen.filter.legacy=Stávající renderer (výchozí)
 screen.tactical_dedither=Potlačení ditheringu palety
 screen.tactical_sharpen=Adaptivní doostření (%)
+screen.review.title=Hodnocení filtrů (debug)
+screen.review.hint=Zaškrtni pouze efekty k vyřazení. Export nemění grafiku.
+screen.review.export=Exportovat filtry k vyřazení
 
 # About window and optional updates
 about.title=O programu Spellcross Reloaded

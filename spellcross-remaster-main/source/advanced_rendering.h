@@ -185,6 +185,35 @@ namespace spellcross_enhanced
         return broad / 2 + medium / 2 + fine / 2;
     }
 
+    // Bounded exact world-space noise cache, independent of map and camera.
+    class SurfaceCache
+    {
+        static constexpr int side=32, slots=2048;
+        struct Block
+        {
+            int x=0,y=0;
+            bool valid=false;
+            std::array<std::int8_t,side*side> rough{},smooth{};
+        };
+        std::vector<Block> blocks;
+    public:
+        int At(int x,int y,bool smooth)
+        {
+            if(blocks.empty()) blocks.resize(slots);
+            const int bx=x/side-(x%side<0),by=y/side-(y%side<0);
+            auto& block=blocks[Hash(static_cast<std::uint32_t>(bx),
+                static_cast<std::uint32_t>(by))&(slots-1)];
+            if(!block.valid||block.x!=bx||block.y!=by)
+            {
+                block.x=bx; block.y=by; block.valid=true;
+                block.rough.fill(127); block.smooth.fill(127);
+            }
+            const auto i=(y-by*side)*side+x-bx*side;
+            auto& value=smooth?block.smooth[i]:block.rough[i];
+            if(value==127) value=static_cast<std::int8_t>(SurfaceDetail(x,y,smooth));
+            return value;
+        }
+    };
     inline Tag MakeTag(std::uint8_t index, int shade, Material material=Material::Earth)
     {
         if (Reserved(index)) return 0;
@@ -245,7 +274,8 @@ namespace spellcross_enhanced
     class GroundSurface
     {
         int width=0, height=0, left=0, top=0;
-        std::vector<Tag> tags;
+        std::vector<Tag> tags,matched;
+        std::vector<std::uint8_t> valid;
     public:
         void Reset(int w,int h,int x,int y)
         {
@@ -266,7 +296,8 @@ namespace spellcross_enhanced
         }
         void Mark(const std::vector<std::uint8_t>& sprite,int rows,int yOffset,
                   int originX,int originY,const GroundLight* light,bool smooth,
-                  Material material=Material::Earth)
+                  Material material=Material::Earth,bool calculateShade=true,
+                  SurfaceCache* cache=nullptr)
         {
             std::size_t cursor=0;
             for(int y=0;y<rows;++y)
@@ -280,17 +311,23 @@ namespace spellcross_enhanced
                 const int sy=originY+yOffset+y;
                 if(sy>=top&&sy-top<height)
                 {
-                    for(int x=0;x<count;++x)
+                    const int start=(std::max)(0,left-originX-offset);
+                    const int end=(std::min)(count,left+width-originX-offset);
+                    auto* dest=tags.data()+static_cast<std::size_t>(sy-top)*width;
+                    const int worldY=light?light->worldY+yOffset+y:0;
+                    for(int x=start;x<end;++x)
                     {
                         const auto index=sprite[cursor+x];
                         if(!index) continue;
                         const int lx=offset+x,sx=originX+lx;
-                        if(sx<left||sx-left>=width) continue;
                         Tag tag=0;
-                        if(light&&!Reserved(index))
+                        if(light&&!Reserved(index) && !calculateShade)
+                            tag=MakeTag(index,0,material);
+                        else if(light&&!Reserved(index))
                         {
-                            int shade=light->relief*3+
-                                SurfaceDetail(light->worldX+lx,light->worldY+yOffset+y,smooth);
+                            const int worldX=light->worldX+lx;
+                            int shade=light->relief*3+(cache?cache->At(worldX,worldY,smooth):
+                                SurfaceDetail(worldX,worldY,smooth));
                             const int cy=rows/2;
                             int shadow=0;
                             if(light->object)
@@ -301,11 +338,44 @@ namespace spellcross_enhanced
                                 shadow=(std::min)(shadow,Contact(lx,y,54,cy+5,28,12,13));
                             tag=MakeTag(index,shade+shadow,material);
                         }
-                        Write(sx,sy,tag);
+                        dest[sx-left]=tag;
                     }
                 }
                 cursor+=static_cast<std::size_t>(count);
             }
+        }
+        // Five-point mask computed once on native pixels, then enlarged.
+        void Validate(const std::uint8_t* frame,std::size_t length,int stride)
+        {
+            matched.assign(tags.size(),0);
+            valid.assign(tags.size(),0);
+            if(!frame||stride<=0||width<3||height<3) return;
+            for(int y=0;y<height;++y)
+            {
+                const int py=top+y;
+                if(py<0) continue;
+                const auto row=static_cast<std::size_t>(py)*stride;
+                const int start=(std::max)(0,-left),end=(std::min)(width,stride-left);
+                for(int x=start;x<end;++x)
+                {
+                    const auto i=static_cast<std::size_t>(y)*width+x;
+                    const auto pos=row+left+x;
+                    const auto tag=tags[i];
+                    valid[i]=pos<length && tag && TagIndex(tag)==frame[pos];
+                }
+            }
+            for(int y=1;y<height-1;++y)
+                for(int x=1;x<width-1;++x)
+                {
+                    const auto i=static_cast<std::size_t>(y)*width+x;
+                    if(valid[i]&&valid[i-1]&&valid[i+1]&&valid[i-width]&&valid[i+width])
+                        matched[i]=tags[i];
+                }
+        }
+        const Tag* MatchedRow(int y) const
+        {
+            return y>=0&&y<height&&!matched.empty()?
+                matched.data()+static_cast<std::size_t>(y)*width:nullptr;
         }
         // Reject composited pixels AND a one-pixel rim around changes. This
         // is conservative: later art wins over the enhanced ground.
@@ -568,19 +638,17 @@ namespace spellcross_enhanced
                            const EdgePalette& edges)
     {
         const int x=std::clamp(sx.index,0,width-1),y=std::clamp(sy.index,0,height-1);
-        const auto get=[&](int a,int b) {
-            return pixels[static_cast<std::size_t>(std::clamp(b,0,height-1))*width+
-                std::clamp(a,0,width-1)];
-        };
-        const auto center=get(x,y);
+        const auto* row=pixels+static_cast<std::size_t>(y)*width;
+        const auto center=row[x];
         const auto rgb=[&](std::uint8_t i)->RGB { return {pal[i][0],pal[i][1],pal[i][2]}; };
         RGB result=rgb(center);
         if(Reserved(center)||x==0||y==0||x==width-1||y==height-1) return result;
         const int dx=sx.fraction<128?-1:1,dy=sy.fraction<128?-1:1;
         const int fx=(std::abs)(sx.fraction-128),fy=(std::abs)(sy.fraction-128);
-        const auto a=get(x+dx,y),b=get(x,y+dy);
-        const auto oppositeA=get(x-dx,y),oppositeB=get(x,y-dy);
-        const auto diagonal=get(x+dx,y+dy);
+        const auto a=row[x+dx],b=row[dy*width+x];
+        if(a==center && b==center) return result;
+        const auto oppositeA=row[x-dx],oppositeB=row[-dy*width+x];
+        const auto diagonal=row[dy*width+x+dx];
         const int da=edges.Distance(center,a),db=edges.Distance(center,b);
         const int ab=edges.Distance(a,b);
         // Two agreeing neighbours trace a diagonal through the pixel corner.

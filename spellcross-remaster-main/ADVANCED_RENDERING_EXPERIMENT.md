@@ -117,3 +117,12 @@ reused until viewport/zoom/filter changes. RGB and edge lookup tables reuse
 unchanged palettes; the edge cache ignores reserved water cycling. Native RGB
 scratch buffers are reused and dedither no longer copies the RGB surface.
 This is not a GPU backend, and FPS improvements require in-game measurement.
+
+### Native ground optimization and review
+
+World noise is memoized in a bounded cache; at native/enlarged zoom the
+five-point compositing mask is validated once per native pixel. Material-only
+mode avoids lighting and RGB surface work. Flat sprite areas exit the edge
+reconstruction early. Added six additional CPU kernels (IDs 10-15).
+The temporary Filter review dialog exports checked removal candidates by
+stable ID, never changing or deleting a filter itself.

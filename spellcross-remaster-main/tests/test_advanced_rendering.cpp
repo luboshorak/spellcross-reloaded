@@ -155,6 +155,20 @@ int main()
     const RGB reconstructed={100,110,120}, lit={110,100,90}, raw={100,100,100};
     const RGB expected={110,110,110};
     assert(PreserveLighting(reconstructed,lit,raw)==expected);
+    // Native mask and cached world noise must agree with the reference.
+    {
+        SurfaceCache cache;
+        for(int y=-67;y<80;y+=3) for(int x=-70;x<90;x+=2)
+            for(bool smooth : {false,true}) assert(cache.At(x,y,smooth)==SurfaceDetail(x,y,smooth));
+        GroundSurface surface;
+        std::array<std::uint8_t,49> pixels{}; pixels.fill(100);
+        surface.Reset(5,5,1,1);
+        for(int y=1;y<=5;++y) for(int x=1;x<=5;++x) surface.Write(x,y,MakeTag(100,0));
+        pixels[3*7+3]=120;
+        surface.Validate(pixels.data(),pixels.size(),7);
+        for(int y=0;y<5;++y) for(int x=0;x<5;++x)
+            assert(surface.MatchedRow(y)[x]==surface.Match(pixels.data(),pixels.size(),7,x+1,y+1));
+    }
     // Shader-style filters: exact flat colour, safe edges and normalized taps.
     {
         namespace sf=spellcross_filters;

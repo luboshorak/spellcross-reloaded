@@ -12,10 +12,18 @@ namespace spellcross_filters
 {
     using RGB=std::array<std::uint8_t,3>;
     enum Mode : int { Legacy=0, Nearest=1, SharpBilinear=2, CatmullRom=3, Lanczos2=4,
-        Bilinear=5, Hermite=6, Mitchell=7, BSpline=8, Scale2x=9, LastMode=Scale2x };
+        Bilinear=5, Hermite=6, Mitchell=7, BSpline=8, Scale2x=9,
+        Cosine=10, Smootherstep=11, Robidoux=12, RobidouxSharp=13,
+        CubicSharp=14, Gaussian=15, LastMode=Gaussian };
+    inline constexpr const char* ModeNames[]={
+        "Legacy", "Nearest", "Sharp Bilinear", "Catmull-Rom", "Lanczos 2",
+        "Bilinear", "Hermite", "Mitchell-Netravali", "Cubic B-spline", "Scale2x / EPX",
+        "Cosine", "Smootherstep", "Robidoux", "Robidoux Sharp", "Sharp Bicubic", "Gaussian"};
+    static_assert(sizeof(ModeNames)/sizeof(*ModeNames)==LastMode+1);
     inline bool FourTap(int mode)
     {
-        return mode==CatmullRom || mode==Lanczos2 || mode==Mitchell || mode==BSpline;
+        return mode==CatmullRom || mode==Lanczos2 || mode==Mitchell || mode==BSpline ||
+            mode==Robidoux || mode==RobidouxSharp || mode==CubicSharp || mode==Gaussian;
     }
     constexpr int weightScale=4096;
     inline bool Protected(std::uint8_t i)
@@ -95,14 +103,16 @@ namespace spellcross_filters
             out.weight[0]=weightScale;
             return out;
         }
-        if(mode==SharpBilinear||mode==Bilinear||mode==Hermite)
+        if(mode==SharpBilinear||mode==Bilinear||mode==Hermite||mode==Cosine||mode==Smootherstep)
         {
             out.count=2;
             out.index[0]=base; out.index[1]=(std::min)(base+1,extent-1);
             // Preserve a sharp pixel interior and blend only around its edge.
             const double f=mode==SharpBilinear ?
                 std::clamp((fraction-0.5)*(std::max)(1.0,scale)+0.5,0.0,1.0) :
-                mode==Hermite ? fraction*fraction*(3-2*fraction) : fraction;
+                mode==Hermite ? fraction*fraction*(3-2*fraction) :
+                mode==Cosine ? (1-std::cos(3.14159265358979323846*fraction))*0.5 :
+                mode==Smootherstep ? fraction*fraction*fraction*(fraction*(6*fraction-15)+10) : fraction;
             out.weight[1]=static_cast<int>(std::lround(f*weightScale));
             out.weight[0]=weightScale-out.weight[1];
             return out;
@@ -116,7 +126,11 @@ namespace spellcross_filters
             out.index[i]=std::clamp(raw,0,extent-1);
             weights[i]=mode==Lanczos2 ? Lanczos(pos-raw) :
                 mode==Mitchell ? CubicBC(pos-raw,1.0/3,1.0/3) :
-                mode==BSpline ? CubicBC(pos-raw,1.0,0.0) : Cubic(pos-raw);
+                mode==BSpline ? CubicBC(pos-raw,1.0,0.0) :
+                mode==Robidoux ? CubicBC(pos-raw,0.378215755,0.3108921225) :
+                mode==RobidouxSharp ? CubicBC(pos-raw,0.262014512,0.368992744) :
+                mode==CubicSharp ? CubicBC(pos-raw,0.0,0.75) :
+                mode==Gaussian ? std::exp(-2.0*(pos-raw)*(pos-raw)) : Cubic(pos-raw);
             sum+=weights[i];
         }
         int total=0;

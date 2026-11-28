@@ -5910,7 +5910,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         !viewingUnitMoveRange() && !viewingUnitAttackRange() &&
         (use_view_mask || show_map_cheat || deployment_mode);
     const bool rgbLighting = normalTactical && renderSettings.advanced_rendering;
-    const bool materialDetail = normalTactical && renderSettings.procedural_materials;
+    const bool materialDetail = normalTactical && renderSettings.procedural_materials &&
+        spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent)>0;
     const bool enhancedGround = rgbLighting || materialDetail;
     const bool explicitFilter = normalTactical && renderSettings.tactical_filter!=spellcross_filters::Legacy;
     const bool newFilters = normalTactical && (explicitFilter ||
@@ -5919,7 +5920,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // old procedural edge reconstruction. Legacy mode keeps that option.
     const bool spriteUpscale = normalTactical && !explicitFilter &&
         renderSettings.procedural_upscaling && zoom_percent * display_scale_percent > 10000;
-    spellcross_enhanced::GroundSurface groundLight;
+    static thread_local spellcross_enhanced::GroundSurface groundLight;
+    static thread_local spellcross_enhanced::SurfaceCache surfaceCache;
     // The projected world origin, not the scratch-buffer origin, anchors HD detail.
     const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
     if (enhancedGround)
@@ -5984,6 +5986,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             {
                 const int tx = n + xs_ofs, ty = m + ys_ofs * 2;
                 spellcross_enhanced::GroundLight light;
+                if(rgbLighting)
+                {
                 light.relief = spellcross_enhanced::Relief(
                     visibleElevation(tx - 1, ty, sof), visibleElevation(tx + 1, ty, sof),
                     visibleElevation(tx, ty - 2, sof), visibleElevation(tx, ty + 2, sof), sof);
@@ -6000,6 +6004,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         if (visible->unit->isAir()) light.air = true;
                         else light.company = true;
                     }
+                }
                 const auto flags = sid->GetFlags();
                 using Material = spellcross_enhanced::Material;
                 Material material = Material::Earth;
@@ -6017,7 +6022,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     (Sprite::IS_WATER | Sprite::IS_ROAD | Sprite::IS_BRIDGE |
                      Sprite::IS_WOOD_BRIDGE | Sprite::IS_FORD)) != 0;
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
-                    mxx, myy, &light, smoothMaterial, material);
+                    mxx, myy, &light, smoothMaterial, material,rgbLighting,&surfaceCache);
             }
             else if (enhancedGround)
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
@@ -6819,9 +6824,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 pic+static_cast<size_t>(surf_y_origin+y)*pic_x_size+surf_x_origin,surf_x);
     }
     const int nativeWidth=surf_x, nativeHeight=surf_y;
-    std::vector<spellcross_enhanced::Tag> screenLight;
+    static thread_local std::vector<spellcross_enhanced::Tag> screenLight;
+    screenLight.clear();
+    const bool validateNative=enhancedGround && zoom_percent>=100;
     if (enhancedGround)
+    {
         screenLight.resize(static_cast<size_t>(screen_width) * screen_height);
+        if(validateNative) groundLight.Validate(pic,static_cast<size_t>(pic_end-pic),pic_x_size);
+    }
+    int previousLightRow=-1;
 	std::vector<int> columns(screen_width);
 	for (int x = 0; x < screen_width; ++x)
 		columns[x] = spellcross_tactical::MapPixel(x, zoom_percent);
@@ -6837,12 +6848,22 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				target[x] = source[columns[x]];
         if (enhancedGround)
         {
-            const int sy = surf_y_origin + spellcross_tactical::MapPixel(y, zoom_percent);
-            const auto length = static_cast<size_t>(pic_end - pic);
-            for (int x = 0; x < screen_width; ++x)
-                screenLight[static_cast<size_t>(y)*screen_width+x] =
-                    groundLight.Match(pic, length, pic_x_size,
-                        surf_x_origin+columns[x], sy);
+            const int sy=spellcross_tactical::MapPixel(y,zoom_percent);
+            auto* dst=screenLight.data()+static_cast<size_t>(y)*screen_width;
+            if(y>0 && sy==previousLightRow)
+                std::copy_n(dst-screen_width,screen_width,dst);
+            else if(validateNative)
+            {
+                const auto* src=groundLight.MatchedRow(sy);
+                if(!src) std::fill_n(dst,screen_width,0);
+                else if(zoom_percent==100) std::copy_n(src,screen_width,dst);
+                else for(int x=0;x<screen_width;++x) dst[x]=src[columns[x]];
+            }
+            else
+                for(int x=0;x<screen_width;++x)
+                    dst[x]=groundLight.Match(pic,static_cast<size_t>(pic_end-pic),pic_x_size,
+                        surf_x_origin+columns[x],surf_y_origin+sy);
+            previousLightRow=sy;
         }
 	}
 	hud_surface_height = screen_height;
@@ -6882,12 +6903,19 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
     // Use the full 24-bit RGB output for terrain material variation. The
     // original palette remains authoritative for all untagged pixels.
-    std::vector<spellcross_enhanced::RGB> enhancedRGB;
+    static thread_local std::vector<spellcross_enhanced::RGB> enhancedRGB;
+    enhancedRGB.clear();
+    static thread_local std::vector<int> hudTops;
+    hudTops.resize(screen_width);
+    for(int x=0;x<screen_width;++x) hudTops[x]=GetHUDtop(x);
     if (enhancedGround)
     {
         static thread_local spellcross_enhanced::RGBTable rgbTable;
-        rgbTable.Prepare(output_pal, is_night);
-        enhancedRGB.resize(screenLight.size());
+        if(rgbLighting)
+        {
+            rgbTable.Prepare(output_pal, is_night);
+            enhancedRGB.resize(screenLight.size());
+        }
         for (int y=0;y<screen_height;++y)
             for(int x=0;x<screen_width;++x)
             {
@@ -6896,10 +6924,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 const auto index=screen_pixels[i];
                 // HUD is never enhanced, even if an indexed colour coincides.
                 const bool valid=tag && spellcross_enhanced::TagIndex(tag)==index &&
-                    y<GetHUDtop(x);
+                    y<hudTops[x];
                 const auto* color=valid && rgbLighting ? rgbTable.Color(tag) : output_pal[index];
                 if (!valid) screenLight[i]=0; // also excludes the HUD from HD sampling
-                std::copy_n(color,3,enhancedRGB[i].begin());
+                if(rgbLighting) std::copy_n(color,3,enhancedRGB[i].begin());
             }
     }
     const auto rgbAt = [&](int x,int y) -> const uint8_t* {
@@ -6917,12 +6945,17 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     std::vector<int> textureX,textureY;
     if(microStrength)
     {
+        size_t remainingMaterials=materialCount;
         for(const auto tag:screenLight)
         {
             if(!tag) continue;
             const auto material=TagMaterial(tag);
             const auto index=static_cast<size_t>(material);
-            if(!textureMaps[index]) textureMaps[index]=&textureBank.Get(material);
+            if(!textureMaps[index])
+            {
+                textureMaps[index]=&textureBank.Get(material);
+                if(--remainingMaterials==0) break;
+            }
         }
         textureX.resize(physical_width);
         textureY.resize(physical_height);
@@ -6961,8 +6994,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const auto upscaleAt=[&](RGB color,RGB original,int x,int y,int lx,int ly)->RGB {
         if(nativeX.empty() || nativeY.empty()) return color;
         // A conservative HUD guard also covers its interpolated edge.
-        if(ly+2>=GetHUDtop(lx) || ly+2>=GetHUDtop((std::max)(0,lx-1)) ||
-           ly+2>=GetHUDtop((std::min)(screen_width-1,lx+1))) return color;
+        if(ly+2>=hudTops[lx] || ly+2>=hudTops[(std::max)(0,lx-1)] ||
+           ly+2>=hudTops[(std::min)(screen_width-1,lx+1)]) return color;
         const auto sx=nativeX[x],sy=nativeY[y];
         const auto index=nativeArt[static_cast<size_t>(sy.index)*nativeWidth+sx.index];
         const auto logicalIndex=screen_pixels[static_cast<size_t>(ly)*screen_width+lx];
