@@ -779,6 +779,7 @@ FSU_sprite::~FSU_sprite()
 void FSU_sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x_pos, int buf_y_pos, int buf_x_size,uint8_t* shadow_filter,uint8_t* filter,int zoom)
 {
 	const auto* coverage = spellcross_enhanced::ObserveGround(buffer, buf_x_size);
+	const bool suppressShadow = spellcross_enhanced::SuppressOriginalShadow(buffer,buf_x_size,shadow_filter!=nullptr);
 	// source data
 	uint8_t* data = this->data;
 
@@ -808,7 +809,8 @@ void FSU_sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x_pos, int bu
 			// The filtered path writes one pixel per source pixel; the
 			// unfiltered path repeats horizontally by zoom. Shadows are writes too.
 			if (coverage) coverage->Span(scan, count, data, filter ? 1 : zoom,
-                spellcross_enhanced::PixelLayer::Unit, shadow_filter ? 0xFD : -1);
+                spellcross_enhanced::PixelLayer::Unit, shadow_filter ? 0xFD : -1,
+                suppressShadow ? 0xFD : -1);
 			// render line
 			if(filter)
 			{
@@ -818,7 +820,7 @@ void FSU_sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x_pos, int bu
 					{
 						// shadow it is - convert original color using filter
 						//*scan = filter[shadow_filter[*scan]];
-						*scan = shadow_filter[*scan];
+						if (!suppressShadow) *scan = shadow_filter[*scan];
 					}
 					else if(*data)
 					{
@@ -838,7 +840,7 @@ void FSU_sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x_pos, int bu
 						if(*data == 0xFD && shadow_filter)
 						{
 							// shadow it is - convert original color using filter
-							*scan = shadow_filter[*scan];
+							if (!suppressShadow) *scan = shadow_filter[*scan];
 						}
 						else if (*data)
 						{

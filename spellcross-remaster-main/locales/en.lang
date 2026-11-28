@@ -465,3 +465,5 @@ screen.procedural_upscaling=Procedural sprite reconstruction
 screen.lighting_intensity=Lighting intensity (%)
 screen.shadow_strength=Directional shadow strength (%)
 screen.directional_shadows=Directional shadows (daylight)
+
+screen.original_shadows=Original unit shadows

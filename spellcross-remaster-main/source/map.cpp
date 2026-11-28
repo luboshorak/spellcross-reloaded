@@ -5945,7 +5945,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             int(renderSettings.procedural_upscaling),int(rgbLighting),int(materialDetail),
             int(spriteUpscale),int(newFilters),int(normalTactical),int(params.is_night),
             int(renderSettings.gpu_acceleration),0,renderSettings.lighting_intensity,
-            int(renderSettings.directional_shadows),renderSettings.shadow_strength,int(directionalShadows)};
+            int(renderSettings.directional_shadows),renderSettings.shadow_strength,int(directionalShadows),
+            int(renderSettings.original_shadows)};
         perf.pendingReadback=0;
     }
     static thread_local spellcross_enhanced::GroundSurface groundLight;
@@ -6110,7 +6111,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         groundLight.ApplyShadows();
     }
     const spellcross_enhanced::GroundOcclusionScope groundCoverage(
-        enhancedGround ? &groundLight : nullptr, pic, pic_x_size);
+        enhancedGround ? &groundLight : nullptr, pic, pic_x_size,
+        editorPreview || renderSettings.original_shadows);
 
 	// --- Render Layer 3 - ANM animations ---
 	if (wL3)

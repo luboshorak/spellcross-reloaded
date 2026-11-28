@@ -465,3 +465,5 @@ screen.procedural_upscaling=Procedurální rekonstrukce spritů
 screen.lighting_intensity=Intenzita osvětlení (%)
 screen.shadow_strength=Síla směrových stínů (%)
 screen.directional_shadows=Směrové stíny (den)
+
+screen.original_shadows=Původní stíny jednotek

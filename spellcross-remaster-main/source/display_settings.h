@@ -37,6 +37,7 @@ namespace spellcross_display
         int tactical_sharpen = 0;
         int lighting_intensity = 100;
         bool directional_shadows = false;
+        bool original_shadows = true;
         int shadow_strength = 60;
     };
 
@@ -89,7 +90,8 @@ namespace spellcross_display
             old.tactical_filter == s.tactical_filter && old.tactical_dedither == s.tactical_dedither &&
             old.tactical_sharpen == s.tactical_sharpen &&
             old.lighting_intensity == s.lighting_intensity &&
-            old.directional_shadows == s.directional_shadows && old.shadow_strength == s.shadow_strength)
+            old.directional_shadows == s.directional_shadows && old.original_shadows == s.original_shadows &&
+            old.shadow_strength == s.shadow_strength)
             return;
         old = s;
         ++MutableRevision();
@@ -531,6 +533,10 @@ namespace spellcross_display
             spellcross_ui_locale::Tr("screen.directional_shadows","Directional shadows (daylight)"));
         shadows->SetValue(original.directional_shadows);
         renderer->Add(shadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        auto* originalShadows = new ScreenCheck(renderer->GetStaticBox(),wxID_ANY,
+            spellcross_ui_locale::Tr("screen.original_shadows","Original unit shadows"));
+        originalShadows->SetValue(original.original_shadows);
+        renderer->Add(originalShadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
         auto* materials = new ScreenCheck(renderer->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.procedural_materials", "Procedural terrain materials (experimental)"));
         materials->SetValue(original.procedural_materials);
@@ -640,6 +646,7 @@ namespace spellcross_display
             next.advanced_rendering = enhanced->GetValue();
             next.lighting_intensity = lightIntensity->GetValue();
             next.directional_shadows = shadows->GetValue();
+            next.original_shadows = originalShadows->GetValue();
             next.shadow_strength = shadowStrength->GetValue();
             next.procedural_materials = materials->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
@@ -666,6 +673,7 @@ namespace spellcross_display
         temperature->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         enhanced->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         shadows->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        originalShadows->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         lightIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         shadowStrength->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });

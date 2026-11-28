@@ -15,7 +15,7 @@ int main()
     assert(std::abs(defaults.gamma - 1.3) < 1e-9);
     assert(defaults.temperature == 6500);
     assert(!defaults.advanced_rendering);
-    assert(!defaults.directional_shadows && defaults.lighting_intensity==100 && defaults.shadow_strength==60);
+    assert(!defaults.directional_shadows && defaults.original_shadows && defaults.lighting_intensity==100 && defaults.shadow_strength==60);
     assert(!defaults.procedural_materials && !defaults.procedural_upscaling);
     assert(defaults.tactical_filter==spellcross_filters::Legacy && !defaults.tactical_dedither && defaults.tactical_sharpen==0);
     Settings enhanced = defaults;
@@ -27,11 +27,12 @@ int main()
     assert(!Current().advanced_rendering);
     Settings shadowOnly=defaults;
     shadowOnly.directional_shadows=true;
+    shadowOnly.original_shadows=false;
     shadowOnly.shadow_strength=88;
     shadowOnly.lighting_intensity=25;
     const auto shadowRevision=Revision();
     Set(shadowOnly);
-    assert(Current().directional_shadows && !Current().advanced_rendering);
+    assert(Current().directional_shadows && !Current().advanced_rendering && !Current().original_shadows);
     assert(Current().shadow_strength==88 && Current().lighting_intensity==25 && Revision()>shadowRevision);
     shadowOnly.shadow_strength=180;shadowOnly.lighting_intensity=-10;
     assert(Normalize(shadowOnly).shadow_strength==100 && Normalize(shadowOnly).lighting_intensity==0);

@@ -356,7 +356,7 @@ namespace spellcross_enhanced
         // happens to equal the ground underneath. Null source means solid.
         void OccludeSpan(std::size_t offset,int stride,int count,
                          const std::uint8_t* source=nullptr,int repeat=1,
-                         PixelLayer layer=PixelLayer::Effect,int shadowIndex=-1)
+                         PixelLayer layer=PixelLayer::Effect,int shadowIndex=-1,int skipIndex=-1)
         {
             if(stride<=0||count<=0||repeat<=0||width<=0||height<=0) return;
             // Divide once per span, not once per covered pixel. Most sprite
@@ -366,7 +366,7 @@ namespace spellcross_enhanced
             const auto bottom=static_cast<std::size_t>((std::max)(0,top+height));
             for(int i=0;i<count;++i)
             {
-                const bool opaque=!source||source[i]!=0;
+                const bool opaque=!source||(source[i]!=0&&source[i]!=skipIndex);
                 for(int z=0;z<repeat;++z)
                 {
                     if(y>=bottom) return;
@@ -544,15 +544,16 @@ namespace spellcross_enhanced
         const std::uint8_t* buffer=nullptr;
         int stride=0;
         PixelLayer layer=PixelLayer::Effect;
+        bool originalShadows=true;
         void Span(const std::uint8_t* destination,int count,
                   const std::uint8_t* source=nullptr,int repeat=1,
-                  PixelLayer kind=PixelLayer::Empty,int shadowIndex=-1) const
+                  PixelLayer kind=PixelLayer::Empty,int shadowIndex=-1,int skipIndex=-1) const
         {
             const auto start=reinterpret_cast<std::uintptr_t>(buffer);
             const auto write=reinterpret_cast<std::uintptr_t>(destination);
             if(write<start) return;
             surface->OccludeSpan(static_cast<std::size_t>(write-start),
-                stride,count,source,repeat,kind==PixelLayer::Empty?layer:kind,shadowIndex);
+                stride,count,source,repeat,kind==PixelLayer::Empty?layer:kind,shadowIndex,skipIndex);
         }
     };
     inline thread_local GroundOcclusion activeGroundOcclusion;
@@ -560,10 +561,10 @@ namespace spellcross_enhanced
     {
         GroundOcclusion previous;
     public:
-        GroundOcclusionScope(GroundSurface* surface,const std::uint8_t* buffer,int stride)
+        GroundOcclusionScope(GroundSurface* surface,const std::uint8_t* buffer,int stride,bool originalShadows=true)
             : previous(activeGroundOcclusion)
         {
-            activeGroundOcclusion={surface,buffer,stride};
+            activeGroundOcclusion={surface,buffer,stride,PixelLayer::Effect,originalShadows};
         }
         ~GroundOcclusionScope() { activeGroundOcclusion=previous; }
         GroundOcclusionScope(const GroundOcclusionScope&)=delete;
@@ -581,6 +582,13 @@ namespace spellcross_enhanced
         ForegroundLayerScope(const ForegroundLayerScope&)=delete;
         ForegroundLayerScope& operator=(const ForegroundLayerScope&)=delete;
     };
+    // FSU palette index FD is a shadow operation only when the caller
+    // supplies a shadow filter. Never reinterpret that index in other assets.
+    inline bool SuppressOriginalShadow(const std::uint8_t* buffer,int stride,bool hasShadowFilter)
+    {
+        return hasShadowFilter && !activeGroundOcclusion.originalShadows &&
+            activeGroundOcclusion.buffer==buffer && activeGroundOcclusion.stride==stride;
+    }
     inline const GroundOcclusion* ObserveGround(const std::uint8_t* buffer,int stride)
     {
         return activeGroundOcclusion.surface&&activeGroundOcclusion.buffer==buffer&&

@@ -229,3 +229,12 @@ the same packed tags and grade setting. All new choices persist in STATE and
 Cancel restores the complete prior settings. The screen dialog scrolls on small
 monitors while OK/Cancel remain visible. CPU, GPU and settings regressions cover
 the new math and defaults; actual game visuals and performance need acceptance.
+
+Original unit shadows are separately configurable (default on). Disabling them
+skips only FSU FD shadow operations in the tactical framebuffer, even when all
+RGB effects are off; those pixels preserve the underlying palette and ownership
+mask. It does not erase shadows painted into terrain/scenery artwork, the unit
+HUD background or the separate advanced-lighting contact shade. If original
+shadows are disabled, aircraft and moving companies currently lose their baked
+shadows without a projected replacement. Other previews and the editor retain
+original rendering. Settings and mask tests cover the independent toggle.

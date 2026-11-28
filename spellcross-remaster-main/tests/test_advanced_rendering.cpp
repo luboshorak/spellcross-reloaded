@@ -157,6 +157,23 @@ int main()
         assert(!field.At(0,3)&&!field.At(1,3)&&field.At(2,3));
     }
     assert(!ObserveGround(frame.data(),5));
+    field.Reset(5,5,0,0);
+    for(int y=0;y<5;++y) for(int x=0;x<5;++x) field.Write(x,y,MakeTag(120,0));
+    {
+        GroundOcclusionScope scope(&field,frame.data(),5,false);
+        assert(SuppressOriginalShadow(frame.data(),5,true));
+        assert(!SuppressOriginalShadow(frame.data(),5,false));
+        assert(!SuppressOriginalShadow(frame.data(),4,true));
+        const std::uint8_t unit[]={120,0xFD,0};
+        ObserveGround(frame.data(),5)->Span(frame.data()+11,3,unit,1,PixelLayer::Unit,0xFD,0xFD);
+        assert(field.LayerAt(1,2)==PixelLayer::Unit);
+        assert(field.LayerAt(2,2)==PixelLayer::Ground && field.At(2,2));
+        assert(field.LayerAt(3,2)==PixelLayer::Ground && field.At(3,2));
+    }
+    { GroundOcclusionScope scope(nullptr,frame.data(),5,false);
+      assert(SuppressOriginalShadow(frame.data(),5,true));
+      assert(!ObserveGround(frame.data(),5)); }
+    assert(!SuppressOriginalShadow(frame.data(),5,true));
     field.Reset(4,4,0,0);
     field.Mark(sprite,1,0,0,1,&light,false);
     assert(field.At(0,1)==0 && field.At(1,1)!=0 && field.At(2,1)==0);
