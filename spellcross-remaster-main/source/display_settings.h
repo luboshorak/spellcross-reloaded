@@ -32,6 +32,7 @@ namespace spellcross_display
         bool advanced_rendering = false; // V2 tactical RGB lighting
         bool procedural_materials = false; // V3 independent material detail
         bool procedural_upscaling = false; // edge-aware tactical sprite reconstruction
+        bool gpu_acceleration = false; // opt-in D3D11 compute, CPU fallback
         int tactical_filter = spellcross_filters::Legacy;
         bool tactical_dedither = false;
         int tactical_sharpen = 0;
@@ -80,6 +81,7 @@ namespace spellcross_display
             old.advanced_rendering == s.advanced_rendering &&
             old.procedural_materials == s.procedural_materials &&
             old.procedural_upscaling == s.procedural_upscaling &&
+            old.gpu_acceleration == s.gpu_acceleration &&
             old.tactical_filter == s.tactical_filter && old.tactical_dedither == s.tactical_dedither &&
             old.tactical_sharpen == s.tactical_sharpen)
             return;
@@ -350,7 +352,14 @@ namespace spellcross_display
         upscaling->SetValue(original.procedural_upscaling);
         root->Add(upscaling, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(8));
 
-        addLabel(spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter (CPU)"));
+        auto* gpu = new wxCheckBox(&dialog,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.gpu_acceleration","GPU acceleration (Direct3D 11, experimental)"));
+        gpu->SetValue(original.gpu_acceleration);
+#ifndef _WIN32
+        gpu->Disable();
+#endif
+        root->Add(gpu,0,wxLEFT|wxRIGHT|wxTOP|wxBOTTOM,dialog.FromDIP(8));
+        addLabel(spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter"));
         auto* filter = new wxChoice(&dialog, wxID_ANY);
         filter->Append(spellcross_ui_locale::Tr("screen.filter.legacy", "Existing renderer (default)"));
         std::vector<int> filterIds{spellcross_filters::Legacy};
@@ -423,6 +432,7 @@ namespace spellcross_display
             next.advanced_rendering = enhanced->GetValue();
             next.procedural_materials = materials->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
+            next.gpu_acceleration = gpu->GetValue();
             const int selected=filter->GetSelection();
             next.tactical_filter = selected>=0 && selected<static_cast<int>(filterIds.size())?
                 filterIds[selected]:spellcross_filters::Legacy;
@@ -446,6 +456,7 @@ namespace spellcross_display
         enhanced->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        gpu->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         filter->Bind(wxEVT_CHOICE, [&](wxCommandEvent&) { apply(); });
         dedither->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         sharpen->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });

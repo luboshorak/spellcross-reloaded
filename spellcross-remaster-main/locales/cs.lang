@@ -307,7 +307,7 @@ screen.temperature=Teplota barev (K)
 screen.advanced_rendering=Pokročilý rendering (barvy a osvětlení)
 screen.procedural_materials=Procedurální materiály terénu (experimentální)
 screen.procedural_upscaling=Procedurální upscaling spritů (experimentální)
-screen.tactical_filter=Filtr zvětšení bojiště (CPU)
+screen.tactical_filter=Filtr zvětšení bojiště
 screen.filter.legacy=Stávající renderer (výchozí)
 screen.tactical_dedither=Potlačení ditheringu palety
 screen.tactical_sharpen=Adaptivní doostření (%)
@@ -446,3 +446,5 @@ help.key.performance=Ctrl+Shift+F10
 help.action.performance=Zapnout nebo vypnout diagnostický panel FPS, časů vykreslení, CPU a RAM.
 
 screen.perf.toggle=Diagnostika výkonu a debug log (Ctrl+Shift+F10)
+
+screen.gpu_acceleration=GPU akcelerace (Direct3D 11, experimentální)

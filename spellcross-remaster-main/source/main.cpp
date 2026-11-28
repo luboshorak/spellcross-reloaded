@@ -2825,6 +2825,7 @@ bool MyApp::OnInit()
         settings.advanced_rendering = ini.GetBoolValue("STATE", "advanced_rendering", false);
         settings.procedural_materials = ini.GetBoolValue("STATE", "procedural_materials", false);
         settings.procedural_upscaling = ini.GetBoolValue("STATE", "procedural_upscaling", false);
+        settings.gpu_acceleration = ini.GetBoolValue("STATE","gpu_acceleration",false);
         settings.tactical_filter = static_cast<int>(ini.GetLongValue("STATE", "tactical_filter", 0));
         settings.tactical_dedither = ini.GetBoolValue("STATE", "tactical_dedither", false);
         settings.tactical_sharpen = static_cast<int>(ini.GetLongValue("STATE", "tactical_sharpen", 0));
@@ -3035,6 +3036,7 @@ int MyApp::OnExit()
     ini.SetBoolValue("STATE", "advanced_rendering", screen.advanced_rendering);
     ini.SetBoolValue("STATE", "procedural_materials", screen.procedural_materials);
     ini.SetBoolValue("STATE", "procedural_upscaling", screen.procedural_upscaling);
+    ini.SetBoolValue("STATE","gpu_acceleration",screen.gpu_acceleration);
     ini.SetLongValue("STATE", "tactical_filter", screen.tactical_filter);
     ini.SetBoolValue("STATE", "tactical_dedither", screen.tactical_dedither);
     ini.SetLongValue("STATE", "tactical_sharpen", screen.tactical_sharpen);

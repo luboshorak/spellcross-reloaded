@@ -69,11 +69,11 @@ namespace spellcross_perf
         int width=0,height=0,zoom=0,dpi=0,smooth=0,filter=0,dedither=0,sharpen=0;
         int lighting=0,materials=0,sprites=0;
         int activeLighting=0,activeMaterials=0,activeSprites=0,activeFilter=0;
-        int normal=0,night=0;
-        std::array<int,17> Key() const
+        int normal=0,night=0,gpuRequested=0,gpuActive=0;
+        std::array<int,19> Key() const
         {
             return {width,height,zoom,dpi,smooth,filter,dedither,sharpen,lighting,materials,sprites,
-                activeLighting,activeMaterials,activeSprites,activeFilter,normal,night};
+                activeLighting,activeMaterials,activeSprites,activeFilter,normal,night,gpuRequested,gpuActive};
         }
     };
     struct State
@@ -84,7 +84,7 @@ namespace spellcross_perf
         double total=0,peak=0,mapTotal=0,rgbTotal=0;
         double fps=0,avg=0,maxMs=0,mapMs=0,rgbMs=0,lastMs=0;
         double cpu=-1,ram=-1,cpuStart=-1;
-        double pendingMap=0,pendingRGB=0;
+        double pendingMap=0,pendingRGB=0,pendingReadback=0,readbackTotal=0,readbackMs=0;
         bool haveSample=false,haveProfile=false;
         Profile pendingProfile{},profile{};
         void Toggle()
@@ -103,18 +103,18 @@ namespace spellcross_perf
             if(!haveProfile || profile.Key()!=pendingProfile.Key() ||
                 (lastFrame!=Stamp{} && Millis(lastFrame,begin)>2000))
             {
-                window=begin; frames=0; total=peak=mapTotal=rgbTotal=0;
+                window=begin; frames=0; total=peak=mapTotal=rgbTotal=readbackTotal=0;
                 cpuStart=ProcessCpuSeconds(); haveSample=false;
                 profile=pendingProfile; haveProfile=true;
             }
             lastFrame=end;
             lastMs=Millis(begin,end);
             ++frames; total+=lastMs; peak=(std::max)(peak,lastMs);
-            mapTotal+=pendingMap; rgbTotal+=pendingRGB;
+            mapTotal+=pendingMap; rgbTotal+=pendingRGB; readbackTotal+=pendingReadback;
             const double elapsed=Millis(window,end);
             if(elapsed<1000) return;
             fps=1000.0*frames/elapsed;
-            avg=total/frames; maxMs=peak; mapMs=mapTotal/frames; rgbMs=rgbTotal/frames;
+            avg=total/frames; maxMs=peak; mapMs=mapTotal/frames; rgbMs=rgbTotal/frames; readbackMs=readbackTotal/frames;
             const double nowCpu=ProcessCpuSeconds();
             const auto cores=(std::max)(1u,std::thread::hardware_concurrency());
             cpu=nowCpu>=0 && cpuStart>=0 && nowCpu>=cpuStart?
@@ -126,13 +126,13 @@ namespace spellcross_perf
                 "map_ms=%.2f rgb_ms=%.2f outside_ms=%.2f cpu_pct=%.2f ram_mib=%.1f cores=%u "
                 "size=%dx%d zoom=%d dpi=%d smooth=%d filter=%d dedither=%d sharpen=%d "
                 "lighting=%d materials=%d sprites=%d active_light=%d active_material=%d active_sprite=%d "
-                "active_filter=%d normal=%d night=%d",
+                "active_filter=%d normal=%d night=%d gpu_requested=%d gpu_active=%d gpu_readback_ms=%.2f",
                 fps,frames,elapsed/frames,avg,maxMs,mapMs,rgbMs,
                 (std::max)(0.0,elapsed/frames-avg),cpu,ram,cores,
                 c.width,c.height,c.zoom,c.dpi,c.smooth,c.filter,c.dedither,c.sharpen,
                 c.lighting,c.materials,c.sprites,c.activeLighting,c.activeMaterials,c.activeSprites,
-                c.activeFilter,c.normal,c.night);
-            haveSample=true; window=end; frames=0; total=peak=mapTotal=rgbTotal=0;
+                c.activeFilter,c.normal,c.night,c.gpuRequested,c.gpuActive,readbackMs);
+            haveSample=true; window=end; frames=0; total=peak=mapTotal=rgbTotal=readbackTotal=0;
         }
     };
     inline State& Current() { static State state; return state; }
@@ -145,7 +145,8 @@ namespace spellcross_perf
             wxString::Format("Render %.1f ms | avg %.1f | max %.1f",s.lastMs,s.avg,s.maxMs):
             wxString::Format("Render %.1f ms",s.lastMs);
         const wxString phase=s.haveSample?
-            wxString::Format("Map %.1f ms | RGB %.1f ms",s.mapMs,s.rgbMs):wxString("Map / RGB: sampling...");
+            wxString::Format("Map %.1f ms | RGB %.1f ms | %s",s.mapMs,s.rgbMs,
+                s.profile.gpuActive?"D3D11":"CPU"):wxString("Map / RGB: sampling...");
         const wxString pacing=s.haveSample && s.fps>0?
             wxString::Format("Frame interval %.1f ms | outside render %.1f ms",
                 1000.0/s.fps,(std::max)(0.0,1000.0/s.fps-s.avg)):

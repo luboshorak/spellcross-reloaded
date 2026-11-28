@@ -307,7 +307,7 @@ screen.temperature=Color temperature (K)
 screen.advanced_rendering=Advanced rendering (colour and lighting)
 screen.procedural_materials=Procedural terrain materials (experimental)
 screen.procedural_upscaling=Procedural sprite upscaling (experimental)
-screen.tactical_filter=Battlefield scaling filter (CPU)
+screen.tactical_filter=Battlefield scaling filter
 screen.filter.legacy=Existing renderer (default)
 screen.tactical_dedither=Reduce palette dithering
 screen.tactical_sharpen=Adaptive sharpening (%)
@@ -446,3 +446,5 @@ help.key.performance=Ctrl+Shift+F10
 help.action.performance=Toggle the experimental FPS, renderer timing, CPU and RAM overlay.
 
 screen.perf.toggle=Performance diagnostics + debug log (Ctrl+Shift+F10)
+
+screen.gpu_acceleration=GPU acceleration (Direct3D 11, experimental)

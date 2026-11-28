@@ -122,6 +122,7 @@
     <ClInclude Include="tactical_box_selection.h" />
     <ClInclude Include="tactical_zoom.h" />
     <ClInclude Include="display_settings.h" />
+    <ClInclude Include="gpu_postprocess.h" />
     <ClInclude Include="spell_map_event.h" />
     <ClInclude Include="RtAudio.h" />
     <ClInclude Include="spell_graphics.h" />

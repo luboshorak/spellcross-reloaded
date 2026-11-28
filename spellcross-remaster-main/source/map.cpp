@@ -24,6 +24,7 @@
 #include "render_perf.h"
 #include "render_rows.h"
 #include "legacy_rgb.h"
+#include "gpu_postprocess.h"
 #include "spellcross.h"
 #include "fs_archive.h"
 #include "fsu_archive.h"
@@ -5926,6 +5927,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // old procedural edge reconstruction. Legacy mode keeps that option.
     const bool spriteUpscale = normalTactical && !explicitFilter &&
         renderSettings.procedural_upscaling && zoom_percent * display_scale_percent > 10000;
+    bool gpuCandidate=false;
+#ifdef _WIN32
+    gpuCandidate=renderSettings.gpu_acceleration && normalTactical &&
+        (enhancedGround||spriteUpscale||newFilters) && spellcross_gpu::Supports(renderSettings.tactical_filter);
+#endif
     if(profiling)
     {
         perf.pendingProfile={physical_width,physical_height,zoom_percent,display_scale_percent,
@@ -5933,7 +5939,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             int(renderSettings.tactical_dedither),renderSettings.tactical_sharpen,
             int(renderSettings.advanced_rendering),int(renderSettings.procedural_materials),
             int(renderSettings.procedural_upscaling),int(rgbLighting),int(materialDetail),
-            int(spriteUpscale),int(newFilters),int(normalTactical),int(params.is_night)};
+            int(spriteUpscale),int(newFilters),int(normalTactical),int(params.is_night),
+            int(renderSettings.gpu_acceleration),0};
+        perf.pendingReadback=0;
     }
     static thread_local spellcross_enhanced::GroundSurface groundLight;
     static thread_local spellcross_enhanced::SurfaceCache surfaceCache;
@@ -6833,7 +6841,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     static thread_local std::vector<uint8_t> nativeArtStorage;
     auto& nativeArt=nativeArtStorage;
     nativeArt.clear();
-    if (spriteUpscale || newFilters)
+    if (spriteUpscale || newFilters || gpuCandidate)
     {
         nativeArt.resize(static_cast<size_t>(surf_x)*surf_y);
         for (int y=0;y<surf_y;++y)
@@ -6919,6 +6927,70 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // NightMission affects the final indexed tactical surface, not shared assets.
     spellcross_night::Palette night_palette;
     const auto* output_pal = spellcross_night::SelectPalette(pal, night_palette, is_night);
+
+#ifdef _WIN32
+    // Compute the existing visual effects on hardware, retaining the wx bitmap
+    // presentation path. If creation, shader compilation, or readback fails,
+    // execute the unmodified CPU renderer with the same options.
+    if(gpuCandidate && !nativeArt.empty())
+    {
+        static thread_local spellcross_gpu::Backend gpu;
+        static thread_local std::vector<int> gpuHud;
+        static thread_local bool reported=false,reportedFailure=false;
+        gpuHud.resize(screen_width);
+        for(int x=0;x<screen_width;++x) gpuHud[x]=GetHUDtop(x);
+        const spellcross_gpu::Frame frame{
+            physical_width,physical_height,screen_width,screen_height,nativeWidth,nativeHeight,
+            zoom_percent,display_scale_percent,int(settings.smooth_scaling),settings.tactical_filter,
+            int(settings.tactical_dedither),settings.tactical_sharpen,int(rgbLighting),int(materialDetail),
+            int(spriteUpscale),int(is_night),textureWorldX,textureWorldY,
+            spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent),0};
+        bool completed=false;
+        {
+            wxNativePixelData pixels(bmp);
+            if(pixels)
+            {
+                wxNativePixelData::Iterator row(pixels);
+                completed=gpu.Run(frame,nativeArt.data(),screen_pixels.data(),output_pal,
+                    screenLight.empty()?nullptr:screenLight.data(),gpuHud.data(),
+                    [&](int,const uint32_t* source) {
+                        auto* dest=row.m_ptr;
+                        for(int x=0;x<physical_width;++x)
+                        {
+                            const auto c=source[x];
+                            *dest++=static_cast<uint8_t>(c>>16);
+                            *dest++=static_cast<uint8_t>(c>>8);
+                            *dest++=static_cast<uint8_t>(c);
+                        }
+                        row.OffsetY(pixels,1);
+                    });
+            }
+        }
+        if(completed)
+        {
+            if(!reported)
+            {
+                const auto adapter=wxString(gpu.Adapter()).utf8_str();
+                spellcross_diag::Log(spellcross_diag::Level::Info,"RENDER_GPU","D3D11 hardware compute active adapter=%s",adapter.data());
+                reported=true;
+            }
+            if(profiling)
+            {
+                perf.pendingProfile.gpuActive=1;
+                perf.pendingReadback=gpu.readbackMs;
+                perf.pendingMap=spellcross_perf::Millis(perfStart,perfRGB);
+                perf.pendingRGB=spellcross_perf::Millis(perfRGB,spellcross_perf::Clock::now());
+            }
+            CommitRenderSurfModified();
+            return 0;
+        }
+        if(!reportedFailure)
+        {
+            spellcross_diag::Log(spellcross_diag::Level::Warning,"RENDER_GPU","CPU fallback: %s",gpu.Error().c_str());
+            reportedFailure=true;
+        }
+    }
+#endif
 
     // The normal renderer must not run through the experimental RGB path.
     // In particular, do not prepare HUD guards, row workers, filter objects,

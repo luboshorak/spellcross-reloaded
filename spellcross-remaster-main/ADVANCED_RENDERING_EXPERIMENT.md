@@ -168,3 +168,18 @@ The graphics settings checkbox and Ctrl+Shift+F10 toggle the same session-only p
 ### Second filter review
 
 Retired Scale3x (ID 16). Added directional triangle interpolation, Soft EPX and soft CRT scanlines (visible at effective zoom >=200%). Existing IDs are preserved and the review dialog includes the new modes. CPU implementations, not imported GLSL. The legacy fast path remains unchanged.
+
+### V6 first hardware compute backend (Windows)
+
+An opt-in Direct3D 11 feature-level 11.0 hardware compute path handles the
+three original visual effects, palette dedither, adaptive sharpening and
+Legacy/Nearest/Sharp Bilinear/Cosine/Smootherstep/Robidoux Sharp/Sharp Bicubic.
+The CPU still rasterizes indexed map and HUD, produces lighting tags and
+generates the material atlas once. GPU output is synchronously read back
+into the existing wxBitmap (not a swap chain yet). Other filters, Linux,
+unsupported hardware and device/shader failures use the CPU path without
+silently disabling selected effects. Shader float interpolation may differ
+by a few RGB levels from CPU fixed-point interpolation. Settings default
+off. RENDER_PERF records gpu_requested, gpu_active and gpu_readback_ms
+(includes waiting for GPU completion and copying the bitmap rows, not GPU
+execution time alone). No claim of 60 FPS until measured on real hardware.
