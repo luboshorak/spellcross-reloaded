@@ -72,11 +72,13 @@ namespace spellcross_perf
         int normal=0,night=0,gpuRequested=0,gpuActive=0;
         int lightIntensity=100,directionalShadows=0,shadowStrength=60,activeShadows=0;
         int originalShadows=1;
-        std::array<int,24> Key() const
+        int materialV2=0,materialIntensity=100,animatedWater=0,waterIntensity=60;
+        std::array<int,28> Key() const
         {
             return {width,height,zoom,dpi,smooth,filter,dedither,sharpen,lighting,materials,sprites,
                 activeLighting,activeMaterials,activeSprites,activeFilter,normal,night,gpuRequested,gpuActive,
-                lightIntensity,directionalShadows,shadowStrength,activeShadows,originalShadows};
+                lightIntensity,directionalShadows,shadowStrength,activeShadows,originalShadows,
+                materialV2,materialIntensity,animatedWater,waterIntensity};
         }
     };
     struct State
@@ -130,13 +132,15 @@ namespace spellcross_perf
                 "size=%dx%d zoom=%d dpi=%d smooth=%d filter=%d dedither=%d sharpen=%d "
                 "lighting=%d materials=%d sprites=%d active_light=%d active_material=%d active_sprite=%d "
                 "active_filter=%d normal=%d night=%d gpu_requested=%d gpu_active=%d gpu_readback_ms=%.2f "
-                "light_intensity=%d directional_shadows=%d shadow_strength=%d active_shadows=%d original_shadows=%d",
+                "light_intensity=%d directional_shadows=%d shadow_strength=%d active_shadows=%d original_shadows=%d "
+                "material_v2=%d material_intensity=%d animated_water=%d water_intensity=%d",
                 fps,frames,elapsed/frames,avg,maxMs,mapMs,rgbMs,
                 (std::max)(0.0,elapsed/frames-avg),cpu,ram,cores,
                 c.width,c.height,c.zoom,c.dpi,c.smooth,c.filter,c.dedither,c.sharpen,
                 c.lighting,c.materials,c.sprites,c.activeLighting,c.activeMaterials,c.activeSprites,
                 c.activeFilter,c.normal,c.night,c.gpuRequested,c.gpuActive,readbackMs,
-                c.lightIntensity,c.directionalShadows,c.shadowStrength,c.activeShadows,c.originalShadows);
+                c.lightIntensity,c.directionalShadows,c.shadowStrength,c.activeShadows,c.originalShadows,
+                c.materialV2,c.materialIntensity,c.animatedWater,c.waterIntensity);
             haveSample=true; window=end; frames=0; total=peak=mapTotal=rgbTotal=readbackTotal=0;
         }
     };

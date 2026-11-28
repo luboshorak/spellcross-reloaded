@@ -74,6 +74,32 @@ int main()
     const auto night=ShadeRGB(nightGreen,20,true);
     assert(night[0]==0 && night[2]==0 && night[1]>180);
     assert(MakeTag(245,10)==0 && MakeTag(0,0)==0);
+    assert(TagMaterial(MakeTag(245,0,Material::Water))==Material::Water);
+    assert(MakeTag(250,0,Material::Water)==0);
+    const RGB waterColour{32,88,152};
+    assert(ApplyWater(waterColour,21,35,0,0,false)==waterColour);
+    assert(ApplyWater(RGB{},21,35,30,100,false)==RGB{});
+    assert(ApplyWater(waterColour,21,35,0,100,false)!=ApplyWater(waterColour,21,35,40,100,false));
+    assert(ApplyWater(waterColour,21,35,0,100,false)==ApplyWater(waterColour,21,35,128,100,false));
+    const auto mix=BlendMaterialDetail({20,-10},{-10,15},Material::Grass);
+    assert(mix.light==2&&mix.tint==5);
+    {
+        GroundSurface surface;
+        surface.Reset(4,4,0,0);
+        GroundLight light{};
+        std::vector<std::uint8_t> row(2*sizeof(int)+4);
+        int off=0,count=4;
+        std::memcpy(row.data(),&off,sizeof(int));
+        std::memcpy(row.data()+sizeof(int),&count,sizeof(int));
+        row[2*sizeof(int)]=245;row[2*sizeof(int)+1]=250;row[2*sizeof(int)+2]=120;
+        surface.Mark(row,1,0,0,0,&light,false,Material::Wet,false,nullptr,100,true);
+        assert(TagMaterial(surface.At(0,0))==Material::Water);
+        assert(!surface.At(1,0)&&TagMaterial(surface.At(2,0))==Material::Wet);
+        surface.OccludeSpan(0,4,1);
+        assert(!surface.At(0,0));
+        surface.Mark(row,1,0,0,0,&light,false,Material::Wet,false);
+        assert(!surface.At(0,0));
+    }
     assert(ScaleShade(-20,50)==-10 && ScaleShade(20,0)==0 && ScaleShade(20,100)==20);
     const auto ungraded=ShadeRGB(sand,0,false,0);
     assert(ungraded[0]==sand[0] && ungraded[1]==sand[1] && ungraded[2]==sand[2]);

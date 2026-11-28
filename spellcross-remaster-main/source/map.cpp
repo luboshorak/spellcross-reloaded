@@ -5921,9 +5921,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         renderSettings.directional_shadows && renderSettings.shadow_strength>0;
     const int lightingGrade=baseLighting?renderSettings.lighting_intensity:0;
     const bool rgbLighting = baseLighting || directionalShadows;
-    const bool materialDetail = normalTactical && renderSettings.procedural_materials &&
-        spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent)>0;
-    const bool enhancedGround = rgbLighting || materialDetail;
+    const int materialStrength=spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent)*
+        renderSettings.material_intensity/100;
+    const bool materialDetail = normalTactical && renderSettings.procedural_materials && materialStrength>0;
+    const bool animatedWater=normalTactical&&renderSettings.animated_water&&renderSettings.water_intensity>0;
+    const int waterStrength=animatedWater?renderSettings.water_intensity:0;
+    const int waterPhase=animatedWater?static_cast<int>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            spellcross_perf::Clock::now().time_since_epoch()).count()/35%128):0;
+    const bool enhancedGround = rgbLighting || materialDetail || animatedWater;
     const bool explicitFilter = normalTactical && renderSettings.tactical_filter!=spellcross_filters::Legacy;
     const bool newFilters = normalTactical && (explicitFilter ||
         renderSettings.tactical_dedither || renderSettings.tactical_sharpen>0);
@@ -5946,7 +5952,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             int(spriteUpscale),int(newFilters),int(normalTactical),int(params.is_night),
             int(renderSettings.gpu_acceleration),0,renderSettings.lighting_intensity,
             int(renderSettings.directional_shadows),renderSettings.shadow_strength,int(directionalShadows),
-            int(renderSettings.original_shadows)};
+            int(renderSettings.original_shadows),int(renderSettings.material_v2),renderSettings.material_intensity,
+            int(renderSettings.animated_water),renderSettings.water_intensity};
         perf.pendingReadback=0;
     }
     static thread_local spellcross_enhanced::GroundSurface groundLight;
@@ -6051,7 +6058,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     (Sprite::IS_WATER | Sprite::IS_ROAD | Sprite::IS_BRIDGE |
                      Sprite::IS_WOOD_BRIDGE | Sprite::IS_FORD)) != 0;
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
-                    mxx, myy, &light, smoothMaterial, material,baseLighting,&surfaceCache,lightingGrade);
+                    mxx, myy, &light, smoothMaterial, material,baseLighting,&surfaceCache,lightingGrade,
+                    animatedWater && (flags & (Sprite::IS_WATER | Sprite::IS_FORD)) != 0);
             }
             else if (enhancedGround)
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
@@ -6978,7 +6986,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             zoom_percent,display_scale_percent,int(settings.smooth_scaling),settings.tactical_filter,
             int(settings.tactical_dedither),settings.tactical_sharpen,int(rgbLighting),int(materialDetail),
             int(spriteUpscale),int(is_night),textureWorldX,textureWorldY,
-            spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent),lightingGrade};
+            materialStrength,lightingGrade,int(settings.material_v2),waterStrength,waterPhase,0};
         bool completed=false;
         {
             wxNativePixelData pixels(bmp);
@@ -7100,14 +7108,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     static TextureBank textureBank;
     constexpr auto materialCount=static_cast<size_t>(Material::Count);
     std::array<const std::vector<MicroDetail>*,materialCount> textureMaps{};
-    const int microStrength=materialDetail ? TextureStrength(zoom_percent,display_scale_percent) : 0;
+    const int microStrength=materialDetail ? materialStrength : 0;
+    const bool surfaceEffects=microStrength||waterStrength;
     std::vector<int> textureX,textureY;
-    if(microStrength)
+    if(surfaceEffects)
     {
         size_t remainingMaterials=materialCount;
         for(const auto tag:screenLight)
         {
-            if(!tag) continue;
+            if(!tag||!microStrength||TagMaterial(tag)==Material::Water) continue;
             const auto material=TagMaterial(tag);
             const auto index=static_cast<size_t>(material);
             if(!textureMaps[index])
@@ -7127,11 +7136,17 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         return screenLight.empty()?0:screenLight[static_cast<size_t>(y)*screen_width+x];
     };
     const auto detailAt=[&](RGB color,Tag tag,int x,int y)->RGB {
-        if(!microStrength||!tag) return color;
+        if(!tag) return color;
         const auto material=TagMaterial(tag);
+        if(material==Material::Water)
+            return ApplyWater(color,textureX[x],textureY[y],waterPhase,waterStrength,is_night);
         const auto* texture=textureMaps[static_cast<size_t>(material)];
-        return texture ? ApplyMicroDetail(color,TextureBank::Sample(*texture,textureX[x],textureY[y]),
-            material,microStrength,is_night) : color;
+        if(!texture||!microStrength) return color;
+        const int u=textureX[x],v=textureY[y];
+        auto detail=TextureBank::Sample(*texture,u,v);
+        if(settings.material_v2)
+            detail=BlendMaterialDetail(detail,TextureBank::Sample(*texture,u/3+v/7+173,v/5-u/11+89),material);
+        return ApplyMicroDetail(color,detail,material,microStrength,is_night);
     };
 
     // Original artwork reconstruction is independent of both terrain effects.
@@ -7258,7 +7273,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 const auto* p10 = rgbAt(sample.second,vertical.first);
                 const auto* p01 = rgbAt(sample.first,vertical.second);
                 const auto* p11 = rgbAt(sample.second,vertical.second);
-                if (!microStrength && !spriteUpscale && !filtersReady)
+                if (!surfaceEffects && !spriteUpscale && !filtersReady)
                 {
                     for (int channel = 2; channel >= 0; --channel)
                         *scan++ = spellcross_display::BlendBilinear(
@@ -7295,7 +7310,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     const auto tag=tagAt(sample.first,vertical.first);
                     // Never cross a material, sprite or HUD edge when
                     // synthesising detail after interpolation.
-                    if(microStrength && SameMaterial(tag,tagAt(sample.second,vertical.first)) &&
+                    if(surfaceEffects && SameMaterial(tag,tagAt(sample.second,vertical.first)) &&
                        SameMaterial(tag,tagAt(sample.first,vertical.second)) &&
                        SameMaterial(tag,tagAt(sample.second,vertical.second)))
                         color=detailAt(color,tag,x,y);
@@ -7318,7 +7333,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             {
                 const int sourceX=(x * 100) / display_scale_percent;
                 const auto* rgb = rgbAt(sourceX,sourceY);
-                if(microStrength || spriteUpscale || filtersReady)
+                if(surfaceEffects || spriteUpscale || filtersReady)
                 {
                     RGB color={rgb[0],rgb[1],rgb[2]};
                     if(spriteUpscale || filtersReady)
@@ -7328,7 +7343,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                             color=upscaleAt(color,{raw[0],raw[1],raw[2]},x,y,sourceX,sourceY);
                         color=filterAt(color,{raw[0],raw[1],raw[2]},x,y,sourceX,sourceY);
                     }
-                    if(microStrength) color=detailAt(color,tagAt(sourceX,sourceY),x,y);
+                    if(surfaceEffects) color=detailAt(color,tagAt(sourceX,sourceY),x,y);
                     *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
                 }
                 else

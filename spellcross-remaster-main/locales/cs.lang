@@ -467,3 +467,9 @@ screen.shadow_strength=Síla směrových stínů (%)
 screen.directional_shadows=Směrové stíny (den)
 
 screen.original_shadows=Původní stíny jednotek
+
+screen.group.terrain=Terén a voda
+screen.material_v2=Víceúrovňové materiály V2
+screen.material_intensity=Intenzita materiálů (%)
+screen.animated_water=Animované vlnění vody
+screen.water_intensity=Intenzita vlnění (%)

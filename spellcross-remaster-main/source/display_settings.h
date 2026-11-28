@@ -30,6 +30,10 @@ namespace spellcross_display
         int temperature = 6500;    // neutral daylight, 3500..9500 kelvin
         bool advanced_rendering = false; // V2 tactical RGB lighting
         bool procedural_materials = false; // V3 independent material detail
+        bool material_v2 = false;
+        int material_intensity = 100;
+        bool animated_water = false;
+        int water_intensity = 60;
         bool procedural_upscaling = false; // edge-aware tactical sprite reconstruction
         bool gpu_acceleration = false; // opt-in D3D11 compute, CPU fallback
         int tactical_filter = spellcross_filters::Legacy;
@@ -56,6 +60,8 @@ namespace spellcross_display
         s.tactical_sharpen=std::clamp(s.tactical_sharpen,0,100);
         s.lighting_intensity=std::clamp(s.lighting_intensity,0,100);
         s.shadow_strength=std::clamp(s.shadow_strength,0,100);
+        s.material_intensity=std::clamp(s.material_intensity,0,100);
+        s.water_intensity=std::clamp(s.water_intensity,0,100);
         return s;
     }
 
@@ -85,6 +91,8 @@ namespace spellcross_display
             old.gamma == s.gamma && old.temperature == s.temperature &&
             old.advanced_rendering == s.advanced_rendering &&
             old.procedural_materials == s.procedural_materials &&
+            old.material_v2 == s.material_v2 && old.material_intensity == s.material_intensity &&
+            old.animated_water == s.animated_water && old.water_intensity == s.water_intensity &&
             old.procedural_upscaling == s.procedural_upscaling &&
             old.gpu_acceleration == s.gpu_acceleration &&
             old.tactical_filter == s.tactical_filter && old.tactical_dedither == s.tactical_dedither &&
@@ -475,6 +483,7 @@ namespace spellcross_display
         auto* renderer = group(spellcross_ui_locale::Tr("screen.group.renderer", "Rendering and terrain"));
         auto* colour = group(spellcross_ui_locale::Tr("screen.group.colour", "Colour correction"));
         auto* filterGroup = group(spellcross_ui_locale::Tr("screen.group.filters", "Image filters"));
+        auto* terrainGroup = group(spellcross_ui_locale::Tr("screen.group.terrain", "Terrain and water"));
         addLabel(display,spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         const wxString scales[] = {
             spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"),
@@ -546,6 +555,21 @@ namespace spellcross_display
         upscaling->SetValue(original.procedural_upscaling);
         renderer->Add(upscaling, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
 
+        auto* materialV2 = new ScreenCheck(terrainGroup,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.material_v2","Multi-scale terrain materials V2"));
+        materialV2->SetValue(original.material_v2);
+        terrainGroup->Add(materialV2,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        addLabel(terrainGroup,spellcross_ui_locale::Tr("screen.material_intensity","Material intensity (%)"));
+        auto* materialIntensity = new spellcross_strategic_ui::Slider(terrainGroup,wxID_ANY,original.material_intensity,0,100);
+        terrainGroup->Add(materialIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        auto* water = new ScreenCheck(terrainGroup,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.animated_water","Animated water ripples"));
+        water->SetValue(original.animated_water);
+        terrainGroup->Add(water,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        addLabel(terrainGroup,spellcross_ui_locale::Tr("screen.water_intensity","Water effect intensity (%)"));
+        auto* waterIntensity = new spellcross_strategic_ui::Slider(terrainGroup,wxID_ANY,original.water_intensity,0,100);
+        terrainGroup->Add(waterIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+
         addLabel(filterGroup,spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter"));
         auto* filter = new ScreenChoice(filterGroup->GetStaticBox());
         filter->Append(spellcross_ui_locale::Tr("screen.filter.legacy", "Existing renderer (default)"));
@@ -606,9 +630,9 @@ namespace spellcross_display
         // Measure with the final themed font and reserve equal column widths
         // so longer localized labels never compete with the adjacent column.
         int columnWidth = dialog.FromDIP(400);
-        for (auto* section : {display, renderer, colour, filterGroup})
+        for (auto* section : {display, renderer, colour, filterGroup, terrainGroup})
             columnWidth = (std::max)(columnWidth, section->GetSizer()->CalcMin().x);
-        for (auto* section : {display, renderer, colour, filterGroup})
+        for (auto* section : {display, renderer, colour, filterGroup, terrainGroup})
             section->SetMinSize(wxSize(columnWidth, -1));
         const auto contentMin=bodySizer->CalcMin();
         const int displayIndex=wxDisplay::GetFromWindow(parent?parent:&dialog);
@@ -633,6 +657,9 @@ namespace spellcross_display
         };
         const auto updateFilterState = [&]() {
             upscaling->Enable(filter->GetSelection() == 0);
+            materialV2->Enable(materials->GetValue());
+            materialIntensity->Enable(materials->GetValue());
+            waterIntensity->Enable(water->GetValue());
         };
         updateFilterState();
         const auto apply = [&]() {
@@ -649,6 +676,10 @@ namespace spellcross_display
             next.original_shadows = originalShadows->GetValue();
             next.shadow_strength = shadowStrength->GetValue();
             next.procedural_materials = materials->GetValue();
+            next.material_v2 = materialV2->GetValue();
+            next.material_intensity = materialIntensity->GetValue();
+            next.animated_water = water->GetValue();
+            next.water_intensity = waterIntensity->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
             next.gpu_acceleration = gpu->GetValue();
             const int selected=filter->GetSelection();
@@ -677,6 +708,10 @@ namespace spellcross_display
         lightIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         shadowStrength->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        materialV2->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        materialIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        water->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        waterIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         gpu->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         filter->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });

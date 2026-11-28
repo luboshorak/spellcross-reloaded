@@ -29,8 +29,9 @@ namespace spellcross_gpu
         int width=0,height=0,sw=0,sh=0,nw=0,nh=0,zoom=100,dpi=100;
         int smoothDpi=0,mode=0,dedither=0,sharpen=0,lighting=0,material=0,sprites=0,night=0;
         int worldX=0,worldY=0,strength=0,gradePercent=100;
+        int materialV2=0,waterStrength=0,waterPhase=0,padding=0;
     };
-    static_assert(sizeof(Frame)==80);
+    static_assert(sizeof(Frame)==96);
     inline constexpr char Shader[] = R"HLSL(
 cbuffer Params : register(b0) {
  int width,height,sw,sh;
@@ -38,6 +39,7 @@ cbuffer Params : register(b0) {
  int smoothDpi,mode,dedither,sharpen;
  int lighting,material,sprites,night;
  int worldX,worldY,strength,gradePercent;
+ int materialV2,waterStrength,waterPhase,padding;
 };
 Texture2D<uint> nativeIdx : register(t0);
 Texture2D<uint> logicalIdx : register(t1);
@@ -103,7 +105,7 @@ void Sharpen(uint3 id:SV_DispatchThreadID)
 }
 uint Tag(int2 p)
 {
- if(lighting==0&&material==0) return 0;
+ if(lighting==0&&material==0&&waterStrength==0) return 0;
  uint t=tags.Load(int3(p,0));
  return t!=0&&(t&255)==S(p)&&p.y<hud.Load(int3(p.x,0,0))?t:0;
 }
@@ -247,13 +249,36 @@ int3 Sprite(int2 p,int2 fract)
  if(db<=32) c=Blend(c,Pal(b),fy/2);
  return c;
 }
+int WaveTriangle(int phase) { return 64-abs((phase&127)-64); }
+int3 WaterDetail(int3 color,int2 uv)
+{
+ if(waterStrength==0) return color;
+ int a=WaveTriangle(uv.x/3+uv.y*2+waterPhase);
+ int b=WaveTriangle(uv.x+uv.y/2-waterPhase*2);
+ int crest=max(0,a+b-100);
+ int gain=100+((a-32)+(b-32)/2+crest)*waterStrength/240;
+ int3 glint=night!=0?int3(0,0,0):crest*waterStrength*int3(1,2,3)*min(color,96)/28800;
+ int3 result=clamp(color*gain/100+glint,0,255);
+ return night!=0?int3(color.x,result.y,color.z):result;
+}
 int3 MaterialDetail(int3 color,uint tag,int2 p)
 {
- if(material==0||tag==0||strength==0) return color;
- int m=int((tag>>14)&7); if(m>=7) return color;
- int2 uv=(int2(worldX,worldY)*4+p*40000/(zoom*dpi))&511;
+ if(tag==0) return color;
+ int m=int((tag>>14)&7);
+ int2 world=int2(worldX,worldY)*4+p*40000/(zoom*dpi);
+ if(m==7) return WaterDetail(color,world);
+ if(material==0||strength==0) return color;
+ int2 uv=world&511;
  uint packed=atlas.Load(int3(uv.x,uv.y+m*512,0));
  int light=int(packed&255)-128,tint=int((packed>>8)&255)-128;
+ if(materialV2!=0)
+ {
+  int2 broad=(int2(world.x/3+world.y/7+173,world.y/5-world.x/11+89))&511;
+  uint second=atlas.Load(int3(broad.x,broad.y+m*512,0));
+  int w=(m==4||m==6)?2:3;
+  light=(light*(5-w)+(int(second&255)-128)*w)/5;
+  tint=(tint*(5-w)+(int((second>>8)&255)-128)*w)/5;
+ }
  int gain=100+light*strength/(night!=0?200:100);
  int v=tint*strength/100;
  int3 t=0;
@@ -385,7 +410,7 @@ void Render(uint3 id:SV_DispatchThreadID)
             const bool filter=f.mode!=0||f.dedither||f.sharpen;
             if(filter&&(!pre.Ensure(d,f.nw,f.nh,DXGI_FORMAT_R32_UINT,both)||
                 (f.sharpen&&!post.Ensure(d,f.nw,f.nh,DXGI_FORMAT_R32_UINT,both)))) return Fail("GPU filter surface allocation failed");
-            if(f.lighting||f.material)
+            if(f.lighting||f.material||f.waterStrength)
             {
                 if(!tags||!tag.Ensure(d,f.sw,f.sh,DXGI_FORMAT_R32_UINT,srv)) return Fail("GPU tag allocation failed");
                 Upload(tag,tags,f.sw*4);

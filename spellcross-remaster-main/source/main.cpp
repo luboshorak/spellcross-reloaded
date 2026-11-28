@@ -2874,6 +2874,10 @@ bool MyApp::OnInit()
         settings.original_shadows = ini.GetBoolValue("STATE","original_shadows",true);
         settings.shadow_strength = static_cast<int>(ini.GetLongValue("STATE","shadow_strength",60));
         settings.procedural_materials = ini.GetBoolValue("STATE", "procedural_materials", false);
+        settings.material_v2=ini.GetBoolValue("STATE","material_v2",false);
+        settings.material_intensity=static_cast<int>(ini.GetLongValue("STATE","material_intensity",100));
+        settings.animated_water=ini.GetBoolValue("STATE","animated_water",false);
+        settings.water_intensity=static_cast<int>(ini.GetLongValue("STATE","water_intensity",60));
         settings.procedural_upscaling = ini.GetBoolValue("STATE", "procedural_upscaling", false);
         settings.gpu_acceleration = ini.GetBoolValue("STATE","gpu_acceleration",false);
         settings.tactical_filter = static_cast<int>(ini.GetLongValue("STATE", "tactical_filter", 0));
@@ -3089,6 +3093,10 @@ int MyApp::OnExit()
     ini.SetBoolValue("STATE","original_shadows",screen.original_shadows);
     ini.SetLongValue("STATE","shadow_strength",screen.shadow_strength);
     ini.SetBoolValue("STATE", "procedural_materials", screen.procedural_materials);
+    ini.SetBoolValue("STATE","material_v2",screen.material_v2);
+    ini.SetLongValue("STATE","material_intensity",screen.material_intensity);
+    ini.SetBoolValue("STATE","animated_water",screen.animated_water);
+    ini.SetLongValue("STATE","water_intensity",screen.water_intensity);
     ini.SetBoolValue("STATE", "procedural_upscaling", screen.procedural_upscaling);
     ini.SetBoolValue("STATE","gpu_acceleration",screen.gpu_acceleration);
     ini.SetLongValue("STATE", "tactical_filter", screen.tactical_filter);

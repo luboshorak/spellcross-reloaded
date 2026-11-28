@@ -154,7 +154,7 @@ namespace spellcross_enhanced
     // Version 2: retain the original indexed surface for compositing, but
     // attach a separate light/material field to ground pixels. RGB conversion
     // happens only after the original sprites, overlays and HUD have rendered.
-    enum class Material : std::uint8_t { Earth, Sand, Grass, Stone, Road, Wood, Wet, Count };
+    enum class Material : std::uint8_t { Earth, Sand, Grass, Stone, Road, Wood, Wet, Water, Count };
     using Tag = std::uint32_t;
     using RGB = std::array<std::uint8_t, 3>;
     constexpr int rgbMin = -32, rgbMax = 31;
@@ -220,9 +220,10 @@ namespace spellcross_enhanced
             return Row(x,y,smooth)[static_cast<unsigned>(x)&(side-1)];
         }
     };
+    constexpr bool WaterIndex(int index) { return index>=240&&index<=249; }
     inline Tag MakeTag(std::uint8_t index, int shade, Material material=Material::Earth)
     {
-        if (Reserved(index)) return 0;
+        if (Reserved(index) && !(material==Material::Water&&WaterIndex(index))) return 0;
         return (static_cast<Tag>(material)<<14) |
             static_cast<Tag>(((std::clamp(shade,rgbMin,rgbMax)-rgbMin)<<8) | index);
     }
@@ -446,7 +447,7 @@ namespace spellcross_enhanced
         void Mark(const std::vector<std::uint8_t>& sprite,int rows,int yOffset,
                   int originX,int originY,const GroundLight* light,bool smooth,
                   Material material=Material::Earth,bool calculateShade=true,
-                  SurfaceCache* cache=nullptr,int lightingPercent=100)
+                  SurfaceCache* cache=nullptr,int lightingPercent=100,bool animateWater=false)
         {
             static const ContactRows contactRows;
             const unsigned casterMask=light&&calculateShade?
@@ -477,7 +478,9 @@ namespace spellcross_enhanced
                         if(!index) continue;
                         const int lx=offset+x,sx=originX+lx;
                         Tag tag=0;
-                        if(light&&!Reserved(index) && !calculateShade)
+                        if(light&&animateWater&&WaterIndex(index))
+                            tag=MakeTag(index,0,Material::Water);
+                        else if(light&&!Reserved(index) && !calculateShade)
                             tag=MakeTag(index,0,material);
                         else if(light&&!Reserved(index))
                         {
@@ -802,6 +805,38 @@ namespace spellcross_enhanced
         return std::clamp((zoom*display-5000)/75,0,100);
     }
 
+    // Multi-scale sampling reduces the obvious 512-texel repeat without
+    // changing the original single-scale look when V2 is disabled.
+    inline MicroDetail BlendMaterialDetail(MicroDetail fine,MicroDetail broad,Material material)
+    {
+        const int weight=material==Material::Road||material==Material::Wet?2:3;
+        return {static_cast<std::int8_t>((fine.light*(5-weight)+broad.light*weight)/5),
+                static_cast<std::int8_t>((fine.tint*(5-weight)+broad.tint*weight)/5)};
+    }
+    inline int WaveTriangle(int phase)
+    {
+        const int p=static_cast<int>(static_cast<unsigned>(phase)&127u);
+        return 64-(std::abs)(p-64);
+    }
+    inline RGB ApplyWater(RGB color,int x,int y,int phase,int strength,bool night)
+    {
+        strength=std::clamp(strength,0,100);
+        if(!strength) return color;
+        // Two travelling ripples in world coordinates. Multiplicative
+        // lighting keeps black black and preserves palette cycling underneath.
+        const int a=WaveTriangle(x/3+y*2+phase);
+        const int b=WaveTriangle(x+y/2-phase*2);
+        const int crest=(std::max)(0,a+b-100);
+        const int gain=100+((a-32)+(b-32)/2+crest)*strength/240;
+        for(int c=0;c<3;++c)
+        {
+            if(night&&c!=1) continue;
+            const int base=color[c];
+            const int glint=night?0:crest*strength*(c+1)*(std::min)(base,96)/28800;
+            color[c]=static_cast<std::uint8_t>(std::clamp(base*gain/100+glint,0,255));
+        }
+        return color;
+    }
     inline RGB ApplyMicroDetail(RGB color,MicroDetail detail,Material material,int strength,bool night)
     {
         const int gain=100+detail.light*strength/(night?200:100);

@@ -251,3 +251,17 @@ with a one-pixel soft fringe. Shadows are applied to the final tagged ground,
 not foreground or fog. No extra rendering pass or gameplay-state changes.
 This remains an approximate planar projection of 2D assets, not a 3D terrain
 raytrace; actual art, terrain slopes and performance require in-game checks.
+
+### V9 terrain and water
+
+Optional multi-scale V2 terrain sampling blends a second world-space atlas
+sample with the existing micro-height material. Material intensity (0–100%)
+is independent of lighting. Optional animated water uses only original water
+palette-cycle indices 240–249 on water/ford tiles, protected by the same final
+ownership and HUD masks. Two travelling ripple bands modulate the existing
+water palette without replacing art, revealing fog or moving gameplay pixels.
+CPU and D3D11 share integer math and phase. All new switches default off,
+existing materials retain their default intensity and V1 sampling. New
+settings persist and Cancel restores the original values. No new snow class
+is assumed: the original flags do not expose one. Water is animated shading,
+not geometric displacement, reflection or projectile-driven simulation.

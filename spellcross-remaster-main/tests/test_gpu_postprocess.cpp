@@ -79,7 +79,18 @@ int main()
         },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
         assert(match);
     }
-    frame.lighting=0;frame.width=frame.height=8;frame.dpi=200;
+    frame.lighting=0;
+    art.fill(245);tags.fill(spellcross_enhanced::MakeTag(245,0,spellcross_enhanced::Material::Water));
+    frame.waterStrength=80;frame.waterPhase=37;
+    bool waterMatch=true;
+    if(!gpu.Run(frame,art.data(),art.data(),pal,tags.data(),hud.data(),[&](int y,const uint32_t* row){
+        for(int x=0;x<4;++x) {
+            const auto expected=spellcross_enhanced::ApplyWater({pal[245][0],pal[245][1],pal[245][2]},x*4,y*4,37,80,false);
+            for(int c=0;c<3;++c) waterMatch &= int((row[x]>>(c*8))&255)==expected[c];
+        }
+    },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
+    assert(waterMatch);
+    frame.waterStrength=0;frame.width=frame.height=8;frame.dpi=200;
     // A black fog/border index must remain black.
     art.fill(0);frame.mode=14;
     bool valid=true;

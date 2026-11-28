@@ -467,3 +467,9 @@ screen.shadow_strength=Directional shadow strength (%)
 screen.directional_shadows=Directional shadows (daylight)
 
 screen.original_shadows=Original unit shadows
+
+screen.group.terrain=Terrain and water
+screen.material_v2=Multi-scale terrain materials V2
+screen.material_intensity=Material intensity (%)
+screen.animated_water=Animated water ripples
+screen.water_intensity=Water effect intensity (%)
