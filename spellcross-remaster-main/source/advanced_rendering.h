@@ -931,6 +931,41 @@ namespace spellcross_enhanced
         }
         return color;
     }
+    // V2: intersecting world-space waves, signed slopes and moving highlights.
+    struct WaterNormal { int x,y,crest; };
+    inline WaterNormal WaterNormalAt(int x,int y,int phase)
+    {
+        const int a=WaveTriangle(x/2+y+phase);
+        const int b=WaveTriangle(x-y/3-phase*2);
+        const int dx=WaveTriangle(x/2+y+phase+4)-WaveTriangle(x/2+y+phase-4);
+        const int dy=WaveTriangle(x-y/3-phase*2+4)-WaveTriangle(x-y/3-phase*2-4);
+        return {dx*(64-a)/32+dy*(64-b)/64,dx*(64-a)/64-dy*(64-b)/32,(a+b)/2};
+    }
+    inline RGB ApplyWaterV2(RGB color,RGB refracted,WaterNormal n,int x,int y,int phase,
+                            int strength,int direction,int rain,bool night)
+    {
+        strength=std::clamp(strength,0,100);
+        if(!strength||color==RGB{}) return color;
+        const int sx=(direction==0||direction==3)?1:-1,sy=direction<2?1:-1;
+        const int slope=std::clamp(n.x*sx+n.y*sy,-32,32);
+        const int gain=100+(slope*2+(n.crest-32)/2)*strength/100;
+        const int spec=(std::max)(0,slope+n.crest/2-24);
+        const int cx=(x&63)-32,cy=(y&63)-32;
+        const int radius=(phase+((x/64)^(y/64))*13)&31;
+        const int dist=(std::max)((std::abs)(cx),(std::abs)(cy))+
+            (std::min)((std::abs)(cx),(std::abs)(cy))/2;
+        const int ring=(std::abs)(dist-radius)<=1?(32-radius)*rain/100:0;
+        for(int c=0;c<3;++c)
+        {
+            if(night&&c!=1) continue;
+            const int base=color[c];
+            const int mixed=base+(int(refracted[c])-base)*strength/200;
+            const int highlight=(spec*spec*(c+2)/48+ring)*strength/100;
+            const int lit=mixed*gain/100+highlight*(std::min)(base,96)/96;
+            color[c]=static_cast<std::uint8_t>(std::clamp(lit,0,255));
+        }
+        return color;
+    }
     // Weather is a presentation-only world-space overlay on visible ground.
     // The integer kernel is shared with the D3D11 shader.
     enum class Atmosphere : int { Off, Mist, Dust, Rain, Snow };

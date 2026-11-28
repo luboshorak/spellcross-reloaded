@@ -90,6 +90,18 @@ int main()
         }
     },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
     assert(waterMatch);
+    frame.waterModeDirection=2;
+    waterMatch=true;
+    if(!gpu.Run(frame,art.data(),art.data(),pal,tags.data(),hud.data(),[&](int y,const uint32_t* row){
+        for(int x=0;x<4;++x) {
+            using namespace spellcross_enhanced;
+            RGB base={pal[245][0],pal[245][1],pal[245][2]};
+            auto expected=ApplyWaterV2(base,base,WaterNormalAt(x*4,y*4,37),x*4,y*4,37,80,1,0,false);
+            for(int c=0;c<3;++c) waterMatch &= int((row[x]>>(c*8))&255)==expected[c];
+        }
+    },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
+    assert(waterMatch);
+    frame.waterModeDirection=0;
     frame.waterStrength=0;
     art.fill(100);tags.fill(spellcross_enhanced::MakeTag(100,0));tags[0]=0;
     frame.atmosphereIntensity=80;frame.atmospherePhase=37;

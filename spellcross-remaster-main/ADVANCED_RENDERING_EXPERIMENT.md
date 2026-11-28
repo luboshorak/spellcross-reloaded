@@ -320,3 +320,8 @@ Balanced, Maximum quality and Reset all defaults. The first three preserve
 DPI, calibration and backend preference, reset weather to Off and update every
 control in-place. Reset defaults restores the Settings defaults; Cancel still
 restores the original transaction. No window-transition or strategic changes.
+
+
+### V13: advanced water surface
+
+Three live water modes: Original (retail palette animation), Enhanced (legacy modulation), Advanced V2 (world-space intersecting waves, signed slope lighting, directional glints, bounded one-logical-pixel refraction and rain rings). Old configurations retain their water mode; Balanced/Maximum select V2. The existing ownership mask guards refraction including both orthogonal intermediate samples; no hidden pixels or foreground may be sampled. Original palette cycling remains intact. No changes to presentation or game state. CPU and D3D11 share integer equations. Shore foam is deferred until a separate reliable shoreline mask is available (foreground occlusion must not generate false shorelines). Verify water at bridges, fords, fog, night, zoom, panning, and 0/100 intensity in real missions; no visual or performance claims until tested.

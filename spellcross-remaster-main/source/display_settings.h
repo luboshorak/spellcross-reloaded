@@ -34,6 +34,7 @@ namespace spellcross_display
         bool material_v2 = false;
         int material_intensity = 100;
         bool animated_water = false;
+        bool water_v2 = false; // Advanced mode; preserve legacy configs
         int water_intensity = 60;
         bool procedural_upscaling = false; // edge-aware tactical sprite reconstruction
         bool gpu_acceleration = false; // opt-in D3D11 compute, CPU fallback
@@ -107,7 +108,7 @@ namespace spellcross_display
             s.directional_shadows=true;s.shadow_strength=maximum?65:45;
             s.shadow_softness=maximum?50:33;
             s.ambient_occlusion=maximum;s.ambient_intensity=45;
-            s.animated_water=true;s.water_intensity=maximum?65:40;
+            s.animated_water=true;s.water_v2=true;s.water_intensity=maximum?85:60;
             s.tactical_filter=maximum?spellcross_filters::EdgeAdaptive:spellcross_filters::SharpBilinear;
             s.tactical_dedither=maximum;s.tactical_sharpen=maximum?20:0;
             s.post_bloom=maximum?35:0;s.post_contrast=maximum?30:10;
@@ -144,7 +145,7 @@ namespace spellcross_display
             old.advanced_rendering == s.advanced_rendering &&
             old.procedural_materials == s.procedural_materials &&
             old.material_v2 == s.material_v2 && old.material_intensity == s.material_intensity &&
-            old.animated_water == s.animated_water && old.water_intensity == s.water_intensity &&
+            old.animated_water == s.animated_water && old.water_v2 == s.water_v2 && old.water_intensity == s.water_intensity &&
             old.procedural_upscaling == s.procedural_upscaling &&
             old.gpu_acceleration == s.gpu_acceleration &&
             old.tactical_filter == s.tactical_filter && old.tactical_dedither == s.tactical_dedither &&
@@ -712,9 +713,12 @@ namespace spellcross_display
         addLabel(terrainGroup,spellcross_ui_locale::Tr("screen.material_intensity","Material intensity (%)"));
         auto* materialIntensity = new spellcross_strategic_ui::Slider(terrainGroup,wxID_ANY,original.material_intensity,0,100);
         terrainGroup->Add(materialIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
-        auto* water = new ScreenCheck(terrainGroup,wxID_ANY,
-            spellcross_ui_locale::Tr("screen.animated_water","Animated water ripples"));
-        water->SetValue(original.animated_water);
+        addLabel(terrainGroup,spellcross_ui_locale::Tr("screen.animated_water","Water rendering"));
+        auto* water = new ScreenChoice(terrainGroup);
+        water->Append(spellcross_ui_locale::Tr("screen.water.original","Original"));
+        water->Append(spellcross_ui_locale::Tr("screen.water.enhanced","Enhanced"));
+        water->Append(spellcross_ui_locale::Tr("screen.water.advanced","Advanced V2"));
+        water->SetSelection(original.animated_water?(original.water_v2?2:1):0);
         terrainGroup->Add(water,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
         addLabel(terrainGroup,spellcross_ui_locale::Tr("screen.water_intensity","Water effect intensity (%)"));
         auto* waterIntensity = new spellcross_strategic_ui::Slider(terrainGroup,wxID_ANY,original.water_intensity,0,100);
@@ -847,7 +851,7 @@ namespace spellcross_display
             upscaling->Enable(filter->GetSelection() == 0);
             materialV2->Enable(materials->GetValue());
             materialIntensity->Enable(materials->GetValue());
-            waterIntensity->Enable(water->GetValue());
+            waterIntensity->Enable(water->GetSelection()>0);
             atmosphereIntensity->Enable(atmosphere->GetSelection()>0);
             weatherV2->Enable(atmosphere->GetSelection()>0);
             ambientIntensity->Enable(ambient->GetValue());
@@ -880,7 +884,8 @@ namespace spellcross_display
             next.procedural_materials = materials->GetValue();
             next.material_v2 = materialV2->GetValue();
             next.material_intensity = materialIntensity->GetValue();
-            next.animated_water = water->GetValue();
+            next.animated_water = water->GetSelection()>0;
+            next.water_v2 = water->GetSelection()==2;
             next.water_intensity = waterIntensity->GetValue();
             next.atmosphere = atmosphere->GetSelection();
             next.atmosphere_intensity = atmosphereIntensity->GetValue();
@@ -917,7 +922,7 @@ namespace spellcross_display
             shadowDirection->SetSelection(s.shadow_direction);shadowLength->SetValue(s.shadow_length);
             shadowSoftness->SetValue(s.shadow_softness);contactShadows->SetValue(s.contact_shadows);
             materials->SetValue(s.procedural_materials);materialV2->SetValue(s.material_v2);
-            materialIntensity->SetValue(s.material_intensity);water->SetValue(s.animated_water);
+            materialIntensity->SetValue(s.material_intensity);water->SetSelection(s.animated_water?(s.water_v2?2:1):0);
             waterIntensity->SetValue(s.water_intensity);atmosphere->SetSelection(s.atmosphere);
             atmosphereIntensity->SetValue(s.atmosphere_intensity);weatherV2->SetValue(s.atmosphere_v2);
             ambient->SetValue(s.ambient_occlusion);ambientIntensity->SetValue(s.ambient_intensity);
@@ -952,7 +957,7 @@ namespace spellcross_display
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         materialV2->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         materialIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
-        water->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        water->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });
         waterIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         atmosphere->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });
         atmosphereIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });

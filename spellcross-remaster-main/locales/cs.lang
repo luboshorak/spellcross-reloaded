@@ -471,7 +471,10 @@ screen.original_shadows=Původní stíny jednotek
 screen.group.terrain=Terén a voda
 screen.material_v2=Víceúrovňové materiály V2
 screen.material_intensity=Intenzita materiálů (%)
-screen.animated_water=Animované vlnění vody
+screen.animated_water=Vykreslení vody
+screen.water.original=Původní
+screen.water.enhanced=Vylepšené
+screen.water.advanced=Pokročilé V2
 screen.water_intensity=Intenzita vlnění (%)
 
 screen.group.shadows=Projekce stínů

@@ -7007,7 +7007,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             zoom_percent,display_scale_percent,int(settings.smooth_scaling),settings.tactical_filter,
             int(settings.tactical_dedither),settings.tactical_sharpen,int(rgbLighting),int(materialDetail),
             int(spriteUpscale),int(is_night),textureWorldX,textureWorldY,
-            materialStrength,lightingGrade,int(settings.material_v2),waterStrength,waterPhase,0,
+            materialStrength,lightingGrade,int(settings.material_v2),waterStrength,waterPhase,
+            settings.water_v2?1+settings.shadow_direction:0,
             atmosphere,atmosphereIntensity,atmospherePhase,int(weatherV2),
             postprocess?settings.post_bloom:0,postprocess?settings.post_contrast:0,
             postprocess?settings.post_vignette:0,postprocess?settings.post_grain:0};
@@ -7166,7 +7167,26 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         const auto material=TagMaterial(tag);
         const int u=textureX[x],v=textureY[y];
         if(material==Material::Water)
-            color=ApplyWater(color,u,v,waterPhase,waterStrength,is_night);
+        {
+            if(settings.water_v2&&waterStrength)
+            {
+                const auto n=WaterNormalAt(u,v,waterPhase);
+                const int lx=x*100/display_scale_percent,ly=y*100/display_scale_percent;
+                const int sx=lx+(n.x>4?1:n.x<-4?-1:0),sy=ly+(n.y>4?1:n.y<-4?-1:0);
+                RGB refracted=color;
+                if(lx>=0&&ly>=0&&lx<screen_width&&ly<screen_height&&
+                    sx>=0&&sy>=0&&sx<screen_width&&sy<screen_height&&
+                    SameMaterial(tag,tagAt(lx,ly))&&SameMaterial(tag,tagAt(sx,sy))&&
+                    SameMaterial(tag,tagAt(sx,ly))&&SameMaterial(tag,tagAt(lx,sy)))
+                {
+                    const auto* rgb=rgbAt(sx,sy);
+                    refracted={rgb[0],rgb[1],rgb[2]};
+                }
+                color=ApplyWaterV2(color,refracted,n,u,v,waterPhase,waterStrength,
+                    settings.shadow_direction,atmosphere==3?atmosphereIntensity:0,is_night);
+            }
+            else color=ApplyWater(color,u,v,waterPhase,waterStrength,is_night);
+        }
         else if(const auto* texture=textureMaps[static_cast<size_t>(material)];texture&&microStrength)
         {
             auto detail=TextureBank::Sample(*texture,u,v);

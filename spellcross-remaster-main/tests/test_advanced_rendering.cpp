@@ -138,6 +138,22 @@ int main()
     assert(ApplyWater(RGB{},21,35,30,100,false)==RGB{});
     assert(ApplyWater(waterColour,21,35,0,100,false)!=ApplyWater(waterColour,21,35,40,100,false));
     assert(ApplyWater(waterColour,21,35,0,100,false)==ApplyWater(waterColour,21,35,128,100,false));
+    {
+        bool changed=false,animated=false,directional=false;
+        for(int y=-32;y<64;y+=4) for(int x=-32;x<64;x+=4)
+        {
+            auto n=WaterNormalAt(x,y,0);
+            auto v=ApplyWaterV2(waterColour,waterColour,n,x,y,0,85,0,0,false);
+            assert(ApplyWaterV2(waterColour,waterColour,n,x,y,0,0,0,0,false)==waterColour);
+            assert(ApplyWaterV2(RGB{},waterColour,n,x,y,0,100,0,100,false)==RGB{});
+            auto night=ApplyWaterV2(waterColour,waterColour,n,x,y,0,85,0,0,true);
+            assert(night[0]==waterColour[0]&&night[2]==waterColour[2]);
+            changed|=v!=waterColour;
+            animated|=v!=ApplyWaterV2(waterColour,waterColour,WaterNormalAt(x,y,40),x,y,40,85,0,0,false);
+            directional|=v!=ApplyWaterV2(waterColour,waterColour,n,x,y,0,85,2,0,false);
+        }
+        assert(changed&&animated&&directional);
+    }
     const auto mix=BlendMaterialDetail({20,-10},{-10,15},Material::Grass);
     assert(mix.light==2&&mix.tint==5);
     {

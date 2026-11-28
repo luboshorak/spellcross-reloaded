@@ -471,7 +471,10 @@ screen.original_shadows=Original unit shadows
 screen.group.terrain=Terrain and water
 screen.material_v2=Multi-scale terrain materials V2
 screen.material_intensity=Material intensity (%)
-screen.animated_water=Animated water ripples
+screen.animated_water=Water rendering
+screen.water.original=Original
+screen.water.enhanced=Enhanced
+screen.water.advanced=Advanced V2
 screen.water_intensity=Water effect intensity (%)
 
 screen.group.shadows=Shadow projection

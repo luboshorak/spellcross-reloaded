@@ -29,7 +29,7 @@ namespace spellcross_gpu
         int width=0,height=0,sw=0,sh=0,nw=0,nh=0,zoom=100,dpi=100;
         int smoothDpi=0,mode=0,dedither=0,sharpen=0,lighting=0,material=0,sprites=0,night=0;
         int worldX=0,worldY=0,strength=0,gradePercent=100;
-        int materialV2=0,waterStrength=0,waterPhase=0,padding=0;
+        int materialV2=0,waterStrength=0,waterPhase=0,waterModeDirection=0;
         int atmosphere=0,atmosphereIntensity=0,atmospherePhase=0,weatherV2=0;
         int bloom=0,contrastCurve=0,vignette=0,grain=0;
     };
@@ -41,7 +41,7 @@ cbuffer Params : register(b0) {
  int smoothDpi,mode,dedither,sharpen;
  int lighting,material,sprites,night;
  int worldX,worldY,strength,gradePercent;
- int materialV2,waterStrength,waterPhase,padding;
+ int materialV2,waterStrength,waterPhase,waterModeDirection;
  int atmosphere,atmosphereIntensity,atmospherePhase,weatherV2;
  int bloom,contrastCurve,vignette,grain;
 };
@@ -265,12 +265,45 @@ int3 WaterDetail(int3 color,int2 uv)
  int3 result=clamp(color*gain/100+glint,0,255);
  return night!=0?int3(color.x,result.y,color.z):result;
 }
+bool WaterPixel(int2 q)
+{
+ if(q.x<0||q.y<0||q.x>=sw||q.y>=sh) return false;
+ uint t=Tag(q);
+ return t!=0&&((t>>14)&7)==7;
+}
+int3 WaterDetailV2(int3 color,int2 uv,int2 p)
+{
+ if(waterStrength==0||all(color==0)) return color;
+ int a=WaveTriangle(uv.x/2+uv.y+waterPhase);
+ int b=WaveTriangle(uv.x-uv.y/3-waterPhase*2);
+ int dx=WaveTriangle(uv.x/2+uv.y+waterPhase+4)-WaveTriangle(uv.x/2+uv.y+waterPhase-4);
+ int dy=WaveTriangle(uv.x-uv.y/3-waterPhase*2+4)-WaveTriangle(uv.x-uv.y/3-waterPhase*2-4);
+ int2 n=int2(dx*(64-a)/32+dy*(64-b)/64,dx*(64-a)/64-dy*(64-b)/32);
+ int crest=(a+b)/2;
+ int direction=waterModeDirection-1;
+ int sx=(direction==0||direction==3)?1:-1,sy=direction<2?1:-1;
+ int slope=clamp(n.x*sx+n.y*sy,-32,32);
+ int gain=100+(slope*2+(crest-32)/2)*waterStrength/100;
+ int spec=max(0,slope+crest/2-24);
+ int2 l=min(p*100/dpi,int2(sw-1,sh-1));
+ int2 q=l+int2(n.x>4?1:n.x<-4?-1:0,n.y>4?1:n.y<-4?-1:0);
+ int3 refracted=color;
+ if(WaterPixel(l)&&WaterPixel(q)&&WaterPixel(int2(q.x,l.y))&&WaterPixel(int2(l.x,q.y))) refracted=Base(q,true);
+ int2 cell=abs((uv&63)-32);
+ int radius=(waterPhase+((uv.x/64)^(uv.y/64))*13)&31;
+ int dist=max(cell.x,cell.y)+min(cell.x,cell.y)/2;
+ int ring=atmosphere==3&&abs(dist-radius)<=1?(32-radius)*atmosphereIntensity/100:0;
+ int3 mixed=color+(refracted-color)*waterStrength/200;
+ int3 highlight=(spec*spec*int3(2,3,4)/48+ring)*waterStrength/100;
+ int3 result=clamp(mixed*gain/100+highlight*min(color,96)/96,0,255);
+ return night!=0?int3(color.x,result.y,color.z):result;
+}
 int3 MaterialDetail(int3 color,uint tag,int2 p)
 {
  if(tag==0) return color;
  int m=int((tag>>14)&7);
  int2 world=int2(worldX,worldY)*4+p*40000/(zoom*dpi);
- if(m==7) return WaterDetail(color,world);
+ if(m==7) return waterModeDirection!=0?WaterDetailV2(color,world,p):WaterDetail(color,world);
  if(material==0||strength==0) return color;
  int2 uv=world&511;
  uint packed=atlas.Load(int3(uv.x,uv.y+m*512,0));

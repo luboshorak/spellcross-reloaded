@@ -47,11 +47,13 @@ int main()
     assert(defaults.shadow_direction==0 && defaults.shadow_length==100 && defaults.shadow_softness==33 && defaults.contact_shadows);
     assert(!defaults.directional_shadows && defaults.original_shadows && defaults.lighting_intensity==100 && defaults.shadow_strength==60);
     assert(!defaults.procedural_materials && !defaults.procedural_upscaling);
+    assert(!defaults.water_v2);
+    assert(maximum.water_v2&&balanced.water_v2&&!classic.water_v2);
     assert(!defaults.material_v2 && !defaults.animated_water && defaults.material_intensity==100 && defaults.water_intensity==60);
     Settings surfaces=defaults; surfaces.material_v2=true; surfaces.animated_water=true;
-    surfaces.material_intensity=75;surfaces.water_intensity=45;
+    surfaces.material_intensity=75;surfaces.water_intensity=45;surfaces.water_v2=true;
     const auto surfaceRev=Revision();Set(surfaces);
-    assert(Revision()>surfaceRev && Current().animated_water && Current().material_v2);
+    assert(Revision()>surfaceRev && Current().animated_water && Current().water_v2 && Current().material_v2);
     assert(Current().material_intensity==75 && Current().water_intensity==45);
     surfaces.water_intensity=-10;surfaces.material_intensity=110;
     assert(Normalize(surfaces).water_intensity==0 && Normalize(surfaces).material_intensity==100);

@@ -2905,6 +2905,7 @@ bool MyApp::OnInit()
         settings.material_v2=ini.GetBoolValue("STATE","material_v2",false);
         settings.material_intensity=static_cast<int>(ini.GetLongValue("STATE","material_intensity",100));
         settings.animated_water=ini.GetBoolValue("STATE","animated_water",false);
+        settings.water_v2=ini.GetBoolValue("STATE","water_v2",false);
         settings.water_intensity=static_cast<int>(ini.GetLongValue("STATE","water_intensity",60));
         settings.procedural_upscaling = ini.GetBoolValue("STATE", "procedural_upscaling", false);
         settings.gpu_acceleration = ini.GetBoolValue("STATE","gpu_acceleration",false);
@@ -3138,6 +3139,7 @@ int MyApp::OnExit()
     ini.SetBoolValue("STATE","material_v2",screen.material_v2);
     ini.SetLongValue("STATE","material_intensity",screen.material_intensity);
     ini.SetBoolValue("STATE","animated_water",screen.animated_water);
+    ini.SetBoolValue("STATE","water_v2",screen.water_v2);
     ini.SetLongValue("STATE","water_intensity",screen.water_intensity);
     ini.SetBoolValue("STATE", "procedural_upscaling", screen.procedural_upscaling);
     ini.SetBoolValue("STATE","gpu_acceleration",screen.gpu_acceleration);
