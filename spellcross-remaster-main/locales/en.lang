@@ -304,7 +304,9 @@ screen.scale.smooth=125% – enlarged, smoothed
 screen.brightness=Brightness (%)
 screen.gamma=Gamma (×100)
 screen.temperature=Color temperature (K)
-screen.advanced_rendering=Advanced rendering (experimental)
+screen.advanced_rendering=Advanced rendering (colour and lighting)
+screen.procedural_materials=Procedural terrain materials (experimental)
+screen.procedural_upscaling=Procedural sprite upscaling (experimental)
 
 # About window and optional updates
 about.title=About Spellcross Reloaded

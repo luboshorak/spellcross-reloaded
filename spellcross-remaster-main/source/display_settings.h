@@ -24,7 +24,9 @@ namespace spellcross_display
         int brightness = 100;      // linear multiplier, 50..150 percent
         double gamma = 1.3;        // original Spellcross default, 0.5..2.0
         int temperature = 6500;    // neutral daylight, 3500..9500 kelvin
-        bool advanced_rendering = false; // experimental tactical ground lighting
+        bool advanced_rendering = false; // V2 tactical RGB lighting
+        bool procedural_materials = false; // V3 independent material detail
+        bool procedural_upscaling = false; // edge-aware tactical sprite reconstruction
     };
 
     inline Settings Normalize(Settings s)
@@ -63,7 +65,9 @@ namespace spellcross_display
         if (old.scale_percent == s.scale_percent &&
             old.smooth_scaling == s.smooth_scaling && old.brightness == s.brightness &&
             old.gamma == s.gamma && old.temperature == s.temperature &&
-            old.advanced_rendering == s.advanced_rendering)
+            old.advanced_rendering == s.advanced_rendering &&
+            old.procedural_materials == s.procedural_materials &&
+            old.procedural_upscaling == s.procedural_upscaling)
             return;
         old = s;
         ++MutableRevision();
@@ -268,7 +272,15 @@ namespace spellcross_display
         auto* enhanced = new wxCheckBox(&dialog, wxID_ANY,
             spellcross_ui_locale::Tr("screen.advanced_rendering", "Advanced rendering (experimental)"));
         enhanced->SetValue(original.advanced_rendering);
-        root->Add(enhanced, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(14));
+        root->Add(enhanced, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(14));
+        auto* materials = new wxCheckBox(&dialog, wxID_ANY,
+            spellcross_ui_locale::Tr("screen.procedural_materials", "Procedural terrain materials (experimental)"));
+        materials->SetValue(original.procedural_materials);
+        root->Add(materials, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
+        auto* upscaling = new wxCheckBox(&dialog, wxID_ANY,
+            spellcross_ui_locale::Tr("screen.procedural_upscaling", "Procedural sprite upscaling (experimental)"));
+        upscaling->SetValue(original.procedural_upscaling);
+        root->Add(upscaling, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(8));
 
         auto* buttons = new wxBoxSizer(wxHORIZONTAL);
         buttons->AddStretchSpacer();
@@ -302,6 +314,8 @@ namespace spellcross_display
             next.gamma = gamma->GetValue() / 100.0;
             next.temperature = temperature->GetValue();
             next.advanced_rendering = enhanced->GetValue();
+            next.procedural_materials = materials->GetValue();
+            next.procedural_upscaling = upscaling->GetValue();
             Set(next);
             if (refresh) refresh();
         };
@@ -318,6 +332,8 @@ namespace spellcross_display
         gamma->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         temperature->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         enhanced->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
 
         if (dialog.ShowModal() == wxID_OK)
         {

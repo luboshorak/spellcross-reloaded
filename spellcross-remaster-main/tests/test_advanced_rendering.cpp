@@ -133,6 +133,27 @@ int main()
     assert(ApplyMicroDetail(black,{30,20},Material::Earth,100,false)==black);
     const auto n=ApplyMicroDetail({0,140,0},{20,10},Material::Grass,100,true);
     assert(n[0]==0&&n[2]==0&&n[1]>140);
+    // Edge reconstruction: preserve a straight boundary and reconstruct a
+    // supported diagonal without introducing any random material noise.
+    std::uint8_t rgbPal[256][3]{};
+    for(int i=0;i<256;++i) for(int c=0;c<3;++c)
+        rgbPal[i][c]=static_cast<std::uint8_t>(i);
+    EdgePalette edge;
+    edge.Prepare(rgbPal);
+    assert(edge.Distance(254,120)==255 && edge.Distance(0,120)==255);
+    assert(NativeSample(0,200,100,8).index==0);
+    assert(NativeSample(1,200,100,8).fraction==192);
+    assert(NativeSample(2,200,100,8).index==1);
+    std::array<std::uint8_t,9> diagonalArt={80,160,160,80,80,160,80,80,80};
+    const auto corner=Reconstruct(diagonalArt.data(),3,3,{1,250},{1,5},rgbPal,edge);
+    assert(corner[0]>80 && corner[0]<160);
+    std::array<std::uint8_t,9> straightArt={80,80,160,80,80,160,80,80,160};
+    assert(Reconstruct(straightArt.data(),3,3,{1,250},{1,5},rgbPal,edge)[0]==80);
+    diagonalArt[4]=254;
+    assert(Reconstruct(diagonalArt.data(),3,3,{1,250},{1,5},rgbPal,edge)[0]==254);
+    const RGB reconstructed={100,110,120}, lit={110,100,90}, raw={100,100,100};
+    const RGB expected={110,110,110};
+    assert(PreserveLighting(reconstructed,lit,raw)==expected);
     sprite.pop_back();
     DrawGround(sprite,1,0,buffer.data(),buffer.size(),4,0,0,palette,light);
     for(auto b:buffer) assert(b==254);

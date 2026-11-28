@@ -5905,10 +5905,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // Experimental lighting is strictly presentation-only. Never inspect a
     // hidden neighbour or company for visual lighting. Deployment, editor,
     // range filters and dialog dimming keep the original rendering.
-    const bool enhancedGround = spellcross_display::Current().advanced_rendering &&
-        !editorPreview && wL1 && !render_filter && !default_filter &&
+    const auto& renderSettings = spellcross_display::Current();
+    const bool normalTactical = !editorPreview && wL1 && !render_filter && !default_filter &&
         !viewingUnitMoveRange() && !viewingUnitAttackRange() &&
         (use_view_mask || show_map_cheat || deployment_mode);
+    const bool rgbLighting = normalTactical && renderSettings.advanced_rendering;
+    const bool materialDetail = normalTactical && renderSettings.procedural_materials;
+    const bool enhancedGround = rgbLighting || materialDetail;
+    const bool spriteUpscale = normalTactical && renderSettings.procedural_upscaling &&
+        zoom_percent * display_scale_percent > 10000;
     spellcross_enhanced::GroundSurface groundLight;
     // The projected world origin, not the scratch-buffer origin, anchors HD detail.
     const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
@@ -6001,8 +6006,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     material = Material::Stone;
                 else if (flags & Sprite::IS_SAND) material = Material::Sand;
                 else if (flags & (Sprite::IS_GRASS | Sprite::IS_DGRASS)) material = Material::Grass;
-                const bool smoothMaterial = material == Material::Road || material == Material::Wood ||
-                    material == Material::Wet;
+                // Retain V2's original lighting even when the new materials
+                // are switched off (or on): separate options are independent.
+                const bool smoothMaterial = (flags &
+                    (Sprite::IS_WATER | Sprite::IS_ROAD | Sprite::IS_BRIDGE |
+                     Sprite::IS_WOOD_BRIDGE | Sprite::IS_FORD)) != 0;
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
                     mxx, myy, &light, smoothMaterial, material);
             }
@@ -6795,6 +6803,17 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		surf_modified = true;
 	const int hud_buffer_height = (std::max)(screen_height, 480);
 	screen_pixels.resize(static_cast<size_t>(screen_width) * hud_buffer_height);
+    // Snapshot the composited native battlefield before the HUD and before
+    // releasing the map lock. Upscale original sprites, not zoom-repeated pixels.
+    std::vector<uint8_t> nativeArt;
+    if (spriteUpscale)
+    {
+        nativeArt.resize(static_cast<size_t>(surf_x)*surf_y);
+        for (int y=0;y<surf_y;++y)
+            std::memcpy(nativeArt.data()+static_cast<size_t>(y)*surf_x,
+                pic+static_cast<size_t>(surf_y_origin+y)*pic_x_size+surf_x_origin,surf_x);
+    }
+    const int nativeWidth=surf_x, nativeHeight=surf_y;
     std::vector<spellcross_enhanced::Tag> screenLight;
     if (enhancedGround)
         screenLight.resize(static_cast<size_t>(screen_width) * screen_height);
@@ -6873,7 +6892,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 // HUD is never enhanced, even if an indexed colour coincides.
                 const bool valid=tag && spellcross_enhanced::TagIndex(tag)==index &&
                     y<GetHUDtop(x);
-                const auto* color=valid ? rgbTable.Color(tag) : output_pal[index];
+                const auto* color=valid && rgbLighting ? rgbTable.Color(tag) : output_pal[index];
                 if (!valid) screenLight[i]=0; // also excludes the HUD from HD sampling
                 std::copy_n(color,3,enhancedRGB[i].begin());
             }
@@ -6889,7 +6908,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     static TextureBank textureBank;
     constexpr auto materialCount=static_cast<size_t>(Material::Count);
     std::array<const std::vector<MicroDetail>*,materialCount> textureMaps{};
-    const int microStrength=enhancedGround ? TextureStrength(zoom_percent,display_scale_percent) : 0;
+    const int microStrength=materialDetail ? TextureStrength(zoom_percent,display_scale_percent) : 0;
     std::vector<int> textureX,textureY;
     if(microStrength)
     {
@@ -6918,6 +6937,37 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             material,microStrength,is_night) : color;
     };
 
+    // Original artwork reconstruction is independent of both terrain effects.
+    EdgePalette edgePalette;
+    std::vector<Subpixel> nativeX,nativeY;
+    if(spriteUpscale && nativeWidth>0 && nativeHeight>0)
+    {
+        edgePalette.Prepare(output_pal);
+        nativeX.resize(physical_width);
+        nativeY.resize(physical_height);
+        for(int x=0;x<physical_width;++x)
+            nativeX[x]=NativeSample(x,zoom_percent,display_scale_percent,nativeWidth);
+        for(int y=0;y<physical_height;++y)
+            nativeY[y]=NativeSample(y,zoom_percent,display_scale_percent,nativeHeight);
+    }
+    const auto rawAt=[&](int x,int y)->const uint8_t* {
+        return output_pal[screen_pixels[static_cast<size_t>(y)*screen_width+x]];
+    };
+    const auto upscaleAt=[&](RGB color,RGB original,int x,int y,int lx,int ly)->RGB {
+        if(nativeX.empty() || nativeY.empty()) return color;
+        // A conservative HUD guard also covers its interpolated edge.
+        if(ly+2>=GetHUDtop(lx) || ly+2>=GetHUDtop((std::max)(0,lx-1)) ||
+           ly+2>=GetHUDtop((std::min)(screen_width-1,lx+1))) return color;
+        const auto sx=nativeX[x],sy=nativeY[y];
+        const auto index=nativeArt[static_cast<size_t>(sy.index)*nativeWidth+sx.index];
+        const auto logicalIndex=screen_pixels[static_cast<size_t>(ly)*screen_width+lx];
+        // Coordinate changes may not shift hard markers or black borders.
+        if(Reserved(index)||Reserved(logicalIndex)) return color;
+        const auto rebuilt=Reconstruct(nativeArt.data(),nativeWidth,nativeHeight,
+            sx,sy,output_pal,edgePalette);
+        return PreserveLighting(rebuilt,color,original);
+    };
+
     wxNativePixelData data(bmp);
     if (!data)
         return 1;
@@ -6943,7 +6993,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 const auto* p10 = rgbAt(sample.second,vertical.first);
                 const auto* p01 = rgbAt(sample.first,vertical.second);
                 const auto* p11 = rgbAt(sample.second,vertical.second);
-                if (!microStrength)
+                if (!microStrength && !spriteUpscale)
                 {
                     for (int channel = 2; channel >= 0; --channel)
                         *scan++ = spellcross_display::BlendBilinear(
@@ -6957,6 +7007,19 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         color[channel]=spellcross_display::BlendBilinear(
                             p00[channel],p10[channel],p01[channel],p11[channel],
                             sample.weight,vertical.weight);
+                    if(spriteUpscale)
+                    {
+                        RGB raw{};
+                        const auto* r00=rawAt(sample.first,vertical.first);
+                        const auto* r10=rawAt(sample.second,vertical.first);
+                        const auto* r01=rawAt(sample.first,vertical.second);
+                        const auto* r11=rawAt(sample.second,vertical.second);
+                        for(int c=0;c<3;++c)
+                            raw[c]=spellcross_display::BlendBilinear(r00[c],r10[c],r01[c],r11[c],
+                                sample.weight,vertical.weight);
+                        color=upscaleAt(color,raw,x,y,(x*100)/display_scale_percent,
+                            (y*100)/display_scale_percent);
+                    }
                     const auto tag=tagAt(sample.first,vertical.first);
                     // Never cross a material, sprite or HUD edge when
                     // synthesising detail after interpolation.
@@ -6981,9 +7044,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             {
                 const int sourceX=(x * 100) / display_scale_percent;
                 const auto* rgb = rgbAt(sourceX,sourceY);
-                if(microStrength)
+                if(microStrength || spriteUpscale)
                 {
-                    const auto color=detailAt({rgb[0],rgb[1],rgb[2]},tagAt(sourceX,sourceY),x,y);
+                    RGB color={rgb[0],rgb[1],rgb[2]};
+                    if(spriteUpscale)
+                    {
+                        const auto* raw=rawAt(sourceX,sourceY);
+                        color=upscaleAt(color,{raw[0],raw[1],raw[2]},x,y,sourceX,sourceY);
+                    }
+                    color=detailAt(color,tagAt(sourceX,sourceY),x,y);
                     *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
                 }
                 else

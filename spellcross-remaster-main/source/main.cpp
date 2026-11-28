@@ -2822,6 +2822,8 @@ bool MyApp::OnInit()
         settings.gamma = ini.GetDoubleValue("STATE", "display_gamma", 1.3);
         settings.temperature = static_cast<int>(ini.GetLongValue("STATE", "display_temperature", 6500));
         settings.advanced_rendering = ini.GetBoolValue("STATE", "advanced_rendering", false);
+        settings.procedural_materials = ini.GetBoolValue("STATE", "procedural_materials", false);
+        settings.procedural_upscaling = ini.GetBoolValue("STATE", "procedural_upscaling", false);
         spellcross_display::Set(settings);
     }
 
@@ -3027,6 +3029,8 @@ int MyApp::OnExit()
     ini.SetDoubleValue("STATE", "display_gamma", screen.gamma);
     ini.SetLongValue("STATE", "display_temperature", screen.temperature);
     ini.SetBoolValue("STATE", "advanced_rendering", screen.advanced_rendering);
+    ini.SetBoolValue("STATE", "procedural_materials", screen.procedural_materials);
+    ini.SetBoolValue("STATE", "procedural_upscaling", screen.procedural_upscaling);
 
     // save INI
     if (!config_path.empty())

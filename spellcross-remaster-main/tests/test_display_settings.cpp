@@ -15,6 +15,7 @@ int main()
     assert(std::abs(defaults.gamma - 1.3) < 1e-9);
     assert(defaults.temperature == 6500);
     assert(!defaults.advanced_rendering);
+    assert(!defaults.procedural_materials && !defaults.procedural_upscaling);
     Settings enhanced = defaults;
     enhanced.advanced_rendering = true;
     const auto revisionBeforeEnhanced = Revision();
@@ -22,6 +23,18 @@ int main()
     assert(Current().advanced_rendering && Revision() > revisionBeforeEnhanced);
     Set(defaults);
     assert(!Current().advanced_rendering);
+    for (unsigned mask=0;mask<8;++mask)
+    {
+        Settings independent=defaults;
+        independent.advanced_rendering=(mask&1)!=0;
+        independent.procedural_materials=(mask&2)!=0;
+        independent.procedural_upscaling=(mask&4)!=0;
+        Set(independent);
+        assert(Current().advanced_rendering==independent.advanced_rendering);
+        assert(Current().procedural_materials==independent.procedural_materials);
+        assert(Current().procedural_upscaling==independent.procedural_upscaling);
+    }
+    Set(defaults);
 
     for (const int scale : {100, 125})
     {

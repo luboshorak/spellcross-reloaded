@@ -503,4 +503,95 @@ namespace spellcross_enhanced
         return color;
     }
 
+    // Procedural edge reconstruction from original indexed art, not a
+    // stochastic texture. Samples retain their authored colours. Only a
+    // supported diagonal or a low-contrast continuous surface is interpolated.
+    struct Subpixel { int index=0, fraction=128; };
+    inline Subpixel NativeSample(int physical,int zoom,int display,int extent)
+    {
+        if(extent<=1) return {};
+        const auto scale=static_cast<std::int64_t>(zoom)*display;
+        if(scale<=0) return {};
+        const auto fixed=(2LL*physical+1)*10000*128/scale;
+        if(fixed<=0) return {0,0};
+        if(fixed>=static_cast<std::int64_t>(extent)*256) return {extent-1,255};
+        return {static_cast<int>(fixed/256),static_cast<int>(fixed%256)};
+    }
+    inline RGB Blend(RGB a,RGB b,int weight)
+    {
+        weight=std::clamp(weight,0,256);
+        for(int c=0;c<3;++c)
+            a[c]=static_cast<std::uint8_t>((a[c]*(256-weight)+b[c]*weight+128)/256);
+        return a;
+    }
+    inline int ColourDistance(const std::uint8_t* a,const std::uint8_t* b)
+    {
+        const int dr=static_cast<int>(a[0])-b[0];
+        const int dg=static_cast<int>(a[1])-b[1];
+        const int db=static_cast<int>(a[2])-b[2];
+        return (std::abs)(dr)+(std::abs)(dg)+(std::abs)(db);
+    }
+    // A cached pairwise classification avoids computing colour differences
+    // for every output pixel. Reserved/very dark colours are hard barriers.
+    class EdgePalette
+    {
+        std::array<std::array<std::uint8_t,256>,256> distances{};
+    public:
+        void Prepare(const std::uint8_t (*palette)[3])
+        {
+            for(int i=0;i<256;++i) for(int j=0;j<256;++j)
+            {
+                const auto* a=palette[i]; const auto* b=palette[j];
+                const bool darkA=(std::max)({a[0],a[1],a[2]})<20;
+                const bool darkB=(std::max)({b[0],b[1],b[2]})<20;
+                distances[i][j]=(Reserved(i)||Reserved(j)||darkA||darkB) ? 255 :
+                    static_cast<std::uint8_t>((std::min)(254,ColourDistance(a,b)));
+            }
+        }
+        int Distance(std::uint8_t a,std::uint8_t b) const { return distances[a][b]; }
+    };
+    inline RGB Reconstruct(const std::uint8_t* pixels,int width,int height,
+                           Subpixel sx,Subpixel sy,const std::uint8_t (*pal)[3],
+                           const EdgePalette& edges)
+    {
+        const int x=std::clamp(sx.index,0,width-1),y=std::clamp(sy.index,0,height-1);
+        const auto get=[&](int a,int b) {
+            return pixels[static_cast<std::size_t>(std::clamp(b,0,height-1))*width+
+                std::clamp(a,0,width-1)];
+        };
+        const auto center=get(x,y);
+        const auto rgb=[&](std::uint8_t i)->RGB { return {pal[i][0],pal[i][1],pal[i][2]}; };
+        RGB result=rgb(center);
+        if(Reserved(center)||x==0||y==0||x==width-1||y==height-1) return result;
+        const int dx=sx.fraction<128?-1:1,dy=sy.fraction<128?-1:1;
+        const int fx=(std::abs)(sx.fraction-128),fy=(std::abs)(sy.fraction-128);
+        const auto a=get(x+dx,y),b=get(x,y+dy);
+        const auto oppositeA=get(x-dx,y),oppositeB=get(x,y-dy);
+        const auto diagonal=get(x+dx,y+dy);
+        const int da=edges.Distance(center,a),db=edges.Distance(center,b);
+        const int ab=edges.Distance(a,b);
+        // Two agreeing neighbours trace a diagonal through the pixel corner.
+        // Require contrasting opposite sides, so isolated one-pixel details
+        // and straight/thin lines do not get rounded away.
+        if(ab<=26 && da>=40 && da<255 && db>=40 && db<255 &&
+            edges.Distance(a,oppositeA)>35 && edges.Distance(b,oppositeB)>35 &&
+            edges.Distance(a,diagonal)<=48)
+        {
+            const int coverage=std::clamp((fx+fy-115)*3,0,224);
+            return Blend(result,Blend(rgb(a),rgb(b),128),coverage);
+        }
+        // Modest directional interpolation only across compatible colours.
+        // Do not blur a silhouette, cross a fog edge, or invent new geometry.
+        if(da<=32) result=Blend(result,rgb(a),fx/2);
+        if(db<=32) result=Blend(result,rgb(b),fy/2);
+        return result;
+    }
+    inline RGB PreserveLighting(RGB reconstructed,RGB base,RGB original)
+    {
+        for(int c=0;c<3;++c)
+            reconstructed[c]=static_cast<std::uint8_t>(std::clamp(
+                static_cast<int>(reconstructed[c])+base[c]-original[c],0,255));
+        return reconstructed;
+    }
+
 }

@@ -70,3 +70,21 @@ real missions remain necessary.
 
 Tests cover material packing, deterministic wraparound, distinct generated
 materials, subpixel variation, camera/zoom coordinates and night/black safety.
+
+## Version 4: independent controls and procedural sprite reconstruction
+
+Screen settings now expose three independent, persisted switches. Existing
+advanced_rendering keeps the V2 colour/lighting behavior; procedural_materials
+and procedural_upscaling default off even with an existing V3 config. Any of
+the eight combinations is legal. The V2 material classification used for
+lighting is restored. The material pass can use the original palette alone.
+Upscaling is not an AI model and does not synthesize arbitrary unit features.
+It reconstructs supported diagonal edges and gently interpolates compatible
+colours using the native, composited battlefield before zoom and HUD. It is
+active only when combined zoom and display scale exceed 100%, with conservative
+HUD, reserved-colour, dark-colour and range/dialog guards. It can affect
+units, buildings and ground, and retains optional V2 lighting as a colour
+delta. Native sprites, game coordinates and assets remain unchanged.
+Limitations: the composited native image is not a semantic sprite mask; some
+thin details may be softened, and no new authentic features can be recovered
+from the low-resolution source. Native 100% is intentionally not upscaled.
