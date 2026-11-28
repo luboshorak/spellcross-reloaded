@@ -5920,7 +5920,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const bool directionalShadows = normalTactical && !params.is_night &&
         renderSettings.directional_shadows && renderSettings.shadow_strength>0;
     const int lightingGrade=baseLighting?renderSettings.lighting_intensity:0;
-    const bool rgbLighting = baseLighting || directionalShadows;
+    const int ambientStrength=normalTactical&&renderSettings.ambient_occlusion?renderSettings.ambient_intensity:0;
+    const bool rgbLighting = baseLighting || directionalShadows || ambientStrength;
     const int materialStrength=spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent)*
         renderSettings.material_intensity/100;
     const bool materialDetail = normalTactical && renderSettings.procedural_materials && materialStrength>0;
@@ -5931,6 +5932,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             spellcross_perf::Clock::now().time_since_epoch()).count()/35%128):0;
     const int atmosphere=normalTactical&&renderSettings.atmosphere_intensity>0?renderSettings.atmosphere:0;
     const int atmosphereIntensity=atmosphere?renderSettings.atmosphere_intensity:0;
+    const bool weatherV2=atmosphere&&renderSettings.atmosphere_v2;
+    const bool visibleCasters=directionalShadows||ambientStrength||weatherV2;
     const int atmospherePhase=atmosphere?static_cast<int>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             spellcross_perf::Clock::now().time_since_epoch()).count()/35%65536):0;
@@ -5960,7 +5963,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             int(renderSettings.original_shadows),int(renderSettings.material_v2),renderSettings.material_intensity,
             int(renderSettings.animated_water),renderSettings.water_intensity,
             renderSettings.shadow_direction,renderSettings.shadow_length,renderSettings.shadow_softness,
-            int(renderSettings.contact_shadows),renderSettings.atmosphere,renderSettings.atmosphere_intensity};
+            int(renderSettings.contact_shadows),renderSettings.atmosphere,renderSettings.atmosphere_intensity,
+            int(renderSettings.ambient_occlusion),renderSettings.ambient_intensity,renderSettings.ambient_radius,
+            int(renderSettings.atmosphere_v2)};
         perf.pendingReadback=0;
     }
     static thread_local spellcross_enhanced::GroundSurface groundLight;
@@ -5968,7 +5973,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // The projected world origin, not the scratch-buffer origin, anchors HD detail.
     const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
     if (enhancedGround)
-        groundLight.Reset(surf_x, surf_y, surf_x_origin, surf_y_origin);
+        groundLight.Reset(surf_x, surf_y, surf_x_origin, surf_y_origin,weatherV2);
     const auto litTile = [&](int index) {
         if (deployment_mode) return !deployment_tile_hidden(index);
         return !use_view_mask || unit_view->view[index] >= 2;
@@ -6066,7 +6071,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                      Sprite::IS_WOOD_BRIDGE | Sprite::IS_FORD)) != 0;
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
                     mxx, myy, &light, smoothMaterial, material,baseLighting,&surfaceCache,lightingGrade,
-                    animatedWater && (flags & (Sprite::IS_WATER | Sprite::IS_FORD)) != 0);
+                    (animatedWater||weatherV2) && (flags & (Sprite::IS_WATER | Sprite::IS_FORD)) != 0);
             }
             else if (enhancedGround)
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
@@ -6104,7 +6109,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         enhancedGround ? &groundLight : nullptr, pic, pic_x_size,
         editorPreview || renderSettings.original_shadows,
         directionalShadows?renderSettings.shadow_strength:0,
-        renderSettings.shadow_direction,renderSettings.shadow_length,renderSettings.shadow_softness);
+        renderSettings.shadow_direction,renderSettings.shadow_length,renderSettings.shadow_softness,
+        ambientStrength,renderSettings.ambient_radius,weatherV2);
 
 	// --- Render Layer 3 - ANM animations ---
 	if (wL3)
@@ -6394,7 +6400,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         {
                             const spellcross_enhanced::ShadowCasterScope caster(
                                 myy+sid->y_ofs+sid->y_size/2,
-                                directionalShadows&&litTile(mxy)&&!filter&&!filter_unit);
+                                visibleCasters&&litTile(mxy)&&!filter&&!filter_unit,!unit->unit->isAir());
                             top_y_ofs = unit->Render(terrain, pic, pic_end, mxx, myy, pic_x_size, filter_unit, filter, sid, w_unit_hud);
                         }
 
@@ -6453,7 +6459,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 					const spellcross_enhanced::ForegroundLayerScope scenery(spellcross_enhanced::PixelLayer::Scenery);
                     const spellcross_enhanced::ShadowCasterScope caster(
                         myy+sid->y_ofs+sid->y_size/2,
-                        directionalShadows&&litTile(mxy)&&!filt);
+                        visibleCasters&&litTile(mxy)&&!filt);
 					sid2->Render(pic, pic_end, mxx, myy + sid->y_ofs, pic_x_size, filt);
 				}
 
@@ -6901,7 +6907,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     screenLight.clear();
     // Only the final visible ground receives the projected shade. Foreground
     // sprites, overlays, fog and protected palette indices have no tags.
-    if(directionalShadows) groundLight.ApplyShadows();
+    if(directionalShadows||ambientStrength) groundLight.ApplyShadows();
     const bool validateNative=enhancedGround && zoom_percent>=100;
     if (enhancedGround)
     {
@@ -6939,6 +6945,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 for(int x=0;x<screen_width;++x)
                     dst[x]=groundLight.Match(pic,static_cast<size_t>(pic_end-pic),pic_x_size,
                         surf_x_origin+columns[x],surf_y_origin+sy);
+            if(weatherV2)
+                for(int x=0;x<screen_width;++x)
+                    if(groundLight.WeatherAt(surf_x_origin+columns[x],surf_y_origin+sy,target[x]))
+                        dst[x]|=spellcross_enhanced::WeatherBit;
             previousLightRow=sy;
         }
 	}
@@ -6995,7 +7005,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             int(settings.tactical_dedither),settings.tactical_sharpen,int(rgbLighting),int(materialDetail),
             int(spriteUpscale),int(is_night),textureWorldX,textureWorldY,
             materialStrength,lightingGrade,int(settings.material_v2),waterStrength,waterPhase,0,
-            atmosphere,atmosphereIntensity,atmospherePhase,0};
+            atmosphere,atmosphereIntensity,atmospherePhase,int(weatherV2)};
         bool completed=false;
         {
             wxNativePixelData pixels(bmp);
@@ -7095,13 +7105,14 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             for(int x=0;x<screen_width;++x)
             {
                 const auto i=static_cast<size_t>(y)*screen_width+x;
-                const auto tag=screenLight[i];
+                const auto packed=screenLight[i];
+                const auto tag=packed&spellcross_enhanced::TerrainTagMask;
                 const auto index=screen_pixels[i];
                 // HUD is never enhanced, even if an indexed colour coincides.
                 const bool valid=tag && spellcross_enhanced::TagIndex(tag)==index &&
                     y<hudTops[x];
                 const auto* color=valid && rgbLighting ? rgbTable.Color(tag) : output_pal[index];
-                if (!valid) screenLight[i]=0; // also excludes the HUD from HD sampling
+                screenLight[i]=(valid?tag:0)|((weatherV2&&y<hudTops[x])?(packed&spellcross_enhanced::WeatherBit):0);
                 if(rgbLighting) std::copy_n(color,3,enhancedRGB[i].begin());
             }
         });
@@ -7123,8 +7134,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     if(surfaceEffects)
     {
         size_t remainingMaterials=materialCount;
-        for(const auto tag:screenLight)
+        for(const auto packed:screenLight)
         {
+            const auto tag=packed&TerrainTagMask;
             if(!tag||!microStrength||TagMaterial(tag)==Material::Water) continue;
             const auto material=TagMaterial(tag);
             const auto index=static_cast<size_t>(material);
@@ -7142,7 +7154,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             textureY[y]=TextureCoordinate(textureWorldY,y,zoom_percent,display_scale_percent);
     }
     const auto tagAt=[&](int x,int y)->Tag {
-        return screenLight.empty()?0:screenLight[static_cast<size_t>(y)*screen_width+x];
+        return screenLight.empty()?0:(screenLight[static_cast<size_t>(y)*screen_width+x]&TerrainTagMask);
     };
     const auto detailAt=[&](RGB color,Tag tag,int x,int y)->RGB {
         if(!tag) return color;
@@ -7157,7 +7169,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 detail=BlendMaterialDetail(detail,TextureBank::Sample(*texture,u/3+v/7+173,v/5-u/11+89),material);
             color=ApplyMicroDetail(color,detail,material,microStrength,is_night);
         }
-        return ApplyAtmosphere(color,atmosphere,atmosphereIntensity,u,v,atmospherePhase,is_night);
+        return weatherV2?color:ApplyAtmosphere(color,atmosphere,atmosphereIntensity,u,v,atmospherePhase,is_night);
+    };
+
+    const auto weatherAt=[&](RGB color,int x,int y,int lx,int ly)->RGB {
+        if(!weatherV2||ly>=hudTops[lx]) return color;
+        const auto i=static_cast<size_t>(ly)*screen_width+lx;
+        if(!screenLight[i]) return color;
+        // Ground tags or explicitly visible foreground writes only.
+        return ApplyAtmosphereV2(color,atmosphere,atmosphereIntensity,textureX[x],textureY[y],atmospherePhase,is_night);
     };
 
     // Original artwork reconstruction is independent of both terrain effects.
@@ -7325,6 +7345,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                        SameMaterial(tag,tagAt(sample.first,vertical.second)) &&
                        SameMaterial(tag,tagAt(sample.second,vertical.second)))
                         color=detailAt(color,tag,x,y);
+                    if(weatherV2) color=weatherAt(color,x,y,(x*100)/display_scale_percent,(y*100)/display_scale_percent);
                     *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
                 }
             }
@@ -7355,6 +7376,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         color=filterAt(color,{raw[0],raw[1],raw[2]},x,y,sourceX,sourceY);
                     }
                     if(surfaceEffects) color=detailAt(color,tagAt(sourceX,sourceY),x,y);
+                    if(weatherV2) color=weatherAt(color,x,y,sourceX,sourceY);
                     *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
                 }
                 else

@@ -156,6 +156,7 @@ namespace spellcross_enhanced
     // happens only after the original sprites, overlays and HUD have rendered.
     enum class Material : std::uint8_t { Earth, Sand, Grass, Stone, Road, Wood, Wet, Water, Count };
     using Tag = std::uint32_t;
+    constexpr Tag TerrainTagMask=0x1ffffu, WeatherBit=0x80000000u;
     using RGB = std::array<std::uint8_t, 3>;
     constexpr int rgbMin = -32, rgbMax = 31;
 
@@ -322,14 +323,22 @@ namespace spellcross_enhanced
         std::vector<Tag> tags,matched;
         std::vector<std::uint8_t> valid;
         std::vector<PixelLayer> layers;
-        std::vector<std::uint8_t> projectedShadow;
+        std::vector<std::uint8_t> projectedShadow,ambientShadow,weatherPixels;
     public:
-        void Reset(int w,int h,int x,int y)
+        void Reset(int w,int h,int x,int y,bool weather=false)
         {
             width=w; height=h; left=x; top=y;
             tags.assign(static_cast<std::size_t>(w)*h,0);
             layers.assign(tags.size(),PixelLayer::Empty);
             projectedShadow.clear();
+            ambientShadow.clear();
+            if(weather) weatherPixels.assign(tags.size(),0); else weatherPixels.clear();
+        }
+        bool WeatherAt(int x,int y,std::uint8_t index) const
+        {
+            x-=left;y-=top;
+            return !weatherPixels.empty()&&index!=0&&x>=0&&y>=0&&x<width&&y<height&&
+                weatherPixels[static_cast<std::size_t>(y)*width+x]==index;
         }
         Tag At(int x,int y) const
         {
@@ -357,7 +366,7 @@ namespace spellcross_enhanced
         // happens to equal the ground underneath. Null source means solid.
         void OccludeSpan(std::size_t offset,int stride,int count,
                          const std::uint8_t* source=nullptr,int repeat=1,
-                         PixelLayer layer=PixelLayer::Effect,int shadowIndex=-1,int skipIndex=-1)
+                         PixelLayer layer=PixelLayer::Effect,int shadowIndex=-1,int skipIndex=-1,bool weather=false)
         {
             if(stride<=0||count<=0||repeat<=0||width<=0||height<=0) return;
             // Divide once per span, not once per covered pixel. Most sprite
@@ -376,6 +385,8 @@ namespace spellcross_enhanced
                         const auto dst=static_cast<std::size_t>(static_cast<int>(y)-top)*width+x-left;
                         tags[dst]=0;
                         layers[dst]=source&&source[i]==shadowIndex?PixelLayer::Shadow:layer;
+                        if(!weatherPixels.empty()) weatherPixels[dst]=weather&&source&&source[i]!=shadowIndex&&
+                            source[i]<228?source[i]:0;
                     }
                     if(++x==stride) { x=0; ++y; }
                 }
@@ -444,16 +455,73 @@ namespace spellcross_enhanced
             }
             if(runStart>=0) run(runStart,y,x-runStart);
         }
+        // Approximate contact AO from opaque pixels close to the caster's
+        // ground anchor. A compact distance falloff follows actual footprint
+        // widths and never uses an object's height as an occlusion radius.
+        void AmbientSpan(std::size_t offset,int stride,int count,const std::uint8_t* source,
+                         int repeat,int groundY,int strength,int radius,int skipIndex=-1)
+        {
+            if(!source||stride<=0||count<=0||repeat<=0||strength<=0||width<=0||height<=0) return;
+            radius=std::clamp(radius,2,12);
+            const auto row=offset/static_cast<std::size_t>(stride);
+            if(row>static_cast<std::size_t>((std::max)(0,top+height+256))) return;
+            int y=static_cast<int>(row),x=static_cast<int>(offset%stride);
+            // Skip upper silhouettes entirely. Bottom pixels may extend below
+            // the tile centre in the original isometric art.
+            const auto stamp=[&](int from,int to,int sy) {
+                if((std::abs)(sy-groundY)>8) return;
+                if(ambientShadow.empty()) ambientShadow.assign(tags.size(),0);
+                const int opacity=18*std::clamp(strength,0,100)/100;
+                for(int dy=-radius/2;dy<=radius/2;++dy)
+                {
+                    const int py=sy+dy;
+                    if(py<top||py>=top+height) continue;
+                    const int vertical=(std::abs)(dy)*2;
+                    auto* dest=ambientShadow.data()+static_cast<std::size_t>(py-top)*width;
+                    const int begin=(std::max)(left,from-radius+vertical);
+                    const int end=(std::min)(left+width,to+radius-vertical);
+                    for(int sx=begin;sx<end;++sx)
+                    {
+                        const int d=vertical+(sx<from?from-sx:sx>=to?sx-to+1:0);
+                        const int amount=opacity*(std::max)(0,radius-d)/radius;
+                        dest[sx-left]=(std::max)(dest[sx-left],static_cast<std::uint8_t>(amount));
+                    }
+                }
+            };
+            int start=-1;
+            for(int i=0;i<count;++i)
+            {
+                const bool opaque=source[i]!=0&&source[i]!=skipIndex;
+                for(int z=0;z<repeat;++z)
+                {
+                    if(opaque&&start<0) start=x;
+                    if(!opaque&&start>=0) { stamp(start,x,y);start=-1; }
+                    if(++x==stride)
+                    {
+                        if(start>=0) stamp(start,x,y);
+                        start=-1;x=0;++y;
+                    }
+                }
+            }
+            if(start>=0) stamp(start,x,y);
+        }
         void ApplyShadows()
         {
-            if(projectedShadow.empty()) return;
+            if(projectedShadow.empty()&&ambientShadow.empty()) return;
             for(std::size_t i=0;i<tags.size();++i)
             {
                 const auto tag=tags[i];
-                if(tag&&layers[i]==PixelLayer::Ground&&projectedShadow[i])
-                    tags[i]=MakeTag(TagIndex(tag),TagShade(tag)-projectedShadow[i],TagMaterial(tag));
+                if(tag&&layers[i]==PixelLayer::Ground)
+                {
+                    const int directional=projectedShadow.empty()?0:projectedShadow[i];
+                    const int ambient=ambientShadow.empty()?0:ambientShadow[i];
+                    // Preserve projected shadows; avoid double-black overlap.
+                    const int shade=(std::max)(directional,ambient)+(std::min)(directional,ambient)/3;
+                    if(shade) tags[i]=MakeTag(TagIndex(tag),TagShade(tag)-shade,TagMaterial(tag));
+                }
             }
             projectedShadow.clear();
+            ambientShadow.clear();
         }
         void Mark(const std::vector<std::uint8_t>& sprite,int rows,int yOffset,
                   int originX,int originY,const GroundLight* light,bool smooth,
@@ -511,6 +579,7 @@ namespace spellcross_enhanced
                             tag=MakeTag(index,ScaleShade(relief+detail+ContactRows::At(shadowRow,lx),lightingPercent),material);
                         }
                         dest[sx-left]=tag;
+                        if(!weatherPixels.empty()) weatherPixels[static_cast<std::size_t>(sy-top)*width+sx-left]=0;
                         layers[static_cast<std::size_t>(sy-top)*width+sx-left]=PixelLayer::Ground;
                     }
                 }
@@ -582,6 +651,8 @@ namespace spellcross_enhanced
         bool castingShadow=false;
         int groundY=0;
         int shadowDirection=0,shadowLength=100,shadowSoftness=33;
+        int ambientStrength=0,ambientRadius=8;
+        bool weatherForeground=false,allowAmbient=true;
         void Span(const std::uint8_t* destination,int count,
                   const std::uint8_t* source=nullptr,int repeat=1,
                   PixelLayer kind=PixelLayer::Empty,int shadowIndex=-1,int skipIndex=-1) const
@@ -591,11 +662,15 @@ namespace spellcross_enhanced
             if(write<start) return;
             const auto offset=static_cast<std::size_t>(write-start);
             const auto effectiveKind=kind==PixelLayer::Empty?layer:kind;
-            if(castingShadow&&shadowStrength>0&&
-                (effectiveKind==PixelLayer::Scenery||effectiveKind==PixelLayer::Unit))
+            const bool caster=castingShadow&&(effectiveKind==PixelLayer::Scenery||effectiveKind==PixelLayer::Unit);
+            if(caster&&shadowStrength>0)
                 surface->ProjectShadowSpan(offset,stride,count,source,repeat,groundY,
                     shadowStrength,shadowIndex,shadowDirection,shadowLength,shadowSoftness);
-            surface->OccludeSpan(offset,stride,count,source,repeat,effectiveKind,shadowIndex,skipIndex);
+            if(caster&&allowAmbient&&ambientStrength>0)
+                surface->AmbientSpan(offset,stride,count,source,repeat,groundY,
+                    ambientStrength,ambientRadius,shadowIndex);
+            surface->OccludeSpan(offset,stride,count,source,repeat,effectiveKind,shadowIndex,skipIndex,
+                caster&&weatherForeground);
         }
     };
     inline thread_local GroundOcclusion activeGroundOcclusion;
@@ -604,11 +679,12 @@ namespace spellcross_enhanced
         GroundOcclusion previous;
     public:
         GroundOcclusionScope(GroundSurface* surface,const std::uint8_t* buffer,int stride,bool originalShadows=true,int shadowStrength=0,
-                             int direction=0,int length=100,int softness=33)
+                             int direction=0,int length=100,int softness=33,
+                             int ambientStrength=0,int ambientRadius=8,bool weatherForeground=false)
             : previous(activeGroundOcclusion)
         {
             activeGroundOcclusion={surface,buffer,stride,PixelLayer::Effect,originalShadows,shadowStrength,false,0,
-                direction,length,softness};
+                direction,length,softness,ambientStrength,ambientRadius,weatherForeground,true};
         }
         ~GroundOcclusionScope() { activeGroundOcclusion=previous; }
         GroundOcclusionScope(const GroundOcclusionScope&)=delete;
@@ -630,18 +706,22 @@ namespace spellcross_enhanced
     {
         bool previous;
         int previousGround;
+        bool previousAmbient;
     public:
-        ShadowCasterScope(int groundY,bool enabled)
+        ShadowCasterScope(int groundY,bool enabled,bool allowAmbient=true)
             : previous(activeGroundOcclusion.castingShadow),
-              previousGround(activeGroundOcclusion.groundY)
+              previousGround(activeGroundOcclusion.groundY),previousAmbient(activeGroundOcclusion.allowAmbient)
         {
-            activeGroundOcclusion.castingShadow=enabled&&activeGroundOcclusion.shadowStrength>0;
+            activeGroundOcclusion.castingShadow=enabled&&(activeGroundOcclusion.shadowStrength>0||
+                activeGroundOcclusion.ambientStrength>0||activeGroundOcclusion.weatherForeground);
+            activeGroundOcclusion.allowAmbient=allowAmbient&&previousAmbient;
             activeGroundOcclusion.groundY=groundY;
         }
         ~ShadowCasterScope()
         {
             activeGroundOcclusion.castingShadow=previous;
             activeGroundOcclusion.groundY=previousGround;
+            activeGroundOcclusion.allowAmbient=previousAmbient;
         }
         ShadowCasterScope(const ShadowCasterScope&)=delete;
         ShadowCasterScope& operator=(const ShadowCasterScope&)=delete;
@@ -897,6 +977,16 @@ namespace spellcross_enhanced
             color[c]=static_cast<std::uint8_t>((color[c]*(100-alpha)+tint[c]*alpha+50)/100);
         }
         return color;
+    }
+    inline RGB ApplyAtmosphereV2(RGB color,int mode,int intensity,int x,int y,int phase,bool night)
+    {
+        intensity=std::clamp(intensity,0,100);
+        if(mode<1||mode>4||!intensity) return color;
+        // A distant layer and a larger, slower foreground layer with
+        // independent phase/offset. No new random state or frame history.
+        color=ApplyAtmosphere(color,mode,intensity*65/100,x,y,phase,night);
+        return ApplyAtmosphere(color,mode,mode>=3?intensity*80/100:intensity*35/100,
+            x/2+137,y/2-83,phase*2/3+101,night);
     }
     inline RGB ApplyMicroDetail(RGB color,MicroDetail detail,Material material,int strength,bool night)
     {

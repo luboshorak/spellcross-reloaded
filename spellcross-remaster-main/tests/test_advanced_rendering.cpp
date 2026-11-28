@@ -77,6 +77,38 @@ int main()
     assert(TagMaterial(MakeTag(245,0,Material::Water))==Material::Water);
     assert(MakeTag(250,0,Material::Water)==0);
     const RGB waterColour{32,88,152};
+    {
+        GroundSurface surface;
+        surface.Reset(64,48,0,0,true);
+        for(int y=0;y<48;++y) for(int x=0;x<64;++x) surface.Write(x,y,MakeTag(120,0));
+        std::vector<std::uint8_t> pixels(64*48,120);
+        const std::uint8_t silhouette[]={120,120,0,0xFD};
+        surface.Write(15,24,0);
+        {
+            GroundOcclusionScope scope(&surface,pixels.data(),64,false,0,0,100,33,100,8,true);
+            const auto* observer=ObserveGround(pixels.data(),64);
+            {
+                ShadowCasterScope caster(24,true);
+                observer->Span(pixels.data()+24*64+20,4,silhouette,1,PixelLayer::Unit,0xFD,0xFD);
+                observer->Span(pixels.data()+5*64+40,4,silhouette,1,PixelLayer::Scenery);
+                assert(surface.WeatherAt(20,24,120));
+                assert(!surface.WeatherAt(20,24,121));
+                assert(!surface.WeatherAt(23,24,0xFD));
+                observer->Span(pixels.data()+24*64+20,1,nullptr,1,PixelLayer::Overlay);
+                assert(!surface.WeatherAt(20,24,120));
+            }
+            { ShadowCasterScope caster(30,true,false);
+              observer->Span(pixels.data()+30*64+45,2,silhouette,1,PixelLayer::Unit); }
+        }
+        surface.ApplyShadows();
+        assert(TagShade(surface.At(18,24))<0);
+        assert(TagShade(surface.At(13,24))>TagShade(surface.At(18,24)));
+        assert(!surface.At(15,24));
+        assert(TagShade(surface.At(38,5))==0);
+        assert(TagShade(surface.At(43,30))==0);
+        assert(ApplyAtmosphereV2(waterColour,3,0,20,20,0,false)==waterColour);
+        assert(ApplyAtmosphereV2(waterColour,0,100,20,20,0,false)==waterColour);
+    }
     for(int mode=0;mode<=4;++mode)
     {
         assert(ApplyAtmosphere(waterColour,mode,0,100,200,30,false)==waterColour);

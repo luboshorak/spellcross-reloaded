@@ -498,7 +498,13 @@ screen.atmosphere.dust=Dust haze
 screen.atmosphere.rain=Rain
 screen.atmosphere.snow=Snow
 screen.atmosphere.intensity=Effect intensity (%)
-screen.atmosphere.hint=Visual effect on visible terrain only. Does not change visibility or movement.
+screen.atmosphere.hint=Visual only. Layered weather also covers visible units and scenery; HUD and fog remain protected.
 
 screen.group.backend=Rendering backend
 screen.group.lighting=Lighting and shadows
+
+screen.group.ambient=Ambient occlusion
+screen.ambient.enable=Ambient occlusion (contact depth)
+screen.ambient.intensity=Occlusion intensity (%)
+screen.ambient.radius=Occlusion radius (pixels)
+screen.atmosphere.v2=Layered weather over units and objects

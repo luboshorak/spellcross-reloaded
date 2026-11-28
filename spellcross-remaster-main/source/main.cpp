@@ -2893,6 +2893,10 @@ bool MyApp::OnInit()
         settings.contact_shadows=ini.GetBoolValue("STATE","contact_shadows",true);
         settings.atmosphere=static_cast<int>(ini.GetLongValue("STATE","atmosphere",0));
         settings.atmosphere_intensity=static_cast<int>(ini.GetLongValue("STATE","atmosphere_intensity",45));
+        settings.atmosphere_v2=ini.GetBoolValue("STATE","atmosphere_v2",false);
+        settings.ambient_occlusion=ini.GetBoolValue("STATE","ambient_occlusion",false);
+        settings.ambient_intensity=static_cast<int>(ini.GetLongValue("STATE","ambient_intensity",55));
+        settings.ambient_radius=static_cast<int>(ini.GetLongValue("STATE","ambient_radius",8));
         settings.procedural_materials = ini.GetBoolValue("STATE", "procedural_materials", false);
         settings.material_v2=ini.GetBoolValue("STATE","material_v2",false);
         settings.material_intensity=static_cast<int>(ini.GetLongValue("STATE","material_intensity",100));
@@ -3118,6 +3122,10 @@ int MyApp::OnExit()
     ini.SetBoolValue("STATE","contact_shadows",screen.contact_shadows);
     ini.SetLongValue("STATE","atmosphere",screen.atmosphere);
     ini.SetLongValue("STATE","atmosphere_intensity",screen.atmosphere_intensity);
+    ini.SetBoolValue("STATE","atmosphere_v2",screen.atmosphere_v2);
+    ini.SetBoolValue("STATE","ambient_occlusion",screen.ambient_occlusion);
+    ini.SetLongValue("STATE","ambient_intensity",screen.ambient_intensity);
+    ini.SetLongValue("STATE","ambient_radius",screen.ambient_radius);
     ini.SetBoolValue("STATE", "procedural_materials", screen.procedural_materials);
     ini.SetBoolValue("STATE","material_v2",screen.material_v2);
     ini.SetLongValue("STATE","material_intensity",screen.material_intensity);

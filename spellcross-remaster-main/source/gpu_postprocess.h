@@ -30,7 +30,7 @@ namespace spellcross_gpu
         int smoothDpi=0,mode=0,dedither=0,sharpen=0,lighting=0,material=0,sprites=0,night=0;
         int worldX=0,worldY=0,strength=0,gradePercent=100;
         int materialV2=0,waterStrength=0,waterPhase=0,padding=0;
-        int atmosphere=0,atmosphereIntensity=0,atmospherePhase=0,padding2=0;
+        int atmosphere=0,atmosphereIntensity=0,atmospherePhase=0,weatherV2=0;
     };
     static_assert(sizeof(Frame)==112);
     inline constexpr char Shader[] = R"HLSL(
@@ -41,7 +41,7 @@ cbuffer Params : register(b0) {
  int lighting,material,sprites,night;
  int worldX,worldY,strength,gradePercent;
  int materialV2,waterStrength,waterPhase,padding;
- int atmosphere,atmosphereIntensity,atmospherePhase,padding2;
+ int atmosphere,atmosphereIntensity,atmospherePhase,weatherV2;
 };
 Texture2D<uint> nativeIdx : register(t0);
 Texture2D<uint> logicalIdx : register(t1);
@@ -108,7 +108,7 @@ void Sharpen(uint3 id:SV_DispatchThreadID)
 uint Tag(int2 p)
 {
  if(lighting==0&&material==0&&waterStrength==0&&atmosphere==0) return 0;
- uint t=tags.Load(int3(p,0));
+ uint t=tags.Load(int3(p,0))&0x1ffffu;
  return t!=0&&(t&255)==S(p)&&p.y<hud.Load(int3(p.x,0,0))?t:0;
 }
 int3 Base(int2 p,bool lit)
@@ -298,17 +298,16 @@ uint WeatherHash(uint x,uint y)
  uint h=x*0x9e3779b9u^y*0x85ebca6bu;
  h^=h>>16;h*=0x7feb352du;h^=h>>15;return h;
 }
-int3 WeatherDetail(int3 color,uint tag,int2 p)
+int3 WeatherLayer(int3 color,int2 uv,int phase,int intensity)
 {
- if(tag==0||atmosphere<1||atmosphere>4||atmosphereIntensity==0) return color;
- int2 uv=int2(worldX,worldY)*4+p*40000/(zoom*dpi);
- int x=uv.x,y=uv.y,phase=atmospherePhase,alpha=0;
+ if(atmosphere<1||atmosphere>4||intensity==0) return color;
+ int x=uv.x,y=uv.y,alpha=0;
  int3 tint=0;
  if(atmosphere<=2)
  {
   int a=WaveTriangle(x/13+y/21-phase/8);
   int b=WaveTriangle(x/31-y/11+phase/16);
-  alpha=(8+(a+b)/4)*atmosphereIntensity/100;
+  alpha=(8+(a+b)/4)*intensity/100;
   tint=atmosphere==1?int3(175,185,180):int3(188,151,98);
  }
  else
@@ -323,17 +322,29 @@ int3 WeatherDetail(int3 color,uint tag,int2 p)
   int dx=abs(lx-px),dy=abs(ly-py);
   if(atmosphere==3)
   {
-   alpha=dx<=1&&dy<=7?(36-dy*3)*atmosphereIntensity/100:0;
+   alpha=dx<=1&&dy<=7?(36-dy*3)*intensity/100:0;
    tint=int3(155,180,200);
   }
   else
   {
-   alpha=dx+dy<=4?(65-(dx+dy)*10)*atmosphereIntensity/100:0;
+   alpha=dx+dy<=4?(65-(dx+dy)*10)*intensity/100:0;
    tint=int3(225,234,240);
   }
  }
  int3 result=(color*(100-alpha)+tint*alpha+50)/100;
  return night!=0?int3(color.x,result.y,color.z):result;
+}
+int3 WeatherDetail(int3 color,uint tag,int2 p,int2 logical)
+{
+ if(atmosphere==0||atmosphereIntensity==0) return color;
+ int2 uv=int2(worldX,worldY)*4+p*40000/(zoom*dpi);
+ if(weatherV2==0) return tag==0?color:WeatherLayer(color,uv,atmospherePhase,atmosphereIntensity);
+ if(logical.y>=hud.Load(int3(logical.x,0,0))) return color;
+ uint packed=tags.Load(int3(logical,0));
+ if(Tag(logical)==0&&(packed&0x80000000u)==0) return color;
+ color=WeatherLayer(color,uv,atmospherePhase,atmosphereIntensity*65/100);
+ return WeatherLayer(color,uv/2+int2(137,-83),atmospherePhase*2/3+101,
+    atmosphereIntensity*(atmosphere>=3?80:35)/100);
 }
 [numthreads(16,16,1)]
 void Render(uint3 id:SV_DispatchThreadID)
@@ -362,7 +373,7 @@ void Render(uint3 id:SV_DispatchThreadID)
    color=mode!=0?clamp(filtered+color-raw,0,255):clamp(color+filtered-Pal(N(nearPos)),0,255);
   }
  }
- outputTex[p]=Pack(WeatherDetail(MaterialDetail(color,tag,p),tag,p));
+ outputTex[p]=Pack(WeatherDetail(MaterialDetail(color,tag,p),tag,p,l));
 }
 )HLSL";
     using Microsoft::WRL::ComPtr;

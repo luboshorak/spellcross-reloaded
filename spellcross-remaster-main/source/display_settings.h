@@ -50,6 +50,10 @@ namespace spellcross_display
         bool contact_shadows = true;
         int atmosphere = 0;
         int atmosphere_intensity = 45;
+        bool atmosphere_v2 = false;
+        bool ambient_occlusion = false;
+        int ambient_intensity = 55;
+        int ambient_radius = 8;
     };
 
     inline Settings Normalize(Settings s)
@@ -74,6 +78,8 @@ namespace spellcross_display
         s.water_intensity=std::clamp(s.water_intensity,0,100);
         s.atmosphere=std::clamp(s.atmosphere,0,4);
         s.atmosphere_intensity=std::clamp(s.atmosphere_intensity,0,100);
+        s.ambient_intensity=std::clamp(s.ambient_intensity,0,100);
+        s.ambient_radius=std::clamp(s.ambient_radius,2,12);
         return s;
     }
 
@@ -114,7 +120,9 @@ namespace spellcross_display
             old.shadow_strength == s.shadow_strength && old.shadow_direction == s.shadow_direction &&
             old.shadow_length == s.shadow_length && old.shadow_softness == s.shadow_softness &&
             old.contact_shadows == s.contact_shadows && old.atmosphere == s.atmosphere &&
-            old.atmosphere_intensity == s.atmosphere_intensity)
+            old.atmosphere_intensity == s.atmosphere_intensity && old.atmosphere_v2 == s.atmosphere_v2 &&
+            old.ambient_occlusion == s.ambient_occlusion && old.ambient_intensity == s.ambient_intensity &&
+            old.ambient_radius == s.ambient_radius)
             return;
         old = s;
         ++MutableRevision();
@@ -519,6 +527,7 @@ namespace spellcross_display
         auto* filterGroup = group(4,spellcross_ui_locale::Tr("screen.group.filters", "Image filters"));
         auto* terrainGroup = group(2,spellcross_ui_locale::Tr("screen.group.terrain", "Terrain and water"));
         auto* shadowGroup = group(1,spellcross_ui_locale::Tr("screen.group.lighting", "Lighting and shadows"));
+        auto* ambientGroup = group(1,spellcross_ui_locale::Tr("screen.group.ambient","Ambient occlusion"));
         auto* atmosphereGroup = group(3,spellcross_ui_locale::Tr("screen.group.atmosphere","Battlefield atmosphere"));
         addLabel(display,spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         const wxString scales[] = {
@@ -565,6 +574,16 @@ namespace spellcross_display
             spellcross_ui_locale::Tr("screen.contact_shadows","Contact shadows (advanced lighting)"));
         contactShadows->SetValue(original.contact_shadows);
         shadowGroup->Add(contactShadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        auto* ambient = new ScreenCheck(ambientGroup,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.ambient.enable","Ambient occlusion (contact depth)"));
+        ambient->SetValue(original.ambient_occlusion);
+        ambientGroup->Add(ambient,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        addLabel(ambientGroup,spellcross_ui_locale::Tr("screen.ambient.intensity","Occlusion intensity (%)"));
+        auto* ambientIntensity=new spellcross_strategic_ui::Slider(ambientGroup,wxID_ANY,original.ambient_intensity,0,100);
+        ambientGroup->Add(ambientIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        addLabel(ambientGroup,spellcross_ui_locale::Tr("screen.ambient.radius","Occlusion radius (pixels)"));
+        auto* ambientRadius=new spellcross_strategic_ui::Slider(ambientGroup,wxID_ANY,original.ambient_radius,2,12);
+        ambientGroup->Add(ambientRadius,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
 
         addLabel(colour,spellcross_ui_locale::Tr("screen.brightness", "Brightness (%)"));
         auto* brightness = new spellcross_strategic_ui::Slider(colour->GetStaticBox(),
@@ -650,8 +669,12 @@ namespace spellcross_display
         auto* atmosphereIntensity = new spellcross_strategic_ui::Slider(atmosphereGroup,wxID_ANY,
             original.atmosphere_intensity,0,100);
         atmosphereGroup->Add(atmosphereIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        auto* weatherV2=new ScreenCheck(atmosphereGroup,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.atmosphere.v2","Layered weather over units and objects"));
+        weatherV2->SetValue(original.atmosphere_v2);
+        atmosphereGroup->Add(weatherV2,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
         auto* weatherHint=new wxStaticText(atmosphereGroup,wxID_ANY,
-            spellcross_ui_locale::Tr("screen.atmosphere.hint","Visual effect on visible terrain only. Does not change visibility or movement."));
+            spellcross_ui_locale::Tr("screen.atmosphere.hint","Visual only. Layered weather also covers visible units and scenery; HUD and fog remain protected."));
         weatherHint->Wrap(dialog.FromDIP(390));
         atmosphereGroup->Add(weatherHint,0,wxEXPAND|wxALL,space);
 
@@ -759,6 +782,9 @@ namespace spellcross_display
             materialIntensity->Enable(materials->GetValue());
             waterIntensity->Enable(water->GetValue());
             atmosphereIntensity->Enable(atmosphere->GetSelection()>0);
+            weatherV2->Enable(atmosphere->GetSelection()>0);
+            ambientIntensity->Enable(ambient->GetValue());
+            ambientRadius->Enable(ambient->GetValue());
             shadowStrength->Enable(shadows->GetValue());
             shadowDirection->Enable(shadows->GetValue());
             shadowLength->Enable(shadows->GetValue());
@@ -791,6 +817,10 @@ namespace spellcross_display
             next.water_intensity = waterIntensity->GetValue();
             next.atmosphere = atmosphere->GetSelection();
             next.atmosphere_intensity = atmosphereIntensity->GetValue();
+            next.atmosphere_v2=weatherV2->GetValue();
+            next.ambient_occlusion=ambient->GetValue();
+            next.ambient_intensity=ambientIntensity->GetValue();
+            next.ambient_radius=ambientRadius->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
             next.gpu_acceleration = gpu->GetValue();
             const int selected=filter->GetSelection();
@@ -829,6 +859,10 @@ namespace spellcross_display
         waterIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         atmosphere->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });
         atmosphereIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        weatherV2->Bind(wxEVT_CHECKBOX,[&](wxCommandEvent&){apply();});
+        ambient->Bind(wxEVT_CHECKBOX,[&](wxCommandEvent&){apply();});
+        ambientIntensity->Bind(wxEVT_SLIDER,[&](wxCommandEvent&){apply();});
+        ambientRadius->Bind(wxEVT_SLIDER,[&](wxCommandEvent&){apply();});
         upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         gpu->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         filter->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });

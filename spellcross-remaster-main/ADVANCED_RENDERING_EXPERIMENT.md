@@ -290,3 +290,19 @@ It is not a full aerial particle layer, does not alter weather gameplay, and
 is manually selected rather than inferred from mission climate. CPU and D3D11
 share integer math; tests cover disabled mode, time variation, green night
 palette, settings and shader parity. Visual and performance acceptance pending.
+
+### V11 ambient occlusion and layered atmosphere
+
+Optional planar contact AO uses only opaque visible unit and L2 scenery
+scanline runs near their ground anchors. Radius (2–12 native pixels) and
+intensity (0–100%) are independent of previous contact and directional
+shadows. Overlap uses maximum plus a fraction of the smaller shade; only
+final ground tags receive AO. Aircraft are excluded. This is footprint-based
+approximation, not full 3D geometry or SSAO.
+The optional V2 weather mode blends two differently scaled and timed layers.
+A separate bit in the uploaded tag texture marks explicitly visible foreground
+writes whose original index still matches; terrain tags are masked separately.
+Units/scenery can now receive weather; filtered hidden casters, overlays, fog
+and HUD do not. V1 ground-only mode and all defaults are retained. The modes
+share CPU and shader math, with new settings and parity regressions. Visual
+acceptance and performance testing remain necessary.

@@ -8,9 +8,14 @@ int main()
     using namespace spellcross_display;
     const Settings defaults = Current();
     assert(defaults.atmosphere==0 && defaults.atmosphere_intensity==45);
+    assert(!defaults.atmosphere_v2 && !defaults.ambient_occlusion && defaults.ambient_intensity==55 && defaults.ambient_radius==8);
     Settings weather=defaults;weather.atmosphere=4;weather.atmosphere_intensity=80;
+    weather.atmosphere_v2=true;weather.ambient_occlusion=true;weather.ambient_intensity=70;weather.ambient_radius=10;
     const auto weatherRevision=Revision();Set(weather);
     assert(Revision()>weatherRevision&&Current().atmosphere==4&&Current().atmosphere_intensity==80);
+    assert(Current().atmosphere_v2&&Current().ambient_occlusion&&Current().ambient_intensity==70&&Current().ambient_radius==10);
+    weather.ambient_radius=50;weather.ambient_intensity=-1;
+    assert(Normalize(weather).ambient_radius==12&&Normalize(weather).ambient_intensity==0);
     weather.atmosphere=99;weather.atmosphere_intensity=-10;
     assert(Normalize(weather).atmosphere==4&&Normalize(weather).atmosphere_intensity==0);
     Set(defaults);

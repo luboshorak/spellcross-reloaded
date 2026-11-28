@@ -498,7 +498,13 @@ screen.atmosphere.dust=Prašný opar
 screen.atmosphere.rain=Déšť
 screen.atmosphere.snow=Sněžení
 screen.atmosphere.intensity=Intenzita efektu (%)
-screen.atmosphere.hint=Grafický efekt na viditelném terénu. Nemění viditelnost ani pohyb.
+screen.atmosphere.hint=Pouze grafický efekt. Vrstvené počasí pokrývá i viditelné jednotky a objekty; HUD a válečná mlha jsou chráněny.
 
 screen.group.backend=Vykreslovací rozhraní
 screen.group.lighting=Osvětlení a stíny
+
+screen.group.ambient=Ambient occlusion
+screen.ambient.enable=Ambient occlusion (prostorová hloubka)
+screen.ambient.intensity=Intenzita zastínění (%)
+screen.ambient.radius=Dosah zastínění (pixely)
+screen.atmosphere.v2=Vrstvené počasí přes jednotky a objekty
