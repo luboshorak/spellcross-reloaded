@@ -498,4 +498,7 @@ screen.atmosphere.dust=Dust haze
 screen.atmosphere.rain=Rain
 screen.atmosphere.snow=Snow
 screen.atmosphere.intensity=Effect intensity (%)
-screen.atmosphere.hint=Visual only. Does not change visibility or movement.
+screen.atmosphere.hint=Visual effect on visible terrain only. Does not change visibility or movement.
+
+screen.group.backend=Rendering backend
+screen.group.lighting=Lighting and shadows

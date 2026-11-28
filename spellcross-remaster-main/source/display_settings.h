@@ -514,11 +514,11 @@ namespace spellcross_display
             section->Add(label, 0, wxLEFT | wxRIGHT | wxTOP, space);
         };
         auto* display = group(0,spellcross_ui_locale::Tr("screen.group.display", "Display and scale"));
-        auto* renderer = group(5,spellcross_ui_locale::Tr("screen.group.renderer", "Rendering and terrain"));
+        auto* renderer = group(5,spellcross_ui_locale::Tr("screen.group.backend", "Rendering backend"));
         auto* colour = group(0,spellcross_ui_locale::Tr("screen.group.colour", "Colour correction"));
         auto* filterGroup = group(4,spellcross_ui_locale::Tr("screen.group.filters", "Image filters"));
         auto* terrainGroup = group(2,spellcross_ui_locale::Tr("screen.group.terrain", "Terrain and water"));
-        auto* shadowGroup = group(1,spellcross_ui_locale::Tr("screen.group.shadows", "Shadow projection"));
+        auto* shadowGroup = group(1,spellcross_ui_locale::Tr("screen.group.lighting", "Lighting and shadows"));
         auto* atmosphereGroup = group(3,spellcross_ui_locale::Tr("screen.group.atmosphere","Battlefield atmosphere"));
         addLabel(display,spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         const wxString scales[] = {
@@ -610,6 +610,15 @@ namespace spellcross_display
         upscaling->SetValue(original.procedural_upscaling);
         filterGroup->Add(upscaling, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
 
+        // Put master switches before their dependent sliders.
+        auto* shadowSizer = enhanced->GetContainingSizer();
+        shadowSizer->Detach(originalShadows);
+        shadowSizer->Detach(shadows);
+        shadowSizer->Detach(enhanced);
+        shadowSizer->Insert(0,enhanced,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        shadowSizer->Insert(1,shadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        shadowSizer->Insert(2,originalShadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+
         auto* materialV2 = new ScreenCheck(terrainGroup,wxID_ANY,
             spellcross_ui_locale::Tr("screen.material_v2","Multi-scale terrain materials V2"));
         materialV2->SetValue(original.material_v2);
@@ -642,7 +651,7 @@ namespace spellcross_display
             original.atmosphere_intensity,0,100);
         atmosphereGroup->Add(atmosphereIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
         auto* weatherHint=new wxStaticText(atmosphereGroup,wxID_ANY,
-            spellcross_ui_locale::Tr("screen.atmosphere.hint","Visual only. Does not change visibility or movement."));
+            spellcross_ui_locale::Tr("screen.atmosphere.hint","Visual effect on visible terrain only. Does not change visibility or movement."));
         weatherHint->Wrap(dialog.FromDIP(390));
         atmosphereGroup->Add(weatherHint,0,wxEXPAND|wxALL,space);
 

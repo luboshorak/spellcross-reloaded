@@ -498,4 +498,7 @@ screen.atmosphere.dust=Prašný opar
 screen.atmosphere.rain=Déšť
 screen.atmosphere.snow=Sněžení
 screen.atmosphere.intensity=Intenzita efektu (%)
-screen.atmosphere.hint=Pouze grafický efekt. Nemění viditelnost ani pohyb.
+screen.atmosphere.hint=Grafický efekt na viditelném terénu. Nemění viditelnost ani pohyb.
+
+screen.group.backend=Vykreslovací rozhraní
+screen.group.lighting=Osvětlení a stíny
