@@ -277,6 +277,35 @@ namespace spellcross_enhanced
 
     // Viewport-local metadata. No extra allocation proportional to map size.
     // Filtered tiles clear underlying metadata when they overwrite ground.
+    // Cache tile-local contact shadows for all caster combinations.
+    class ContactRows
+    {
+        static constexpr int width=96, halfHeight=24;
+        using Row=std::array<std::int8_t,width>;
+        std::array<std::array<Row,halfHeight*2+1>,8> table{};
+    public:
+        ContactRows()
+        {
+            for(unsigned mask=1;mask<8;++mask)
+                for(int y=-halfHeight;y<=halfHeight;++y)
+                    for(int x=0;x<width;++x)
+                    {
+                        int shadow=0;
+                        if(mask&1) shadow=(std::min)(shadow,Contact(x,y,47,4,35,15,21));
+                        if(mask&2) shadow=(std::min)(shadow,Contact(x,y,46,3,31,13,24));
+                        if(mask&4) shadow=(std::min)(shadow,Contact(x,y,54,5,28,12,13));
+                        table[mask][y+halfHeight][x]=static_cast<std::int8_t>(shadow);
+                    }
+        }
+        const Row* Get(unsigned mask,int y) const
+        {
+            return mask&&mask<8&&y>=-halfHeight&&y<=halfHeight?&table[mask][y+halfHeight]:nullptr;
+        }
+        static int At(const Row* row,int x)
+        {
+            return row&&x>=0&&x<width?(*row)[x]:0;
+        }
+    };
     class GroundSurface
     {
         int width=0, height=0, left=0, top=0;
@@ -305,6 +334,10 @@ namespace spellcross_enhanced
                   Material material=Material::Earth,bool calculateShade=true,
                   SurfaceCache* cache=nullptr)
         {
+            static const ContactRows contactRows;
+            const unsigned casterMask=light&&calculateShade?
+                (unsigned(light->object)|unsigned(light->company)*2|unsigned(light->air)*4):0;
+            const int relief=light?light->relief*3:0;
             std::size_t cursor=0;
             for(int y=0;y<rows;++y)
             {
@@ -321,6 +354,7 @@ namespace spellcross_enhanced
                     const int end=(std::min)(count,left+width-originX-offset);
                     auto* dest=tags.data()+static_cast<std::size_t>(sy-top)*width;
                     const int worldY=light?light->worldY+yOffset+y:0;
+                    const auto* shadowRow=contactRows.Get(casterMask,y-rows/2);
                     const std::int8_t* noiseRow=nullptr;
                     int noiseBlock=0;
                     for(int x=start;x<end;++x)
@@ -346,16 +380,7 @@ namespace spellcross_enhanced
                                 detail=noiseRow[worldX-block];
                             }
                             else detail=SurfaceDetail(worldX,worldY,smooth);
-                            int shade=light->relief*3+detail;
-                            const int cy=rows/2;
-                            int shadow=0;
-                            if(light->object)
-                                shadow=(std::min)(shadow,Contact(lx,y,47,cy+4,35,15,21));
-                            if(light->company)
-                                shadow=(std::min)(shadow,Contact(lx,y,46,cy+3,31,13,24));
-                            if(light->air)
-                                shadow=(std::min)(shadow,Contact(lx,y,54,cy+5,28,12,13));
-                            tag=MakeTag(index,shade+shadow,material);
+                            tag=MakeTag(index,relief+detail+ContactRows::At(shadowRow,lx),material);
                         }
                         dest[sx-left]=tag;
                     }

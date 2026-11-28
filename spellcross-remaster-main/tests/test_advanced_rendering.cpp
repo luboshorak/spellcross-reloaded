@@ -16,6 +16,17 @@ int main()
     assert(Contact(40,20,40,20,20,10,8) == -8);
     assert(Contact(60,20,40,20,20,10,8) == 0);
     assert(Contact(45,20,40,20,20,10,8) < 0);
+    ContactRows cachedShadows;
+    for(unsigned mask=0;mask<8;++mask)
+        for(int y=-40;y<=40;++y)
+            for(int x=-20;x<=120;++x)
+            {
+                int expected=0;
+                if(mask&1) expected=(std::min)(expected,Contact(x,y,47,4,35,15,21));
+                if(mask&2) expected=(std::min)(expected,Contact(x,y,46,3,31,13,24));
+                if(mask&4) expected=(std::min)(expected,Contact(x,y,54,5,28,12,13));
+                assert(ContactRows::At(cachedShadows.Get(mask,y),x)==expected);
+            }
     std::array<std::uint8_t,768> colors{};
     for(int i=0;i<256;++i)
         colors[i*3]=colors[i*3+1]=colors[i*3+2]=static_cast<std::uint8_t>(i);

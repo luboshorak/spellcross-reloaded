@@ -187,3 +187,5 @@ execution time alone). No claim of 60 FPS until measured on real hardware.
 ### V6.1 GPU filter coverage and settings cleanup
 
 All retained filter IDs now have D3D11 implementations; Scale2x, Soft EPX, directional triangle, edge-preserving bilinear and CRT soft scanlines complete coverage. CPU remains fallback. WARP smoke tests check all exposed IDs and compare mixed-color samples with CPU reference. Settings use grouped two-column controls; the temporary filter rejection/export dialog and its locale strings are removed. Diagnostics remain available. Sprite reconstruction is disabled in the UI when another filter is selected, preserving its stored preference.
+
+Contact shadow profiles are precomputed for the eight caster combinations, eliminating repeated ellipse divisions in the terrain loop. Exhaustive tests compare cached values to the original calculation. Grouped settings use native static-box ownership for correct platform layout and the existing game theme.
