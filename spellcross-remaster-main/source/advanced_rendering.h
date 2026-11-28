@@ -851,6 +851,53 @@ namespace spellcross_enhanced
         }
         return color;
     }
+    // Weather is a presentation-only world-space overlay on visible ground.
+    // The integer kernel is shared with the D3D11 shader.
+    enum class Atmosphere : int { Off, Mist, Dust, Rain, Snow };
+    inline RGB ApplyAtmosphere(RGB color,int mode,int intensity,int x,int y,int phase,bool night)
+    {
+        intensity=std::clamp(intensity,0,100);
+        if(mode<1||mode>4||!intensity) return color;
+        int alpha=0;
+        RGB tint{};
+        if(mode==1||mode==2)
+        {
+            const int a=WaveTriangle(x/13+y/21-phase/8);
+            const int b=WaveTriangle(x/31-y/11+phase/16);
+            alpha=(8+(a+b)/4)*intensity/100;
+            tint=mode==1?RGB{175,185,180}:RGB{188,151,98};
+        }
+        else
+        {
+            // Periodic world-space cells with deterministic jitter; movement
+            // is evaluated from time, not simulation ticks or random state.
+            const int cell=mode==3?64:80;
+            const int vx=x+(mode==3?y/4:y/8)-phase/2;
+            const int vy=y-phase*(mode==3?5:1);
+            const int cx=vx/cell-(vx%cell<0),cy=vy/cell-(vy%cell<0);
+            const int lx=vx-cx*cell,ly=vy-cy*cell;
+            const auto h=Hash(static_cast<std::uint32_t>(cx),static_cast<std::uint32_t>(cy));
+            const int px=8+int((h&255u)%static_cast<unsigned>(cell-16));
+            const int py=8+int(((h>>8)&255u)%static_cast<unsigned>(cell-16));
+            const int dx=(std::abs)(lx-px),dy=(std::abs)(ly-py);
+            if(mode==3)
+            {
+                alpha=dx<=1&&dy<=7?(36-dy*3)*intensity/100:0;
+                tint={155,180,200};
+            }
+            else
+            {
+                alpha=dx+dy<=4?(65-(dx+dy)*10)*intensity/100:0;
+                tint={225,234,240};
+            }
+        }
+        for(int c=0;c<3;++c)
+        {
+            if(night&&c!=1) continue;
+            color[c]=static_cast<std::uint8_t>((color[c]*(100-alpha)+tint[c]*alpha+50)/100);
+        }
+        return color;
+    }
     inline RGB ApplyMicroDetail(RGB color,MicroDetail detail,Material material,int strength,bool night)
     {
         const int gain=100+detail.light*strength/(night?200:100);

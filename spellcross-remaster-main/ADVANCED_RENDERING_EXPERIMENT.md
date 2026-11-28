@@ -275,3 +275,18 @@ one-pixel fringe. These controls affect projected silhouettes, not the fixed
 micro-material/terrain-relief light or original baked artwork. CPU generates
 the shared shadow tags for either output backend. Settings and projection
 regressions cover hard/reversed/shortened shadows.
+
+### V10 weather and categorized screen settings
+
+The shared screen dialog now uses six themed navigation buttons and a simplebook
+with individually scrollable pages: Display, Lighting, Terrain and water,
+Atmosphere, Filters and Performance. All controls remain alive across page
+switches; the original single live-preview/Cancel transaction covers every page.
+Atmosphere offers Off (default), mist, dust, rain and snow with a 0–100% slider.
+The first weather pass is deliberately ground-only: animated world-space haze
+or jittered rain/snow particles are composited onto visible validated ground
+pixels after material detail, never onto fog, units, scenery, text or HUD.
+It is not a full aerial particle layer, does not alter weather gameplay, and
+is manually selected rather than inferred from mission climate. CPU and D3D11
+share integer math; tests cover disabled mode, time variation, green night
+palette, settings and shader parity. Visual and performance acceptance pending.

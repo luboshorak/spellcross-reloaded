@@ -12,6 +12,7 @@
 #include <wx/odcombo.h>
 #include <wx/slider.h>
 #include <wx/scrolwin.h>
+#include <wx/simplebook.h>
 #include <wx/display.h>
 #include "spell_ui_locale.h"
 #include "strategic_ui_theme.h"
@@ -47,6 +48,8 @@ namespace spellcross_display
         int shadow_length = 100;
         int shadow_softness = 33;
         bool contact_shadows = true;
+        int atmosphere = 0;
+        int atmosphere_intensity = 45;
     };
 
     inline Settings Normalize(Settings s)
@@ -69,6 +72,8 @@ namespace spellcross_display
         s.shadow_softness=std::clamp(s.shadow_softness,0,100);
         s.material_intensity=std::clamp(s.material_intensity,0,100);
         s.water_intensity=std::clamp(s.water_intensity,0,100);
+        s.atmosphere=std::clamp(s.atmosphere,0,4);
+        s.atmosphere_intensity=std::clamp(s.atmosphere_intensity,0,100);
         return s;
     }
 
@@ -108,7 +113,8 @@ namespace spellcross_display
             old.directional_shadows == s.directional_shadows && old.original_shadows == s.original_shadows &&
             old.shadow_strength == s.shadow_strength && old.shadow_direction == s.shadow_direction &&
             old.shadow_length == s.shadow_length && old.shadow_softness == s.shadow_softness &&
-            old.contact_shadows == s.contact_shadows)
+            old.contact_shadows == s.contact_shadows && old.atmosphere == s.atmosphere &&
+            old.atmosphere_intensity == s.atmosphere_intensity)
             return;
         old = s;
         ++MutableRevision();
@@ -468,19 +474,38 @@ namespace spellcross_display
             wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE);
         auto* root = new wxBoxSizer(wxVERTICAL);
         const int space = dialog.FromDIP(10);
-        auto* body = new wxScrolledWindow(&dialog,wxID_ANY,wxDefaultPosition,wxDefaultSize,
-            wxVSCROLL | wxHSCROLL | wxTAB_TRAVERSAL | wxBORDER_NONE);
-        body->SetScrollRate(dialog.FromDIP(12),dialog.FromDIP(12));
-        auto* bodySizer = new wxBoxSizer(wxVERTICAL);
-        body->SetSizer(bodySizer);
-        root->Add(body,1,wxEXPAND);
-        auto* columns = new wxFlexGridSizer(2, space, space);
-        columns->AddGrowableCol(0, 1);
-        columns->AddGrowableCol(1, 1);
-        bodySizer->Add(columns, 0, wxEXPAND | wxALL, space);
-        const auto group = [&](const wxString& title) {
-            auto* section = new ScreenSection(body, title);
-            columns->Add(section, 1, wxEXPAND);
+        // A themed navigation column instead of the native Windows tab bar.
+        // Every page owns its controls; switching never rebuilds or applies them.
+        auto* content = new wxBoxSizer(wxHORIZONTAL);
+        auto* navigation = new wxBoxSizer(wxVERTICAL);
+        auto* book = new wxSimplebook(&dialog,wxID_ANY);
+        content->Add(navigation,0,wxEXPAND|wxRIGHT,space);
+        content->Add(book,1,wxEXPAND);
+        root->Add(content,1,wxEXPAND|wxALL,space);
+        std::array<wxScrolledWindow*,6> pages{};
+        std::array<spellcross_strategic_ui::Button*,6> tabs{};
+        const std::array<wxString,6> names={
+            spellcross_ui_locale::Tr("screen.tab.display","Display"),
+            spellcross_ui_locale::Tr("screen.tab.lighting","Lighting"),
+            spellcross_ui_locale::Tr("screen.tab.terrain","Terrain"),
+            spellcross_ui_locale::Tr("screen.tab.atmosphere","Atmosphere"),
+            spellcross_ui_locale::Tr("screen.tab.filters","Filters"),
+            spellcross_ui_locale::Tr("screen.tab.performance","Performance")
+        };
+        for(int i=0;i<6;++i)
+        {
+            tabs[i]=new spellcross_strategic_ui::Button(&dialog,wxID_ANY,names[i]);
+            tabs[i]->SetMinSize(wxSize(dialog.FromDIP(145),-1));
+            navigation->Add(tabs[i],0,wxEXPAND|wxBOTTOM,dialog.FromDIP(5));
+            pages[i]=new wxScrolledWindow(book,wxID_ANY,wxDefaultPosition,wxDefaultSize,
+                wxVSCROLL|wxHSCROLL|wxTAB_TRAVERSAL|wxBORDER_NONE);
+            pages[i]->SetScrollRate(dialog.FromDIP(12),dialog.FromDIP(12));
+            pages[i]->SetSizer(new wxBoxSizer(wxVERTICAL));
+            book->AddPage(pages[i],names[i],i==0);
+        }
+        const auto group = [&](int page,const wxString& title) {
+            auto* section = new ScreenSection(pages[page],title);
+            pages[page]->GetSizer()->Add(section,0,wxEXPAND|wxBOTTOM,space);
             return section;
         };
         const auto addLabel = [&](ScreenSection* section, const wxString& title) {
@@ -488,12 +513,13 @@ namespace spellcross_display
             label->SetFont(spellcross_menu::MenuFont());
             section->Add(label, 0, wxLEFT | wxRIGHT | wxTOP, space);
         };
-        auto* display = group(spellcross_ui_locale::Tr("screen.group.display", "Display and scale"));
-        auto* renderer = group(spellcross_ui_locale::Tr("screen.group.renderer", "Rendering and terrain"));
-        auto* colour = group(spellcross_ui_locale::Tr("screen.group.colour", "Colour correction"));
-        auto* filterGroup = group(spellcross_ui_locale::Tr("screen.group.filters", "Image filters"));
-        auto* terrainGroup = group(spellcross_ui_locale::Tr("screen.group.terrain", "Terrain and water"));
-        auto* shadowGroup = group(spellcross_ui_locale::Tr("screen.group.shadows", "Shadow projection"));
+        auto* display = group(0,spellcross_ui_locale::Tr("screen.group.display", "Display and scale"));
+        auto* renderer = group(5,spellcross_ui_locale::Tr("screen.group.renderer", "Rendering and terrain"));
+        auto* colour = group(0,spellcross_ui_locale::Tr("screen.group.colour", "Colour correction"));
+        auto* filterGroup = group(4,spellcross_ui_locale::Tr("screen.group.filters", "Image filters"));
+        auto* terrainGroup = group(2,spellcross_ui_locale::Tr("screen.group.terrain", "Terrain and water"));
+        auto* shadowGroup = group(1,spellcross_ui_locale::Tr("screen.group.shadows", "Shadow projection"));
+        auto* atmosphereGroup = group(3,spellcross_ui_locale::Tr("screen.group.atmosphere","Battlefield atmosphere"));
         addLabel(display,spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         const wxString scales[] = {
             spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"),
@@ -512,10 +538,10 @@ namespace spellcross_display
                 i == 2 ? 0 : dialog.FromDIP(4));
         }
         display->Add(scaleRow, 0, wxEXPAND | wxALL, space);
-        addLabel(display,spellcross_ui_locale::Tr("screen.lighting_intensity","Lighting intensity (%)"));
-        auto* lightIntensity = new spellcross_strategic_ui::Slider(display->GetStaticBox(),
+        addLabel(shadowGroup,spellcross_ui_locale::Tr("screen.lighting_intensity","Lighting intensity (%)"));
+        auto* lightIntensity = new spellcross_strategic_ui::Slider(shadowGroup->GetStaticBox(),
             wxID_ANY,original.lighting_intensity,0,100);
-        display->Add(lightIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        shadowGroup->Add(lightIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
         addLabel(shadowGroup,spellcross_ui_locale::Tr("screen.shadow_strength","Shadow strength (%)"));
         auto* shadowStrength = new spellcross_strategic_ui::Slider(shadowGroup,
             wxID_ANY,original.shadow_strength,0,100);
@@ -563,26 +589,26 @@ namespace spellcross_display
         gpu->Disable();
 #endif
         renderer->Add(gpu, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
-        auto* enhanced = new ScreenCheck(renderer->GetStaticBox(), wxID_ANY,
+        auto* enhanced = new ScreenCheck(shadowGroup->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.advanced_rendering", "Advanced rendering (experimental)"));
         enhanced->SetValue(original.advanced_rendering);
-        renderer->Add(enhanced, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
-        auto* shadows = new ScreenCheck(renderer->GetStaticBox(),wxID_ANY,
+        shadowGroup->Add(enhanced, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
+        auto* shadows = new ScreenCheck(shadowGroup->GetStaticBox(),wxID_ANY,
             spellcross_ui_locale::Tr("screen.directional_shadows","Directional shadows (daylight)"));
         shadows->SetValue(original.directional_shadows);
-        renderer->Add(shadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
-        auto* originalShadows = new ScreenCheck(renderer->GetStaticBox(),wxID_ANY,
+        shadowGroup->Add(shadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        auto* originalShadows = new ScreenCheck(shadowGroup->GetStaticBox(),wxID_ANY,
             spellcross_ui_locale::Tr("screen.original_shadows","Original unit shadows"));
         originalShadows->SetValue(original.original_shadows);
-        renderer->Add(originalShadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
-        auto* materials = new ScreenCheck(renderer->GetStaticBox(), wxID_ANY,
+        shadowGroup->Add(originalShadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        auto* materials = new ScreenCheck(terrainGroup->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.procedural_materials", "Procedural terrain materials (experimental)"));
         materials->SetValue(original.procedural_materials);
-        renderer->Add(materials, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
-        auto* upscaling = new ScreenCheck(renderer->GetStaticBox(), wxID_ANY,
+        terrainGroup->Add(materials, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
+        auto* upscaling = new ScreenCheck(filterGroup->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.procedural_upscaling", "Procedural sprite upscaling (experimental)"));
         upscaling->SetValue(original.procedural_upscaling);
-        renderer->Add(upscaling, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
+        filterGroup->Add(upscaling, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
 
         auto* materialV2 = new ScreenCheck(terrainGroup,wxID_ANY,
             spellcross_ui_locale::Tr("screen.material_v2","Multi-scale terrain materials V2"));
@@ -598,6 +624,27 @@ namespace spellcross_display
         addLabel(terrainGroup,spellcross_ui_locale::Tr("screen.water_intensity","Water effect intensity (%)"));
         auto* waterIntensity = new spellcross_strategic_ui::Slider(terrainGroup,wxID_ANY,original.water_intensity,0,100);
         terrainGroup->Add(waterIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+
+        addLabel(atmosphereGroup,spellcross_ui_locale::Tr("screen.atmosphere.mode","Weather effect"));
+        auto* atmosphere = new ScreenChoice(atmosphereGroup);
+        for(const auto& label : std::array<wxString,5>{
+            spellcross_ui_locale::Tr("screen.atmosphere.off","Off"),
+            spellcross_ui_locale::Tr("screen.atmosphere.mist","Drifting mist"),
+            spellcross_ui_locale::Tr("screen.atmosphere.dust","Dust haze"),
+            spellcross_ui_locale::Tr("screen.atmosphere.rain","Rain"),
+            spellcross_ui_locale::Tr("screen.atmosphere.snow","Snow")})
+            atmosphere->Append(label);
+        atmosphere->SetSelection(original.atmosphere);
+        atmosphere->SetMinSize(dialog.FromDIP(wxSize(280,32)));
+        atmosphereGroup->Add(atmosphere,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        addLabel(atmosphereGroup,spellcross_ui_locale::Tr("screen.atmosphere.intensity","Effect intensity (%)"));
+        auto* atmosphereIntensity = new spellcross_strategic_ui::Slider(atmosphereGroup,wxID_ANY,
+            original.atmosphere_intensity,0,100);
+        atmosphereGroup->Add(atmosphereIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        auto* weatherHint=new wxStaticText(atmosphereGroup,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.atmosphere.hint","Visual only. Does not change visibility or movement."));
+        weatherHint->Wrap(dialog.FromDIP(390));
+        atmosphereGroup->Add(weatherHint,0,wxEXPAND|wxALL,space);
 
         addLabel(filterGroup,spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter"));
         auto* filter = new ScreenChoice(filterGroup->GetStaticBox());
@@ -631,9 +678,7 @@ namespace spellcross_display
             wxID_ANY, original.tactical_sharpen, 0, 100);
         filterGroup->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
-        auto* diagnostics = new ScreenSection(body,
-            spellcross_ui_locale::Tr("screen.group.diagnostics","Diagnostics"));
-        bodySizer->Add(diagnostics,0,wxEXPAND|wxLEFT|wxRIGHT|wxBOTTOM,space);
+        auto* diagnostics = group(5,spellcross_ui_locale::Tr("screen.group.diagnostics","Diagnostics"));
         const bool originalProfiler=spellcross_perf::Current().enabled;
         auto* profiler=new ScreenCheck(diagnostics->GetStaticBox(),wxID_ANY,
             spellcross_ui_locale::Tr("screen.perf.toggle","Performance diagnostics + debug log (Ctrl+Shift+F10)"));
@@ -656,21 +701,36 @@ namespace spellcross_display
         root->Add(buttons, 0, wxEXPAND | wxALL, dialog.FromDIP(14));
         dialog.SetSizer(root);
         spellcross_strategic_ui::Apply(&dialog);
-        // Measure with the final themed font and reserve equal column widths
-        // so longer localized labels never compete with the adjacent column.
-        int columnWidth = dialog.FromDIP(400);
-        for (auto* section : {display, renderer, colour, filterGroup, terrainGroup, shadowGroup})
-            columnWidth = (std::max)(columnWidth, section->GetSizer()->CalcMin().x);
-        for (auto* section : {display, renderer, colour, filterGroup, terrainGroup, shadowGroup})
-            section->SetMinSize(wxSize(columnWidth, -1));
-        const auto contentMin=bodySizer->CalcMin();
         const int displayIndex=wxDisplay::GetFromWindow(parent?parent:&dialog);
         const auto work=wxDisplay(displayIndex==wxNOT_FOUND?0:static_cast<unsigned>(displayIndex)).GetClientArea();
-        const int footer=buttons->CalcMin().y+dialog.FromDIP(28);
-        body->SetMinSize(wxSize((std::min)(contentMin.x+dialog.FromDIP(24),(std::max)(320,work.width-dialog.FromDIP(50))),
-            (std::min)(contentMin.y,(std::max)(150,work.height-footer-dialog.FromDIP(70)))));
+        int pageWidth=dialog.FromDIP(470),pageHeight=dialog.FromDIP(410);
+        for(auto* page:pages)
+        {
+            const auto min=page->GetSizer()->CalcMin();
+            pageWidth=(std::max)(pageWidth,min.x+dialog.FromDIP(22));
+            pageHeight=(std::max)(pageHeight,min.y);
+            page->FitInside();
+        }
+        const int navWidth=navigation->CalcMin().x+space;
+        const int footer=buttons->CalcMin().y+dialog.FromDIP(70);
+        book->SetMinSize(wxSize((std::min)(pageWidth,(std::max)(260,work.width-navWidth-dialog.FromDIP(50))),
+            (std::min)(pageHeight,(std::max)(160,work.height-footer))));
         root->Fit(&dialog);
-        body->FitInside();
+        const auto selectTab=[&](int selected) {
+            book->SetSelection(selected);
+            for(int i=0;i<6;++i)
+            {
+                auto font=tabs[i]->GetFont();
+                font.SetWeight(i==selected?wxFONTWEIGHT_BOLD:wxFONTWEIGHT_NORMAL);
+                tabs[i]->SetFont(font);
+                tabs[i]->Refresh(false);
+            }
+            pages[selected]->Layout();
+            pages[selected]->FitInside();
+        };
+        for(int i=0;i<6;++i)
+            tabs[i]->Bind(wxEVT_BUTTON,[&,i](wxCommandEvent&){selectTab(i);});
+        selectTab(0);
         dialog.SetEscapeId(wxID_CANCEL);
         ok->SetDefault();
         dialog.CentreOnParent();
@@ -689,6 +749,7 @@ namespace spellcross_display
             materialV2->Enable(materials->GetValue());
             materialIntensity->Enable(materials->GetValue());
             waterIntensity->Enable(water->GetValue());
+            atmosphereIntensity->Enable(atmosphere->GetSelection()>0);
             shadowStrength->Enable(shadows->GetValue());
             shadowDirection->Enable(shadows->GetValue());
             shadowLength->Enable(shadows->GetValue());
@@ -719,6 +780,8 @@ namespace spellcross_display
             next.material_intensity = materialIntensity->GetValue();
             next.animated_water = water->GetValue();
             next.water_intensity = waterIntensity->GetValue();
+            next.atmosphere = atmosphere->GetSelection();
+            next.atmosphere_intensity = atmosphereIntensity->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
             next.gpu_acceleration = gpu->GetValue();
             const int selected=filter->GetSelection();
@@ -755,6 +818,8 @@ namespace spellcross_display
         materialIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         water->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         waterIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        atmosphere->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });
+        atmosphereIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         gpu->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         filter->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });

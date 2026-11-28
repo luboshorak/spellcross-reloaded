@@ -7,6 +7,13 @@ int main()
 {
     using namespace spellcross_display;
     const Settings defaults = Current();
+    assert(defaults.atmosphere==0 && defaults.atmosphere_intensity==45);
+    Settings weather=defaults;weather.atmosphere=4;weather.atmosphere_intensity=80;
+    const auto weatherRevision=Revision();Set(weather);
+    assert(Revision()>weatherRevision&&Current().atmosphere==4&&Current().atmosphere_intensity==80);
+    weather.atmosphere=99;weather.atmosphere_intensity=-10;
+    assert(Normalize(weather).atmosphere==4&&Normalize(weather).atmosphere_intensity==0);
+    Set(defaults);
     assert(defaults.scale_percent == 125);
     assert(defaults.smooth_scaling);
     assert(UseSmoothScaling());

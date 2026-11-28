@@ -5929,7 +5929,12 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const int waterPhase=animatedWater?static_cast<int>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             spellcross_perf::Clock::now().time_since_epoch()).count()/35%128):0;
-    const bool enhancedGround = rgbLighting || materialDetail || animatedWater;
+    const int atmosphere=normalTactical&&renderSettings.atmosphere_intensity>0?renderSettings.atmosphere:0;
+    const int atmosphereIntensity=atmosphere?renderSettings.atmosphere_intensity:0;
+    const int atmospherePhase=atmosphere?static_cast<int>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            spellcross_perf::Clock::now().time_since_epoch()).count()/35%65536):0;
+    const bool enhancedGround = rgbLighting || materialDetail || animatedWater || atmosphere;
     const bool explicitFilter = normalTactical && renderSettings.tactical_filter!=spellcross_filters::Legacy;
     const bool newFilters = normalTactical && (explicitFilter ||
         renderSettings.tactical_dedither || renderSettings.tactical_sharpen>0);
@@ -5955,7 +5960,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             int(renderSettings.original_shadows),int(renderSettings.material_v2),renderSettings.material_intensity,
             int(renderSettings.animated_water),renderSettings.water_intensity,
             renderSettings.shadow_direction,renderSettings.shadow_length,renderSettings.shadow_softness,
-            int(renderSettings.contact_shadows)};
+            int(renderSettings.contact_shadows),renderSettings.atmosphere,renderSettings.atmosphere_intensity};
         perf.pendingReadback=0;
     }
     static thread_local spellcross_enhanced::GroundSurface groundLight;
@@ -6989,7 +6994,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             zoom_percent,display_scale_percent,int(settings.smooth_scaling),settings.tactical_filter,
             int(settings.tactical_dedither),settings.tactical_sharpen,int(rgbLighting),int(materialDetail),
             int(spriteUpscale),int(is_night),textureWorldX,textureWorldY,
-            materialStrength,lightingGrade,int(settings.material_v2),waterStrength,waterPhase,0};
+            materialStrength,lightingGrade,int(settings.material_v2),waterStrength,waterPhase,0,
+            atmosphere,atmosphereIntensity,atmospherePhase,0};
         bool completed=false;
         {
             wxNativePixelData pixels(bmp);
@@ -7112,7 +7118,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     constexpr auto materialCount=static_cast<size_t>(Material::Count);
     std::array<const std::vector<MicroDetail>*,materialCount> textureMaps{};
     const int microStrength=materialDetail ? materialStrength : 0;
-    const bool surfaceEffects=microStrength||waterStrength;
+    const bool surfaceEffects=microStrength||waterStrength||atmosphere;
     std::vector<int> textureX,textureY;
     if(surfaceEffects)
     {
@@ -7141,15 +7147,17 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const auto detailAt=[&](RGB color,Tag tag,int x,int y)->RGB {
         if(!tag) return color;
         const auto material=TagMaterial(tag);
-        if(material==Material::Water)
-            return ApplyWater(color,textureX[x],textureY[y],waterPhase,waterStrength,is_night);
-        const auto* texture=textureMaps[static_cast<size_t>(material)];
-        if(!texture||!microStrength) return color;
         const int u=textureX[x],v=textureY[y];
-        auto detail=TextureBank::Sample(*texture,u,v);
-        if(settings.material_v2)
-            detail=BlendMaterialDetail(detail,TextureBank::Sample(*texture,u/3+v/7+173,v/5-u/11+89),material);
-        return ApplyMicroDetail(color,detail,material,microStrength,is_night);
+        if(material==Material::Water)
+            color=ApplyWater(color,u,v,waterPhase,waterStrength,is_night);
+        else if(const auto* texture=textureMaps[static_cast<size_t>(material)];texture&&microStrength)
+        {
+            auto detail=TextureBank::Sample(*texture,u,v);
+            if(settings.material_v2)
+                detail=BlendMaterialDetail(detail,TextureBank::Sample(*texture,u/3+v/7+173,v/5-u/11+89),material);
+            color=ApplyMicroDetail(color,detail,material,microStrength,is_night);
+        }
+        return ApplyAtmosphere(color,atmosphere,atmosphereIntensity,u,v,atmospherePhase,is_night);
     };
 
     // Original artwork reconstruction is independent of both terrain effects.

@@ -90,7 +90,24 @@ int main()
         }
     },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
     assert(waterMatch);
-    frame.waterStrength=0;frame.width=frame.height=8;frame.dpi=200;
+    frame.waterStrength=0;
+    art.fill(100);tags.fill(spellcross_enhanced::MakeTag(100,0));tags[0]=0;
+    frame.atmosphereIntensity=80;frame.atmospherePhase=37;
+    for(int weather=1;weather<=4;++weather)
+    {
+        frame.atmosphere=weather;
+        bool weatherMatch=true;
+        if(!gpu.Run(frame,art.data(),art.data(),pal,tags.data(),hud.data(),[&](int y,const uint32_t* row){
+            for(int x=0;x<4;++x)
+            {
+                const spellcross_enhanced::RGB raw{pal[100][0],pal[100][1],pal[100][2]};
+                const auto expected=(x||y)?spellcross_enhanced::ApplyAtmosphere(raw,weather,80,x*4,y*4,37,false):raw;
+                for(int c=0;c<3;++c) weatherMatch &= int((row[x]>>(c*8))&255)==expected[c];
+            }
+        },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
+        assert(weatherMatch);
+    }
+    frame.atmosphere=0;frame.width=frame.height=8;frame.dpi=200;
     // A black fog/border index must remain black.
     art.fill(0);frame.mode=14;
     bool valid=true;

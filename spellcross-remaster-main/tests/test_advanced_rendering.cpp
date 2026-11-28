@@ -77,6 +77,20 @@ int main()
     assert(TagMaterial(MakeTag(245,0,Material::Water))==Material::Water);
     assert(MakeTag(250,0,Material::Water)==0);
     const RGB waterColour{32,88,152};
+    for(int mode=0;mode<=4;++mode)
+    {
+        assert(ApplyAtmosphere(waterColour,mode,0,100,200,30,false)==waterColour);
+        bool changed=false,animated=false;
+        for(int y=0;y<180;++y) for(int x=0;x<180;++x)
+        {
+            const auto weather=ApplyAtmosphere(waterColour,mode,100,x,y,0,false);
+            changed|=weather!=waterColour;
+            animated|=weather!=ApplyAtmosphere(waterColour,mode,100,x,y,60,false);
+            const auto green=ApplyAtmosphere(RGB{0,80,0},mode,100,x,y,60,true);
+            assert(green[0]==0&&green[2]==0);
+        }
+        assert(changed==(mode!=0)&&animated==(mode!=0));
+    }
     assert(ApplyWater(waterColour,21,35,0,0,false)==waterColour);
     assert(ApplyWater(RGB{},21,35,30,100,false)==RGB{});
     assert(ApplyWater(waterColour,21,35,0,100,false)!=ApplyWater(waterColour,21,35,40,100,false));
