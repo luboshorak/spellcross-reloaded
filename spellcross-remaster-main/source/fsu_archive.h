@@ -29,7 +29,6 @@ public:
 	int x_max;
 	// sprite data
 	uint8_t* data;
-	std::size_t data_size = 0; // decoded row stream length for safe HD export
 
 	FSU_sprite();
 	~FSU_sprite();

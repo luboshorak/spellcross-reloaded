@@ -288,7 +288,6 @@ int FSUarchive::LoadResource(uint8_t *data, int rid, FSU_resource *res, LZWexpan
 
 		// store image
 		int img_data_len = (int)(img - img_data);
-		sprite->data_size = static_cast<std::size_t>(img_data_len);
 		sprite->data = new uint8_t[img_data_len];
 		std::memcpy((void*)sprite->data, (void*)img_data, img_data_len);
 

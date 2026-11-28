@@ -21,7 +21,6 @@
 #include "strategic_formation_bonus_rules.h"
 #include "display_settings.h"
 #include "advanced_rendering.h"
-#include "ai_hummer.h"
 #include "spellcross.h"
 #include "fs_archive.h"
 #include "fsu_archive.h"
@@ -5915,15 +5914,6 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const bool enhancedGround = rgbLighting || materialDetail;
     const bool spriteUpscale = normalTactical && renderSettings.procedural_upscaling &&
         zoom_percent * display_scale_percent > 10000;
-    const bool aiUnits = normalTactical && (renderSettings.ai_hummer || renderSettings.ai_commando);
-    spellcross_ai::Frame hdFrame;
-    if(aiUnits)
-    {
-        hdFrame.Reset(surf_x,surf_y,surf_x_origin,surf_y_origin,
-            reinterpret_cast<const uint8_t*>(terrain->pal),pic);
-        hdFrame.EnableUnits(renderSettings.ai_hummer,renderSettings.ai_commando);
-    }
-    spellcross_ai::Scope hdScope(aiUnits?&hdFrame:nullptr);
     spellcross_enhanced::GroundSurface groundLight;
     // The projected world origin, not the scratch-buffer origin, anchors HD detail.
     const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
@@ -6807,10 +6797,6 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 
 
-    hdScope.End();
-    if(aiUnits)
-        hdFrame.Finalize(pic,static_cast<size_t>(pic_end-pic),pic_x_size);
-
 	// Sample the battlefield into screen pixels first. The HUD is then drawn
 	// at native screen size, so its controls and text keep their hit boxes.
 	if (hud_surface_height != screen_height || pic_y_buffer.size() != static_cast<size_t>(screen_width))
@@ -6982,28 +6968,6 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         return PreserveLighting(rebuilt,color,original);
     };
 
-    const bool hdReady=aiUnits && hdFrame.HasMarks();
-    std::vector<Subpixel> hdX,hdY;
-    if(hdReady)
-    {
-        hdX.resize(physical_width); hdY.resize(physical_height);
-        for(int x=0;x<physical_width;++x)
-            hdX[x]=NativeSample(x,zoom_percent,display_scale_percent,surf_x);
-        for(int y=0;y<physical_height;++y)
-            hdY[y]=NativeSample(y,zoom_percent,display_scale_percent,surf_y);
-    }
-    const auto hdAt=[&](RGB color,int x,int y,int lx,int ly)->RGB {
-        if(!hdReady || ly+2>=GetHUDtop(lx) ||
-            ly+2>=GetHUDtop((std::max)(0,lx-1)) ||
-            ly+2>=GetHUDtop((std::min)(screen_width-1,lx+1))) return color;
-        const auto sx=hdX[x],sy=hdY[y];
-        const auto* neural=hdFrame.Pixel(sx.index,sy.index,sx.fraction,sy.fraction);
-        if(!neural) return color;
-        const auto& lut=spellcross_display::Tables().tactical;
-        RGB out={lut[0][neural[0]],lut[1][neural[1]],lut[2][neural[2]]};
-        if(is_night) out={0,(std::max)({out[0],out[1],out[2]}),0};
-        return out;
-    };
     wxNativePixelData data(bmp);
     if (!data)
         return 1;
@@ -7029,7 +6993,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 const auto* p10 = rgbAt(sample.second,vertical.first);
                 const auto* p01 = rgbAt(sample.first,vertical.second);
                 const auto* p11 = rgbAt(sample.second,vertical.second);
-                if (!microStrength && !spriteUpscale && !hdReady)
+                if (!microStrength && !spriteUpscale)
                 {
                     for (int channel = 2; channel >= 0; --channel)
                         *scan++ = spellcross_display::BlendBilinear(
@@ -7063,7 +7027,6 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                        SameMaterial(tag,tagAt(sample.first,vertical.second)) &&
                        SameMaterial(tag,tagAt(sample.second,vertical.second)))
                         color=detailAt(color,tag,x,y);
-                    color=hdAt(color,x,y,(x*100)/display_scale_percent,(y*100)/display_scale_percent);
                     *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
                 }
             }
@@ -7081,7 +7044,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             {
                 const int sourceX=(x * 100) / display_scale_percent;
                 const auto* rgb = rgbAt(sourceX,sourceY);
-                if(microStrength || spriteUpscale || hdReady)
+                if(microStrength || spriteUpscale)
                 {
                     RGB color={rgb[0],rgb[1],rgb[2]};
                     if(spriteUpscale)
@@ -7090,7 +7053,6 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         color=upscaleAt(color,{raw[0],raw[1],raw[2]},x,y,sourceX,sourceY);
                     }
                     color=detailAt(color,tagAt(sourceX,sourceY),x,y);
-                    color=hdAt(color,x,y,sourceX,sourceY);
                     *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
                 }
                 else

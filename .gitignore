@@ -65,9 +65,3 @@ spellcross-remaster-main.7z
 # PyInstaller intermediates. Keep *.spec and deliberate tool executables.
 /spell_extractfs/build/
 /spell_extractfs/dist/
-
-# Local neural sprite cache derived from player-owned retail graphics
-**/ai_hummer_cache/
-*.scsrc
-*.scrgb
-*.scrgb.tmp

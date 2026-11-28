@@ -1,5 +1,4 @@
 #include "../source/advanced_rendering.h"
-#include "../source/ai_hummer.h"
 #include <cassert>
 #include <array>
 #include <vector>
@@ -155,36 +154,6 @@ int main()
     const RGB reconstructed={100,110,120}, lit={110,100,90}, raw={100,100,100};
     const RGB expected={110,110,110};
     assert(PreserveLighting(reconstructed,lit,raw)==expected);
-    // Hummer HD source decoding, exact alpha, local ownership and fallback.
-    const auto source=spellcross_ai::Decode(sprite.data(),sprite.size(),1,0,4);
-    assert(source.w==4&&source.h==1&&source.indices[1]==120);
-    assert(!spellcross_ai::Opaque(0)&&!spellcross_ai::Opaque(253)&&spellcross_ai::Opaque(254));
-    assert(spellcross_ai::Key(source,colors.data())==spellcross_ai::Key(source,colors.data()));
-    auto changedColors=colors; changedColors[12]^=1;
-    assert(spellcross_ai::Key(source,colors.data())!=spellcross_ai::Key(source,changedColors.data()));
-    spellcross_ai::Entry entry; entry.src=source;
-    assert(entry.Pixel(1,0,0,0)==nullptr);
-    entry.rgb.assign(4*4*1*4*3,88);
-    assert(entry.Pixel(0,0,0,0)==nullptr&&entry.Pixel(1,0,255,255)[0]==88);
-    spellcross_ai::Frame hd;
-    hd.Reset(8,4,0,0,colors.data());
-    for(unsigned flags=0;flags<4;++flags)
-    {
-        hd.EnableUnits((flags&1)!=0,(flags&2)!=0);
-        assert(hd.EnabledFor(29)==((flags&1)!=0));
-        assert(hd.EnabledFor(3)==((flags&2)!=0));
-        assert(!hd.EnabledFor(0)&&!hd.EnabledFor(30)&&!hd.EnabledFor(4));
-    }
-    hd.Record(&entry,1,1);
-    assert(hd.Pixel(2,1,0,0)!=nullptr);
-    hd.EraseRect(2,1,1,1);
-    assert(hd.Pixel(2,1,0,0)==nullptr);
-    hd.Record(&entry,1,1);
-    std::array<std::uint8_t,32> composed{}; composed[10]=42;
-    hd.Finalize(composed.data(),composed.size(),8);
-    assert(hd.Pixel(2,1,0,0)==nullptr);
-    { spellcross_ai::Scope scope(&hd); assert(spellcross_ai::Active()==&hd); }
-    assert(spellcross_ai::Active()==nullptr);
     sprite.pop_back();
     DrawGround(sprite,1,0,buffer.data(),buffer.size(),4,0,0,palette,light);
     for(auto b:buffer) assert(b==254);
