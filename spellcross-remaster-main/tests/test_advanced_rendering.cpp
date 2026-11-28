@@ -131,6 +131,14 @@ int main()
         surface.ProjectShadowSpan(24*80+10,80,8,silhouette,1,30,100,0xFD);
         surface.ApplyShadows();
         assert(TagShade(surface.At(16,33))==-24 && TagShade(surface.At(31,40))==0);
+        // Reversed illumination, shortened reach and a hard silhouette.
+        surface.Reset(80,60,0,0);
+        for(int y=0;y<60;++y) for(int x=0;x<80;++x) surface.Write(x,y,MakeTag(120,0));
+        surface.ProjectShadowSpan(10*80+40,80,8,silhouette,1,30,100,0xFD,1,50,0);
+        surface.ApplyShadows();
+        assert(TagShade(surface.At(30,35))==-24);
+        assert(TagShade(surface.At(30,34))==0);
+        assert(TagShade(surface.At(60,40))==0);
         // Scope limits projection to actual unit/scenery writes.
         std::vector<std::uint8_t> pixels(80*60,120);
         surface.Reset(80,60,0,0);

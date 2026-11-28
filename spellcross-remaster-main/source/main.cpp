@@ -2873,6 +2873,10 @@ bool MyApp::OnInit()
         settings.directional_shadows = ini.GetBoolValue("STATE","directional_shadows",false);
         settings.original_shadows = ini.GetBoolValue("STATE","original_shadows",true);
         settings.shadow_strength = static_cast<int>(ini.GetLongValue("STATE","shadow_strength",60));
+        settings.shadow_direction=static_cast<int>(ini.GetLongValue("STATE","shadow_direction",0));
+        settings.shadow_length=static_cast<int>(ini.GetLongValue("STATE","shadow_length",100));
+        settings.shadow_softness=static_cast<int>(ini.GetLongValue("STATE","shadow_softness",33));
+        settings.contact_shadows=ini.GetBoolValue("STATE","contact_shadows",true);
         settings.procedural_materials = ini.GetBoolValue("STATE", "procedural_materials", false);
         settings.material_v2=ini.GetBoolValue("STATE","material_v2",false);
         settings.material_intensity=static_cast<int>(ini.GetLongValue("STATE","material_intensity",100));
@@ -3092,6 +3096,10 @@ int MyApp::OnExit()
     ini.SetBoolValue("STATE","directional_shadows",screen.directional_shadows);
     ini.SetBoolValue("STATE","original_shadows",screen.original_shadows);
     ini.SetLongValue("STATE","shadow_strength",screen.shadow_strength);
+    ini.SetLongValue("STATE","shadow_direction",screen.shadow_direction);
+    ini.SetLongValue("STATE","shadow_length",screen.shadow_length);
+    ini.SetLongValue("STATE","shadow_softness",screen.shadow_softness);
+    ini.SetBoolValue("STATE","contact_shadows",screen.contact_shadows);
     ini.SetBoolValue("STATE", "procedural_materials", screen.procedural_materials);
     ini.SetBoolValue("STATE","material_v2",screen.material_v2);
     ini.SetLongValue("STATE","material_intensity",screen.material_intensity);

@@ -265,3 +265,13 @@ existing materials retain their default intensity and V1 sampling. New
 settings persist and Cancel restores the original values. No new snow class
 is assumed: the original flags do not expose one. Water is animated shading,
 not geometric displacement, reflection or projectile-driven simulation.
+
+### V9.1 shadow controls
+
+Four screen-relative light source directions, shadow length (25–200%),
+edge softness (0–100%) and an independent advanced-lighting contact-shadow
+switch are now available. Existing defaults preserve V8.1's projection and
+one-pixel fringe. These controls affect projected silhouettes, not the fixed
+micro-material/terrain-relief light or original baked artwork. CPU generates
+the shared shadow tags for either output backend. Settings and projection
+regressions cover hard/reversed/shortened shadows.

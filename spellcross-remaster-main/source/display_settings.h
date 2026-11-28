@@ -43,6 +43,10 @@ namespace spellcross_display
         bool directional_shadows = false;
         bool original_shadows = true;
         int shadow_strength = 60;
+        int shadow_direction = 0;
+        int shadow_length = 100;
+        int shadow_softness = 33;
+        bool contact_shadows = true;
     };
 
     inline Settings Normalize(Settings s)
@@ -60,6 +64,9 @@ namespace spellcross_display
         s.tactical_sharpen=std::clamp(s.tactical_sharpen,0,100);
         s.lighting_intensity=std::clamp(s.lighting_intensity,0,100);
         s.shadow_strength=std::clamp(s.shadow_strength,0,100);
+        s.shadow_direction=std::clamp(s.shadow_direction,0,3);
+        s.shadow_length=std::clamp(s.shadow_length,25,200);
+        s.shadow_softness=std::clamp(s.shadow_softness,0,100);
         s.material_intensity=std::clamp(s.material_intensity,0,100);
         s.water_intensity=std::clamp(s.water_intensity,0,100);
         return s;
@@ -99,7 +106,9 @@ namespace spellcross_display
             old.tactical_sharpen == s.tactical_sharpen &&
             old.lighting_intensity == s.lighting_intensity &&
             old.directional_shadows == s.directional_shadows && old.original_shadows == s.original_shadows &&
-            old.shadow_strength == s.shadow_strength)
+            old.shadow_strength == s.shadow_strength && old.shadow_direction == s.shadow_direction &&
+            old.shadow_length == s.shadow_length && old.shadow_softness == s.shadow_softness &&
+            old.contact_shadows == s.contact_shadows)
             return;
         old = s;
         ++MutableRevision();
@@ -484,6 +493,7 @@ namespace spellcross_display
         auto* colour = group(spellcross_ui_locale::Tr("screen.group.colour", "Colour correction"));
         auto* filterGroup = group(spellcross_ui_locale::Tr("screen.group.filters", "Image filters"));
         auto* terrainGroup = group(spellcross_ui_locale::Tr("screen.group.terrain", "Terrain and water"));
+        auto* shadowGroup = group(spellcross_ui_locale::Tr("screen.group.shadows", "Shadow projection"));
         addLabel(display,spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         const wxString scales[] = {
             spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"),
@@ -506,10 +516,29 @@ namespace spellcross_display
         auto* lightIntensity = new spellcross_strategic_ui::Slider(display->GetStaticBox(),
             wxID_ANY,original.lighting_intensity,0,100);
         display->Add(lightIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
-        addLabel(display,spellcross_ui_locale::Tr("screen.shadow_strength","Shadow strength (%)"));
-        auto* shadowStrength = new spellcross_strategic_ui::Slider(display->GetStaticBox(),
+        addLabel(shadowGroup,spellcross_ui_locale::Tr("screen.shadow_strength","Shadow strength (%)"));
+        auto* shadowStrength = new spellcross_strategic_ui::Slider(shadowGroup,
             wxID_ANY,original.shadow_strength,0,100);
-        display->Add(shadowStrength,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        shadowGroup->Add(shadowStrength,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        addLabel(shadowGroup,spellcross_ui_locale::Tr("screen.shadow_direction","Light source direction"));
+        auto* shadowDirection = new ScreenChoice(shadowGroup);
+        shadowDirection->Append(spellcross_ui_locale::Tr("screen.shadow.nw","Upper left"));
+        shadowDirection->Append(spellcross_ui_locale::Tr("screen.shadow.ne","Upper right"));
+        shadowDirection->Append(spellcross_ui_locale::Tr("screen.shadow.se","Lower right"));
+        shadowDirection->Append(spellcross_ui_locale::Tr("screen.shadow.sw","Lower left"));
+        shadowDirection->SetSelection(original.shadow_direction);
+        shadowDirection->SetMinSize(dialog.FromDIP(wxSize(180,32)));
+        shadowGroup->Add(shadowDirection,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        addLabel(shadowGroup,spellcross_ui_locale::Tr("screen.shadow_length","Shadow length (%)"));
+        auto* shadowLength = new spellcross_strategic_ui::Slider(shadowGroup,wxID_ANY,original.shadow_length,25,200);
+        shadowGroup->Add(shadowLength,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        addLabel(shadowGroup,spellcross_ui_locale::Tr("screen.shadow_softness","Shadow softness (%)"));
+        auto* shadowSoftness = new spellcross_strategic_ui::Slider(shadowGroup,wxID_ANY,original.shadow_softness,0,100);
+        shadowGroup->Add(shadowSoftness,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        auto* contactShadows = new ScreenCheck(shadowGroup,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.contact_shadows","Contact shadows (advanced lighting)"));
+        contactShadows->SetValue(original.contact_shadows);
+        shadowGroup->Add(contactShadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
 
         addLabel(colour,spellcross_ui_locale::Tr("screen.brightness", "Brightness (%)"));
         auto* brightness = new spellcross_strategic_ui::Slider(colour->GetStaticBox(),
@@ -630,9 +659,9 @@ namespace spellcross_display
         // Measure with the final themed font and reserve equal column widths
         // so longer localized labels never compete with the adjacent column.
         int columnWidth = dialog.FromDIP(400);
-        for (auto* section : {display, renderer, colour, filterGroup, terrainGroup})
+        for (auto* section : {display, renderer, colour, filterGroup, terrainGroup, shadowGroup})
             columnWidth = (std::max)(columnWidth, section->GetSizer()->CalcMin().x);
-        for (auto* section : {display, renderer, colour, filterGroup, terrainGroup})
+        for (auto* section : {display, renderer, colour, filterGroup, terrainGroup, shadowGroup})
             section->SetMinSize(wxSize(columnWidth, -1));
         const auto contentMin=bodySizer->CalcMin();
         const int displayIndex=wxDisplay::GetFromWindow(parent?parent:&dialog);
@@ -660,6 +689,12 @@ namespace spellcross_display
             materialV2->Enable(materials->GetValue());
             materialIntensity->Enable(materials->GetValue());
             waterIntensity->Enable(water->GetValue());
+            shadowStrength->Enable(shadows->GetValue());
+            shadowDirection->Enable(shadows->GetValue());
+            shadowLength->Enable(shadows->GetValue());
+            shadowSoftness->Enable(shadows->GetValue());
+            contactShadows->Enable(enhanced->GetValue());
+            lightIntensity->Enable(enhanced->GetValue());
         };
         updateFilterState();
         const auto apply = [&]() {
@@ -675,6 +710,10 @@ namespace spellcross_display
             next.directional_shadows = shadows->GetValue();
             next.original_shadows = originalShadows->GetValue();
             next.shadow_strength = shadowStrength->GetValue();
+            next.shadow_direction = shadowDirection->GetSelection();
+            next.shadow_length = shadowLength->GetValue();
+            next.shadow_softness = shadowSoftness->GetValue();
+            next.contact_shadows = contactShadows->GetValue();
             next.procedural_materials = materials->GetValue();
             next.material_v2 = materialV2->GetValue();
             next.material_intensity = materialIntensity->GetValue();
@@ -707,6 +746,10 @@ namespace spellcross_display
         originalShadows->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         lightIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         shadowStrength->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        shadowDirection->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });
+        shadowLength->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        shadowSoftness->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        contactShadows->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         materialV2->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         materialIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });

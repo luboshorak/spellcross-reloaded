@@ -473,3 +473,13 @@ screen.material_v2=Multi-scale terrain materials V2
 screen.material_intensity=Material intensity (%)
 screen.animated_water=Animated water ripples
 screen.water_intensity=Water effect intensity (%)
+
+screen.group.shadows=Shadow projection
+screen.shadow_direction=Light source direction
+screen.shadow.nw=Upper left
+screen.shadow.ne=Upper right
+screen.shadow.se=Lower right
+screen.shadow.sw=Lower left
+screen.shadow_length=Shadow length (%)
+screen.shadow_softness=Shadow softness (%)
+screen.contact_shadows=Contact shadows (advanced lighting)

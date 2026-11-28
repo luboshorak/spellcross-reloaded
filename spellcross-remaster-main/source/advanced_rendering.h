@@ -387,7 +387,8 @@ namespace spellcross_enhanced
         // Each run preserves source width, transparent gaps and animation.
         void ProjectShadowSpan(std::size_t offset,int stride,int count,
                                const std::uint8_t* source,int repeat,
-                               int groundY,int strength,int skipIndex=-1)
+                               int groundY,int strength,int skipIndex=-1,
+                               int direction=0,int lengthPercent=100,int softness=33)
         {
             strength=std::clamp(strength,0,100);
             if(!strength||!source||stride<=0||count<=0||repeat<=0||width<=0||height<=0) return;
@@ -396,10 +397,16 @@ namespace spellcross_enhanced
             if(firstY>static_cast<std::size_t>((std::max)(0,top+height+256))) return;
             if(projectedShadow.empty()) projectedShadow.assign(tags.size(),0);
             const int opacity=24*strength/100;
+            direction=std::clamp(direction,0,3);
+            lengthPercent=std::clamp(lengthPercent,25,200);
+            softness=std::clamp(softness,0,100);
+            const int signX=(direction==0||direction==3)?1:-1;
+            const int signY=direction<2?1:-1;
+            const int radius=softness==0?0:1+(softness>33)+(softness>66);
             const auto run=[&](int x,int y,int length) {
                 const int elevation=std::clamp(groundY-y,0,256);
-                // Sun from upper-left: tall parts project farther down/right.
-                const int px=x+elevation,py=y+elevation+elevation/2;
+                const int reach=elevation*lengthPercent/100;
+                const int px=x+signX*reach,py=y+elevation+signY*reach/2;
                 const auto stamp=[&](int row,int begin,int finish,int amount) {
                     if(!amount||row<top||row>=top+height) return;
                     begin=(std::max)(begin,left);finish=(std::min)(finish,left+width);
@@ -408,10 +415,14 @@ namespace spellcross_enhanced
                         dest[sx-left]=(std::max)(dest[sx-left],static_cast<std::uint8_t>(amount));
                 };
                 stamp(py,px,px+length,opacity);
-                stamp(py-1,px-1,px+length+1,opacity/3);
-                stamp(py+1,px-1,px+length+1,opacity/3);
-                stamp(py,px-1,px,opacity/3);
-                stamp(py,px+length,px+length+1,opacity/3);
+                for(int r=1;r<=radius;++r)
+                {
+                    const int fringe=opacity*softness*(radius+1-r)/(99*radius);
+                    stamp(py-r,px-r,px+length+r,fringe);
+                    stamp(py+r,px-r,px+length+r,fringe);
+                    stamp(py,px-r,px,fringe);
+                    stamp(py,px+length,px+length+r,fringe);
+                }
             };
             // Source runs may cross a scratch-buffer scanline (legacy raster
             // semantics); split them at its boundary before projecting.
@@ -570,6 +581,7 @@ namespace spellcross_enhanced
         int shadowStrength=0;
         bool castingShadow=false;
         int groundY=0;
+        int shadowDirection=0,shadowLength=100,shadowSoftness=33;
         void Span(const std::uint8_t* destination,int count,
                   const std::uint8_t* source=nullptr,int repeat=1,
                   PixelLayer kind=PixelLayer::Empty,int shadowIndex=-1,int skipIndex=-1) const
@@ -582,7 +594,7 @@ namespace spellcross_enhanced
             if(castingShadow&&shadowStrength>0&&
                 (effectiveKind==PixelLayer::Scenery||effectiveKind==PixelLayer::Unit))
                 surface->ProjectShadowSpan(offset,stride,count,source,repeat,groundY,
-                    shadowStrength,shadowIndex);
+                    shadowStrength,shadowIndex,shadowDirection,shadowLength,shadowSoftness);
             surface->OccludeSpan(offset,stride,count,source,repeat,effectiveKind,shadowIndex,skipIndex);
         }
     };
@@ -591,10 +603,12 @@ namespace spellcross_enhanced
     {
         GroundOcclusion previous;
     public:
-        GroundOcclusionScope(GroundSurface* surface,const std::uint8_t* buffer,int stride,bool originalShadows=true,int shadowStrength=0)
+        GroundOcclusionScope(GroundSurface* surface,const std::uint8_t* buffer,int stride,bool originalShadows=true,int shadowStrength=0,
+                             int direction=0,int length=100,int softness=33)
             : previous(activeGroundOcclusion)
         {
-            activeGroundOcclusion={surface,buffer,stride,PixelLayer::Effect,originalShadows,shadowStrength,false,0};
+            activeGroundOcclusion={surface,buffer,stride,PixelLayer::Effect,originalShadows,shadowStrength,false,0,
+                direction,length,softness};
         }
         ~GroundOcclusionScope() { activeGroundOcclusion=previous; }
         GroundOcclusionScope(const GroundOcclusionScope&)=delete;

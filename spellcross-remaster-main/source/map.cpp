@@ -5953,7 +5953,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             int(renderSettings.gpu_acceleration),0,renderSettings.lighting_intensity,
             int(renderSettings.directional_shadows),renderSettings.shadow_strength,int(directionalShadows),
             int(renderSettings.original_shadows),int(renderSettings.material_v2),renderSettings.material_intensity,
-            int(renderSettings.animated_water),renderSettings.water_intensity};
+            int(renderSettings.animated_water),renderSettings.water_intensity,
+            renderSettings.shadow_direction,renderSettings.shadow_length,renderSettings.shadow_softness,
+            int(renderSettings.contact_shadows)};
         perf.pendingReadback=0;
     }
     static thread_local spellcross_enhanced::GroundSurface groundLight;
@@ -6029,8 +6031,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     visibleElevation(tx, ty - 2, sof), visibleElevation(tx, ty + 2, sof), sof);
                 light.worldX = tx * 80 + ((ty & 1) ? 0 : 40);
                 light.worldY = ty * 24 - sof * 18;
-                light.object = wL2 && tiles[mxy].L2 != nullptr;
-                if (wUnits)
+                light.object = renderSettings.contact_shadows && wL2 && tiles[mxy].L2 != nullptr;
+                if (renderSettings.contact_shadows && wUnits)
                     for (MapUnit* visible = Lunit[mxy]; visible; visible = visible->next)
                     {
                         if ((deployment_mode && visible->is_enemy) ||
@@ -6096,7 +6098,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const spellcross_enhanced::GroundOcclusionScope groundCoverage(
         enhancedGround ? &groundLight : nullptr, pic, pic_x_size,
         editorPreview || renderSettings.original_shadows,
-        directionalShadows?renderSettings.shadow_strength:0);
+        directionalShadows?renderSettings.shadow_strength:0,
+        renderSettings.shadow_direction,renderSettings.shadow_length,renderSettings.shadow_softness);
 
 	// --- Render Layer 3 - ANM animations ---
 	if (wL3)

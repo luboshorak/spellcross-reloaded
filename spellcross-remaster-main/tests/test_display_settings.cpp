@@ -15,6 +15,7 @@ int main()
     assert(std::abs(defaults.gamma - 1.3) < 1e-9);
     assert(defaults.temperature == 6500);
     assert(!defaults.advanced_rendering);
+    assert(defaults.shadow_direction==0 && defaults.shadow_length==100 && defaults.shadow_softness==33 && defaults.contact_shadows);
     assert(!defaults.directional_shadows && defaults.original_shadows && defaults.lighting_intensity==100 && defaults.shadow_strength==60);
     assert(!defaults.procedural_materials && !defaults.procedural_upscaling);
     assert(!defaults.material_v2 && !defaults.animated_water && defaults.material_intensity==100 && defaults.water_intensity==60);
@@ -37,12 +38,14 @@ int main()
     Settings shadowOnly=defaults;
     shadowOnly.directional_shadows=true;
     shadowOnly.original_shadows=false;
+    shadowOnly.contact_shadows=false;shadowOnly.shadow_direction=2;shadowOnly.shadow_length=150;shadowOnly.shadow_softness=80;
     shadowOnly.shadow_strength=88;
     shadowOnly.lighting_intensity=25;
     const auto shadowRevision=Revision();
     Set(shadowOnly);
     assert(Current().directional_shadows && !Current().advanced_rendering && !Current().original_shadows);
     assert(Current().shadow_strength==88 && Current().lighting_intensity==25 && Revision()>shadowRevision);
+    assert(!Current().contact_shadows && Current().shadow_direction==2 && Current().shadow_length==150 && Current().shadow_softness==80);
     shadowOnly.shadow_strength=180;shadowOnly.lighting_intensity=-10;
     assert(Normalize(shadowOnly).shadow_strength==100 && Normalize(shadowOnly).lighting_intensity==0);
     Set(defaults);

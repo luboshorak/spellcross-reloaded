@@ -473,3 +473,13 @@ screen.material_v2=Víceúrovňové materiály V2
 screen.material_intensity=Intenzita materiálů (%)
 screen.animated_water=Animované vlnění vody
 screen.water_intensity=Intenzita vlnění (%)
+
+screen.group.shadows=Projekce stínů
+screen.shadow_direction=Směr zdroje světla
+screen.shadow.nw=Zleva shora
+screen.shadow.ne=Zprava shora
+screen.shadow.se=Zprava zdola
+screen.shadow.sw=Zleva zdola
+screen.shadow_length=Délka stínů (%)
+screen.shadow_softness=Měkkost stínů (%)
+screen.contact_shadows=Kontaktní stíny (pokročilé osvětlení)
