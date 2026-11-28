@@ -1,6 +1,8 @@
 #pragma once
 // Temporary tactical renderer profiler. No polling threads or extra paints.
 #include <algorithm>
+#include <array>
+#include "runtime_diagnostics.h"
 #include <chrono>
 #include <cstdint>
 #include <ctime>
@@ -62,6 +64,18 @@ namespace spellcross_perf
 #endif
         return -1;
     }
+    struct Profile
+    {
+        int width=0,height=0,zoom=0,dpi=0,smooth=0,filter=0,dedither=0,sharpen=0;
+        int lighting=0,materials=0,sprites=0;
+        int activeLighting=0,activeMaterials=0,activeSprites=0,activeFilter=0;
+        int normal=0,night=0;
+        std::array<int,17> Key() const
+        {
+            return {width,height,zoom,dpi,smooth,filter,dedither,sharpen,lighting,materials,sprites,
+                activeLighting,activeMaterials,activeSprites,activeFilter,normal,night};
+        }
+    };
     struct State
     {
         bool enabled=false;
@@ -71,23 +85,27 @@ namespace spellcross_perf
         double fps=0,avg=0,maxMs=0,mapMs=0,rgbMs=0,lastMs=0;
         double cpu=-1,ram=-1,cpuStart=-1;
         double pendingMap=0,pendingRGB=0;
-        bool haveSample=false;
+        bool haveSample=false,haveProfile=false;
+        Profile pendingProfile{},profile{};
         void Toggle()
         {
             const bool next=!enabled;
             *this=State{};
             enabled=next;
             if(enabled) { window=Clock::now(); cpuStart=ProcessCpuSeconds(); ram=ResidentMiB(); }
+            spellcross_diag::Log(spellcross_diag::Level::Info,"RENDER_PERF","profiling=%s",enabled?"on":"off");
         }
         void Record(Stamp begin,Stamp end)
         {
             if(!enabled) return;
             // A long gap (e.g. paused modal/idle) is not a render stall.
             // Start a fresh interval after returning to the canvas.
-            if(lastFrame!=Stamp{} && Millis(lastFrame,begin)>2000)
+            if(!haveProfile || profile.Key()!=pendingProfile.Key() ||
+                (lastFrame!=Stamp{} && Millis(lastFrame,begin)>2000))
             {
                 window=begin; frames=0; total=peak=mapTotal=rgbTotal=0;
                 cpuStart=ProcessCpuSeconds(); haveSample=false;
+                profile=pendingProfile; haveProfile=true;
             }
             lastFrame=end;
             lastMs=Millis(begin,end);
@@ -102,6 +120,18 @@ namespace spellcross_perf
             cpu=nowCpu>=0 && cpuStart>=0 && nowCpu>=cpuStart?
                 std::clamp((nowCpu-cpuStart)*100000.0/(elapsed*cores),0.0,100.0):-1;
             ram=ResidentMiB(); cpuStart=nowCpu;
+            const auto& c=profile;
+            spellcross_diag::Log(spellcross_diag::Level::Info,"RENDER_PERF",
+                "fps=%.2f frames=%u interval_ms=%.2f render_avg_ms=%.2f render_max_ms=%.2f "
+                "map_ms=%.2f rgb_ms=%.2f outside_ms=%.2f cpu_pct=%.2f ram_mib=%.1f cores=%u "
+                "size=%dx%d zoom=%d dpi=%d smooth=%d filter=%d dedither=%d sharpen=%d "
+                "lighting=%d materials=%d sprites=%d active_light=%d active_material=%d active_sprite=%d "
+                "active_filter=%d normal=%d night=%d",
+                fps,frames,elapsed/frames,avg,maxMs,mapMs,rgbMs,
+                (std::max)(0.0,elapsed/frames-avg),cpu,ram,cores,
+                c.width,c.height,c.zoom,c.dpi,c.smooth,c.filter,c.dedither,c.sharpen,
+                c.lighting,c.materials,c.sprites,c.activeLighting,c.activeMaterials,c.activeSprites,
+                c.activeFilter,c.normal,c.night);
             haveSample=true; window=end; frames=0; total=peak=mapTotal=rgbTotal=0;
         }
     };

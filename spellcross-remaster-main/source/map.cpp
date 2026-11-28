@@ -5926,6 +5926,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // old procedural edge reconstruction. Legacy mode keeps that option.
     const bool spriteUpscale = normalTactical && !explicitFilter &&
         renderSettings.procedural_upscaling && zoom_percent * display_scale_percent > 10000;
+    if(profiling)
+    {
+        perf.pendingProfile={physical_width,physical_height,zoom_percent,display_scale_percent,
+            int(renderSettings.smooth_scaling),renderSettings.tactical_filter,
+            int(renderSettings.tactical_dedither),renderSettings.tactical_sharpen,
+            int(renderSettings.advanced_rendering),int(renderSettings.procedural_materials),
+            int(renderSettings.procedural_upscaling),int(rgbLighting),int(materialDetail),
+            int(spriteUpscale),int(newFilters),int(normalTactical),int(params.is_night)};
+    }
     static thread_local spellcross_enhanced::GroundSurface groundLight;
     static thread_local spellcross_enhanced::SurfaceCache surfaceCache;
     // The projected world origin, not the scratch-buffer origin, anchors HD detail.

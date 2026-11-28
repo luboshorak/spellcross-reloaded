@@ -160,3 +160,7 @@ on multiple frames and both display scales. The FPS overlay additionally
 shows wall-clock frame interval and approximate time outside map rendering,
 which includes event scheduling and drawing. The reported 18 FPS regression
 has not yet been reproduced or confirmed fixed on the player's machine.
+
+### Performance logging
+
+The graphics settings checkbox and Ctrl+Shift+F10 toggle the same session-only profiler. RENDER_PERF records are appended to Windows debug.log roughly once per second while enabled and rendering a stable profile. Configuration changes reset the measurement window. GPU counters are not measured.

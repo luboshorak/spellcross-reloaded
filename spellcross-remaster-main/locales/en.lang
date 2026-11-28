@@ -444,3 +444,5 @@ tactical_info.heal_unavailable=Heal: select unit with full AP
 
 help.key.performance=Ctrl+Shift+F10
 help.action.performance=Toggle the experimental FPS, renderer timing, CPU and RAM overlay.
+
+screen.perf.toggle=Performance diagnostics + debug log (Ctrl+Shift+F10)

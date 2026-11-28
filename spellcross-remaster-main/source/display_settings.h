@@ -17,6 +17,7 @@
 #include "spell_ui_locale.h"
 #include "strategic_ui_theme.h"
 #include "tactical_filters.h"
+#include "render_perf.h"
 #include <array>
 
 namespace spellcross_display
@@ -372,6 +373,17 @@ namespace spellcross_display
             wxID_ANY, original.tactical_sharpen, 0, 100);
         root->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
+        const bool originalProfiler=spellcross_perf::Current().enabled;
+        auto* profiler=new wxCheckBox(&dialog,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.perf.toggle","Performance diagnostics + debug log (Ctrl+Shift+F10)"));
+        profiler->SetValue(originalProfiler);
+        profiler->Bind(wxEVT_CHECKBOX,[&](wxCommandEvent&) {
+            auto& perf=spellcross_perf::Current();
+            if(perf.enabled!=profiler->GetValue()) perf.Toggle();
+            if(refresh) refresh();
+        });
+        root->Add(profiler,0,wxLEFT|wxRIGHT|wxTOP,dialog.FromDIP(14));
+
         auto* review=new wxButton(&dialog,wxID_ANY,
             spellcross_ui_locale::Tr("screen.review.title","Filter review (debug)"));
         review->Bind(wxEVT_BUTTON,[&](wxCommandEvent&) { ReviewFilters(&dialog); });
@@ -444,6 +456,7 @@ namespace spellcross_display
             return true;
         }
         Set(original);
+        if(spellcross_perf::Current().enabled!=originalProfiler) spellcross_perf::Current().Toggle();
         if (refresh) refresh();
         return false;
     }
