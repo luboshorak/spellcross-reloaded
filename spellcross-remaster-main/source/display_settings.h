@@ -11,9 +11,6 @@
 #include <wx/wx.h>
 #include <wx/choice.h>
 #include <wx/slider.h>
-#include <wx/checklst.h>
-#include <wx/filedlg.h>
-#include <wx/ffile.h>
 #include "spell_ui_locale.h"
 #include "strategic_ui_theme.h"
 #include "tactical_filters.h"
@@ -236,60 +233,6 @@ namespace spellcross_display
         return wxBitmap(image);
     }
 
-    // Temporary review tool, deliberately separate from gameplay settings.
-    inline void ReviewFilters(wxWindow* parent)
-    {
-        constexpr int count=spellcross_filters::LastMode+5;
-        static std::array<bool,count> rejected{};
-        wxDialog dialog(parent,wxID_ANY,spellcross_ui_locale::Tr("screen.review.title","Filter review (debug)"),
-            wxDefaultPosition,wxDefaultSize,wxDEFAULT_DIALOG_STYLE|wxRESIZE_BORDER);
-        auto* root=new wxBoxSizer(wxVERTICAL);
-        root->Add(new wxStaticText(&dialog,wxID_ANY,spellcross_ui_locale::Tr("screen.review.hint",
-            "Check only effects to remove. Export does not change rendering.")),0,wxALL,10);
-        auto* list=new wxCheckListBox(&dialog,wxID_ANY);
-        wxArrayString keys;
-        for(int mode=1;mode<=spellcross_filters::LastMode;++mode)
-        {
-            if(!spellcross_filters::Available(mode)) continue;
-            list->Append(wxString::FromUTF8(spellcross_filters::ModeNames[mode]));
-            keys.Add(wxString::Format("tactical_filter:%d",mode));
-        }
-        const char* extraKeys[]={"advanced_rendering","procedural_materials","procedural_upscaling","tactical_dedither","tactical_sharpen"};
-        const wxString extraLabels[]={
-            spellcross_ui_locale::Tr("screen.advanced_rendering","Advanced rendering"),
-            spellcross_ui_locale::Tr("screen.procedural_materials","Procedural materials"),
-            spellcross_ui_locale::Tr("screen.procedural_upscaling","Procedural upscaling"),
-            spellcross_ui_locale::Tr("screen.tactical_dedither","Dedither"),
-            spellcross_ui_locale::Tr("screen.tactical_sharpen","Sharpen")};
-        for(int i=0;i<5;++i) { list->Append(extraLabels[i]); keys.Add(wxString::FromUTF8(extraKeys[i])); }
-        for(unsigned i=0;i<list->GetCount();++i) list->Check(i,rejected[i]);
-        list->SetMinSize(dialog.FromDIP(wxSize(390,330)));
-        root->Add(list,1,wxALL|wxEXPAND,10);
-        auto* buttons=new wxBoxSizer(wxHORIZONTAL);
-        auto* exportButton=new wxButton(&dialog,wxID_ANY,spellcross_ui_locale::Tr("screen.review.export","Export rejected filters"));
-        auto* close=new wxButton(&dialog,wxID_OK,spellcross_ui_locale::Tr("dialog.ok","OK"));
-        buttons->Add(exportButton,0,wxRIGHT,8); buttons->Add(close,0);
-        root->Add(buttons,0,wxALL|wxALIGN_RIGHT,10);
-        const auto remember=[&]() { for(unsigned i=0;i<list->GetCount();++i) rejected[i]=list->IsChecked(i); };
-        exportButton->Bind(wxEVT_BUTTON,[&](wxCommandEvent&) {
-            remember();
-            wxFileDialog save(&dialog,spellcross_ui_locale::Tr("screen.review.export","Export rejected filters"),
-                wxEmptyString,"spellcross-filter-review.txt","Text (*.txt)|*.txt",
-                wxFD_SAVE|wxFD_OVERWRITE_PROMPT);
-            if(save.ShowModal()!=wxID_OK) return;
-            wxString report="Spellcross filter review v1\n# checked entries to remove\n";
-            for(unsigned i=0;i<list->GetCount();++i)
-                if(rejected[i]) report+=keys[i]+"\t"+list->GetString(i)+"\n";
-            wxFFile file(save.GetPath(),"wb");
-            if(!file.IsOpened()||!file.Write(report,wxConvUTF8)||!file.Close())
-                wxMessageBox("Export failed.", "Spellcross",wxOK|wxICON_ERROR,&dialog);
-        });
-        dialog.SetSizerAndFit(root);
-        dialog.CentreOnParent();
-        dialog.ShowModal();
-        remember();
-    }
-
     // All three top-level windows use this very same dialog and settings.
     // Changes preview live; Cancel restores the complete original state.
     inline bool ShowScreenDialog(wxWindow* parent, const std::function<void()>& refresh)
@@ -299,12 +242,26 @@ namespace spellcross_display
             spellcross_ui_locale::Tr("screen.title", "Screen"),
             wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE);
         auto* root = new wxBoxSizer(wxVERTICAL);
-        auto addLabel = [&](const wxString& title) {
-            root->Add(new wxStaticText(&dialog, wxID_ANY, title),
-                0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(14));
+        const int space=dialog.FromDIP(10);
+        auto* columns=new wxBoxSizer(wxHORIZONTAL);
+        auto* left=new wxBoxSizer(wxVERTICAL);
+        auto* right=new wxBoxSizer(wxVERTICAL);
+        columns->Add(left,1,wxEXPAND|wxRIGHT,space);
+        columns->Add(right,1,wxEXPAND);
+        root->Add(columns,1,wxEXPAND|wxALL,space);
+        const auto group=[&](wxBoxSizer* column,const wxString& title) {
+            auto* section=new wxStaticBoxSizer(wxVERTICAL,&dialog,title);
+            column->Add(section,0,wxEXPAND|wxBOTTOM,space);
+            return section;
         };
-
-        addLabel(spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
+        const auto addLabel=[&](wxSizer* section,const wxString& title) {
+            section->Add(new wxStaticText(&dialog,wxID_ANY,title),0,wxLEFT|wxRIGHT|wxTOP,space);
+        };
+        auto* display=group(left,spellcross_ui_locale::Tr("screen.group.display","Display and scale"));
+        auto* colour=group(left,spellcross_ui_locale::Tr("screen.group.colour","Colour correction"));
+        auto* renderer=group(right,spellcross_ui_locale::Tr("screen.group.renderer","Rendering and terrain"));
+        auto* filterGroup=group(right,spellcross_ui_locale::Tr("screen.group.filters","Image filters"));
+        addLabel(display,spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         const wxString scales[] = {
             spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"),
             spellcross_ui_locale::Tr("screen.scale.enlarged", "125% - enlarged / sharp"),
@@ -313,53 +270,53 @@ namespace spellcross_display
         int selectedScale = original.scale_percent == 100 ? 0 :
             (original.smooth_scaling ? 2 : 1);
         std::array<spellcross_strategic_ui::Button*, 3> scaleButtons{};
-        auto* scaleRow = new wxBoxSizer(wxHORIZONTAL);
+        auto* scaleRow = new wxBoxSizer(wxVERTICAL);
         for (int i = 0; i < 3; ++i)
         {
             scaleButtons[i] = new spellcross_strategic_ui::Button(&dialog,
                 wxID_ANY, scales[i]);
-            scaleRow->Add(scaleButtons[i], 1, wxRIGHT | wxEXPAND,
-                i == 2 ? 0 : dialog.FromDIP(6));
+            scaleRow->Add(scaleButtons[i], 0, wxBOTTOM | wxEXPAND,
+                i == 2 ? 0 : dialog.FromDIP(4));
         }
-        root->Add(scaleRow, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, dialog.FromDIP(14));
+        display->Add(scaleRow, 0, wxEXPAND | wxALL, space);
 
-        addLabel(spellcross_ui_locale::Tr("screen.brightness", "Brightness (%)"));
+        addLabel(colour,spellcross_ui_locale::Tr("screen.brightness", "Brightness (%)"));
         auto* brightness = new spellcross_strategic_ui::Slider(&dialog,
             wxID_ANY, original.brightness, 50, 150);
-        root->Add(brightness, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
+        colour->Add(brightness, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
-        addLabel(spellcross_ui_locale::Tr("screen.gamma", "Gamma (x100)"));
+        addLabel(colour,spellcross_ui_locale::Tr("screen.gamma", "Gamma (x100)"));
         auto* gamma = new spellcross_strategic_ui::Slider(&dialog,
             wxID_ANY, static_cast<int>(std::lround(original.gamma * 100)), 50, 200);
-        root->Add(gamma, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
+        colour->Add(gamma, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
-        addLabel(spellcross_ui_locale::Tr("screen.temperature", "Color temperature (K)"));
+        addLabel(colour,spellcross_ui_locale::Tr("screen.temperature", "Color temperature (K)"));
         auto* temperature = new spellcross_strategic_ui::Slider(&dialog,
             wxID_ANY, original.temperature, 3500, 9500);
-        root->Add(temperature, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND,
+        colour->Add(temperature, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND,
             dialog.FromDIP(14));
 
-        auto* enhanced = new wxCheckBox(&dialog, wxID_ANY,
-            spellcross_ui_locale::Tr("screen.advanced_rendering", "Advanced rendering (experimental)"));
-        enhanced->SetValue(original.advanced_rendering);
-        root->Add(enhanced, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(14));
-        auto* materials = new wxCheckBox(&dialog, wxID_ANY,
-            spellcross_ui_locale::Tr("screen.procedural_materials", "Procedural terrain materials (experimental)"));
-        materials->SetValue(original.procedural_materials);
-        root->Add(materials, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
-        auto* upscaling = new wxCheckBox(&dialog, wxID_ANY,
-            spellcross_ui_locale::Tr("screen.procedural_upscaling", "Procedural sprite upscaling (experimental)"));
-        upscaling->SetValue(original.procedural_upscaling);
-        root->Add(upscaling, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(8));
-
         auto* gpu = new wxCheckBox(&dialog,wxID_ANY,
-            spellcross_ui_locale::Tr("screen.gpu_acceleration","GPU acceleration (Direct3D 11, experimental)"));
+            spellcross_ui_locale::Tr("screen.gpu_acceleration","GPU acceleration (Direct3D 11)"));
         gpu->SetValue(original.gpu_acceleration);
 #ifndef _WIN32
         gpu->Disable();
 #endif
-        root->Add(gpu,0,wxLEFT|wxRIGHT|wxTOP|wxBOTTOM,dialog.FromDIP(8));
-        addLabel(spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter"));
+        renderer->Add(gpu,0,wxALL,space);
+        auto* enhanced = new wxCheckBox(&dialog, wxID_ANY,
+            spellcross_ui_locale::Tr("screen.advanced_rendering", "Advanced rendering (experimental)"));
+        enhanced->SetValue(original.advanced_rendering);
+        renderer->Add(enhanced, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(14));
+        auto* materials = new wxCheckBox(&dialog, wxID_ANY,
+            spellcross_ui_locale::Tr("screen.procedural_materials", "Procedural terrain materials (experimental)"));
+        materials->SetValue(original.procedural_materials);
+        renderer->Add(materials, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
+        auto* upscaling = new wxCheckBox(&dialog, wxID_ANY,
+            spellcross_ui_locale::Tr("screen.procedural_upscaling", "Procedural sprite upscaling (experimental)"));
+        upscaling->SetValue(original.procedural_upscaling);
+        renderer->Add(upscaling, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(8));
+
+        addLabel(filterGroup,spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter"));
         auto* filter = new wxChoice(&dialog, wxID_ANY);
         filter->Append(spellcross_ui_locale::Tr("screen.filter.legacy", "Existing renderer (default)"));
         std::vector<int> filterIds{spellcross_filters::Legacy};
@@ -372,16 +329,23 @@ namespace spellcross_display
             filter->Append(wxString::FromUTF8(spellcross_filters::ModeNames[mode]));
         }
         filter->SetSelection(selectedFilter);
-        root->Add(filter, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
+        auto* filterHint=new wxStaticText(&dialog,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.filter.hint","Selected filter replaces sprite reconstruction."));
+        filterHint->Wrap(dialog.FromDIP(300));
+        filterGroup->Add(filter, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
+        filterGroup->Add(filterHint,0,wxLEFT|wxRIGHT|wxBOTTOM,space);
         auto* dedither = new wxCheckBox(&dialog, wxID_ANY,
             spellcross_ui_locale::Tr("screen.tactical_dedither", "Reduce palette dithering"));
         dedither->SetValue(original.tactical_dedither);
-        root->Add(dedither, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
-        addLabel(spellcross_ui_locale::Tr("screen.tactical_sharpen", "Adaptive sharpening (%)"));
+        filterGroup->Add(dedither, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
+        addLabel(filterGroup,spellcross_ui_locale::Tr("screen.tactical_sharpen", "Adaptive sharpening (%)"));
         auto* sharpen = new spellcross_strategic_ui::Slider(&dialog,
             wxID_ANY, original.tactical_sharpen, 0, 100);
-        root->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
+        filterGroup->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
+        auto* diagnostics=new wxStaticBoxSizer(wxVERTICAL,&dialog,
+            spellcross_ui_locale::Tr("screen.group.diagnostics","Diagnostics"));
+        root->Add(diagnostics,0,wxEXPAND|wxLEFT|wxRIGHT|wxBOTTOM,space);
         const bool originalProfiler=spellcross_perf::Current().enabled;
         auto* profiler=new wxCheckBox(&dialog,wxID_ANY,
             spellcross_ui_locale::Tr("screen.perf.toggle","Performance diagnostics + debug log (Ctrl+Shift+F10)"));
@@ -391,12 +355,7 @@ namespace spellcross_display
             if(perf.enabled!=profiler->GetValue()) perf.Toggle();
             if(refresh) refresh();
         });
-        root->Add(profiler,0,wxLEFT|wxRIGHT|wxTOP,dialog.FromDIP(14));
-
-        auto* review=new wxButton(&dialog,wxID_ANY,
-            spellcross_ui_locale::Tr("screen.review.title","Filter review (debug)"));
-        review->Bind(wxEVT_BUTTON,[&](wxCommandEvent&) { ReviewFilters(&dialog); });
-        root->Add(review,0,wxLEFT|wxRIGHT|wxBOTTOM,dialog.FromDIP(14));
+        diagnostics->Add(profiler,0,wxALL,space);
 
         auto* buttons = new wxBoxSizer(wxHORIZONTAL);
         buttons->AddStretchSpacer();
@@ -422,7 +381,10 @@ namespace spellcross_display
                 scaleButtons[i]->Refresh(false);
             }
         };
+        const auto updateFilterState=[&]() { upscaling->Enable(filter->GetSelection()==0); };
+        updateFilterState();
         const auto apply = [&]() {
+            updateFilterState();
             Settings next;
             next.scale_percent = selectedScale == 0 ? 100 : 125;
             next.smooth_scaling = selectedScale == 2;

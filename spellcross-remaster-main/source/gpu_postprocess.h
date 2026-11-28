@@ -23,7 +23,7 @@
 namespace spellcross_gpu
 {
     // All coordinates are top-left origin; packed colors are R,G,B in low bytes.
-    inline bool Supports(int mode) { return mode==0||mode==1||mode==2||mode==10||mode==11||mode==13||mode==14; }
+    inline bool Supports(int mode) { return mode==0||mode==1||mode==2||mode==9||mode==10||mode==11||mode==13||mode==14||mode==17||mode==18||mode==19||mode==20; }
     struct Frame
     {
         int width=0,height=0,sw=0,sh=0,nw=0,nh=0,zoom=100,dpi=100;
@@ -153,6 +153,23 @@ int3 SampleFilter(float2 p,int2 nearest)
  int3 center=P(nearest);
  if(mode==0||mode==1) return center;
  int2 b=int2(floor(p)); float2 f=p-b;
+ if(mode==9||mode==19)
+ {
+  if(zoom*dpi<=10000||!Inside(nearest)) return center;
+  int2 direction=int2(p.x<nearest.x?-1:1,p.y<nearest.y?-1:1);
+  int2 qa=nearest+int2(direction.x,0),qb=nearest+int2(0,direction.y);
+  int2 qo=nearest-int2(direction.x,0),qr=nearest-int2(0,direction.y);
+  uint a=N(qa),c=N(qb),oa=N(qo),ob=N(qr);
+  if(mode==9)
+    return a==c&&a!=oa&&c!=ob&&!Protected(a)?P(qa):center;
+  if(Protected(a)||Protected(c)||Protected(oa)||Protected(ob)) return center;
+  int3 ca=P(qa),cb=P(qb);
+  if(Dist(ca,cb)>32||Dist(ca,center)<48||Dist(cb,center)<48||
+     Dist(ca,P(qo))<40||Dist(cb,P(qr))<40) return center;
+  int2 phase=clamp(int2((p-nearest+0.5)*256),0,255);
+  int coverage=clamp((abs(phase.x-128)+abs(phase.y-128)-100)*3,0,192);
+  return Blend(center,(ca+cb+1)/2,coverage);
+ }
  if(mode==13||mode==14)
  {
   float B=mode==13?0.262014512:0.0,C=mode==13?0.368992744:0.75;
@@ -174,9 +191,38 @@ int3 SampleFilter(float2 p,int2 nearest)
  else if(mode==11) f=f*f*f*(f*(6*f-15)+10);
  int2 limit=int2(nw-1,nh-1);
  int2 q0=b,q1=min(b+int2(1,0),limit),q2=min(b+int2(0,1),limit),q3=min(b+1,limit);
- float3 a=Protected(N(q0))?center:P(q0),c=Protected(N(q1))?center:P(q1),
-        d=Protected(N(q2))?center:P(q2),e=Protected(N(q3))?center:P(q3);
- return int3(floor(lerp(lerp(a,c,f.x),lerp(d,e,f.x),f.y)+0.5));
+ int3 a=Protected(N(q0))?center:P(q0),c=Protected(N(q1))?center:P(q1),
+      d=Protected(N(q2))?center:P(q2),e=Protected(N(q3))?center:P(q3);
+ int2 uv=int2(floor(f*4096+0.5));
+ int u=uv.x,v=uv.y,s=4096;
+ if(mode==17)
+ {
+  int3 sum=0; int total=0;
+  [unroll] for(int y=0;y<2;y++) [unroll] for(int x=0;x<2;x++)
+  {
+   int2 q=min(b+int2(x,y),limit);
+   if(!Protected(N(q)))
+   {
+    int3 col=P(q);
+    int w=(((x==0?s-u:u)*(y==0?s-v:v))>>12)*max(0,96-Dist(center,col));
+    sum+=w*col;total+=w;
+   }
+  }
+  return total!=0?(sum+total/2)/max(total,1):center;
+ }
+ if(mode==18)
+ {
+  if(Dist(a,e)<=Dist(c,d))
+    return v<=u?(a*(s-u)+c*(u-v)+e*v+s/2)/s:(a*(s-v)+d*(v-u)+e*u+s/2)/s;
+  return u+v<=s?(a*(s-u-v)+c*u+d*v+s/2)/s:(e*(u+v-s)+c*(s-v)+d*(s-u)+s/2)/s;
+ }
+ int3 result=int3(floor(lerp(lerp(float3(a),float3(c),f.x),lerp(float3(d),float3(e),f.x),f.y)+0.5));
+ if(mode==20&&zoom*dpi>=20000)
+ {
+  int edge=abs(clamp(int((p.y-nearest.y+0.5)*256),0,255)-128);
+  result=(result*(256-edge*edge/256)+128)/256;
+ }
+ return result;
 }
 int EdgeDistance(uint a,uint b)
 {

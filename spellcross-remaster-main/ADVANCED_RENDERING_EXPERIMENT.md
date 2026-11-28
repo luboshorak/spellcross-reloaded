@@ -183,3 +183,7 @@ by a few RGB levels from CPU fixed-point interpolation. Settings default
 off. RENDER_PERF records gpu_requested, gpu_active and gpu_readback_ms
 (includes waiting for GPU completion and copying the bitmap rows, not GPU
 execution time alone). No claim of 60 FPS until measured on real hardware.
+
+### V6.1 GPU filter coverage and settings cleanup
+
+All retained filter IDs now have D3D11 implementations; Scale2x, Soft EPX, directional triangle, edge-preserving bilinear and CRT soft scanlines complete coverage. CPU remains fallback. WARP smoke tests check all exposed IDs and compare mixed-color samples with CPU reference. Settings use grouped two-column controls; the temporary filter rejection/export dialog and its locale strings are removed. Diagnostics remain available. Sprite reconstruction is disabled in the UI when another filter is selected, preserving its stored preference.

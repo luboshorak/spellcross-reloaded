@@ -304,16 +304,10 @@ screen.scale.smooth=125% – enlarged, smoothed
 screen.brightness=Brightness (%)
 screen.gamma=Gamma (×100)
 screen.temperature=Color temperature (K)
-screen.advanced_rendering=Advanced rendering (colour and lighting)
-screen.procedural_materials=Procedural terrain materials (experimental)
-screen.procedural_upscaling=Procedural sprite upscaling (experimental)
 screen.tactical_filter=Battlefield scaling filter
 screen.filter.legacy=Existing renderer (default)
 screen.tactical_dedither=Reduce palette dithering
 screen.tactical_sharpen=Adaptive sharpening (%)
-screen.review.title=Filter review (debug)
-screen.review.hint=Check only effects to remove. Export does not change rendering.
-screen.review.export=Export rejected filters
 
 # About window and optional updates
 about.title=About Spellcross Reloaded
@@ -447,4 +441,23 @@ help.action.performance=Toggle the experimental FPS, renderer timing, CPU and RA
 
 screen.perf.toggle=Performance diagnostics + debug log (Ctrl+Shift+F10)
 
-screen.gpu_acceleration=GPU acceleration (Direct3D 11, experimental)
+
+screen.group.display=Display and scale
+
+screen.group.colour=Colour correction
+
+screen.group.renderer=Rendering and terrain
+
+screen.group.filters=Image filters
+
+screen.group.diagnostics=Diagnostics
+
+screen.filter.hint=Selected filter replaces sprite reconstruction.
+
+screen.gpu_acceleration=GPU acceleration (Direct3D 11)
+
+screen.advanced_rendering=Advanced lighting
+
+screen.procedural_materials=Procedural terrain materials
+
+screen.procedural_upscaling=Procedural sprite reconstruction

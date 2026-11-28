@@ -304,16 +304,10 @@ screen.scale.smooth=125 % – zvětšené, vyhlazené
 screen.brightness=Jas (%)
 screen.gamma=Gama (×100)
 screen.temperature=Teplota barev (K)
-screen.advanced_rendering=Pokročilý rendering (barvy a osvětlení)
-screen.procedural_materials=Procedurální materiály terénu (experimentální)
-screen.procedural_upscaling=Procedurální upscaling spritů (experimentální)
 screen.tactical_filter=Filtr zvětšení bojiště
 screen.filter.legacy=Stávající renderer (výchozí)
 screen.tactical_dedither=Potlačení ditheringu palety
 screen.tactical_sharpen=Adaptivní doostření (%)
-screen.review.title=Hodnocení filtrů (debug)
-screen.review.hint=Zaškrtni pouze efekty k vyřazení. Export nemění grafiku.
-screen.review.export=Exportovat filtry k vyřazení
 
 # About window and optional updates
 about.title=O programu Spellcross Reloaded
@@ -447,4 +441,23 @@ help.action.performance=Zapnout nebo vypnout diagnostický panel FPS, časů vyk
 
 screen.perf.toggle=Diagnostika výkonu a debug log (Ctrl+Shift+F10)
 
-screen.gpu_acceleration=GPU akcelerace (Direct3D 11, experimentální)
+
+screen.group.display=Obrazovka a měřítko
+
+screen.group.colour=Barvy obrazu
+
+screen.group.renderer=Vykreslování a terén
+
+screen.group.filters=Obrazové filtry
+
+screen.group.diagnostics=Diagnostika
+
+screen.filter.hint=Zvolený filtr nahrazuje rekonstrukci spritů.
+
+screen.gpu_acceleration=GPU akcelerace (Direct3D 11)
+
+screen.advanced_rendering=Pokročilé osvětlení
+
+screen.procedural_materials=Procedurální materiály terénu
+
+screen.procedural_upscaling=Procedurální rekonstrukce spritů
