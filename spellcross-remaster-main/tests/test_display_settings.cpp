@@ -14,6 +14,14 @@ int main()
     assert(defaults.brightness == 100);
     assert(std::abs(defaults.gamma - 1.3) < 1e-9);
     assert(defaults.temperature == 6500);
+    assert(!defaults.advanced_rendering);
+    Settings enhanced = defaults;
+    enhanced.advanced_rendering = true;
+    const auto revisionBeforeEnhanced = Revision();
+    Set(enhanced);
+    assert(Current().advanced_rendering && Revision() > revisionBeforeEnhanced);
+    Set(defaults);
+    assert(!Current().advanced_rendering);
 
     for (const int scale : {100, 125})
     {

@@ -304,6 +304,7 @@ screen.scale.smooth=125 % – zvětšené, vyhlazené
 screen.brightness=Jas (%)
 screen.gamma=Gama (×100)
 screen.temperature=Teplota barev (K)
+screen.advanced_rendering=Pokročilý rendering (experimentální)
 
 # About window and optional updates
 about.title=O programu Spellcross Reloaded

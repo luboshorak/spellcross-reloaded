@@ -24,6 +24,7 @@ namespace spellcross_display
         int brightness = 100;      // linear multiplier, 50..150 percent
         double gamma = 1.3;        // original Spellcross default, 0.5..2.0
         int temperature = 6500;    // neutral daylight, 3500..9500 kelvin
+        bool advanced_rendering = false; // experimental tactical ground lighting
     };
 
     inline Settings Normalize(Settings s)
@@ -61,7 +62,8 @@ namespace spellcross_display
         auto& old = MutableSettings();
         if (old.scale_percent == s.scale_percent &&
             old.smooth_scaling == s.smooth_scaling && old.brightness == s.brightness &&
-            old.gamma == s.gamma && old.temperature == s.temperature)
+            old.gamma == s.gamma && old.temperature == s.temperature &&
+            old.advanced_rendering == s.advanced_rendering)
             return;
         old = s;
         ++MutableRevision();
@@ -263,6 +265,11 @@ namespace spellcross_display
         root->Add(temperature, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND,
             dialog.FromDIP(14));
 
+        auto* enhanced = new wxCheckBox(&dialog, wxID_ANY,
+            spellcross_ui_locale::Tr("screen.advanced_rendering", "Advanced rendering (experimental)"));
+        enhanced->SetValue(original.advanced_rendering);
+        root->Add(enhanced, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(14));
+
         auto* buttons = new wxBoxSizer(wxHORIZONTAL);
         buttons->AddStretchSpacer();
         auto* ok = new spellcross_strategic_ui::Button(&dialog, wxID_OK,
@@ -294,6 +301,7 @@ namespace spellcross_display
             next.brightness = brightness->GetValue();
             next.gamma = gamma->GetValue() / 100.0;
             next.temperature = temperature->GetValue();
+            next.advanced_rendering = enhanced->GetValue();
             Set(next);
             if (refresh) refresh();
         };
@@ -309,6 +317,7 @@ namespace spellcross_display
         brightness->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         gamma->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         temperature->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        enhanced->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
 
         if (dialog.ShowModal() == wxID_OK)
         {

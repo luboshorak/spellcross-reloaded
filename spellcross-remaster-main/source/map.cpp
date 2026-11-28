@@ -20,6 +20,7 @@
 #include "predator_blast_rules.h"
 #include "strategic_formation_bonus_rules.h"
 #include "display_settings.h"
+#include "advanced_rendering.h"
 #include "spellcross.h"
 #include "fs_archive.h"
 #include "fsu_archive.h"
@@ -5901,6 +5902,23 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 	MapUnit* unit = GetSelectedUnit();
 
+    // Experimental lighting is strictly presentation-only. Never inspect a
+    // hidden neighbour or company for visual lighting. Deployment, editor,
+    // range filters and dialog dimming keep the original rendering.
+    const bool enhancedGround = spellcross_display::Current().advanced_rendering &&
+        !editorPreview && !deployment_mode && wL1 && (use_view_mask || show_map_cheat);
+    static spellcross_enhanced::Palette enhancedPalette;
+    if (enhancedGround)
+        enhancedPalette.Prepare(reinterpret_cast<const uint8_t*>(terrain->pal));
+    const auto litTile = [&](int index) {
+        return !use_view_mask || unit_view->view[index] >= 2;
+    };
+    const auto visibleElevation = [&](int x, int y, int fallback) {
+        if (x < 0 || x >= x_size || y < 0 || y >= y_size) return fallback;
+        const int index = ConvXY(x, y);
+        return litTile(index) ? static_cast<int>(tiles[index].elev) : fallback;
+    };
+
 	// --- Render Layer 1 - ground sprites ---
 	for (m = 0; m < ys_size; m++)
 	{
@@ -5945,7 +5963,31 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			// render sprite
 			int mxx = n * 80 + (((m & 1) != 0) ? 0 : 40);
 			int myy = m * 24 - sof * 18 + MSYOFS + 50;
-			sid->Render(pic, pic_end, mxx, myy, pic_x_size, fil);
+            if (enhancedGround && !fil && litTile(mxy))
+            {
+                const int tx = n + xs_ofs, ty = m + ys_ofs * 2;
+                spellcross_enhanced::GroundLight light;
+                light.relief = spellcross_enhanced::Relief(
+                    visibleElevation(tx - 1, ty, sof), visibleElevation(tx + 1, ty, sof),
+                    visibleElevation(tx, ty - 2, sof), visibleElevation(tx, ty + 2, sof), sof);
+                light.worldX = tx * 80 + ((ty & 1) ? 0 : 40);
+                light.worldY = ty * 24 - sof * 18;
+                light.object = wL2 && tiles[mxy].L2 != nullptr;
+                if (wUnits)
+                    for (MapUnit* visible = Lunit[mxy]; visible; visible = visible->next)
+                    {
+                        if ((use_view_mask && visible->is_visible < 2) ||
+                            visible->isMoving() || !visible->unit)
+                            continue;
+                        if (visible->unit->isAir()) light.air = true;
+                        else light.company = true;
+                    }
+                spellcross_enhanced::DrawGround(sid->data, sid->y_size, sid->y_ofs,
+                    pic, static_cast<size_t>(pic_end - pic), pic_x_size,
+                    mxx, myy, enhancedPalette, light);
+            }
+            else
+                sid->Render(pic, pic_end, mxx, myy, pic_x_size, fil);
 		}
 	}
 
