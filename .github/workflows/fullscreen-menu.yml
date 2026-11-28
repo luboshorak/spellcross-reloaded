@@ -1,12 +1,14 @@
 name: Fullscreen menu regression
 on:
   push:
-    branches: [main, feature/fullscreen-menu, experimental-features]
+    branches: [main, feature/fullscreen-menu, experimental-features, experiment/advanced-rendering]
   pull_request:
     paths:
       # This job runs the entire Python regression suite: changes to tests
       # must rerun it even if no source file listed below changed.
       - 'spellcross-remaster-main/tests/test_*.py'
+      - 'spellcross-remaster-main/source/advanced_rendering.h'
+      - 'spellcross-remaster-main/tests/test_advanced_rendering.cpp'
       - 'spellcross-remaster-main/source/tactical_zoom.h'
       - 'spellcross-remaster-main/source/tactical_edge_pan.h'
       - 'spellcross-remaster-main/source/tactical_range_input.h'
@@ -61,6 +63,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwxgtk3.2-dev xvfb
       - name: Check source and localization regressions
         run: python3 -m unittest discover -s spellcross-remaster-main/tests -p 'test_*.py'
+      - name: Verify experimental indexed lighting and sprite clipping
+        run: |
+          c++ -std=c++23 -O2 -Wall -Wextra -pedantic \
+            spellcross-remaster-main/tests/test_advanced_rendering.cpp -o /tmp/spellcross-render-test
+          /tmp/spellcross-render-test
       - name: Verify tactical zoom geometry and wheel input
         run: |
           c++ -std=c++23 -Wall -Wextra -pedantic \
@@ -136,6 +143,11 @@ jobs:
           $include = $header.Directory.Parent.FullName
           $setupInclude = $setup.Directory.Parent.FullName
           $binary = Join-Path $env:RUNNER_TEMP 'spellcross-menu-test.exe'
+          $advancedRenderTest = Join-Path $env:RUNNER_TEMP 'spellcross-render-test.exe'
+          & cl.exe /nologo /std:c++23 /EHsc /MD spellcross-remaster-main/tests/test_advanced_rendering.cpp "/Fe:$advancedRenderTest"
+          if ($LASTEXITCODE -ne 0) { throw 'Advanced rendering test compilation failed' }
+          & $advancedRenderTest
+          if ($LASTEXITCODE -ne 0) { throw 'Advanced rendering test failed' }
           $zoomTest = Join-Path $env:RUNNER_TEMP 'spellcross-zoom-test.exe'
           $boxSelectionTest = Join-Path $env:RUNNER_TEMP 'spellcross-box-selection-test.exe'
           $edgePanTest = Join-Path $env:RUNNER_TEMP 'spellcross-edge-pan-test.exe'
