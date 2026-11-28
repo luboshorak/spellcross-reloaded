@@ -307,6 +307,10 @@ screen.temperature=Teplota barev (K)
 screen.advanced_rendering=Pokročilý rendering (barvy a osvětlení)
 screen.procedural_materials=Procedurální materiály terénu (experimentální)
 screen.procedural_upscaling=Procedurální upscaling spritů (experimentální)
+screen.tactical_filter=Filtr zvětšení bojiště (CPU)
+screen.filter.legacy=Stávající renderer (výchozí)
+screen.tactical_dedither=Potlačení ditheringu palety
+screen.tactical_sharpen=Adaptivní doostření (%)
 
 # About window and optional updates
 about.title=O programu Spellcross Reloaded

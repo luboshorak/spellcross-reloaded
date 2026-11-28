@@ -88,3 +88,20 @@ delta. Native sprites, game coordinates and assets remain unchanged.
 Limitations: the composited native image is not a semantic sprite mask; some
 thin details may be softened, and no new authentic features can be recovered
 from the low-resolution source. Native 100% is intentionally not upscaled.
+
+## Shader-style CPU filters (post-AI experiment)
+
+The neural experiment was removed. Optional native-battlefield RGB filters
+now include nearest, sharp bilinear, Catmull-Rom and Lanczos-2 (four taps per
+axis). These are native CPU implementations, not imported GLSL or an OpenGL
+backend. A conservative checker-pattern dedither and bounded adaptive
+sharpening (0-100%) work independently. New options default to legacy/off/0
+and are persisted through the shared screen dialog. Explicit scaling filters
+replace the old procedural edge reconstruction; Legacy retains that option.
+Lighting and material effects remain separately selectable. Processing is
+applied before the HUD, guarded at the HUD fringe and bypassed for movement,
+attack range, editor and dimmed dialog modes. Reserved colours and water
+are guarded. The original sprite pixels, save format and hitboxes are intact.
+There is no claim of perfect semantic separation, new realistic geometry,
+GPU acceleration or full anti-aliasing at reduced zoom. CPU cost of the
+four-tap filters needs real-mission profiling, especially at 4K.

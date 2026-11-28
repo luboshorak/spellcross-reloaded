@@ -1,4 +1,5 @@
 #include "../source/advanced_rendering.h"
+#include "../source/tactical_filters.h"
 #include <cassert>
 #include <array>
 #include <vector>
@@ -154,6 +155,44 @@ int main()
     const RGB reconstructed={100,110,120}, lit={110,100,90}, raw={100,100,100};
     const RGB expected={110,110,110};
     assert(PreserveLighting(reconstructed,lit,raw)==expected);
+    // Shader-style filters: exact flat colour, safe edges and normalized taps.
+    {
+        namespace sf=spellcross_filters;
+        std::uint8_t paletteRGB[256][3]{};
+        for(int i=0;i<256;++i) for(int k=0;k<3;++k) paletteRGB[i][k]=static_cast<std::uint8_t>(i);
+        std::array<std::uint8_t,25> flat{}; flat.fill(100);
+        sf::Image image;
+        image.Prepare(flat.data(),5,5,paletteRGB,true,100);
+        for(int mode=sf::Nearest;mode<=sf::Lanczos2;++mode)
+            for(int pixel=0;pixel<15;++pixel)
+            {
+                const auto a=sf::MakeAxis(pixel,5,200,125,mode);
+                int sum=0;
+                for(int k=0;k<a.count;++k) { sum+=a.weight[k]; assert(a.index[k]>=0&&a.index[k]<5); }
+                assert(sum==sf::weightScale);
+                const auto c=image.Sample(a,a);
+                assert(c[0]==100&&c[1]==100&&c[2]==100);
+            }
+        std::array<std::uint8_t,25> checker{};
+        for(int y=0;y<5;++y) for(int x=0;x<5;++x) checker[y*5+x]=(x+y)%2?100:80;
+        image.Prepare(checker.data(),5,5,paletteRGB,true,0);
+        assert(image.At(2,2)[0]==90 && image.At(1,2)[0]==90);
+        checker[12]=230;
+        image.Prepare(checker.data(),5,5,paletteRGB,true,100);
+        assert(image.At(2,2)[0]==230 && !image.Filterable(2,2));
+        flat.fill(100); flat[12]=120;
+        image.Prepare(flat.data(),5,5,paletteRGB,false,100);
+        assert(image.At(2,2)[0]>120 && image.At(2,2)[0]<=124);
+        const auto native=sf::MakeAxis(2,5,100,100,sf::CatmullRom);
+        assert(native.nearest==2 && image.Sample(native,native)==image.At(2,2));
+        const auto a=sf::MakeAxis(1000,1,300,125,sf::Lanczos2);
+        assert(a.index[0]==0&&a.weight[0]==sf::weightScale);
+        for(int i=0;i<256;++i) { paletteRGB[i][0]=0; paletteRGB[i][2]=0; }
+        image.Prepare(flat.data(),5,5,paletteRGB,true,100);
+        const auto nightSample=image.Sample(sf::MakeAxis(3,5,175,125,sf::Lanczos2),
+                                           sf::MakeAxis(4,5,175,125,sf::Lanczos2));
+        assert(nightSample[0]==0&&nightSample[2]==0);
+    }
     sprite.pop_back();
     DrawGround(sprite,1,0,buffer.data(),buffer.size(),4,0,0,palette,light);
     for(auto b:buffer) assert(b==254);

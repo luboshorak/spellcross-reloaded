@@ -13,6 +13,7 @@
 #include <wx/slider.h>
 #include "spell_ui_locale.h"
 #include "strategic_ui_theme.h"
+#include "tactical_filters.h"
 #include <array>
 
 namespace spellcross_display
@@ -27,17 +28,24 @@ namespace spellcross_display
         bool advanced_rendering = false; // V2 tactical RGB lighting
         bool procedural_materials = false; // V3 independent material detail
         bool procedural_upscaling = false; // edge-aware tactical sprite reconstruction
+        int tactical_filter = spellcross_filters::Legacy;
+        bool tactical_dedither = false;
+        int tactical_sharpen = 0;
     };
 
     inline Settings Normalize(Settings s)
     {
         s.scale_percent = (s.scale_percent == 100) ? 100 : 125;
-        // Native 100% output must never be filtered.
+        // Legacy native 100% display scaling is never filtered; the optional
+        // tactical filter is independent of DPI and is applied only in battle.
         if (s.scale_percent == 100)
             s.smooth_scaling = false;
         s.brightness = std::clamp(s.brightness, 50, 150);
         s.gamma = std::isfinite(s.gamma) ? std::clamp(s.gamma, 0.5, 2.0) : 1.3;
         s.temperature = std::clamp(s.temperature, 3500, 9500);
+        if(s.tactical_filter<spellcross_filters::Legacy || s.tactical_filter>spellcross_filters::Lanczos2)
+            s.tactical_filter=spellcross_filters::Legacy;
+        s.tactical_sharpen=std::clamp(s.tactical_sharpen,0,100);
         return s;
     }
 
@@ -67,7 +75,9 @@ namespace spellcross_display
             old.gamma == s.gamma && old.temperature == s.temperature &&
             old.advanced_rendering == s.advanced_rendering &&
             old.procedural_materials == s.procedural_materials &&
-            old.procedural_upscaling == s.procedural_upscaling)
+            old.procedural_upscaling == s.procedural_upscaling &&
+            old.tactical_filter == s.tactical_filter && old.tactical_dedither == s.tactical_dedither &&
+            old.tactical_sharpen == s.tactical_sharpen)
             return;
         old = s;
         ++MutableRevision();
@@ -282,6 +292,24 @@ namespace spellcross_display
         upscaling->SetValue(original.procedural_upscaling);
         root->Add(upscaling, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(8));
 
+        addLabel(spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter (CPU)"));
+        auto* filter = new wxChoice(&dialog, wxID_ANY);
+        filter->Append(spellcross_ui_locale::Tr("screen.filter.legacy", "Existing renderer (default)"));
+        filter->Append("Nearest");
+        filter->Append("Sharp Bilinear");
+        filter->Append("Catmull-Rom");
+        filter->Append("Lanczos 2");
+        filter->SetSelection(original.tactical_filter);
+        root->Add(filter, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
+        auto* dedither = new wxCheckBox(&dialog, wxID_ANY,
+            spellcross_ui_locale::Tr("screen.tactical_dedither", "Reduce palette dithering"));
+        dedither->SetValue(original.tactical_dedither);
+        root->Add(dedither, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
+        addLabel(spellcross_ui_locale::Tr("screen.tactical_sharpen", "Adaptive sharpening (%)"));
+        auto* sharpen = new spellcross_strategic_ui::Slider(&dialog,
+            wxID_ANY, original.tactical_sharpen, 0, 100);
+        root->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
+
         auto* buttons = new wxBoxSizer(wxHORIZONTAL);
         buttons->AddStretchSpacer();
         auto* ok = new spellcross_strategic_ui::Button(&dialog, wxID_OK,
@@ -316,6 +344,9 @@ namespace spellcross_display
             next.advanced_rendering = enhanced->GetValue();
             next.procedural_materials = materials->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
+            next.tactical_filter = filter->GetSelection();
+            next.tactical_dedither = dedither->GetValue();
+            next.tactical_sharpen = sharpen->GetValue();
             Set(next);
             if (refresh) refresh();
         };
@@ -334,6 +365,9 @@ namespace spellcross_display
         enhanced->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        filter->Bind(wxEVT_CHOICE, [&](wxCommandEvent&) { apply(); });
+        dedither->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        sharpen->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
 
         if (dialog.ShowModal() == wxID_OK)
         {

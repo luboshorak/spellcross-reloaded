@@ -16,6 +16,7 @@ int main()
     assert(defaults.temperature == 6500);
     assert(!defaults.advanced_rendering);
     assert(!defaults.procedural_materials && !defaults.procedural_upscaling);
+    assert(defaults.tactical_filter==spellcross_filters::Legacy && !defaults.tactical_dedither && defaults.tactical_sharpen==0);
     Settings enhanced = defaults;
     enhanced.advanced_rendering = true;
     const auto revisionBeforeEnhanced = Revision();
@@ -101,9 +102,20 @@ int main()
     invalid.brightness = 500;
     invalid.temperature = 100;
     invalid.scale_percent = 101;
+    invalid.tactical_filter = 99;
+    invalid.tactical_sharpen = 120;
     Set(invalid);
     assert(Current().brightness == 150);
     assert(Current().temperature == 3500);
+    assert(Current().tactical_filter==spellcross_filters::Legacy && Current().tactical_sharpen==100);
+    Settings filterSettings=defaults;
+    filterSettings.tactical_filter=spellcross_filters::CatmullRom;
+    filterSettings.tactical_dedither=true;
+    filterSettings.tactical_sharpen=25;
+    const auto before=Revision();
+    Set(filterSettings);
+    assert(Revision()>before && Current().tactical_dedither && Current().tactical_sharpen==25);
+    assert(Current().tactical_filter==spellcross_filters::CatmullRom);
     assert(Current().scale_percent == 125);
 
     Set(defaults);

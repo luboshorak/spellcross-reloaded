@@ -5912,8 +5912,13 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const bool rgbLighting = normalTactical && renderSettings.advanced_rendering;
     const bool materialDetail = normalTactical && renderSettings.procedural_materials;
     const bool enhancedGround = rgbLighting || materialDetail;
-    const bool spriteUpscale = normalTactical && renderSettings.procedural_upscaling &&
-        zoom_percent * display_scale_percent > 10000;
+    const bool explicitFilter = normalTactical && renderSettings.tactical_filter!=spellcross_filters::Legacy;
+    const bool newFilters = normalTactical && (explicitFilter ||
+        renderSettings.tactical_dedither || renderSettings.tactical_sharpen>0);
+    // The selected scaling kernel replaces (rather than stacks with) the
+    // old procedural edge reconstruction. Legacy mode keeps that option.
+    const bool spriteUpscale = normalTactical && !explicitFilter &&
+        renderSettings.procedural_upscaling && zoom_percent * display_scale_percent > 10000;
     spellcross_enhanced::GroundSurface groundLight;
     // The projected world origin, not the scratch-buffer origin, anchors HD detail.
     const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
@@ -6806,7 +6811,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // Snapshot the composited native battlefield before the HUD and before
     // releasing the map lock. Upscale original sprites, not zoom-repeated pixels.
     std::vector<uint8_t> nativeArt;
-    if (spriteUpscale)
+    if (spriteUpscale || newFilters)
     {
         nativeArt.resize(static_cast<size_t>(surf_x)*surf_y);
         for (int y=0;y<surf_y;++y)
@@ -6968,6 +6973,50 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         return PreserveLighting(rebuilt,color,original);
     };
 
+    // Shader-style CPU filters operate on the native indexed battlefield
+    // converted to RGB, not on the already enlarged HUD/bitmap. The
+    // existing lighting contribution is preserved as an independent delta.
+    spellcross_filters::Image filteredArt;
+    std::vector<spellcross_filters::Axis> filterX,filterY;
+    std::vector<int> hudGuard;
+    const bool filtersReady=newFilters && nativeWidth>0 && nativeHeight>0 && !nativeArt.empty();
+    if(filtersReady)
+    {
+        filteredArt.Prepare(nativeArt.data(),nativeWidth,nativeHeight,output_pal,
+            settings.tactical_dedither,settings.tactical_sharpen);
+        filterX.resize(physical_width); filterY.resize(physical_height);
+        for(int x=0;x<physical_width;++x)
+            filterX[x]=spellcross_filters::MakeAxis(x,nativeWidth,zoom_percent,
+                display_scale_percent,settings.tactical_filter);
+        for(int y=0;y<physical_height;++y)
+            filterY[y]=spellcross_filters::MakeAxis(y,nativeHeight,zoom_percent,
+                display_scale_percent,settings.tactical_filter);
+        hudGuard.resize(screen_width);
+        // Keep the entire HUD and its interpolation fringe unfiltered.
+        for(int x=0;x<screen_width;++x)
+        {
+            int top=GetHUDtop(x);
+            for(int dx=-2;dx<=2;++dx)
+                top=(std::min)(top,GetHUDtop(std::clamp(x+dx,0,screen_width-1)));
+            hudGuard[x]=top-2;
+        }
+    }
+    const auto filterAt=[&](RGB color,RGB original,int x,int y,int lx,int ly)->RGB {
+        if(!filtersReady || ly>=hudGuard[lx]) return color;
+        const auto i=static_cast<size_t>(ly)*screen_width+lx;
+        if(spellcross_filters::Protected(screen_pixels[i])) return color;
+        const auto& ax=filterX[x]; const auto& ay=filterY[y];
+        if(!filteredArt.Filterable(ax.nearest,ay.nearest)) return color;
+        const auto result=filteredArt.Sample(ax,ay);
+        if(explicitFilter)
+            return PreserveLighting(result,color,original);
+        // With the legacy scaling kernel selected, add only the native
+        // dedither/sharpen correction. Keep the existing zoom/edge rendering.
+        const auto index=nativeArt[static_cast<size_t>(ay.nearest)*nativeWidth+ax.nearest];
+        const auto raw=spellcross_filters::PaletteRGB(output_pal,index);
+        return PreserveLighting(color,result,raw);
+    };
+
     wxNativePixelData data(bmp);
     if (!data)
         return 1;
@@ -6993,7 +7042,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 const auto* p10 = rgbAt(sample.second,vertical.first);
                 const auto* p01 = rgbAt(sample.first,vertical.second);
                 const auto* p11 = rgbAt(sample.second,vertical.second);
-                if (!microStrength && !spriteUpscale)
+                if (!microStrength && !spriteUpscale && !filtersReady)
                 {
                     for (int channel = 2; channel >= 0; --channel)
                         *scan++ = spellcross_display::BlendBilinear(
@@ -7007,7 +7056,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         color[channel]=spellcross_display::BlendBilinear(
                             p00[channel],p10[channel],p01[channel],p11[channel],
                             sample.weight,vertical.weight);
-                    if(spriteUpscale)
+                    if(spriteUpscale || filtersReady)
                     {
                         RGB raw{};
                         const auto* r00=rawAt(sample.first,vertical.first);
@@ -7017,7 +7066,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         for(int c=0;c<3;++c)
                             raw[c]=spellcross_display::BlendBilinear(r00[c],r10[c],r01[c],r11[c],
                                 sample.weight,vertical.weight);
-                        color=upscaleAt(color,raw,x,y,(x*100)/display_scale_percent,
+                        if(spriteUpscale)
+                            color=upscaleAt(color,raw,x,y,(x*100)/display_scale_percent,
+                                (y*100)/display_scale_percent);
+                        color=filterAt(color,raw,x,y,(x*100)/display_scale_percent,
                             (y*100)/display_scale_percent);
                     }
                     const auto tag=tagAt(sample.first,vertical.first);
@@ -7044,13 +7096,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             {
                 const int sourceX=(x * 100) / display_scale_percent;
                 const auto* rgb = rgbAt(sourceX,sourceY);
-                if(microStrength || spriteUpscale)
+                if(microStrength || spriteUpscale || filtersReady)
                 {
                     RGB color={rgb[0],rgb[1],rgb[2]};
-                    if(spriteUpscale)
+                    if(spriteUpscale || filtersReady)
                     {
                         const auto* raw=rawAt(sourceX,sourceY);
-                        color=upscaleAt(color,{raw[0],raw[1],raw[2]},x,y,sourceX,sourceY);
+                        if(spriteUpscale)
+                            color=upscaleAt(color,{raw[0],raw[1],raw[2]},x,y,sourceX,sourceY);
+                        color=filterAt(color,{raw[0],raw[1],raw[2]},x,y,sourceX,sourceY);
                     }
                     color=detailAt(color,tagAt(sourceX,sourceY),x,y);
                     *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
