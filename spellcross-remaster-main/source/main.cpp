@@ -1854,17 +1854,18 @@ static std::filesystem::path ResolveStrategicLevelDefForSave(
     return {};
 }
 
-static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::path& savePath)
+static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::path& savePath, wxWindow* dialogOwner = nullptr)
 {
     if (!main)
         return false;
 
+    if (!dialogOwner) dialogOwner = main;
     namespace fs = std::filesystem;
     std::error_code ec;
     if (!fs::exists(savePath, ec) || !fs::is_regular_file(savePath, ec))
     {
         wxMessageBox("The selected strategic save does not exist.", "Load game",
-            wxOK | wxICON_ERROR, main);
+            wxOK | wxICON_ERROR, dialogOwner);
         return false;
     }
 
@@ -1881,7 +1882,7 @@ static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::pa
             wxMessageBox(
                 "The selected file is not a valid original BIG_MAP.SAV.\n\n" +
                 wxString::FromUTF8(importError),
-                "Load original strategic game", wxOK | wxICON_ERROR, main);
+                "Load original strategic game", wxOK | wxICON_ERROR, dialogOwner);
             return false;
         }
 
@@ -1896,7 +1897,7 @@ static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::pa
                 wxString::Format(
                     "BIG_MAP.SAV is from strategic level %d, but %s could not be located in the configured Spellcross data.",
                     levelNumber, wxString::FromUTF8(levelDefName).c_str()),
-                "Load original strategic game", wxOK | wxICON_ERROR, main);
+                "Load original strategic game", wxOK | wxICON_ERROR, dialogOwner);
             return false;
         }
     }
@@ -1909,7 +1910,7 @@ static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::pa
                 "The strategic save was found, but its LEVEL_XX.DEF could not be located.\n\n"
                 "The loader checked the level_def stored in the save, the configured Spellcross data, "
                 "the save/strategic/level_XX directory name and the save folder itself.",
-                "Load strategic game", wxOK | wxICON_ERROR, main);
+                "Load strategic game", wxOK | wxICON_ERROR, dialogOwner);
             return false;
         }
     }
@@ -1920,7 +1921,7 @@ static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::pa
     if (!loader.LoadLevelDef(defPath.string(), lvl, &err))
     {
         wxMessageBox("Failed to load strategic LEVEL DEF:\n" + err,
-            "Load strategic game", wxOK | wxICON_ERROR, main);
+            "Load strategic game", wxOK | wxICON_ERROR, dialogOwner);
         return false;
     }
 
@@ -1939,7 +1940,7 @@ static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::pa
             originalBigMap
                 ? "The selected BIG_MAP.SAV could not be imported for the resolved LEVEL DEF."
                 : "The selected file is not a valid strategic save for the resolved LEVEL DEF.",
-            "Load strategic game", wxOK | wxICON_ERROR, main);
+            "Load strategic game", wxOK | wxICON_ERROR, dialogOwner);
         return false;
     }
 
@@ -4147,9 +4148,11 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
         loadStart = fs::current_path() / "temp";
 
     wxWindow* dialogOwner = owner ? owner : static_cast<wxWindow*>(this);
-    wxFileDialog dlg(
-        dialogOwner,
-        "Load game",
+    fs::path loadPath;
+    {
+        wxFileDialog dlg(
+            dialogOwner,
+            "Load game",
         wxString::FromUTF8(loadStart.string()),
         "",
         "All saves (*.scsave;*.json;*.sav)|*.scsave;*.json;*.sav|Tactical save (*.scsave)|*.scsave|Remake strategic state (*.json)|*.json|Original BIG_MAP.SAV (*.sav)|*.sav",
@@ -4159,11 +4162,13 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
     if (dlg.ShowModal() != wxID_OK)
         return false;
 
-    const fs::path loadPath(dlg.GetPath().ToStdWstring());
+        loadPath = fs::path(dlg.GetPath().ToStdWstring());
+    } // Destroy the native picker before changing fullscreen windows.
+
     const std::string extLower = to_lower(loadPath.extension().string());
 
     if (extLower == ".json" || extLower == ".sav")
-        return OpenStrategicSaveFromPath(this, loadPath);
+        return OpenStrategicSaveFromPath(this, loadPath, dialogOwner);
 
     if (!LoadTacticalGameWithCampaignContext(loadPath.wstring()))
     {
@@ -4885,16 +4890,39 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
             return;
         }
 
-        // Continue keeps the painted menu alive until its destination is ready.
-        // Other actions retain their established close-before-action behavior.
-        if(action != FormMainMenuAction::Continue && form_mmenu)
+        // Continue and Load keep the painted menu alive until a successful
+        // destination is ready. Native modal pickers must have a visible owner.
+        if (!form_mmenu || m_applicationExitInProgress)
+            return;
+        const bool keepMenu = action == FormMainMenuAction::Continue ||
+                              action == FormMainMenuAction::LoadGame ||
+                              action == FormMainMenuAction::Tutorial;
+        const auto finishMenuTransition = [this]() {
+            wxFrame* destination = IsShown() ? static_cast<wxFrame*>(this)
+                : static_cast<wxFrame*>(m_strategicLevel);
+            if (!destination || destination->IsBeingDeleted() || !destination->IsShown())
+                return;
+            ContinuePresentationCover cover(form_mmenu ? form_mmenu->GetWindow() : nullptr);
+            spellcross_window::Apply(destination);
+            destination->Layout();
+            PaintContinueDestination(destination);
+#ifdef _WIN32
+            ::RedrawWindow(reinterpret_cast<HWND>(destination->GetHandle()),
+                nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+#endif
+            delete form_mmenu;
+            form_mmenu = nullptr;
+            m_mainMenuReturnToTactical = false;
+            destination->Raise();
+        };
+        if(!keepMenu && form_mmenu)
         {
             delete form_mmenu;
             form_mmenu = NULL;
         }
 
         if (action != FormMainMenuAction::Tutorial &&
-            action != FormMainMenuAction::Continue)
+            action != FormMainMenuAction::Continue && action != FormMainMenuAction::LoadGame)
             m_tutorial_stage = 0;
         switch(action)
         {
@@ -4919,11 +4947,15 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 lessons.Add("FIRST CONTACT (TUT02)");
                 lessons.Add("MISSION 1 (TUT03)");
                 lessons.Add("MISSION 2 (TUT04)");
-                wxSingleChoiceDialog choose(this, "Select a tutorial mission",
-                                            "Original Spellcross Tutorial", lessons);
-                if (choose.ShowModal() != wxID_OK ||
-                    !StartTutorialStage(choose.GetSelection() + 1))
-                    ShowMainMenuWindow();
+                int stage = 0;
+                {
+                    wxSingleChoiceDialog choose(form_mmenu->GetWindow(), "Select a tutorial mission",
+                                                "Original Spellcross Tutorial", lessons);
+                    if (choose.ShowModal() == wxID_OK)
+                        stage = choose.GetSelection() + 1;
+                }
+                if (stage && StartTutorialStage(stage))
+                    finishMenuTransition();
                 break;
             }
             case FormMainMenuAction::NewGame:
@@ -5025,26 +5057,7 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                         wxOK | wxICON_INFORMATION, form_mmenu->GetWindow());
                     break;
                 }
-                // Outside the originating show/click callback: settle fullscreen
-                // geometry and paint the destination before removing the menu.
-                wxFrame* destination = IsShown() ? static_cast<wxFrame*>(this)
-                    : static_cast<wxFrame*>(m_strategicLevel);
-                if (destination)
-                {
-                    spellcross_window::Apply(destination);
-                    destination->Layout();
-                    PaintContinueDestination(destination);
-#ifdef _WIN32
-                    // Flush pending Win32 child paints before exposing the
-                    // destination; wxFrame::Update alone does not do this.
-                    ::RedrawWindow(reinterpret_cast<HWND>(destination->GetHandle()),
-                        nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
-#endif
-                }
-                delete form_mmenu;
-                form_mmenu = nullptr;
-                if (destination && !destination->IsBeingDeleted())
-                    destination->Raise();
+                finishMenuTransition();
                 break;
             }
             case FormMainMenuAction::LoadGame:
@@ -5052,8 +5065,13 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 // Use the exact same picker/dispatch path as Strategic -> File
                 // -> Load game, so tactical, remake strategic and original DOS
                 // saves behave identically from either screen.
-                if (!ShowUnifiedLoadGameDialog(this))
-                    ShowMainMenuWindow();
+                // The picker is modal to the actual visible menu, not the
+                // hidden tactical frame. Cancel leaves the same menu intact.
+                if (ShowUnifiedLoadGameDialog(form_mmenu->GetWindow()))
+                {
+                    m_tutorial_stage = 0;
+                    finishMenuTransition();
+                }
                 break;
             }
             case FormMainMenuAction::Credits:
@@ -5101,8 +5119,13 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 break;
         }
 
-        // Return focus to canvas so ESC and other keys work
-        if(canvas)
+        // Never activate a hidden tactical canvas after a cancelled picker.
+        if (form_mmenu && form_mmenu->GetWindow()->IsShown())
+        {
+            form_mmenu->GetWindow()->Raise();
+            form_mmenu->GetWindow()->SetFocus();
+        }
+        else if(canvas && IsShown())
             canvas->SetFocus();
     });
 }
