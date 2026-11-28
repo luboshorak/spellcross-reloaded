@@ -203,3 +203,13 @@ writers such as debug fonts. Both CPU and D3D11 consume the resulting tags.
 This is the first ground/foreground separation step, not yet independent
 unit/object colour surfaces or sprite-only reconstruction. Real-mission visual
 and performance acceptance is still required.
+
+### V7.1 foreground ownership and overlay coverage
+
+The viewport now retains a one-byte ownership classification for ground,
+static scenery, units, baked unit shadows, effects and selection/text overlays
+while enhanced ground is enabled. Font glyphs and solid font backgrounds
+also invalidate ground tags at the actual write. Hidden unit sprites no longer
+cast the experimental contact shade. The CPU/GPU output still uses the shared
+ground tags; the new ownership classification is groundwork for layer-specific
+reconstruction and lighting, not a new independent colour compositor yet.

@@ -306,16 +306,20 @@ namespace spellcross_enhanced
             return row&&x>=0&&x<width?(*row)[x]:0;
         }
     };
+    // Ownership describes the topmost indexed write, independently of colour.
+    enum class PixelLayer : std::uint8_t { Empty, Ground, Scenery, Unit, Effect, Overlay, Shadow };
     class GroundSurface
     {
         int width=0, height=0, left=0, top=0;
         std::vector<Tag> tags,matched;
         std::vector<std::uint8_t> valid;
+        std::vector<PixelLayer> layers;
     public:
         void Reset(int w,int h,int x,int y)
         {
             width=w; height=h; left=x; top=y;
             tags.assign(static_cast<std::size_t>(w)*h,0);
+            layers.assign(tags.size(),PixelLayer::Empty);
         }
         Tag At(int x,int y) const
         {
@@ -323,16 +327,27 @@ namespace spellcross_enhanced
             if(x<0||y<0||x>=width||y>=height) return 0;
             return tags[static_cast<std::size_t>(y)*width+x];
         }
+        PixelLayer LayerAt(int x,int y) const
+        {
+            x-=left; y-=top;
+            if(x<0||y<0||x>=width||y>=height) return PixelLayer::Empty;
+            return layers[static_cast<std::size_t>(y)*width+x];
+        }
         void Write(int x,int y,Tag tag)
         {
             x-=left; y-=top;
             if(x>=0&&y>=0&&x<width&&y<height)
-                tags[static_cast<std::size_t>(y)*width+x]=tag;
+            {
+                const auto i=static_cast<std::size_t>(y)*width+x;
+                tags[i]=tag;
+                layers[i]=tag?PixelLayer::Ground:PixelLayer::Empty;
+            }
         }
         // Invalidate actual opaque writes even when their palette index
         // happens to equal the ground underneath. Null source means solid.
         void OccludeSpan(std::size_t offset,int stride,int count,
-                         const std::uint8_t* source=nullptr,int repeat=1)
+                         const std::uint8_t* source=nullptr,int repeat=1,
+                         PixelLayer layer=PixelLayer::Effect,int shadowIndex=-1)
         {
             if(stride<=0||count<=0||repeat<=0||width<=0||height<=0) return;
             // Divide once per span, not once per covered pixel. Most sprite
@@ -346,7 +361,12 @@ namespace spellcross_enhanced
                 for(int z=0;z<repeat;++z)
                 {
                     if(y>=bottom) return;
-                    if(opaque) Write(x,static_cast<int>(y),0);
+                    if(opaque&&static_cast<int>(y)>=top&&x>=left&&x-left<width)
+                    {
+                        const auto dst=static_cast<std::size_t>(static_cast<int>(y)-top)*width+x-left;
+                        tags[dst]=0;
+                        layers[dst]=source&&source[i]==shadowIndex?PixelLayer::Shadow:layer;
+                    }
                     if(++x==stride) { x=0; ++y; }
                 }
             }
@@ -405,6 +425,7 @@ namespace spellcross_enhanced
                             tag=MakeTag(index,relief+detail+ContactRows::At(shadowRow,lx),material);
                         }
                         dest[sx-left]=tag;
+                        layers[static_cast<std::size_t>(sy-top)*width+sx-left]=PixelLayer::Ground;
                     }
                 }
                 cursor+=static_cast<std::size_t>(count);
@@ -469,14 +490,16 @@ namespace spellcross_enhanced
         GroundSurface* surface=nullptr;
         const std::uint8_t* buffer=nullptr;
         int stride=0;
+        PixelLayer layer=PixelLayer::Effect;
         void Span(const std::uint8_t* destination,int count,
-                  const std::uint8_t* source=nullptr,int repeat=1) const
+                  const std::uint8_t* source=nullptr,int repeat=1,
+                  PixelLayer kind=PixelLayer::Empty,int shadowIndex=-1) const
         {
             const auto start=reinterpret_cast<std::uintptr_t>(buffer);
             const auto write=reinterpret_cast<std::uintptr_t>(destination);
             if(write<start) return;
             surface->OccludeSpan(static_cast<std::size_t>(write-start),
-                stride,count,source,repeat);
+                stride,count,source,repeat,kind==PixelLayer::Empty?layer:kind,shadowIndex);
         }
     };
     inline thread_local GroundOcclusion activeGroundOcclusion;
@@ -492,6 +515,18 @@ namespace spellcross_enhanced
         ~GroundOcclusionScope() { activeGroundOcclusion=previous; }
         GroundOcclusionScope(const GroundOcclusionScope&)=delete;
         GroundOcclusionScope& operator=(const GroundOcclusionScope&)=delete;
+    };
+    class ForegroundLayerScope
+    {
+        PixelLayer previous;
+    public:
+        explicit ForegroundLayerScope(PixelLayer kind):previous(activeGroundOcclusion.layer)
+        {
+            activeGroundOcclusion.layer=kind;
+        }
+        ~ForegroundLayerScope() { activeGroundOcclusion.layer=previous; }
+        ForegroundLayerScope(const ForegroundLayerScope&)=delete;
+        ForegroundLayerScope& operator=(const ForegroundLayerScope&)=delete;
     };
     inline const GroundOcclusion* ObserveGround(const std::uint8_t* buffer,int stride)
     {

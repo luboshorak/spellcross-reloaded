@@ -807,7 +807,8 @@ void FSU_sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x_pos, int bu
 				break;
 			// The filtered path writes one pixel per source pixel; the
 			// unfiltered path repeats horizontally by zoom. Shadows are writes too.
-			if (coverage) coverage->Span(scan, count, data, filter ? 1 : zoom);
+			if (coverage) coverage->Span(scan, count, data, filter ? 1 : zoom,
+                spellcross_enhanced::PixelLayer::Unit, shadow_filter ? 0xFD : -1);
 			// render line
 			if(filter)
 			{

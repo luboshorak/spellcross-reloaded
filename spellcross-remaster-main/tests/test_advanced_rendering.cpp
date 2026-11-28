@@ -106,6 +106,20 @@ int main()
         assert(!ObserveGround(other.data(),5));
         observer->Span(frame.data()+11,3,cover);
         assert(field.At(1,2) && !field.At(2,2) && field.At(3,2));
+        assert(field.LayerAt(1,2)==PixelLayer::Ground);
+        assert(field.LayerAt(2,2)==PixelLayer::Effect);
+        {
+            ForegroundLayerScope scenery(PixelLayer::Scenery);
+            observer->Span(frame.data()+12,1);
+            assert(field.LayerAt(2,2)==PixelLayer::Scenery);
+            const std::uint8_t unit[]={120,0xFD,0};
+            observer->Span(frame.data()+2,3,unit,1,PixelLayer::Unit,0xFD);
+            assert(field.LayerAt(2,0)==PixelLayer::Unit);
+            assert(field.LayerAt(3,0)==PixelLayer::Shadow);
+            assert(field.LayerAt(4,0)==PixelLayer::Ground);
+        }
+        observer->Span(frame.data()+12,1);
+        assert(field.LayerAt(2,2)==PixelLayer::Effect);
         assert(!field.Match(frame.data(),frame.size(),5,2,2));
         field.Validate(frame.data(),frame.size(),5);
         assert(!field.MatchedRow(2)[2]);

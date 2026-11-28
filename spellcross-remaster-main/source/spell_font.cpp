@@ -7,6 +7,7 @@
 //=============================================================================
 
 #include "spell_font.h"
+#include "advanced_rendering.h"
 #include "other.h"
 #include <vector>
 #include <fstream>
@@ -307,10 +308,13 @@ int SpellFont::RenderSymbol(uint8_t* buffer,uint8_t* buf_end,int buf_x_size,int 
 	if(&buffer[(y_pos + m_max_y)*buf_x_size + x_pos + sym_w] >= buf_end)
 		return(0);
 
+    const auto* coverage=spellcross_enhanced::ObserveGround(buffer,buf_x_size);
 	// redner symbol
 	for(int y = 0; y < sym_h; y++)
 	{
 		uint8_t *pix = &buffer[(y_pos + y)*buf_x_size + x_pos];
+        if(coverage) coverage->Span(pix,sym_w,bg_color>=0?nullptr:sym.pixels[y].data(),1,
+            spellcross_enhanced::PixelLayer::Overlay);
 		for(int x = 0; x < sym_w; x++)
 		{
 			if(sym.pixels[y][x])
@@ -434,6 +438,9 @@ int SpellFont::Render(uint8_t* buffer,uint8_t* buf_end,int buf_x_size,int x_pos,
 				uint8_t* pix = &buffer[(std::max)(x_pos,0) + y*buf_x_size];
 				if(y < 0 || pix >= buf_end)
 					continue;
+                if(const auto* coverage=spellcross_enhanced::ObserveGround(buffer,buf_x_size))
+                    coverage->Span(pix,(std::min)(x_pos+x_size_txt,buf_x_size)-(std::max)(x_pos,0),
+                        nullptr,1,spellcross_enhanced::PixelLayer::Overlay);
 				for(int x = (std::max)(x_pos,0); x < (std::min)(x_pos + x_size_txt,buf_x_size); x++)
 					*pix++ = m_filter[*pix];
 			}

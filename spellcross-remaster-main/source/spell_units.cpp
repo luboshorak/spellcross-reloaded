@@ -1624,7 +1624,8 @@ int MapUnit::Render(Terrain* data,uint8_t* buffer,uint8_t* buf_end,int buf_x_pos
 	// The entire status-bar background is a palette write, including
 	// pixels whose shadow filter happens to leave the index unchanged.
 	if (const auto* coverage = spellcross_enhanced::ObserveGround(buffer, buf_x_size))
-		for(int y = 0; y < bar_h; ++y) coverage->Span(psb + y * buf_x_size, bar_w);
+		for(int y = 0; y < bar_h; ++y) coverage->Span(psb + y * buf_x_size, bar_w, nullptr, 1,
+            spellcross_enhanced::PixelLayer::Overlay);
 	// render shadow background
 	for(int y = 0; y < bar_h; y++)
 	{

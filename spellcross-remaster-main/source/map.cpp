@@ -6022,7 +6022,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     {
                         if ((deployment_mode && visible->is_enemy) ||
                             (use_view_mask && visible->is_visible < 2) ||
-                            visible->isMoving() || !visible->unit)
+                            visible->hide || visible->isMoving() || !visible->unit)
                             continue;
                         if (visible->unit->isAir()) light.air = true;
                         else light.company = true;
@@ -6162,7 +6162,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 				// render sprite
 				int mxx = (pos->x - xs_ofs) * 80 + ((((pos->y - ys_ofs * 2) & 1) != 0) ? 0 : 40);
 				int myy = (pos->y - ys_ofs * 2) * 24 - y_elev * 18 + MSYOFS + 50;
-				spec_sprite[sid]->Render(pic, pic_end, mxx, myy, pic_x_size, fil);
+				const spellcross_enhanced::ForegroundLayerScope overlay(spellcross_enhanced::PixelLayer::Overlay);
+			spec_sprite[sid]->Render(pic, pic_end, mxx, myy, pic_x_size, fil);
 
 			}
 		}
@@ -6202,6 +6203,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			// render sprite
 			int mxx = n * 80 + (((m & 1) != 0) ? 0 : 40);
 			int myy = m * 24 - sof * 18 + MSYOFS + 50;
+			const spellcross_enhanced::ForegroundLayerScope overlay(spellcross_enhanced::PixelLayer::Overlay);
 			spr->Render(pic, pic_end, mxx, myy, pic_x_size, fil);
 		}
 	}
@@ -6240,6 +6242,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			// draw selection sprite
 			int mxx = n * 80 + (((m & 1) != 0) ? 0 : 40);
 			int myy = m * 24 - sof * 18 + MSYOFS + 50;
+			const spellcross_enhanced::ForegroundLayerScope overlay(spellcross_enhanced::PixelLayer::Overlay);
 			sid->Render(pic, pic_end, mxx, myy, pic_x_size, fil);
 		}
 	}
@@ -6398,7 +6401,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 						{
 							Sprite* frame = pnm_sipka.anim ? pnm_frame_rules::get(pnm_sipka.anim->frames, pnm_sipka.frame_ofs) : nullptr;
 							if (frame)
+                            {
+                                const spellcross_enhanced::ForegroundLayerScope overlay(spellcross_enhanced::PixelLayer::Overlay);
 								frame->Render(pic, pic_end, mxx, myy + top_y_ofs - pnm_sipka.anim->y_max - 8, pic_x_size, filter);
+                            }
 						}
 					}
 					else
@@ -6413,6 +6419,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 					auto filt = filter;
 					if (!use_view_mask && cursor == pos && wHighlight_obj)
 						filt = terrain->filter.goldpal;
+					const spellcross_enhanced::ForegroundLayerScope scenery(spellcross_enhanced::PixelLayer::Scenery);
 					sid2->Render(pic, pic_end, mxx, myy + sid->y_ofs, pic_x_size, filt);
 				}
 
