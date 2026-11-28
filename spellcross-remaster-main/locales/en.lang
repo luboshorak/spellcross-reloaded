@@ -308,6 +308,7 @@ screen.advanced_rendering=Advanced rendering (colour and lighting)
 screen.procedural_materials=Procedural terrain materials (experimental)
 screen.procedural_upscaling=Procedural sprite upscaling (experimental)
 screen.ai_hummer=AI graphics: Hummer (experimental)
+screen.ai_commando=AI graphics: Commando (experimental)
 
 # About window and optional updates
 about.title=About Spellcross Reloaded

@@ -2825,6 +2825,7 @@ bool MyApp::OnInit()
         settings.procedural_materials = ini.GetBoolValue("STATE", "procedural_materials", false);
         settings.procedural_upscaling = ini.GetBoolValue("STATE", "procedural_upscaling", false);
         settings.ai_hummer = ini.GetBoolValue("STATE", "ai_hummer", false);
+        settings.ai_commando = ini.GetBoolValue("STATE", "ai_commando", false);
         spellcross_display::Set(settings);
     }
 
@@ -3033,6 +3034,7 @@ int MyApp::OnExit()
     ini.SetBoolValue("STATE", "procedural_materials", screen.procedural_materials);
     ini.SetBoolValue("STATE", "procedural_upscaling", screen.procedural_upscaling);
     ini.SetBoolValue("STATE", "ai_hummer", screen.ai_hummer);
+    ini.SetBoolValue("STATE", "ai_commando", screen.ai_commando);
 
     // save INI
     if (!config_path.empty())

@@ -1,5 +1,5 @@
 #pragma once
-// Hummer-only neural sprite cache. No model or retail game assets are bundled.
+// Experimental neural unit sprite cache. No model or retail game assets are bundled.
 // All source/cached data are local to the player's installation.
 #include <algorithm>
 #include <array>
@@ -22,6 +22,12 @@ namespace spellcross_ai
     namespace fs=std::filesystem;
     constexpr int scale=4;
     constexpr int maxSide=256;
+    // IDs from the original unit table: Commando (COMND), Hummer (HUMER).
+    constexpr int commandoType=3, hummerType=29;
+    constexpr bool PilotEnabled(int type,bool hummer,bool commando)
+    {
+        return (hummer && type==hummerType) || (commando && type==commandoType);
+    }
     using RGB=std::array<std::uint8_t,3>;
     inline std::uint64_t Hash(const std::uint8_t* p,std::size_t n,
                               std::uint64_t h=14695981039346656037ull)
@@ -186,6 +192,7 @@ namespace spellcross_ai
         std::vector<std::unique_ptr<Block>> blocks;
         bool hasMarks=false;
         const std::uint8_t* target=nullptr;
+        bool hummerEnabled=false, commandoEnabled=false;
         Mark* At(int x,int y,bool create)
         {
             if(x<0||y<0||x>=w||y>=h) return nullptr;
@@ -205,6 +212,11 @@ namespace spellcross_ai
         }
         const std::uint8_t* Palette() const { return palette; }
         bool Matches(const std::uint8_t* buffer) const { return target==buffer; }
+        void EnableUnits(bool hummer,bool commando)
+        {
+            hummerEnabled=hummer; commandoEnabled=commando;
+        }
+        bool EnabledFor(int type) const { return PilotEnabled(type,hummerEnabled,commandoEnabled); }
         void Write(int x,int y,Mark mark)
         {
             x-=left; y-=top;

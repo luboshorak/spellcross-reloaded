@@ -308,6 +308,7 @@ screen.advanced_rendering=Pokročilý rendering (barvy a osvětlení)
 screen.procedural_materials=Procedurální materiály terénu (experimentální)
 screen.procedural_upscaling=Procedurální upscaling spritů (experimentální)
 screen.ai_hummer=AI grafika: Hummer (experimentální)
+screen.ai_commando=AI grafika: Komando (experimentální)
 
 # About window and optional updates
 about.title=O programu Spellcross Reloaded

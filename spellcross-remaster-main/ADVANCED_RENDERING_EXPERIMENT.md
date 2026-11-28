@@ -121,3 +121,16 @@ the external tool only. The game loads generated RGB data with no inference
 dependency. Use --force to regenerate with an alternative supported model.
 Cache files are local data; do not commit them. No full game or actual neural
 inference is verified by the standalone C++ test.
+
+## Infantry pilot: Commando (COMND, type 3)
+
+The Commando has its own independent AI graphics switch. Hummer (type 29)
+continues to use its original option. Both use the same content-addressed
+cache and the existing batched Real-ESRGAN tool. Existing valid Hummer files
+are reused; no cache migration or reprocessing is needed. Render a visible
+Commando with its option enabled to export its FSU resource frames, then
+run the same Python command and restart the game with the same cache path.
+The neural mask and authored man positions retain individual infantry
+silhouettes and group formation placement. No claim is made about temporal
+coherence or new authentic equipment details. Tests cover independent
+settings and unit gating; visual evaluation still requires original game data.

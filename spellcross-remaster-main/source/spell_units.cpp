@@ -658,13 +658,13 @@ tuple<int,int> SpellUnitRec::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x
 {
     auto* hdFrame = spellcross_ai::Active();
     if(hdFrame && !hdFrame->Matches(buffer)) hdFrame=nullptr;
-    const bool hdHummer = hdFrame && type_id == 29 && !filter;
-    if(hdHummer)
+    const bool hdUnit = hdFrame && hdFrame->EnabledFor(type_id) && !filter;
+    if(hdUnit)
     {
         auto& cache=spellcross_ai::SharedCache();
         const auto* palette=hdFrame->Palette();
         // Export every original frame, slope, direction and animation resource
-        // of this one unit, rather than only the current on-screen pose.
+        // of this pilot unit, rather than only the current on-screen pose.
         FSU_resource* resources[]={gr_base,gr_aux,gr_attack_light,gr_attack_armor,
             gr_attack_air,gr_action,gr_die,fsu_anim};
         for(auto* resource:resources)
@@ -904,7 +904,7 @@ tuple<int,int> SpellUnitRec::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x
                 const int top=y_pos+spr->y_ofs-128;
                 // Later original sprite pixels erase previous HD ownership.
                 hdFrame->ClearRows(spr->data,spr->data_size,spr->y_size,x_pos,top);
-                if(hdHummer)
+                if(hdUnit)
                 {
                     auto* entry=spellcross_ai::SharedCache().Get(
                         spellcross_ai::Decode(spr->data,spr->data_size,spr->y_size,

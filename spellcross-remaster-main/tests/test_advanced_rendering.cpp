@@ -168,6 +168,13 @@ int main()
     assert(entry.Pixel(0,0,0,0)==nullptr&&entry.Pixel(1,0,255,255)[0]==88);
     spellcross_ai::Frame hd;
     hd.Reset(8,4,0,0,colors.data());
+    for(unsigned flags=0;flags<4;++flags)
+    {
+        hd.EnableUnits((flags&1)!=0,(flags&2)!=0);
+        assert(hd.EnabledFor(29)==((flags&1)!=0));
+        assert(hd.EnabledFor(3)==((flags&2)!=0));
+        assert(!hd.EnabledFor(0)&&!hd.EnabledFor(30)&&!hd.EnabledFor(4));
+    }
     hd.Record(&entry,1,1);
     assert(hd.Pixel(2,1,0,0)!=nullptr);
     hd.EraseRect(2,1,1,1);

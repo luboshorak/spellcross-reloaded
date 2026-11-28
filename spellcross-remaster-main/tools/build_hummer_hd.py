@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a local Hummer HD cache with the official Real-ESRGAN Vulkan CLI.
+"""Build a local Hummer/Commando HD cache with the official Real-ESRGAN Vulkan CLI.
 Requires Pillow and a separately installed Real-ESRGAN executable and models.
 Never modifies source assets; no interpolation-only fallback is written.
 """
@@ -145,7 +145,7 @@ def main():
         parser.error("Real-ESRGAN executable or selected model files not found.")
     sources=sorted(args.cache.glob("*.scsrc"))
     if not sources:
-        parser.error("No Hummer sources. Enable AI graphics and enter a mission with a visible Hummer first.")
+        parser.error("No pilot unit sources. Enable AI graphics and enter a mission with a visible Hummer or Commando first.")
     pending, cached, transparent = [], 0, 0
     for source in sources:
         w, h, palette, indices = read_source(source)

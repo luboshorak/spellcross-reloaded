@@ -5915,12 +5915,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const bool enhancedGround = rgbLighting || materialDetail;
     const bool spriteUpscale = normalTactical && renderSettings.procedural_upscaling &&
         zoom_percent * display_scale_percent > 10000;
-    const bool aiHummer = normalTactical && renderSettings.ai_hummer;
+    const bool aiUnits = normalTactical && (renderSettings.ai_hummer || renderSettings.ai_commando);
     spellcross_ai::Frame hdFrame;
-    if(aiHummer)
+    if(aiUnits)
+    {
         hdFrame.Reset(surf_x,surf_y,surf_x_origin,surf_y_origin,
             reinterpret_cast<const uint8_t*>(terrain->pal),pic);
-    spellcross_ai::Scope hdScope(aiHummer?&hdFrame:nullptr);
+        hdFrame.EnableUnits(renderSettings.ai_hummer,renderSettings.ai_commando);
+    }
+    spellcross_ai::Scope hdScope(aiUnits?&hdFrame:nullptr);
     spellcross_enhanced::GroundSurface groundLight;
     // The projected world origin, not the scratch-buffer origin, anchors HD detail.
     const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
@@ -6805,7 +6808,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 
     hdScope.End();
-    if(aiHummer)
+    if(aiUnits)
         hdFrame.Finalize(pic,static_cast<size_t>(pic_end-pic),pic_x_size);
 
 	// Sample the battlefield into screen pixels first. The HUD is then drawn
@@ -6979,7 +6982,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         return PreserveLighting(rebuilt,color,original);
     };
 
-    const bool hdReady=aiHummer && hdFrame.HasMarks();
+    const bool hdReady=aiUnits && hdFrame.HasMarks();
     std::vector<Subpixel> hdX,hdY;
     if(hdReady)
     {
