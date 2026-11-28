@@ -134,14 +134,28 @@ namespace
         ContinuePresentationCover& operator=(const ContinuePresentationCover&) = delete;
     };
 
-    // Paint the final-size child surfaces, not just the top-level frame.
-    static void PaintContinueDestination(wxWindow* window)
+    // Prepare the actual destination once, at its first show, while the
+    // old menu still covers it. Do not recursively repaint unrelated native
+    // children or re-apply window mode after the transition has completed.
+    static void ShowGameDestination(wxFrame* destination,wxFrame* menu)
     {
-        if (!window || !window->IsShownOnScreen()) return;
-        window->Refresh(false);
-        window->Update();
-        for (auto* child : window->GetChildren())
-            PaintContinueDestination(child);
+        ContinuePresentationCover cover(menu);
+        destination->Show();
+        if (menu)
+        {
+            spellcross_window::Apply(destination);
+            destination->Layout();
+            destination->Refresh(false);
+            destination->Update();
+#ifdef _WIN32
+            ::RedrawWindow(reinterpret_cast<HWND>(destination->GetHandle()),
+                nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
+#endif
+        }
+        destination->Raise();
+        spellcross_diag::Log(spellcross_diag::Level::Info,"WINDOW",
+            "Game destination shown fullscreen=%d menu_cover=%d",
+            int(destination->IsFullScreen()),int(menu!=nullptr));
     }
 
     struct TacticalCampaignContext
@@ -1854,7 +1868,7 @@ static std::filesystem::path ResolveStrategicLevelDefForSave(
     return {};
 }
 
-static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::path& savePath, wxWindow* dialogOwner = nullptr)
+static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::path& savePath, wxWindow* dialogOwner = nullptr,wxFrame* menu = nullptr)
 {
     if (!main)
         return false;
@@ -1955,8 +1969,7 @@ static bool OpenStrategicSaveFromPath(MainFrame* main, const std::filesystem::pa
         old->Destroy();
 
     main->HideTacticalWindow();
-    win->Show();
-    win->Raise();
+    ShowGameDestination(win,menu);
 
     if (originalBigMap && !importWarning.empty())
     {
@@ -4139,7 +4152,8 @@ bool MainFrame::ShowUnifiedSaveGameDialog(wxWindow* owner)
 
 bool MainFrame::OpenStrategicSaveGame(const std::filesystem::path& path)
 {
-    return OpenStrategicSaveFromPath(this, path);
+    auto* menu=form_mmenu?form_mmenu->GetWindow():nullptr;
+    return OpenStrategicSaveFromPath(this,path,menu,menu);
 }
 
 bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
@@ -4172,7 +4186,8 @@ bool MainFrame::ShowUnifiedLoadGameDialog(wxWindow* owner)
     const std::string extLower = to_lower(loadPath.extension().string());
 
     if (extLower == ".json" || extLower == ".sav")
-        return OpenStrategicSaveFromPath(this, loadPath, dialogOwner);
+        return OpenStrategicSaveFromPath(this,loadPath,dialogOwner,
+            form_mmenu && dialogOwner==form_mmenu->GetWindow()?form_mmenu->GetWindow():nullptr);
 
     if (!LoadTacticalGameWithCampaignContext(loadPath.wstring()))
     {
@@ -4279,8 +4294,7 @@ void MainFrame::CenterDeploymentOnStartSquares()
 
 void MainFrame::ShowTacticalWindow()
 {
-    Show(true);
-    Raise();
+    ShowGameDestination(this,form_mmenu?form_mmenu->GetWindow():nullptr);
     if (auto* menu = spellcross_menu::Model(this))
         menu->Check(ID_OptionsAutoDeploy, spellcross_autodeploy::Enabled());
     if (m_deployment_camera_pending || m_autoDeploymentCameraPending)
@@ -4906,14 +4920,7 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 : static_cast<wxFrame*>(m_strategicLevel);
             if (!destination || destination->IsBeingDeleted() || !destination->IsShown())
                 return;
-            ContinuePresentationCover cover(form_mmenu ? form_mmenu->GetWindow() : nullptr);
-            spellcross_window::Apply(destination);
-            destination->Layout();
-            PaintContinueDestination(destination);
-#ifdef _WIN32
-            ::RedrawWindow(reinterpret_cast<HWND>(destination->GetHandle()),
-                nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
-#endif
+            // The destination was already prepared during its first show.
             delete form_mmenu;
             form_mmenu = nullptr;
             m_mainMenuReturnToTactical = false;
@@ -5041,7 +5048,6 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 // the current turn/unit/event state.
                 if (!form_mmenu)
                     break; // an already queued second click must not reload the game
-                ContinuePresentationCover cover(form_mmenu->GetWindow());
                 const bool resumeInMemory = m_mainMenuReturnToTactical &&
                     spell_map && spell_map->IsLoaded() && spell_map->isGameMode();
                 bool loaded = false;
