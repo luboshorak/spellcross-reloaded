@@ -31,3 +31,19 @@ screenshots in daylight, night, urban, desert, forest and snowy maps.
 
 The standalone advanced-rendering test checks bounded decoding, transparency,
 reserved palette indices, deterministic output, relief and contact falloff.
+
+## Version 2: true-colour terrain details
+
+The first indexed experiment was too subtle. The ground pass now retains the
+retail indexed pixels and records viewport-local lighting metadata. Final RGB
+conversion uses 64 light levels, independent of the original palette; coherent
+24/7-pixel material patches and individual grains, richer material saturation,
+stronger elevation relief, warm highlights/cool shadows and stronger contact
+shade. Roads/water/bridges use restrained texture. Visible deployment ground
+is also supported; hidden enemy companies do not cast shadows there.
+Range modes and dialog dimming bypass the RGB enhancement entirely. HUD pixels
+are excluded using the native HUD boundary. Later compositing is detected by
+indexed colour comparison with a one-pixel guard; identical-colour overlap
+cannot be identified perfectly without changing every sprite writer. This can
+tint an occasional matching sprite pixel. Original sprite resolution remains.
+No asset replacement or full-map buffer is required.

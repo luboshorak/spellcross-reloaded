@@ -48,6 +48,40 @@ int main()
     buffer.fill(254);
     DrawGround(sprite,1,0,buffer.data(),buffer.size(),4,0,-1,palette,light);
     for(auto b:buffer) assert(b==254);
+    // RGB lighting creates new colours instead of rounding back to a
+    // 256-entry palette; strong shadows and material variation remain visible.
+    const std::uint8_t sand[3]={170,125,75};
+    const auto neutral=ShadeRGB(sand,0,false);
+    const auto shadow=ShadeRGB(sand,-20,false);
+    const auto sun=ShadeRGB(sand,15,false);
+    assert(shadow[0]<neutral[0] && sun[0]>neutral[0]);
+    assert(neutral[0]-neutral[2]>sand[0]-sand[2]);
+    assert(MakeTag(245,10)==0 && MakeTag(0,0)==0);
+    for(int shade=-32;shade<=31;++shade)
+    {
+        const auto tag=MakeTag(120,shade);
+        assert(TagIndex(tag)==120 && TagShade(tag)==shade);
+    }
+    assert(SurfaceDetail(42,91,false)==SurfaceDetail(42,91,false));
+    bool varied=false;
+    for(int i=1;i<32;++i) varied|=SurfaceDetail(i,91,false)!=SurfaceDetail(0,91,false);
+    assert(varied);
+    GroundSurface field;
+    field.Reset(5,5,0,0);
+    std::array<std::uint8_t,25> frame{};
+    frame.fill(120);
+    for(int y=0;y<5;++y) for(int x=0;x<5;++x) field.Write(x,y,MakeTag(120,3));
+    assert(field.Match(frame.data(),frame.size(),5,2,2));
+    frame[2*5+3]=42; // later sprite/overlay replaces a ground pixel
+    assert(!field.Match(frame.data(),frame.size(),5,2,2));
+    frame[2*5+3]=120;
+    field.Write(3,2,0); // filtered tile overwrites metadata
+    assert(!field.Match(frame.data(),frame.size(),5,2,2));
+    field.Reset(4,4,0,0);
+    field.Mark(sprite,1,0,0,1,&light,false);
+    assert(field.At(0,1)==0 && field.At(1,1)!=0 && field.At(2,1)==0);
+    field.Mark(sprite,1,0,0,1,nullptr,false);
+    assert(field.At(1,1)==0);
     sprite.pop_back();
     DrawGround(sprite,1,0,buffer.data(),buffer.size(),4,0,0,palette,light);
     for(auto b:buffer) assert(b==254);

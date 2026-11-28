@@ -5906,11 +5906,14 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // hidden neighbour or company for visual lighting. Deployment, editor,
     // range filters and dialog dimming keep the original rendering.
     const bool enhancedGround = spellcross_display::Current().advanced_rendering &&
-        !editorPreview && !deployment_mode && wL1 && (use_view_mask || show_map_cheat);
-    static spellcross_enhanced::Palette enhancedPalette;
+        !editorPreview && wL1 && !render_filter && !default_filter &&
+        !viewingUnitMoveRange() && !viewingUnitAttackRange() &&
+        (use_view_mask || show_map_cheat || deployment_mode);
+    spellcross_enhanced::GroundSurface groundLight;
     if (enhancedGround)
-        enhancedPalette.Prepare(reinterpret_cast<const uint8_t*>(terrain->pal));
+        groundLight.Reset(surf_x, surf_y, surf_x_origin, surf_y_origin);
     const auto litTile = [&](int index) {
+        if (deployment_mode) return !deployment_tile_hidden(index);
         return !use_view_mask || unit_view->view[index] >= 2;
     };
     const auto visibleElevation = [&](int x, int y, int fallback) {
@@ -5963,6 +5966,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 			// render sprite
 			int mxx = n * 80 + (((m & 1) != 0) ? 0 : 40);
 			int myy = m * 24 - sof * 18 + MSYOFS + 50;
+            // Always retain the exact original indexed ground for compositing.
+            sid->Render(pic, pic_end, mxx, myy, pic_x_size, fil);
             if (enhancedGround && !fil && litTile(mxy))
             {
                 const int tx = n + xs_ofs, ty = m + ys_ofs * 2;
@@ -5976,18 +5981,22 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 if (wUnits)
                     for (MapUnit* visible = Lunit[mxy]; visible; visible = visible->next)
                     {
-                        if ((use_view_mask && visible->is_visible < 2) ||
+                        if ((deployment_mode && visible->is_enemy) ||
+                            (use_view_mask && visible->is_visible < 2) ||
                             visible->isMoving() || !visible->unit)
                             continue;
                         if (visible->unit->isAir()) light.air = true;
                         else light.company = true;
                     }
-                spellcross_enhanced::DrawGround(sid->data, sid->y_size, sid->y_ofs,
-                    pic, static_cast<size_t>(pic_end - pic), pic_x_size,
-                    mxx, myy, enhancedPalette, light);
+                const bool smoothMaterial = (sid->GetFlags() &
+                    (Sprite::IS_WATER | Sprite::IS_ROAD | Sprite::IS_BRIDGE |
+                     Sprite::IS_WOOD_BRIDGE | Sprite::IS_FORD)) != 0;
+                groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
+                    mxx, myy, &light, smoothMaterial);
             }
-            else
-                sid->Render(pic, pic_end, mxx, myy, pic_x_size, fil);
+            else if (enhancedGround)
+                groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
+                    mxx, myy, nullptr, false);
 		}
 	}
 
@@ -6774,6 +6783,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		surf_modified = true;
 	const int hud_buffer_height = (std::max)(screen_height, 480);
 	screen_pixels.resize(static_cast<size_t>(screen_width) * hud_buffer_height);
+    std::vector<spellcross_enhanced::Tag> screenLight;
+    if (enhancedGround)
+        screenLight.resize(static_cast<size_t>(screen_width) * screen_height);
 	std::vector<int> columns(screen_width);
 	for (int x = 0; x < screen_width; ++x)
 		columns[x] = spellcross_tactical::MapPixel(x, zoom_percent);
@@ -6787,6 +6799,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 		else
 			for (int x = 0; x < screen_width; ++x)
 				target[x] = source[columns[x]];
+        if (enhancedGround)
+        {
+            const int sy = surf_y_origin + spellcross_tactical::MapPixel(y, zoom_percent);
+            const auto length = static_cast<size_t>(pic_end - pic);
+            for (int x = 0; x < screen_width; ++x)
+                screenLight[static_cast<size_t>(y)*screen_width+x] =
+                    groundLight.Match(pic, length, pic_x_size,
+                        surf_x_origin+columns[x], sy);
+        }
 	}
 	hud_surface_height = screen_height;
 	screen_surface_width = screen_width;
@@ -6823,6 +6844,32 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     spellcross_night::Palette night_palette;
     const auto* output_pal = spellcross_night::SelectPalette(pal, night_palette, is_night);
 
+    // Use the full 24-bit RGB output for terrain material variation. The
+    // original palette remains authoritative for all untagged pixels.
+    std::vector<spellcross_enhanced::RGB> enhancedRGB;
+    if (enhancedGround)
+    {
+        spellcross_enhanced::RGBTable rgbTable;
+        rgbTable.Prepare(output_pal, is_night);
+        enhancedRGB.resize(screenLight.size());
+        for (int y=0;y<screen_height;++y)
+            for(int x=0;x<screen_width;++x)
+            {
+                const auto i=static_cast<size_t>(y)*screen_width+x;
+                const auto tag=screenLight[i];
+                const auto index=screen_pixels[i];
+                // HUD is never enhanced, even if an indexed colour coincides.
+                const bool valid=tag && spellcross_enhanced::TagIndex(tag)==index &&
+                    y<GetHUDtop(x);
+                const auto* color=valid ? rgbTable.Color(tag) : output_pal[index];
+                std::copy_n(color,3,enhancedRGB[i].begin());
+            }
+    }
+    const auto rgbAt = [&](int x,int y) -> const uint8_t* {
+        const auto i=static_cast<size_t>(y)*screen_width+x;
+        return enhancedRGB.empty() ? output_pal[screen_pixels[i]] : enhancedRGB[i].data();
+    };
+
     wxNativePixelData data(bmp);
     if (!data)
         return 1;
@@ -6841,15 +6888,13 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         {
             uint8_t* scan = p.m_ptr;
             const auto vertical = spellcross_display::BilinearSample(y, 125, screen_height);
-            const uint8_t* row0 = screen_pixels.data() + static_cast<size_t>(vertical.first) * screen_width;
-            const uint8_t* row1 = screen_pixels.data() + static_cast<size_t>(vertical.second) * screen_width;
             for (int x = 0; x < physical_width; ++x)
             {
                 const auto& sample = horizontal[x];
-                const auto* p00 = output_pal[row0[sample.first]];
-                const auto* p10 = output_pal[row0[sample.second]];
-                const auto* p01 = output_pal[row1[sample.first]];
-                const auto* p11 = output_pal[row1[sample.second]];
+                const auto* p00 = rgbAt(sample.first,vertical.first);
+                const auto* p10 = rgbAt(sample.second,vertical.first);
+                const auto* p01 = rgbAt(sample.first,vertical.second);
+                const auto* p11 = rgbAt(sample.second,vertical.second);
                 for (int channel = 2; channel >= 0; --channel)
                     *scan++ = spellcross_display::BlendBilinear(
                         p00[channel], p10[channel], p01[channel], p11[channel],
@@ -6865,10 +6910,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         {
             uint8_t* scan = p.m_ptr;
             const int sourceY = (y * 100) / display_scale_percent;
-            const uint8_t* source = &screen_pixels[static_cast<size_t>(sourceY) * screen_width];
             for (int x = 0; x < physical_width; ++x)
             {
-                const auto* rgb = output_pal[source[(x * 100) / display_scale_percent]];
+                const auto* rgb = rgbAt((x * 100) / display_scale_percent,sourceY);
                 *scan++ = rgb[2];
                 *scan++ = rgb[1];
                 *scan++ = rgb[0];

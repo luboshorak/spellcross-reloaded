@@ -150,4 +150,163 @@ namespace spellcross_enhanced
             cursor += static_cast<std::size_t>(count);
         }
     }
+    // Version 2: retain the original indexed surface for compositing, but
+    // attach a separate light/material field to ground pixels. RGB conversion
+    // happens only after the original sprites, overlays and HUD have rendered.
+    using Tag = std::uint16_t;
+    using RGB = std::array<std::uint8_t, 3>;
+    constexpr int rgbMin = -32, rgbMax = 31;
+
+    inline int Noise(int x, int y, int cell)
+    {
+        // floor division also works for negative projected elevations
+        const int ix = x / cell - (x % cell < 0);
+        const int iy = y / cell - (y % cell < 0);
+        const int fx = x - ix * cell, fy = y - iy * cell;
+        const auto v = [](int a, int b) {
+            return static_cast<int>(Hash(static_cast<std::uint32_t>(a),
+                                         static_cast<std::uint32_t>(b)) & 31u) - 16;
+        };
+        const int a = v(ix,iy) * (cell-fx) + v(ix+1,iy) * fx;
+        const int b = v(ix,iy+1) * (cell-fx) + v(ix+1,iy+1) * fx;
+        return (a * (cell-fy) + b * fy) / (cell*cell);
+    }
+
+    inline int SurfaceDetail(int x, int y, bool smooth)
+    {
+        // Coherent patches plus small mineral/soil grains, not frame noise.
+        const int broad = Noise(x,y,24);
+        const int medium = Noise(x,y,7);
+        const int fine = static_cast<int>(Hash(static_cast<std::uint32_t>(x),
+                                              static_cast<std::uint32_t>(y)) & 15u) - 8;
+        if (smooth) return broad / 4 + medium / 8;
+        return broad / 2 + medium / 2 + fine / 2;
+    }
+
+    inline Tag MakeTag(std::uint8_t index, int shade)
+    {
+        if (Reserved(index)) return 0;
+        return static_cast<Tag>(((std::clamp(shade,rgbMin,rgbMax)-rgbMin+1)<<8) | index);
+    }
+    inline std::uint8_t TagIndex(Tag tag) { return static_cast<std::uint8_t>(tag & 255); }
+    inline int TagShade(Tag tag) { return static_cast<int>(tag >> 8) + rgbMin - 1; }
+
+    inline RGB ShadeRGB(const std::uint8_t* color, int shade, bool night)
+    {
+        const int luma = (77*color[0]+150*color[1]+29*color[2])/256;
+        const int gain = 100 + shade * (night ? 1 : 2);
+        RGB rgb{};
+        for (int c=0;c<3;++c)
+        {
+            // Richer material colour, a mild S-like contrast stretch and
+            // warm highlights/cool shadows. Keep the existing night mood.
+            const int sat = night ? 108 : 122;
+            const int chroma = luma + (static_cast<int>(color[c])-luma)*sat/100;
+            const int contrast = chroma + (luma-112)*(night ? 5 : 12)/100;
+            const int tint = night ? 0 : (c==0 ? shade/3 : c==2 ? -shade/3 : 0);
+            rgb[c] = static_cast<std::uint8_t>(std::clamp(contrast*gain/100+tint,0,255));
+        }
+        return rgb;
+    }
+
+    class RGBTable
+    {
+        std::array<std::array<RGB,256>, rgbMax-rgbMin+1> table{};
+    public:
+        void Prepare(const std::uint8_t (*palette)[3], bool night)
+        {
+            for(int shade=rgbMin;shade<=rgbMax;++shade)
+                for(int index=0;index<256;++index)
+                    table[shade-rgbMin][index]=ShadeRGB(palette[index],shade,night);
+        }
+        const std::uint8_t* Color(Tag tag) const
+        {
+            return table[TagShade(tag)-rgbMin][TagIndex(tag)].data();
+        }
+    };
+
+    // Viewport-local metadata. No extra allocation proportional to map size.
+    // Filtered tiles clear underlying metadata when they overwrite ground.
+    class GroundSurface
+    {
+        int width=0, height=0, left=0, top=0;
+        std::vector<Tag> tags;
+    public:
+        void Reset(int w,int h,int x,int y)
+        {
+            width=w; height=h; left=x; top=y;
+            tags.assign(static_cast<std::size_t>(w)*h,0);
+        }
+        Tag At(int x,int y) const
+        {
+            x-=left; y-=top;
+            if(x<0||y<0||x>=width||y>=height) return 0;
+            return tags[static_cast<std::size_t>(y)*width+x];
+        }
+        void Write(int x,int y,Tag tag)
+        {
+            x-=left; y-=top;
+            if(x>=0&&y>=0&&x<width&&y<height)
+                tags[static_cast<std::size_t>(y)*width+x]=tag;
+        }
+        void Mark(const std::vector<std::uint8_t>& sprite,int rows,int yOffset,
+                  int originX,int originY,const GroundLight* light,bool smooth)
+        {
+            std::size_t cursor=0;
+            for(int y=0;y<rows;++y)
+            {
+                if(sprite.size()-cursor<2*sizeof(int)) return;
+                int offset,count;
+                std::memcpy(&offset,sprite.data()+cursor,sizeof(int));
+                std::memcpy(&count,sprite.data()+cursor+sizeof(int),sizeof(int));
+                cursor+=2*sizeof(int);
+                if(count<0||static_cast<std::size_t>(count)>sprite.size()-cursor) return;
+                const int sy=originY+yOffset+y;
+                if(sy>=top&&sy-top<height)
+                {
+                    for(int x=0;x<count;++x)
+                    {
+                        const auto index=sprite[cursor+x];
+                        if(!index) continue;
+                        const int lx=offset+x,sx=originX+lx;
+                        if(sx<left||sx-left>=width) continue;
+                        Tag tag=0;
+                        if(light&&!Reserved(index))
+                        {
+                            int shade=light->relief*3+
+                                SurfaceDetail(light->worldX+lx,light->worldY+yOffset+y,smooth);
+                            const int cy=rows/2;
+                            int shadow=0;
+                            if(light->object)
+                                shadow=(std::min)(shadow,Contact(lx,y,47,cy+4,35,15,21));
+                            if(light->company)
+                                shadow=(std::min)(shadow,Contact(lx,y,46,cy+3,31,13,24));
+                            if(light->air)
+                                shadow=(std::min)(shadow,Contact(lx,y,54,cy+5,28,12,13));
+                            tag=MakeTag(index,shade+shadow);
+                        }
+                        Write(sx,sy,tag);
+                    }
+                }
+                cursor+=static_cast<std::size_t>(count);
+            }
+        }
+        // Reject composited pixels AND a one-pixel rim around changes. This
+        // is conservative: later art wins over the enhanced ground.
+        Tag Match(const std::uint8_t* frame,std::size_t length,int stride,int x,int y) const
+        {
+            constexpr int dx[]={0,-1,1,0,0},dy[]={0,0,0,-1,1};
+            if(!frame||stride<=0) return 0;
+            for(int i=0;i<5;++i)
+            {
+                const int px=x+dx[i],py=y+dy[i];
+                if(px<0||px>=stride||py<0) return 0;
+                const auto pos=static_cast<std::size_t>(py)*stride+px;
+                const Tag tag=At(px,py);
+                if(pos>=length||!tag||TagIndex(tag)!=frame[pos]) return 0;
+            }
+            return At(x,y);
+        }
+    };
+
 }
