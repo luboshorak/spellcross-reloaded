@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 
 namespace spellcross_enhanced
@@ -153,7 +154,8 @@ namespace spellcross_enhanced
     // Version 2: retain the original indexed surface for compositing, but
     // attach a separate light/material field to ground pixels. RGB conversion
     // happens only after the original sprites, overlays and HUD have rendered.
-    using Tag = std::uint16_t;
+    enum class Material : std::uint8_t { Earth, Sand, Grass, Stone, Road, Wood, Wet, Count };
+    using Tag = std::uint32_t;
     using RGB = std::array<std::uint8_t, 3>;
     constexpr int rgbMin = -32, rgbMax = 31;
 
@@ -183,13 +185,19 @@ namespace spellcross_enhanced
         return broad / 2 + medium / 2 + fine / 2;
     }
 
-    inline Tag MakeTag(std::uint8_t index, int shade)
+    inline Tag MakeTag(std::uint8_t index, int shade, Material material=Material::Earth)
     {
         if (Reserved(index)) return 0;
-        return static_cast<Tag>(((std::clamp(shade,rgbMin,rgbMax)-rgbMin+1)<<8) | index);
+        return (static_cast<Tag>(material)<<14) |
+            static_cast<Tag>(((std::clamp(shade,rgbMin,rgbMax)-rgbMin)<<8) | index);
     }
     inline std::uint8_t TagIndex(Tag tag) { return static_cast<std::uint8_t>(tag & 255); }
-    inline int TagShade(Tag tag) { return static_cast<int>(tag >> 8) + rgbMin - 1; }
+    inline int TagShade(Tag tag) { return static_cast<int>((tag >> 8)&63u) + rgbMin; }
+    inline Material TagMaterial(Tag tag) { return static_cast<Material>((tag>>14)&7u); }
+    inline bool SameMaterial(Tag a, Tag b)
+    {
+        return a && b && TagMaterial(a)==TagMaterial(b);
+    }
 
     inline RGB ShadeRGB(const std::uint8_t* color, int shade, bool night)
     {
@@ -251,7 +259,8 @@ namespace spellcross_enhanced
                 tags[static_cast<std::size_t>(y)*width+x]=tag;
         }
         void Mark(const std::vector<std::uint8_t>& sprite,int rows,int yOffset,
-                  int originX,int originY,const GroundLight* light,bool smooth)
+                  int originX,int originY,const GroundLight* light,bool smooth,
+                  Material material=Material::Earth)
         {
             std::size_t cursor=0;
             for(int y=0;y<rows;++y)
@@ -284,7 +293,7 @@ namespace spellcross_enhanced
                                 shadow=(std::min)(shadow,Contact(lx,y,46,cy+3,31,13,24));
                             if(light->air)
                                 shadow=(std::min)(shadow,Contact(lx,y,54,cy+5,28,12,13));
-                            tag=MakeTag(index,shade+shadow);
+                            tag=MakeTag(index,shade+shadow,material);
                         }
                         Write(sx,sy,tag);
                     }
@@ -309,5 +318,189 @@ namespace spellcross_enhanced
             return At(x,y);
         }
     };
+
+    // V3: procedural materials sampled in the PHYSICAL framebuffer, at four
+    // texels per native world pixel. Textures are generated once, not shipped
+    // as replacement assets. Periodic lattice noise keeps atlas edges seamless.
+    constexpr int textureSize=512, textureMask=textureSize-1, texelsPerPixel=4;
+    struct MicroDetail { std::int8_t light=0, tint=0; };
+
+    inline int TileNoise(int x,int y,int cell,std::uint32_t seed)
+    {
+        x=static_cast<int>(static_cast<unsigned>(x)&textureMask);
+        y=static_cast<int>(static_cast<unsigned>(y)&textureMask);
+        const int ix=x/cell, iy=y/cell, fx=x%cell, fy=y%cell;
+        const int mask=textureSize/cell-1;
+        const auto v=[&](int a,int b) {
+            return static_cast<int>(Hash(static_cast<unsigned>(a&mask)^seed,
+                static_cast<unsigned>(b&mask)^(seed*0x85ebca6bu))&63u)-32;
+        };
+        // Smoothstep in fixed point: no discontinuous gradients at cell edges.
+        const int u=fx*256/cell, w=fy*256/cell;
+        const int sx=u*u*(768-2*u)/65536, sy=w*w*(768-2*w)/65536;
+        const int a=v(ix,iy)*(256-sx)+v(ix+1,iy)*sx;
+        const int b=v(ix,iy+1)*(256-sx)+v(ix+1,iy+1)*sx;
+        return (a*(256-sy)+b*sy)/65536;
+    }
+
+    // Sparse elliptical raised grains, distributed by a deterministic jittered
+    // lattice. Neighbour cells are checked so pebble silhouettes never get cut
+    // off by a cell boundary. The vertical radius is foreshortened.
+    inline int PebbleHeight(int x,int y,int cell,std::uint32_t seed)
+    {
+        x=static_cast<int>(static_cast<unsigned>(x)&textureMask);
+        y=static_cast<int>(static_cast<unsigned>(y)&textureMask);
+        const int ix=x/cell,iy=y/cell,mask=textureSize/cell-1;
+        int height=0;
+        for(int dy=-1;dy<=1;++dy)
+            for(int dx=-1;dx<=1;++dx)
+            {
+                const auto h=Hash(static_cast<unsigned>((ix+dx)&mask)^seed,
+                                  static_cast<unsigned>((iy+dy)&mask));
+                if((h&7u)>2u) continue;
+                const int cx=(ix+dx)*cell+static_cast<int>((h>>4)&(cell-1));
+                const int cy=(iy+dy)*cell+static_cast<int>((h>>12)&(cell-1));
+                const int rx=cell/7+static_cast<int>((h>>20)&3u);
+                const int ry=(std::max)(2,rx*2/3);
+                const int px=x-cx,py=y-cy;
+                if(px<=-rx||px>=rx||py<=-ry||py>=ry) continue;
+                const int q=px*px*256/(rx*rx)+py*py*256/(ry*ry);
+                if(q<256) height=(std::max)(height,(256-q)*24/256);
+            }
+        return height;
+    }
+
+    class TextureBank
+    {
+        std::array<std::vector<MicroDetail>,static_cast<std::size_t>(Material::Count)> textures;
+        void Generate(Material material)
+        {
+            auto& out=textures[static_cast<std::size_t>(material)];
+            if(!out.empty()) return;
+            out.resize(textureSize*textureSize);
+            std::vector<std::int16_t> height(out.size());
+            const std::uint32_t seed=0x9e3779b9u*(1u+static_cast<unsigned>(material));
+            const auto idx=[](int x,int y) {
+                return static_cast<std::size_t>(static_cast<unsigned>(y)&textureMask)*textureSize+
+                    (static_cast<unsigned>(x)&textureMask);
+            };
+            for(int y=0;y<textureSize;++y)
+                for(int x=0;x<textureSize;++x)
+                {
+                    const int broad=TileNoise(x,y,64,seed);
+                    const int medium=TileNoise(x,y,16,seed+1);
+                    const int fine=TileNoise(x,y,4,seed+2);
+                    const int grain=static_cast<int>(Hash(static_cast<unsigned>(x)^seed,
+                        static_cast<unsigned>(y))&15u)-8;
+                    int z=0,tint=0;
+                    switch(material)
+                    {
+                        case Material::Sand:
+                        {
+                            // Wind-rippled sand and scattered mineral grains.
+                            const int phase=(y+x/4+broad/2)&31;
+                            const int ripple=16-(std::abs)(phase-16);
+                            z=broad/2+medium/3+fine/4+ripple/2+grain/3;
+                            tint=broad/3+medium/5;
+                            break;
+                        }
+                        case Material::Grass:
+                            // Dense clusters with finer, vertically stretched blades.
+                            z=broad/2+medium+TileNoise(x*2,y,4,seed+3)/2+grain/3;
+                            tint=broad/2+medium/4;
+                            break;
+                        case Material::Stone:
+                            // Angular relief, mineral strata and scattered rock chips.
+                            z=broad/2+(std::abs)(medium)+fine/2+
+                                PebbleHeight(x,y,32,seed);
+                            tint=medium/3;
+                            break;
+                        case Material::Road:
+                            // Compact asphalt/gravel, not deep random hills.
+                            z=broad/5+medium/5+fine/3+grain/3;
+                            tint=medium/8;
+                            break;
+                        case Material::Wood:
+                            // Long grain along one axis; no new board seams.
+                            z=TileNoise(x,y*4,16,seed)/2+fine/4;
+                            tint=broad/5;
+                            break;
+                        case Material::Wet:
+                            // Mud and wet surfaces have smoother low-frequency relief.
+                            z=broad/4+medium/4+fine/8;
+                            tint=medium/8;
+                            break;
+                        default:
+                            z=broad/2+medium/2+fine/3+grain/3+
+                                PebbleHeight(x,y,32,seed);
+                            tint=broad/3+medium/5;
+                            break;
+                    }
+                    height[idx(x,y)]=static_cast<std::int16_t>(z);
+                    out[idx(x,y)].tint=static_cast<std::int8_t>(std::clamp(tint,-20,20));
+                }
+            // Approximate normal-map lighting from the height field. Light
+            // from upper left; negative slopes supply micro self-shadow.
+            for(int y=0;y<textureSize;++y)
+                for(int x=0;x<textureSize;++x)
+                {
+                    const int dx=height[idx(x-1,y)]-height[idx(x+1,y)];
+                    const int dy=height[idx(x,y-1)]-height[idx(x,y+1)];
+                    const int light=dx*2+dy*3+height[idx(x,y)]/4;
+                    out[idx(x,y)].light=static_cast<std::int8_t>(std::clamp(light,-30,30));
+                }
+        }
+    public:
+        const std::vector<MicroDetail>& Get(Material material)
+        {
+            Generate(material);
+            return textures[static_cast<std::size_t>(material)];
+        }
+        static MicroDetail Sample(const std::vector<MicroDetail>& texture,int x,int y)
+        {
+            return texture[static_cast<std::size_t>(static_cast<unsigned>(y)&textureMask)*textureSize+
+                (static_cast<unsigned>(x)&textureMask)];
+        }
+    };
+
+    // World position in quarter-native-pixel units. Use the actual camera
+    // origin and combined DPI/zoom; scrolling never shifts material phase.
+    inline int TextureCoordinate(int worldOrigin,int physicalPixel,int zoom,int display)
+    {
+        const auto divisor=static_cast<std::int64_t>(zoom)*display;
+        if(divisor<=0) return 0;
+        return static_cast<int>(static_cast<std::int64_t>(worldOrigin)*texelsPerPixel+
+            static_cast<std::int64_t>(physicalPixel)*10000*texelsPerPixel/divisor);
+    }
+
+    inline int TextureStrength(int zoom,int display)
+    {
+        // Fade microstructure when zoomed out instead of producing moire.
+        return std::clamp((zoom*display-5000)/75,0,100);
+    }
+
+    inline RGB ApplyMicroDetail(RGB color,MicroDetail detail,Material material,int strength,bool night)
+    {
+        const int gain=100+detail.light*strength/(night?200:100);
+        for(int c=0;c<3;++c)
+        {
+            if(night&&c!=1) { color[c]=0; continue; }
+            int tint=0;
+            if(!night)
+            {
+                const int v=detail.tint*strength/100;
+                if(material==Material::Grass) tint=c==1?v:c==0?v/3:-v/3;
+                else if(material==Material::Sand||material==Material::Earth||material==Material::Wood)
+                    tint=c==0?v:c==1?v/2:-v/2;
+                else if(material==Material::Stone) tint=c==2?v:c==0?-v/2:0;
+            }
+            // Scale the added chroma with the original brightness: black
+            // stays black and deep shadows are not artificially lifted.
+            const int base=color[c];
+            color[c]=static_cast<std::uint8_t>(std::clamp(base*gain/100+
+                tint*(std::min)(base,96)/96,0,255));
+        }
+        return color;
+    }
 
 }

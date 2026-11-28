@@ -47,3 +47,26 @@ indexed colour comparison with a one-pixel guard; identical-colour overlap
 cannot be identified perfectly without changing every sprite writer. This can
 tint an occasional matching sprite pixel. Original sprite resolution remains.
 No asset replacement or full-map buffer is required.
+
+## Version 3: procedural HD terrain materials
+
+An additional physical-framebuffer texture pass now generates 512x512 periodic
+material atlases on demand, sampled at four texels per original world pixel.
+No game asset files are replaced or generated on disk. A fixed world-space
+phase follows the camera and combined zoom/DPI, with microdetail fading at low
+zoom. Seven material profiles derive height and chroma from deterministic
+multiscale periodic noise: wind-rippled sand, clustered grass, angular rock and
+sparse pebbles, compact road, directional wood, smoother wet ground and soil.
+Directional finite-difference lighting simulates a small-scale normal map.
+Only visible tagged terrain receives this layer. Smooth sampling requires all
+four samples to be the same material; HUD and range overlays remain excluded.
+Night output remains green only. The existing approximate same-colour
+compositing limitation remains; material flags are tile-level, not a perfect
+per-pixel semantic mask. Texture atlas repetition is possible over long areas,
+and the underlying authored silhouettes and sprites remain native resolution.
+The atlas cache is bounded by seven materials (~3.5 MiB for two signed channels);
+the viewport tags grow to four bytes each. Visual and performance tests on
+real missions remain necessary.
+
+Tests cover material packing, deterministic wraparound, distinct generated
+materials, subpixel variation, camera/zoom coordinates and night/black safety.

@@ -5910,6 +5910,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         !viewingUnitMoveRange() && !viewingUnitAttackRange() &&
         (use_view_mask || show_map_cheat || deployment_mode);
     spellcross_enhanced::GroundSurface groundLight;
+    // The projected world origin, not the scratch-buffer origin, anchors HD detail.
+    const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
     if (enhancedGround)
         groundLight.Reset(surf_x, surf_y, surf_x_origin, surf_y_origin);
     const auto litTile = [&](int index) {
@@ -5988,11 +5990,21 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         if (visible->unit->isAir()) light.air = true;
                         else light.company = true;
                     }
-                const bool smoothMaterial = (sid->GetFlags() &
-                    (Sprite::IS_WATER | Sprite::IS_ROAD | Sprite::IS_BRIDGE |
-                     Sprite::IS_WOOD_BRIDGE | Sprite::IS_FORD)) != 0;
+                const auto flags = sid->GetFlags();
+                using Material = spellcross_enhanced::Material;
+                Material material = Material::Earth;
+                if (flags & Sprite::IS_WOOD_BRIDGE) material = Material::Wood;
+                else if (flags & (Sprite::IS_ROAD | Sprite::IS_BRIDGE)) material = Material::Road;
+                else if (flags & (Sprite::IS_WATER | Sprite::IS_FORD | Sprite::IS_SWAPM | Sprite::IS_MUD))
+                    material = Material::Wet;
+                else if (flags & (Sprite::IS_CLIFF | Sprite::IS_RIDGE | Sprite::IS_HIGHLAND | Sprite::IS_BROKEN))
+                    material = Material::Stone;
+                else if (flags & Sprite::IS_SAND) material = Material::Sand;
+                else if (flags & (Sprite::IS_GRASS | Sprite::IS_DGRASS)) material = Material::Grass;
+                const bool smoothMaterial = material == Material::Road || material == Material::Wood ||
+                    material == Material::Wet;
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
-                    mxx, myy, &light, smoothMaterial);
+                    mxx, myy, &light, smoothMaterial, material);
             }
             else if (enhancedGround)
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
@@ -6862,12 +6874,48 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 const bool valid=tag && spellcross_enhanced::TagIndex(tag)==index &&
                     y<GetHUDtop(x);
                 const auto* color=valid ? rgbTable.Color(tag) : output_pal[index];
+                if (!valid) screenLight[i]=0; // also excludes the HUD from HD sampling
                 std::copy_n(color,3,enhancedRGB[i].begin());
             }
     }
     const auto rgbAt = [&](int x,int y) -> const uint8_t* {
         const auto i=static_cast<size_t>(y)*screen_width+x;
         return enhancedRGB.empty() ? output_pal[screen_pixels[i]] : enhancedRGB[i].data();
+    };
+
+    // Generate each required texture only once. The cache is immutable
+    // after creation and independent of original game data or camera motion.
+    using namespace spellcross_enhanced;
+    static TextureBank textureBank;
+    constexpr auto materialCount=static_cast<size_t>(Material::Count);
+    std::array<const std::vector<MicroDetail>*,materialCount> textureMaps{};
+    const int microStrength=enhancedGround ? TextureStrength(zoom_percent,display_scale_percent) : 0;
+    std::vector<int> textureX,textureY;
+    if(microStrength)
+    {
+        for(const auto tag:screenLight)
+        {
+            if(!tag) continue;
+            const auto material=TagMaterial(tag);
+            const auto index=static_cast<size_t>(material);
+            if(!textureMaps[index]) textureMaps[index]=&textureBank.Get(material);
+        }
+        textureX.resize(physical_width);
+        textureY.resize(physical_height);
+        for(int x=0;x<physical_width;++x)
+            textureX[x]=TextureCoordinate(textureWorldX,x,zoom_percent,display_scale_percent);
+        for(int y=0;y<physical_height;++y)
+            textureY[y]=TextureCoordinate(textureWorldY,y,zoom_percent,display_scale_percent);
+    }
+    const auto tagAt=[&](int x,int y)->Tag {
+        return screenLight.empty()?0:screenLight[static_cast<size_t>(y)*screen_width+x];
+    };
+    const auto detailAt=[&](RGB color,Tag tag,int x,int y)->RGB {
+        if(!microStrength||!tag) return color;
+        const auto material=TagMaterial(tag);
+        const auto* texture=textureMaps[static_cast<size_t>(material)];
+        return texture ? ApplyMicroDetail(color,TextureBank::Sample(*texture,textureX[x],textureY[y]),
+            material,microStrength,is_night) : color;
     };
 
     wxNativePixelData data(bmp);
@@ -6895,10 +6943,29 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 const auto* p10 = rgbAt(sample.second,vertical.first);
                 const auto* p01 = rgbAt(sample.first,vertical.second);
                 const auto* p11 = rgbAt(sample.second,vertical.second);
-                for (int channel = 2; channel >= 0; --channel)
-                    *scan++ = spellcross_display::BlendBilinear(
-                        p00[channel], p10[channel], p01[channel], p11[channel],
-                        sample.weight, vertical.weight);
+                if (!microStrength)
+                {
+                    for (int channel = 2; channel >= 0; --channel)
+                        *scan++ = spellcross_display::BlendBilinear(
+                            p00[channel], p10[channel], p01[channel], p11[channel],
+                            sample.weight, vertical.weight);
+                }
+                else
+                {
+                    RGB color{};
+                    for (int channel=0;channel<3;++channel)
+                        color[channel]=spellcross_display::BlendBilinear(
+                            p00[channel],p10[channel],p01[channel],p11[channel],
+                            sample.weight,vertical.weight);
+                    const auto tag=tagAt(sample.first,vertical.first);
+                    // Never cross a material, sprite or HUD edge when
+                    // synthesising detail after interpolation.
+                    if(SameMaterial(tag,tagAt(sample.second,vertical.first)) &&
+                       SameMaterial(tag,tagAt(sample.first,vertical.second)) &&
+                       SameMaterial(tag,tagAt(sample.second,vertical.second)))
+                        color=detailAt(color,tag,x,y);
+                    *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
+                }
             }
             p.OffsetY(data, 1);
         }
@@ -6912,10 +6979,19 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             const int sourceY = (y * 100) / display_scale_percent;
             for (int x = 0; x < physical_width; ++x)
             {
-                const auto* rgb = rgbAt((x * 100) / display_scale_percent,sourceY);
-                *scan++ = rgb[2];
-                *scan++ = rgb[1];
-                *scan++ = rgb[0];
+                const int sourceX=(x * 100) / display_scale_percent;
+                const auto* rgb = rgbAt(sourceX,sourceY);
+                if(microStrength)
+                {
+                    const auto color=detailAt({rgb[0],rgb[1],rgb[2]},tagAt(sourceX,sourceY),x,y);
+                    *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
+                }
+                else
+                {
+                    *scan++ = rgb[2];
+                    *scan++ = rgb[1];
+                    *scan++ = rgb[0];
+                }
             }
             p.OffsetY(data, 1);
         }

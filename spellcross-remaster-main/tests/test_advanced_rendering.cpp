@@ -85,6 +85,54 @@ int main()
     assert(field.At(0,1)==0 && field.At(1,1)!=0 && field.At(2,1)==0);
     field.Mark(sprite,1,0,0,1,nullptr,false);
     assert(field.At(1,1)==0);
+    // Each material survives packing, including the darkest legal shade.
+    for(unsigned material=0;material<static_cast<unsigned>(Material::Count);++material)
+        for(int shade=rgbMin;shade<=rgbMax;++shade)
+        {
+            const auto tag=MakeTag(1,shade,static_cast<Material>(material));
+            assert(tag && TagIndex(tag)==1 && TagShade(tag)==shade);
+            assert(TagMaterial(tag)==static_cast<Material>(material));
+        }
+    assert(!SameMaterial(MakeTag(120,0,Material::Sand),MakeTag(120,0,Material::Grass)));
+    assert(SameMaterial(MakeTag(120,0,Material::Sand),MakeTag(121,1,Material::Sand)));
+    assert(!SameMaterial(0,0));
+    // Four texels per native pixel; panning by one world pixel corresponds
+    // exactly to moving four texels at native zoom.
+    assert(TextureCoordinate(100,0,100,100)==400);
+    assert(TextureCoordinate(100,1,100,100)==TextureCoordinate(101,0,100,100));
+    assert(TextureCoordinate(100,1,200,100)==402);
+    assert(TextureCoordinate(100,2,200,100)==404);
+    assert(TextureStrength(50,100)==0 && TextureStrength(200,125)==100);
+    assert(TileNoise(-1,37,16,1)==TileNoise(textureSize-1,37,16,1));
+    assert(PebbleHeight(-1,37,32,1)==PebbleHeight(textureSize-1,37,32,1));
+    TextureBank bank;
+    const auto& sandTexture=bank.Get(Material::Sand);
+    const auto& rockTexture=bank.Get(Material::Stone);
+    const auto& grassTexture=bank.Get(Material::Grass);
+    assert(sandTexture.size()==textureSize*textureSize);
+    assert(&bank.Get(Material::Sand)==&sandTexture);
+    bool different=false,subpixel=false,grassDifferent=false;
+    for(int y=0;y<64;++y) for(int x=0;x<64;++x)
+    {
+        auto a=TextureBank::Sample(sandTexture,x,y);
+        auto b=TextureBank::Sample(rockTexture,x,y);
+        auto g=TextureBank::Sample(grassTexture,x,y);
+        auto c=TextureBank::Sample(sandTexture,x+textureSize,y-textureSize);
+        auto d=TextureBank::Sample(sandTexture,x+1,y);
+        assert(a.light==c.light && a.tint==c.tint);
+        different|=a.light!=b.light||a.tint!=b.tint;
+        grassDifferent|=a.light!=g.light||a.tint!=g.tint;
+        subpixel|=a.light!=d.light||a.tint!=d.tint;
+    }
+    assert(different && subpixel && grassDifferent);
+    RGB soil={140,100,70};
+    assert(ApplyMicroDetail(soil,{20,10},Material::Sand,0,false)==soil);
+    assert(ApplyMicroDetail(soil,{20,10},Material::Sand,100,false)[0]>soil[0]);
+    assert(ApplyMicroDetail(soil,{-20,0},Material::Sand,100,false)[0]<soil[0]);
+    const RGB black={0,0,0};
+    assert(ApplyMicroDetail(black,{30,20},Material::Earth,100,false)==black);
+    const auto n=ApplyMicroDetail({0,140,0},{20,10},Material::Grass,100,true);
+    assert(n[0]==0&&n[2]==0&&n[1]>140);
     sprite.pop_back();
     DrawGround(sprite,1,0,buffer.data(),buffer.size(),4,0,0,palette,light);
     for(auto b:buffer) assert(b==254);
