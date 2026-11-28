@@ -39,6 +39,7 @@ public:
         SpellData* spell_data,
         std::function<void(FormMainMenuAction)> action_cb);
     ~FormMainMenu();
+    wxFrame* GetWindow() const { return form; }
 
 private:
     struct MenuItem

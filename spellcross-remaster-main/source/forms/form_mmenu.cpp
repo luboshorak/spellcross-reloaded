@@ -262,6 +262,7 @@ FormMainMenu::FormMainMenu(wxPanel* parent,
     form = new wxFrame(nullptr, win_id, "Spellcross", wxDefaultPosition, windowSize, style);
     spellcross_app::ApplyWindowIcon(form);
     form->SetMinSize(wxSize(660, 520));
+    form->SetBackgroundColour(*wxBLACK);
     form->SetBackgroundStyle(wxBG_STYLE_PAINT);
     // Avoid native MSW composition during hover redraws: OnPaint explicitly
     // buffers the completed menu frame before presenting it.
@@ -354,6 +355,9 @@ FormMainMenu::~FormMainMenu()
 {
     if (form)
     {
+        // Destroy() is deferred on wx top-level windows. Hide the painted
+        // frame before removing its paint handler so it cannot flash gray.
+        form->Hide();
         // Unbind all handlers so no events fire on the dead object
         form->Unbind(wxEVT_CLOSE_WINDOW, &FormMainMenu::OnClose, this);
         form->Unbind(wxEVT_SIZE, &FormMainMenu::OnSize, this);

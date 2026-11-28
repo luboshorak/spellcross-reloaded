@@ -2565,6 +2565,7 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
     m_spellData(parent ? parent->spell_data : nullptr),
     m_level(level)
 {
+    SetBackgroundColour(*wxBLACK);
     spellcross_app::ApplyWindowIcon(this);
     static bool seeded = false;
     if (!seeded) { std::srand((unsigned)std::time(nullptr)); seeded = true; }

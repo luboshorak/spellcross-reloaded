@@ -4815,8 +4815,9 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
             return;
         }
 
-        // Close the menu first (triggers ID_MMENU_WIN close handler which does delete).
-        if(form_mmenu)
+        // Continue keeps the painted menu alive until its destination is ready.
+        // Other actions retain their established close-before-action behavior.
+        if(action != FormMainMenuAction::Continue && form_mmenu)
         {
             delete form_mmenu;
             form_mmenu = NULL;
@@ -4932,20 +4933,44 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 // battle (ESC), Continue must resume that exact in-memory state.
                 // Reloading GetTopPath()/DEF here restarts the mission and loses
                 // the current turn/unit/event state.
-                if (m_mainMenuReturnToTactical && spell_map && spell_map->IsLoaded() && spell_map->isGameMode())
+                if (!form_mmenu)
+                    break; // an already queued second click must not reload the game
+                const bool resumeInMemory = m_mainMenuReturnToTactical &&
+                    spell_map && spell_map->IsLoaded() && spell_map->isGameMode();
+                bool loaded = false;
+                if (resumeInMemory)
                 {
                     m_mainMenuReturnToTactical = false;
                     ShowTacticalWindow();
-                    break;
+                    loaded = true;
                 }
+                else
+                    loaded = LoadContinueGame();
 
-                if (!LoadContinueGame())
+                if (!loaded)
                 {
                     wxMessageBox(spellcross_ui_locale::Tr("resume.load_failed",
                         "No saved game could be resumed."), "Spellcross",
-                        wxOK | wxICON_INFORMATION, this);
-                    ShowMainMenuWindow();
+                        wxOK | wxICON_INFORMATION, form_mmenu->GetWindow());
+                    break;
                 }
+                // Outside the originating show/click callback: settle fullscreen
+                // geometry and paint the destination before removing the menu.
+                wxFrame* destination = IsShown() ? static_cast<wxFrame*>(this)
+                    : static_cast<wxFrame*>(m_strategicLevel);
+                if (destination)
+                {
+                    spellcross_window::Apply(destination);
+                    destination->Refresh(false);
+                    destination->Update();
+                    if (destination == this && canvas)
+                    {
+                        canvas->Refresh(false);
+                        canvas->Update();
+                    }
+                }
+                delete form_mmenu;
+                form_mmenu = nullptr;
                 break;
             }
             case FormMainMenuAction::LoadGame:
@@ -6893,7 +6918,14 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
             bind(&MainFrame::CreateHUDbuttons, this), TacticalZoomPercent(),
             spellcross_display::Current().scale_percent);
         if(profiling && renderResult==0) perf.Record(start,spellcross_perf::Clock::now());
-        pdc.DrawBitmap(m_buffer,wxPoint(0,0));
+        if (renderResult == 0)
+            pdc.DrawBitmap(m_buffer,wxPoint(0,0));
+        else
+        {
+            // A resized, newly allocated bitmap has no valid frame yet.
+            pdc.SetBackground(*wxBLACK_BRUSH);
+            pdc.Clear();
+        }
 		if (m_boxSelecting)
 		{
 			const wxRect rect = CurrentBoxSelectionRect();
