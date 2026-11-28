@@ -335,15 +335,19 @@ namespace spellcross_enhanced
                          const std::uint8_t* source=nullptr,int repeat=1)
         {
             if(stride<=0||count<=0||repeat<=0||width<=0||height<=0) return;
+            // Divide once per span, not once per covered pixel. Most sprite
+            // scanlines fit a single destination row; still handle wrapping.
+            auto y=offset/static_cast<std::size_t>(stride);
+            int x=static_cast<int>(offset%static_cast<std::size_t>(stride));
+            const auto bottom=static_cast<std::size_t>((std::max)(0,top+height));
             for(int i=0;i<count;++i)
             {
-                if(source&&!source[i]) continue;
+                const bool opaque=!source||source[i]!=0;
                 for(int z=0;z<repeat;++z)
                 {
-                    const auto pos=offset+static_cast<std::size_t>(i)*repeat+z;
-                    const auto y=pos/static_cast<std::size_t>(stride);
-                    if(y>static_cast<std::size_t>((std::max)(0,top+height))) continue;
-                    Write(static_cast<int>(pos%stride),static_cast<int>(y),0);
+                    if(y>=bottom) return;
+                    if(opaque) Write(x,static_cast<int>(y),0);
+                    if(++x==stride) { x=0; ++y; }
                 }
             }
         }
@@ -468,7 +472,10 @@ namespace spellcross_enhanced
         void Span(const std::uint8_t* destination,int count,
                   const std::uint8_t* source=nullptr,int repeat=1) const
         {
-            surface->OccludeSpan(static_cast<std::size_t>(destination-buffer),
+            const auto start=reinterpret_cast<std::uintptr_t>(buffer);
+            const auto write=reinterpret_cast<std::uintptr_t>(destination);
+            if(write<start) return;
+            surface->OccludeSpan(static_cast<std::size_t>(write-start),
                 stride,count,source,repeat);
         }
     };
