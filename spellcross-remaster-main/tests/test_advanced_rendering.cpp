@@ -163,7 +163,7 @@ int main()
         std::array<std::uint8_t,25> flat{}; flat.fill(100);
         sf::Image image;
         image.Prepare(flat.data(),5,5,paletteRGB,true,100);
-        for(int mode=sf::Nearest;mode<=sf::Lanczos2;++mode)
+        for(int mode=sf::Nearest;mode<=sf::LastMode;++mode)
             for(int pixel=0;pixel<15;++pixel)
             {
                 const auto a=sf::MakeAxis(pixel,5,200,125,mode);
@@ -177,6 +177,37 @@ int main()
         for(int y=0;y<5;++y) for(int x=0;x<5;++x) checker[y*5+x]=(x+y)%2?100:80;
         image.Prepare(checker.data(),5,5,paletteRGB,true,0);
         assert(image.At(2,2)[0]==90 && image.At(1,2)[0]==90);
+        // Compare separable scanline caching against the original exact
+        // per-pixel convolution with mixed colours and protected samples.
+        for(int i=0;i<25;++i) checker[i]=static_cast<std::uint8_t>(30+i*7);
+        checker[1]=0; checker[12]=230;
+        image.Prepare(checker.data(),5,5,paletteRGB,false,0);
+        sf::AxisCache axes;
+        sf::Scanline scan;
+        for(int mode=sf::Nearest;mode<=sf::LastMode;++mode)
+        {
+            if(!sf::FourTap(mode)) continue;
+            for(int zoom : {75,100,175,300})
+            {
+                axes.Prepare(19,19,5,5,zoom,125,mode);
+                scan.Reset(image,axes.x);
+                for(const auto& y:axes.y)
+                {
+                    scan.Begin(y);
+                    for(std::size_t x=0;x<axes.x.size();++x)
+                        assert(scan.Sample(x,y)==image.Sample(axes.x[x],y));
+                }
+            }
+        }
+        std::array<std::uint8_t,9> cornerPixels={90,140,90,90,90,140,90,90,90};
+        image.Prepare(cornerPixels.data(),3,3,paletteRGB,false,0);
+        sf::Axis cornerX,cornerY;
+        cornerX.nearest=1; cornerX.side=1;
+        cornerY.nearest=1; cornerY.side=-1;
+        assert(image.SampleScale2x(cornerX,cornerY)[0]==140);
+        cornerY.side=1;
+        assert(image.SampleScale2x(cornerX,cornerY)[0]==90);
+        for(int y=0;y<5;++y) for(int x=0;x<5;++x) checker[y*5+x]=(x+y)%2?100:80;
         checker[12]=230;
         image.Prepare(checker.data(),5,5,paletteRGB,true,100);
         assert(image.At(2,2)[0]==230 && !image.Filterable(2,2));

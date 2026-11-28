@@ -11,7 +11,12 @@
 namespace spellcross_filters
 {
     using RGB=std::array<std::uint8_t,3>;
-    enum Mode : int { Legacy=0, Nearest=1, SharpBilinear=2, CatmullRom=3, Lanczos2=4 };
+    enum Mode : int { Legacy=0, Nearest=1, SharpBilinear=2, CatmullRom=3, Lanczos2=4,
+        Bilinear=5, Hermite=6, Mitchell=7, BSpline=8, Scale2x=9, LastMode=Scale2x };
+    inline bool FourTap(int mode)
+    {
+        return mode==CatmullRom || mode==Lanczos2 || mode==Mitchell || mode==BSpline;
+    }
     constexpr int weightScale=4096;
     inline bool Protected(std::uint8_t i)
     {
@@ -54,11 +59,21 @@ namespace spellcross_filters
     {
         return std::abs(x)<2.0 ? Sinc(x)*Sinc(x/2.0) : 0.0;
     }
+    // Mitchell-Netravali family: B=C=1/3 balances blur and ringing;
+    // B=1,C=0 is the smoother cubic B-spline.
+    inline double CubicBC(double x,double b,double c)
+    {
+        x=std::abs(x);
+        if(x<1.0) return (((12-9*b-6*c)*x+(-18+12*b+6*c))*x*x+6-2*b)/6;
+        if(x<2.0) return (((-b-6*c)*x+(6*b+30*c))*x*x+
+                         (-12*b-48*c)*x+8*b+24*c)/6;
+        return 0.0;
+    }
     struct Axis
     {
         std::array<int,4> index{};
         std::array<int,4> weight{};
-        int count=1, nearest=0;
+        int count=1, nearest=0, side=0;
     };
     inline Axis MakeAxis(int target,int extent,int zoom,int display,int mode)
     {
@@ -73,18 +88,21 @@ namespace spellcross_filters
         const int base=static_cast<int>(std::floor(pos));
         const double fraction=pos-base;
         out.nearest=std::clamp(static_cast<int>(std::floor(pos+0.5)),0,extent-1);
-        if(mode==Nearest||mode==Legacy)
+        out.side=pos<out.nearest?-1:1;
+        if(mode==Nearest||mode==Legacy||mode==Scale2x)
         {
             out.index[0]=out.nearest;
             out.weight[0]=weightScale;
             return out;
         }
-        if(mode==SharpBilinear)
+        if(mode==SharpBilinear||mode==Bilinear||mode==Hermite)
         {
             out.count=2;
             out.index[0]=base; out.index[1]=(std::min)(base+1,extent-1);
             // Preserve a sharp pixel interior and blend only around its edge.
-            const double f=std::clamp((fraction-0.5)*(std::max)(1.0,scale)+0.5,0.0,1.0);
+            const double f=mode==SharpBilinear ?
+                std::clamp((fraction-0.5)*(std::max)(1.0,scale)+0.5,0.0,1.0) :
+                mode==Hermite ? fraction*fraction*(3-2*fraction) : fraction;
             out.weight[1]=static_cast<int>(std::lround(f*weightScale));
             out.weight[0]=weightScale-out.weight[1];
             return out;
@@ -96,7 +114,9 @@ namespace spellcross_filters
         {
             const int raw=base+i-1;
             out.index[i]=std::clamp(raw,0,extent-1);
-            weights[i]=mode==Lanczos2 ? Lanczos(pos-raw) : Cubic(pos-raw);
+            weights[i]=mode==Lanczos2 ? Lanczos(pos-raw) :
+                mode==Mitchell ? CubicBC(pos-raw,1.0/3,1.0/3) :
+                mode==BSpline ? CubicBC(pos-raw,1.0,0.0) : Cubic(pos-raw);
             sum+=weights[i];
         }
         int total=0;
@@ -113,7 +133,7 @@ namespace spellcross_filters
     {
         int width=0,height=0;
         const std::uint8_t* indices=nullptr;
-        std::vector<RGB> colors;
+        std::vector<RGB> colors,scratch;
         std::size_t Index(int x,int y) const { return static_cast<std::size_t>(y)*width+x; }
         bool Safe(int x,int y) const { return !Protected(indices[Index(x,y)]); }
     public:
@@ -125,7 +145,7 @@ namespace spellcross_filters
             for(std::size_t i=0;i<colors.size();++i) colors[i]=PaletteRGB(palette,pixels[i]);
             if(dedither && w>2 && h>2)
             {
-                auto source=colors;
+                // Dedithering reads only original palette colours, not its own output.
                 for(int y=1;y<h-1;++y) for(int x=1;x<w-1;++x)
                 {
                     const auto i=Index(x,y);
@@ -139,7 +159,7 @@ namespace spellcross_filters
                     int diagonal=0;
                     for(int dy : {-1,1}) for(int dx : {-1,1})
                         diagonal+=pixels[Index(x+dx,y+dy)]==a;
-                    const auto& ca=source[i]; const auto& cb=source[Index(x-1,y)];
+                    const auto ca=PaletteRGB(palette,a),cb=PaletteRGB(palette,b);
                     const int distance=Distance(ca,cb);
                     if(diagonal>=3 && distance>=12 && distance<=144 &&
                        (std::abs)(Luma(ca)-Luma(cb))<=48)
@@ -149,7 +169,8 @@ namespace spellcross_filters
             sharpen=std::clamp(sharpen,0,100);
             if(sharpen && w>2 && h>2)
             {
-                auto source=colors;
+                scratch=colors;
+                const auto& source=scratch;
                 for(int y=1;y<h-1;++y) for(int x=1;x<w-1;++x)
                 {
                     if(!Safe(x,y)||!Safe(x-1,y)||!Safe(x+1,y)||!Safe(x,y-1)||!Safe(x,y+1)) continue;
@@ -178,6 +199,20 @@ namespace spellcross_filters
         }
         const RGB& At(int x,int y) const { return colors[Index(x,y)]; }
         bool Filterable(int x,int y) const { return Safe(x,y); }
+        RGB SampleScale2x(const Axis& ax,const Axis& ay) const
+        {
+            const int x=ax.nearest,y=ay.nearest;
+            const auto center=At(x,y);
+            if(!Safe(x,y)||x<=0||y<=0||x>=width-1||y>=height-1||!ax.side||!ay.side)
+                return center;
+            const int dx=ax.side,dy=ay.side;
+            const auto a=indices[Index(x+dx,y)],b=indices[Index(x,y+dy)];
+            const auto oppositeA=indices[Index(x-dx,y)],oppositeB=indices[Index(x,y-dy)];
+            // Standard Scale2x quadrant rule, sampled at the requested zoom.
+            if(a==b && a!=oppositeA && b!=oppositeB && !Protected(a))
+                return At(x+dx,y);
+            return center;
+        }
         RGB Sample(const Axis& ax,const Axis& ay) const
         {
             const auto center=At(ax.nearest,ay.nearest);
@@ -208,6 +243,121 @@ namespace spellcross_filters
                 result[k]=static_cast<std::uint8_t>(std::clamp(
                     static_cast<int>((acc[k]+denom/2)/denom),low[k],high[k]));
             return result;
+        }
+    };
+
+    // Reuse horizontal convolution across consecutive destination rows.
+    // The protected-weight term reconstructs the exact original per-pixel
+    // fallback (replace protected samples by the current center colour).
+    // Only four native rows are cached, regardless of framebuffer height.
+    class Scanline
+    {
+        struct Tap
+        {
+            std::array<int,3> sum{};
+            std::array<int,3> lo{255,255,255},hi{};
+            int protectedWeight=0;
+            bool protectedLocal=false;
+        };
+        struct Row { int y=-1; std::vector<Tap> taps; };
+        std::array<Row,4> rows;
+        std::array<const Row*,4> active{};
+        const Image* image=nullptr;
+        const std::vector<Axis>* axes=nullptr;
+    public:
+        void Reset(const Image& src,const std::vector<Axis>& horizontal)
+        {
+            image=&src; axes=&horizontal;
+            for(auto& row:rows) row.y=-1;
+        }
+        void Begin(const Axis& ay)
+        {
+            for(int j=0;j<ay.count;++j)
+            {
+                const int y=ay.index[j];
+                auto& row=rows[static_cast<unsigned>(y)%rows.size()];
+                if(row.y!=y)
+                {
+                    row.y=y;
+                    row.taps.resize(axes->size());
+                    for(std::size_t x=0;x<axes->size();++x)
+                    {
+                        const auto& ax=(*axes)[x];
+                        Tap tap;
+                        for(int i=0;i<ax.count;++i)
+                        {
+                            const bool local=ax.count<=2||i==1||i==2;
+                            const int sx=ax.index[i];
+                            if(!image->Filterable(sx,y))
+                            {
+                                tap.protectedWeight+=ax.weight[i];
+                                if(local) tap.protectedLocal=true;
+                                continue;
+                            }
+                            const auto& color=image->At(sx,y);
+                            for(int k=0;k<3;++k)
+                            {
+                                tap.sum[k]+=ax.weight[i]*color[k];
+                                if(local)
+                                {
+                                    tap.lo[k]=(std::min)(tap.lo[k],int(color[k]));
+                                    tap.hi[k]=(std::max)(tap.hi[k],int(color[k]));
+                                }
+                            }
+                        }
+                        row.taps[x]=tap;
+                    }
+                }
+                active[j]=&row;
+            }
+        }
+        RGB Sample(std::size_t x,const Axis& ay) const
+        {
+            const auto& ax=(*axes)[x];
+            const auto center=image->At(ax.nearest,ay.nearest);
+            if(!image->Filterable(ax.nearest,ay.nearest)) return center;
+            std::int64_t acc[3]={};
+            int lo[3]={255,255,255},hi[3]={};
+            for(int j=0;j<ay.count;++j)
+            {
+                const auto& tap=active[j]->taps[x];
+                const bool local=ay.count<=2||j==1||j==2;
+                for(int k=0;k<3;++k)
+                {
+                    acc[k]+=std::int64_t(ay.weight[j])*(tap.sum[k]+tap.protectedWeight*center[k]);
+                    if(local)
+                    {
+                        lo[k]=(std::min)(lo[k],tap.lo[k]);
+                        hi[k]=(std::max)(hi[k],tap.hi[k]);
+                        if(tap.protectedLocal)
+                        {
+                            lo[k]=(std::min)(lo[k],int(center[k]));
+                            hi[k]=(std::max)(hi[k],int(center[k]));
+                        }
+                    }
+                }
+            }
+            RGB result{};
+            constexpr std::int64_t denom=std::int64_t(weightScale)*weightScale;
+            for(int k=0;k<3;++k)
+                result[k]=static_cast<std::uint8_t>(std::clamp(
+                    static_cast<int>((acc[k]+denom/2)/denom),lo[k],hi[k]));
+            return result;
+        }
+    };
+    class AxisCache
+    {
+        int width=0,height=0,nativeWidth=0,nativeHeight=0,zoom=0,display=0,mode=-1;
+    public:
+        std::vector<Axis> x,y;
+        void Prepare(int w,int h,int nw,int nh,int z,int d,int m)
+        {
+            if(w==width&&h==height&&nw==nativeWidth&&nh==nativeHeight&&
+               z==zoom&&d==display&&m==mode) return;
+            width=w; height=h; nativeWidth=nw; nativeHeight=nh; zoom=z; display=d; mode=m;
+            x.resize(w); y.resize(h);
+            for(int i=0;i<w;++i) x[i]=MakeAxis(i,nw,z,d,m);
+            for(int i=0;i<h;++i) y[i]=MakeAxis(i,nh,z,d,m);
         }
     };
 }

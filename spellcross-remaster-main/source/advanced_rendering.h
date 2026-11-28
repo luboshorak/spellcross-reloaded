@@ -221,9 +221,15 @@ namespace spellcross_enhanced
     class RGBTable
     {
         std::array<std::array<RGB,256>, rgbMax-rgbMin+1> table{};
+        std::array<std::uint8_t,768> lastPalette{};
+        bool prepared=false,lastNight=false;
     public:
         void Prepare(const std::uint8_t (*palette)[3], bool night)
         {
+            if(prepared && lastNight==night &&
+                std::memcmp(lastPalette.data(),palette,lastPalette.size())==0) return;
+            std::memcpy(lastPalette.data(),palette,lastPalette.size());
+            prepared=true; lastNight=night;
             for(int shade=rgbMin;shade<=rgbMax;++shade)
                 for(int index=0;index<256;++index)
                     table[shade-rgbMin][index]=ShadeRGB(palette[index],shade,night);
@@ -536,9 +542,16 @@ namespace spellcross_enhanced
     class EdgePalette
     {
         std::array<std::array<std::uint8_t,256>,256> distances{};
+        std::array<std::uint8_t,240*3> lastPalette{};
+        bool prepared=false;
     public:
         void Prepare(const std::uint8_t (*palette)[3])
         {
+            // Animated water is reserved, so changes to indices 240-255
+            // cannot change the distance table. No rebuild for water cycling.
+            if(prepared && std::memcmp(lastPalette.data(),palette,lastPalette.size())==0) return;
+            std::memcpy(lastPalette.data(),palette,lastPalette.size());
+            prepared=true;
             for(int i=0;i<256;++i) for(int j=0;j<256;++j)
             {
                 const auto* a=palette[i]; const auto* b=palette[j];

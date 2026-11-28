@@ -43,7 +43,7 @@ namespace spellcross_display
         s.brightness = std::clamp(s.brightness, 50, 150);
         s.gamma = std::isfinite(s.gamma) ? std::clamp(s.gamma, 0.5, 2.0) : 1.3;
         s.temperature = std::clamp(s.temperature, 3500, 9500);
-        if(s.tactical_filter<spellcross_filters::Legacy || s.tactical_filter>spellcross_filters::Lanczos2)
+        if(s.tactical_filter<spellcross_filters::Legacy || s.tactical_filter>spellcross_filters::LastMode)
             s.tactical_filter=spellcross_filters::Legacy;
         s.tactical_sharpen=std::clamp(s.tactical_sharpen,0,100);
         return s;
@@ -299,6 +299,11 @@ namespace spellcross_display
         filter->Append("Sharp Bilinear");
         filter->Append("Catmull-Rom");
         filter->Append("Lanczos 2");
+        filter->Append("Bilinear");
+        filter->Append("Hermite");
+        filter->Append("Mitchell-Netravali");
+        filter->Append("Cubic B-spline");
+        filter->Append("Scale2x / EPX");
         filter->SetSelection(original.tactical_filter);
         root->Add(filter, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
         auto* dedither = new wxCheckBox(&dialog, wxID_ANY,

@@ -105,3 +105,15 @@ are guarded. The original sprite pixels, save format and hitboxes are intact.
 There is no claim of perfect semantic separation, new realistic geometry,
 GPU acceleration or full anti-aliasing at reduced zoom. CPU cost of the
 four-tap filters needs real-mission profiling, especially at 4K.
+
+### Additional filters and CPU optimization
+
+Five alternatives retain the existing numeric configuration IDs: Bilinear,
+Hermite (smoothstep interpolation), Mitchell-Netravali, cubic B-spline and
+Scale2x/EPX quadrant reconstruction. Four-tap kernels use an exact separable
+four-native-row cache. Regression tests compare it byte-for-byte against
+direct convolution with mixed and reserved palette indices. Axis weights are
+reused until viewport/zoom/filter changes. RGB and edge lookup tables reuse
+unchanged palettes; the edge cache ignores reserved water cycling. Native RGB
+scratch buffers are reused and dedither no longer copies the RGB surface.
+This is not a GPU backend, and FPS improvements require in-game measurement.
