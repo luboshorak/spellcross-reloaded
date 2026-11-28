@@ -9,7 +9,7 @@
 #include <functional>
 
 #include <wx/wx.h>
-#include <wx/choice.h>
+#include <wx/odcombo.h>
 #include <wx/slider.h>
 #include "spell_ui_locale.h"
 #include "strategic_ui_theme.h"
@@ -233,6 +233,190 @@ namespace spellcross_display
         return wxBitmap(image);
     }
 
+    // Screen-specific controls keep the existing strategic theme without
+    // inheriting native static-box fonts or Windows checkbox/choice colours.
+    class ScreenSection final : public wxPanel
+    {
+        wxBoxSizer* m_body;
+    public:
+        ScreenSection(wxWindow* parent, const wxString& title)
+            : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL)
+        {
+            SetBackgroundStyle(wxBG_STYLE_PAINT);
+            auto* outer = new wxBoxSizer(wxVERTICAL);
+            auto* heading = new wxStaticText(this, wxID_ANY, title);
+            heading->SetFont(spellcross_menu::MenuFont().Bold());
+            outer->Add(heading, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(12));
+            outer->AddSpacer(FromDIP(5));
+            m_body = new wxBoxSizer(wxVERTICAL);
+            outer->Add(m_body, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(5));
+            SetSizer(outer);
+            Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
+                wxAutoBufferedPaintDC dc(this);
+                dc.SetBackground(wxBrush(spellcross_menu::Background()));
+                dc.Clear();
+                dc.SetPen(wxPen(spellcross_strategic_ui::Border()));
+                dc.SetBrush(*wxTRANSPARENT_BRUSH);
+                dc.DrawRectangle(GetClientRect());
+            });
+        }
+        wxWindow* GetStaticBox() { return this; }
+        void Add(wxWindow* child, int proportion, int flags, int border)
+        {
+            m_body->Add(child, proportion, flags, border);
+        }
+        void Add(wxSizer* child, int proportion, int flags, int border)
+        {
+            m_body->Add(child, proportion, flags, border);
+        }
+    };
+
+    class ScreenCheck final : public wxControl
+    {
+        bool m_value = false;
+        bool m_pressed = false;
+        wxString m_label;
+
+        void Toggle()
+        {
+            if (!IsEnabled()) return;
+            SetValue(!m_value);
+            wxCommandEvent event(wxEVT_CHECKBOX, GetId());
+            event.SetEventObject(this);
+            event.SetInt(m_value ? 1 : 0);
+            GetEventHandler()->ProcessEvent(event);
+        }
+
+        void Paint(wxPaintEvent&)
+        {
+            wxAutoBufferedPaintDC dc(this);
+            dc.SetBackground(wxBrush(spellcross_menu::Background()));
+            dc.Clear();
+            dc.SetFont(GetFont());
+            const bool enabled = IsEnabled();
+            const auto ink = enabled ? spellcross_menu::Text() : spellcross_strategic_ui::Inactive();
+            const int side = FromDIP(16);
+            const int x = FromDIP(3);
+            const int y = (GetClientSize().y - side) / 2;
+            dc.SetPen(wxPen(ink));
+            dc.SetBrush(wxBrush(m_value && enabled ? spellcross_menu::Highlight() : spellcross_menu::Background()));
+            dc.DrawRectangle(x, y, side, side);
+            if (m_value)
+            {
+                dc.SetPen(wxPen(ink, FromDIP(2)));
+                dc.DrawLine(x + FromDIP(3), y + FromDIP(8), x + FromDIP(7), y + FromDIP(12));
+                dc.DrawLine(x + FromDIP(7), y + FromDIP(12), x + FromDIP(13), y + FromDIP(4));
+            }
+            dc.SetTextForeground(ink);
+            const int labelX = x + side + FromDIP(9);
+            dc.DrawLabel(m_label, wxRect(labelX, 0,
+                (std::max)(1, GetClientSize().x - labelX - FromDIP(3)), GetClientSize().y),
+                wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL);
+            if (HasFocus() && enabled)
+            {
+                dc.SetPen(wxPen(spellcross_strategic_ui::Heading(), 1, wxPENSTYLE_DOT));
+                dc.SetBrush(*wxTRANSPARENT_BRUSH);
+                dc.DrawRectangle(GetClientRect().Deflate(1));
+            }
+        }
+
+    protected:
+        wxSize DoGetBestSize() const override
+        {
+            const auto extent = GetTextExtent(m_label);
+            return wxSize(extent.x + FromDIP(34),
+                (std::max)(FromDIP(28), extent.y + FromDIP(8)));
+        }
+
+    public:
+        ScreenCheck(wxWindow* parent, wxWindowID id, const wxString& label)
+            : wxControl(parent, id, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE),
+              m_label(label)
+        {
+            SetLabel(label);
+            SetFont(spellcross_menu::MenuFont());
+            SetBackgroundStyle(wxBG_STYLE_PAINT);
+            Bind(wxEVT_PAINT, &ScreenCheck::Paint, this);
+            Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent&) {
+                SetFocus();
+                m_pressed = true;
+                if (!HasCapture()) CaptureMouse();
+            });
+            Bind(wxEVT_LEFT_UP, [this](wxMouseEvent& e) {
+                const bool activate = m_pressed && GetClientRect().Contains(e.GetPosition());
+                m_pressed = false;
+                if (HasCapture()) ReleaseMouse();
+                if (activate) Toggle();
+            });
+            Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) { m_pressed = false; });
+            Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& e) {
+                if (e.GetKeyCode() == WXK_SPACE) Toggle();
+                else e.Skip();
+            });
+            Bind(wxEVT_SET_FOCUS, [this](wxFocusEvent& e) { Refresh(false); e.Skip(); });
+            Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) { Refresh(false); e.Skip(); });
+        }
+        bool GetValue() const { return m_value; }
+        void SetValue(bool value) { m_value = value; Refresh(false); }
+        bool Enable(bool enable = true) override
+        {
+            const bool changed = wxControl::Enable(enable);
+            if (changed) Refresh(false);
+            return changed;
+        }
+    };
+
+    class ScreenChoice final : public wxOwnerDrawnComboBox
+    {
+    protected:
+        void OnDrawBackground(wxDC& dc, const wxRect& rect, int,
+                              int flags) const override
+        {
+            const bool selected = (flags & wxODCB_PAINTING_SELECTED) != 0 &&
+                                  (flags & wxODCB_PAINTING_CONTROL) == 0;
+            dc.SetPen(*wxTRANSPARENT_PEN);
+            dc.SetBrush(wxBrush(selected ? spellcross_menu::Highlight() : spellcross_menu::Background()));
+            dc.DrawRectangle(rect);
+        }
+        void OnDrawItem(wxDC& dc, const wxRect& rect, int item, int flags) const override
+        {
+            if (item == wxNOT_FOUND) return;
+            dc.SetFont(GetFont());
+            dc.SetTextForeground((flags & wxODCB_PAINTING_SELECTED) &&
+                !(flags & wxODCB_PAINTING_CONTROL) ? spellcross_strategic_ui::Heading()
+                : spellcross_menu::Text());
+            dc.DrawLabel(GetString(static_cast<unsigned int>(item)),
+                wxRect(rect.x + FromDIP(6), rect.y,
+                    (std::max)(1, rect.width - FromDIP(12)), rect.height),
+                wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL);
+        }
+        wxCoord OnMeasureItem(size_t) const override
+        {
+            return (std::max)(FromDIP(28), GetCharHeight() + FromDIP(8));
+        }
+    public:
+        explicit ScreenChoice(wxWindow* parent)
+            : wxOwnerDrawnComboBox(parent, wxID_ANY, wxEmptyString, wxDefaultPosition,
+                wxDefaultSize, 0, nullptr, wxCB_READONLY | wxBORDER_SIMPLE)
+        {
+            SetFont(spellcross_menu::MenuFont());
+            SetBackgroundColour(spellcross_menu::Background());
+            SetForegroundColour(spellcross_menu::Text());
+            const int size = FromDIP(24);
+            wxBitmap arrow(size, size);
+            {
+                wxMemoryDC dc(arrow);
+                dc.SetBackground(wxBrush(spellcross_menu::Background()));
+                dc.Clear();
+                dc.SetPen(wxPen(spellcross_menu::Accent(), FromDIP(2)));
+                const int mid = size / 2;
+                dc.DrawLine(mid - FromDIP(5), mid - FromDIP(2), mid, mid + FromDIP(3));
+                dc.DrawLine(mid, mid + FromDIP(3), mid + FromDIP(5), mid - FromDIP(2));
+            }
+            SetButtonBitmaps(arrow, false);
+        }
+    };
+
     // All three top-level windows use this very same dialog and settings.
     // Changes preview live; Cancel restores the complete original state.
     inline bool ShowScreenDialog(wxWindow* parent, const std::function<void()>& refresh)
@@ -242,26 +426,25 @@ namespace spellcross_display
             spellcross_ui_locale::Tr("screen.title", "Screen"),
             wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE);
         auto* root = new wxBoxSizer(wxVERTICAL);
-        const int space=dialog.FromDIP(10);
-        auto* columns=new wxBoxSizer(wxHORIZONTAL);
-        auto* left=new wxBoxSizer(wxVERTICAL);
-        auto* right=new wxBoxSizer(wxVERTICAL);
-        columns->Add(left,1,wxEXPAND|wxRIGHT,space);
-        columns->Add(right,1,wxEXPAND);
-        root->Add(columns,1,wxEXPAND|wxALL,space);
-        const auto group=[&](wxBoxSizer* column,const wxString& title) {
-            auto* section=new wxStaticBoxSizer(wxVERTICAL,&dialog,title);
-            section->GetStaticBox()->SetFont(spellcross_menu::MenuFont().Bold());
-            column->Add(section,0,wxEXPAND|wxBOTTOM,space);
+        const int space = dialog.FromDIP(10);
+        auto* columns = new wxFlexGridSizer(2, space, space);
+        columns->AddGrowableCol(0, 1);
+        columns->AddGrowableCol(1, 1);
+        root->Add(columns, 0, wxEXPAND | wxALL, space);
+        const auto group = [&](const wxString& title) {
+            auto* section = new ScreenSection(&dialog, title);
+            columns->Add(section, 1, wxEXPAND);
             return section;
         };
-        const auto addLabel=[&](wxStaticBoxSizer* section,const wxString& title) {
-            section->Add(new wxStaticText(section->GetStaticBox(),wxID_ANY,title),0,wxLEFT|wxRIGHT|wxTOP,space);
+        const auto addLabel = [&](ScreenSection* section, const wxString& title) {
+            auto* label = new wxStaticText(section, wxID_ANY, title);
+            label->SetFont(spellcross_menu::MenuFont());
+            section->Add(label, 0, wxLEFT | wxRIGHT | wxTOP, space);
         };
-        auto* display=group(left,spellcross_ui_locale::Tr("screen.group.display","Display and scale"));
-        auto* colour=group(left,spellcross_ui_locale::Tr("screen.group.colour","Colour correction"));
-        auto* renderer=group(right,spellcross_ui_locale::Tr("screen.group.renderer","Rendering and terrain"));
-        auto* filterGroup=group(right,spellcross_ui_locale::Tr("screen.group.filters","Image filters"));
+        auto* display = group(spellcross_ui_locale::Tr("screen.group.display", "Display and scale"));
+        auto* renderer = group(spellcross_ui_locale::Tr("screen.group.renderer", "Rendering and terrain"));
+        auto* colour = group(spellcross_ui_locale::Tr("screen.group.colour", "Colour correction"));
+        auto* filterGroup = group(spellcross_ui_locale::Tr("screen.group.filters", "Image filters"));
         addLabel(display,spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         const wxString scales[] = {
             spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"),
@@ -297,28 +480,28 @@ namespace spellcross_display
         colour->Add(temperature, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND,
             dialog.FromDIP(14));
 
-        auto* gpu = new wxCheckBox(renderer->GetStaticBox(),wxID_ANY,
+        auto* gpu = new ScreenCheck(renderer->GetStaticBox(),wxID_ANY,
             spellcross_ui_locale::Tr("screen.gpu_acceleration","GPU acceleration (Direct3D 11)"));
         gpu->SetValue(original.gpu_acceleration);
 #ifndef _WIN32
         gpu->Disable();
 #endif
-        renderer->Add(gpu,0,wxALL,space);
-        auto* enhanced = new wxCheckBox(renderer->GetStaticBox(), wxID_ANY,
+        renderer->Add(gpu, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
+        auto* enhanced = new ScreenCheck(renderer->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.advanced_rendering", "Advanced rendering (experimental)"));
         enhanced->SetValue(original.advanced_rendering);
-        renderer->Add(enhanced, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(14));
-        auto* materials = new wxCheckBox(renderer->GetStaticBox(), wxID_ANY,
+        renderer->Add(enhanced, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
+        auto* materials = new ScreenCheck(renderer->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.procedural_materials", "Procedural terrain materials (experimental)"));
         materials->SetValue(original.procedural_materials);
-        renderer->Add(materials, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
-        auto* upscaling = new wxCheckBox(renderer->GetStaticBox(), wxID_ANY,
+        renderer->Add(materials, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
+        auto* upscaling = new ScreenCheck(renderer->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.procedural_upscaling", "Procedural sprite upscaling (experimental)"));
         upscaling->SetValue(original.procedural_upscaling);
-        renderer->Add(upscaling, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(8));
+        renderer->Add(upscaling, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
 
         addLabel(filterGroup,spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter"));
-        auto* filter = new wxChoice(filterGroup->GetStaticBox(), wxID_ANY);
+        auto* filter = new ScreenChoice(filterGroup->GetStaticBox());
         filter->Append(spellcross_ui_locale::Tr("screen.filter.legacy", "Existing renderer (default)"));
         std::vector<int> filterIds{spellcross_filters::Legacy};
         int selectedFilter=0;
@@ -329,27 +512,31 @@ namespace spellcross_display
             filterIds.push_back(mode);
             filter->Append(wxString::FromUTF8(spellcross_filters::ModeNames[mode]));
         }
-        filter->SetMinSize(dialog.FromDIP(wxSize(280,-1)));
+        int filterWidth = dialog.FromDIP(280);
+        for (unsigned int i = 0; i < filter->GetCount(); ++i)
+            filterWidth = (std::max)(filterWidth, filter->GetTextExtent(filter->GetString(i)).x + dialog.FromDIP(42));
+        filter->SetMinSize(wxSize(filterWidth, dialog.FromDIP(32)));
         filter->SetSelection(selectedFilter);
         auto* filterHint=new wxStaticText(filterGroup->GetStaticBox(),wxID_ANY,
             spellcross_ui_locale::Tr("screen.filter.hint","Selected filter replaces sprite reconstruction."));
-        filterHint->Wrap(dialog.FromDIP(300));
+        filterHint->SetFont(spellcross_menu::MenuFont());
+        filterHint->Wrap(filterWidth);
         filterGroup->Add(filter, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
-        filterGroup->Add(filterHint,0,wxLEFT|wxRIGHT|wxBOTTOM,space);
-        auto* dedither = new wxCheckBox(filterGroup->GetStaticBox(), wxID_ANY,
+        filterGroup->Add(filterHint,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
+        auto* dedither = new ScreenCheck(filterGroup->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.tactical_dedither", "Reduce palette dithering"));
         dedither->SetValue(original.tactical_dedither);
-        filterGroup->Add(dedither, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
+        filterGroup->Add(dedither, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
         addLabel(filterGroup,spellcross_ui_locale::Tr("screen.tactical_sharpen", "Adaptive sharpening (%)"));
         auto* sharpen = new spellcross_strategic_ui::Slider(filterGroup->GetStaticBox(),
             wxID_ANY, original.tactical_sharpen, 0, 100);
         filterGroup->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
-        auto* diagnostics=new wxStaticBoxSizer(wxVERTICAL,&dialog,
+        auto* diagnostics = new ScreenSection(&dialog,
             spellcross_ui_locale::Tr("screen.group.diagnostics","Diagnostics"));
         root->Add(diagnostics,0,wxEXPAND|wxLEFT|wxRIGHT|wxBOTTOM,space);
         const bool originalProfiler=spellcross_perf::Current().enabled;
-        auto* profiler=new wxCheckBox(diagnostics->GetStaticBox(),wxID_ANY,
+        auto* profiler=new ScreenCheck(diagnostics->GetStaticBox(),wxID_ANY,
             spellcross_ui_locale::Tr("screen.perf.toggle","Performance diagnostics + debug log (Ctrl+Shift+F10)"));
         profiler->SetValue(originalProfiler);
         profiler->Bind(wxEVT_CHECKBOX,[&](wxCommandEvent&) {
@@ -357,7 +544,7 @@ namespace spellcross_display
             if(perf.enabled!=profiler->GetValue()) perf.Toggle();
             if(refresh) refresh();
         });
-        diagnostics->Add(profiler,0,wxALL,space);
+        diagnostics->Add(profiler, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
 
         auto* buttons = new wxBoxSizer(wxHORIZONTAL);
         buttons->AddStretchSpacer();
@@ -368,7 +555,7 @@ namespace spellcross_display
         buttons->Add(ok, 0, wxRIGHT, dialog.FromDIP(8));
         buttons->Add(cancel, 0);
         root->Add(buttons, 0, wxEXPAND | wxALL, dialog.FromDIP(14));
-        dialog.SetSizerAndFit(root);
+        dialog.SetSizer(root);
         spellcross_strategic_ui::Apply(&dialog);
         dialog.SetEscapeId(wxID_CANCEL);
         ok->SetDefault();
@@ -383,7 +570,9 @@ namespace spellcross_display
                 scaleButtons[i]->Refresh(false);
             }
         };
-        const auto updateFilterState=[&]() { upscaling->Enable(filter->GetSelection()==0); };
+        const auto updateFilterState = [&]() {
+            upscaling->Enable(filter->GetSelection() == 0);
+        };
         updateFilterState();
         const auto apply = [&]() {
             updateFilterState();
@@ -421,7 +610,7 @@ namespace spellcross_display
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         gpu->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
-        filter->Bind(wxEVT_CHOICE, [&](wxCommandEvent&) { apply(); });
+        filter->Bind(wxEVT_COMBOBOX, [&](wxCommandEvent&) { apply(); });
         dedither->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         sharpen->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
 
