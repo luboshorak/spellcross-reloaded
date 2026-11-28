@@ -56,6 +56,9 @@ int main()
     const auto sun=ShadeRGB(sand,15,false);
     assert(shadow[0]<neutral[0] && sun[0]>neutral[0]);
     assert(neutral[0]-neutral[2]>sand[0]-sand[2]);
+    const std::uint8_t nightGreen[3]={0,180,0};
+    const auto night=ShadeRGB(nightGreen,20,true);
+    assert(night[0]==0 && night[2]==0 && night[1]>180);
     assert(MakeTag(245,10)==0 && MakeTag(0,0)==0);
     for(int shade=-32;shade<=31;++shade)
     {

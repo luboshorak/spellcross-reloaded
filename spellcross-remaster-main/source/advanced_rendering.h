@@ -205,6 +205,7 @@ namespace spellcross_enhanced
             const int contrast = chroma + (luma-112)*(night ? 5 : 12)/100;
             const int tint = night ? 0 : (c==0 ? shade/3 : c==2 ? -shade/3 : 0);
             rgb[c] = static_cast<std::uint8_t>(std::clamp(contrast*gain/100+tint,0,255));
+            if (night && c != 1) rgb[c] = 0; // retain DOS green-only night vision
         }
         return rgb;
     }
