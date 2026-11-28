@@ -62,6 +62,24 @@ int main()
         },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
         if(!valid) {std::cerr<<"CPU/GPU mismatch in filter "<<mode<<'\n';return 1;}
     }
+    // Lighting intensity and shadow-only grading must agree with CPU output.
+    art.fill(100);
+    frame.mode=0;frame.dedither=0;frame.sharpen=0;frame.lighting=1;
+    frame.width=frame.height=frame.sw=frame.sh=frame.nw=frame.nh=4;
+    frame.zoom=frame.dpi=100;
+    tags.fill(spellcross_enhanced::MakeTag(100,-12));
+    for(int grade : {0,50,100})
+    {
+        frame.gradePercent=grade;
+        const auto expected=spellcross_enhanced::ShadeRGB(pal[100],-12,false,grade);
+        bool match=true;
+        if(!gpu.Run(frame,art.data(),art.data(),pal,tags.data(),hud.data(),[&](int,const uint32_t* row){
+            for(int x=0;x<4;++x) for(int c=0;c<3;++c)
+                match &= int((row[x]>>(c*8))&255)==expected[c];
+        },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
+        assert(match);
+    }
+    frame.lighting=0;frame.width=frame.height=8;frame.dpi=200;
     // A black fog/border index must remain black.
     art.fill(0);frame.mode=14;
     bool valid=true;

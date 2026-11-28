@@ -2869,6 +2869,9 @@ bool MyApp::OnInit()
         settings.gamma = ini.GetDoubleValue("STATE", "display_gamma", 1.3);
         settings.temperature = static_cast<int>(ini.GetLongValue("STATE", "display_temperature", 6500));
         settings.advanced_rendering = ini.GetBoolValue("STATE", "advanced_rendering", false);
+        settings.lighting_intensity = static_cast<int>(ini.GetLongValue("STATE","lighting_intensity",100));
+        settings.directional_shadows = ini.GetBoolValue("STATE","directional_shadows",false);
+        settings.shadow_strength = static_cast<int>(ini.GetLongValue("STATE","shadow_strength",60));
         settings.procedural_materials = ini.GetBoolValue("STATE", "procedural_materials", false);
         settings.procedural_upscaling = ini.GetBoolValue("STATE", "procedural_upscaling", false);
         settings.gpu_acceleration = ini.GetBoolValue("STATE","gpu_acceleration",false);
@@ -3080,6 +3083,9 @@ int MyApp::OnExit()
     ini.SetDoubleValue("STATE", "display_gamma", screen.gamma);
     ini.SetLongValue("STATE", "display_temperature", screen.temperature);
     ini.SetBoolValue("STATE", "advanced_rendering", screen.advanced_rendering);
+    ini.SetLongValue("STATE","lighting_intensity",screen.lighting_intensity);
+    ini.SetBoolValue("STATE","directional_shadows",screen.directional_shadows);
+    ini.SetLongValue("STATE","shadow_strength",screen.shadow_strength);
     ini.SetBoolValue("STATE", "procedural_materials", screen.procedural_materials);
     ini.SetBoolValue("STATE", "procedural_upscaling", screen.procedural_upscaling);
     ini.SetBoolValue("STATE","gpu_acceleration",screen.gpu_acceleration);

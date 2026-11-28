@@ -5916,7 +5916,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const bool normalTactical = !editorPreview && wL1 && !render_filter && !default_filter &&
         !viewingUnitMoveRange() && !viewingUnitAttackRange() &&
         (use_view_mask || show_map_cheat || deployment_mode);
-    const bool rgbLighting = normalTactical && renderSettings.advanced_rendering;
+    const bool baseLighting = normalTactical && renderSettings.advanced_rendering && renderSettings.lighting_intensity>0;
+    const bool directionalShadows = normalTactical && !params.is_night &&
+        renderSettings.directional_shadows && renderSettings.shadow_strength>0;
+    const int lightingGrade=baseLighting?renderSettings.lighting_intensity:0;
+    const bool rgbLighting = baseLighting || directionalShadows;
     const bool materialDetail = normalTactical && renderSettings.procedural_materials &&
         spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent)>0;
     const bool enhancedGround = rgbLighting || materialDetail;
@@ -5940,7 +5944,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             int(renderSettings.advanced_rendering),int(renderSettings.procedural_materials),
             int(renderSettings.procedural_upscaling),int(rgbLighting),int(materialDetail),
             int(spriteUpscale),int(newFilters),int(normalTactical),int(params.is_night),
-            int(renderSettings.gpu_acceleration),0};
+            int(renderSettings.gpu_acceleration),0,renderSettings.lighting_intensity,
+            int(renderSettings.directional_shadows),renderSettings.shadow_strength,int(directionalShadows)};
         perf.pendingReadback=0;
     }
     static thread_local spellcross_enhanced::GroundSurface groundLight;
@@ -5949,6 +5954,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
     if (enhancedGround)
         groundLight.Reset(surf_x, surf_y, surf_x_origin, surf_y_origin);
+    struct ShadowCaster { int x,y,dx,dy,rx,ry; };
+    static thread_local std::vector<ShadowCaster> shadowCasters;
+    shadowCasters.clear();
     const auto litTile = [&](int index) {
         if (deployment_mode) return !deployment_tile_hidden(index);
         return !use_view_mask || unit_view->view[index] >= 2;
@@ -6009,7 +6017,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             {
                 const int tx = n + xs_ofs, ty = m + ys_ofs * 2;
                 spellcross_enhanced::GroundLight light;
-                if(rgbLighting)
+                if(baseLighting || directionalShadows)
                 {
                 light.relief = spellcross_enhanced::Relief(
                     visibleElevation(tx - 1, ty, sof), visibleElevation(tx + 1, ty, sof),
@@ -6028,6 +6036,20 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         else light.company = true;
                     }
                 }
+                if(directionalShadows)
+                {
+                    const int cx=mxx+40,cy=myy+sid->y_ofs+sid->y_size/2;
+                    if(light.object)
+                    {
+                        const auto* object=tiles[mxy].L2;
+                        const int reach=std::clamp(object->y_size,20,96);
+                        shadowCasters.push_back({cx,cy,reach,reach/3,
+                            std::clamp(object->x_size/3,9,38),12});
+                    }
+                    if(light.company)
+                        shadowCasters.push_back({cx,cy,34,11,14,7});
+                    // Aircraft retain their original altitude-dependent baked shadows.
+                }
                 const auto flags = sid->GetFlags();
                 using Material = spellcross_enhanced::Material;
                 Material material = Material::Earth;
@@ -6045,7 +6067,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     (Sprite::IS_WATER | Sprite::IS_ROAD | Sprite::IS_BRIDGE |
                      Sprite::IS_WOOD_BRIDGE | Sprite::IS_FORD)) != 0;
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
-                    mxx, myy, &light, smoothMaterial, material,rgbLighting,&surfaceCache);
+                    mxx, myy, &light, smoothMaterial, material,baseLighting,&surfaceCache,lightingGrade);
             }
             else if (enhancedGround)
                 groundLight.Mark(sid->data, sid->y_size, sid->y_ofs,
@@ -6078,6 +6100,15 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // All subsequent opaque indexed writes remove ground ownership at the
     // original rasterizer, even for an identical palette index. Keep the
     // existing depth order, fog checks and original bitmap unchanged.
+    // Project only from visible casters, onto tagged visible receiving ground,
+    // before foreground sprites/markers overwrite those tags.
+    if(directionalShadows)
+    {
+        for(const auto& caster:shadowCasters)
+            groundLight.CastShadow(caster.x,caster.y,caster.dx,caster.dy,
+                caster.rx,caster.ry,renderSettings.shadow_strength);
+        groundLight.ApplyShadows();
+    }
     const spellcross_enhanced::GroundOcclusionScope groundCoverage(
         enhancedGround ? &groundLight : nullptr, pic, pic_x_size);
 
@@ -6957,7 +6988,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             zoom_percent,display_scale_percent,int(settings.smooth_scaling),settings.tactical_filter,
             int(settings.tactical_dedither),settings.tactical_sharpen,int(rgbLighting),int(materialDetail),
             int(spriteUpscale),int(is_night),textureWorldX,textureWorldY,
-            spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent),0};
+            spellcross_enhanced::TextureStrength(zoom_percent,display_scale_percent),lightingGrade};
         bool completed=false;
         {
             wxNativePixelData pixels(bmp);
@@ -7048,7 +7079,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         auto& rgbTable=rgbTableStorage;
         if(rgbLighting)
         {
-            rgbTable.Prepare(output_pal, is_night);
+            rgbTable.Prepare(output_pal, is_night,lightingGrade);
             enhancedRGB.resize(screenLight.size());
         }
         spellcross_render_rows::Run(screen_height,static_cast<size_t>(screen_width)*screen_height>=262144,

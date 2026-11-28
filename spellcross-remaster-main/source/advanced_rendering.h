@@ -234,8 +234,13 @@ namespace spellcross_enhanced
         return a && b && TagMaterial(a)==TagMaterial(b);
     }
 
-    inline RGB ShadeRGB(const std::uint8_t* color, int shade, bool night)
+    inline int ScaleShade(int shade,int percent)
     {
+        return shade*std::clamp(percent,0,100)/100;
+    }
+    inline RGB ShadeRGB(const std::uint8_t* color, int shade, bool night,int grade=100)
+    {
+        grade=std::clamp(grade,0,100);
         const int luma = (77*color[0]+150*color[1]+29*color[2])/256;
         const int gain = 100 + shade * (night ? 1 : 2);
         RGB rgb{};
@@ -243,10 +248,10 @@ namespace spellcross_enhanced
         {
             // Richer material colour, a mild S-like contrast stretch and
             // warm highlights/cool shadows. Keep the existing night mood.
-            const int sat = night ? 108 : 122;
+            const int sat = 100+(night ? 8 : 22)*grade/100;
             const int chroma = luma + (static_cast<int>(color[c])-luma)*sat/100;
-            const int contrast = chroma + (luma-112)*(night ? 5 : 12)/100;
-            const int tint = night ? 0 : (c==0 ? shade/3 : c==2 ? -shade/3 : 0);
+            const int contrast = chroma + (luma-112)*(night ? 5 : 12)*grade/10000;
+            const int tint = night ? 0 : (c==0 ? shade/3 : c==2 ? -shade/3 : 0)*grade/100;
             rgb[c] = static_cast<std::uint8_t>(std::clamp(contrast*gain/100+tint,0,255));
             if (night && c != 1) rgb[c] = 0; // retain DOS green-only night vision
         }
@@ -258,16 +263,18 @@ namespace spellcross_enhanced
         std::array<std::array<RGB,256>, rgbMax-rgbMin+1> table{};
         std::array<std::uint8_t,768> lastPalette{};
         bool prepared=false,lastNight=false;
+        int lastGrade=-1;
     public:
-        void Prepare(const std::uint8_t (*palette)[3], bool night)
+        void Prepare(const std::uint8_t (*palette)[3], bool night,int grade=100)
         {
-            if(prepared && lastNight==night &&
+            grade=std::clamp(grade,0,100);
+            if(prepared && lastNight==night && lastGrade==grade &&
                 std::memcmp(lastPalette.data(),palette,lastPalette.size())==0) return;
             std::memcpy(lastPalette.data(),palette,lastPalette.size());
-            prepared=true; lastNight=night;
+            prepared=true; lastNight=night; lastGrade=grade;
             for(int shade=rgbMin;shade<=rgbMax;++shade)
                 for(int index=0;index<256;++index)
-                    table[shade-rgbMin][index]=ShadeRGB(palette[index],shade,night);
+                    table[shade-rgbMin][index]=ShadeRGB(palette[index],shade,night,grade);
         }
         const std::uint8_t* Color(Tag tag) const
         {
@@ -314,12 +321,14 @@ namespace spellcross_enhanced
         std::vector<Tag> tags,matched;
         std::vector<std::uint8_t> valid;
         std::vector<PixelLayer> layers;
+        std::vector<std::uint8_t> projectedShadow;
     public:
         void Reset(int w,int h,int x,int y)
         {
             width=w; height=h; left=x; top=y;
             tags.assign(static_cast<std::size_t>(w)*h,0);
             layers.assign(tags.size(),PixelLayer::Empty);
+            projectedShadow.clear();
         }
         Tag At(int x,int y) const
         {
@@ -371,10 +380,54 @@ namespace spellcross_enhanced
                 }
             }
         }
+        // Soft directional projection. A bounded sequence of overlapping
+        // ellipses follows the ground plane. Overlaps use max opacity, never
+        // stack into black. Only already-tagged visible ground receives shade.
+        void CastShadow(int cx,int cy,int dx,int dy,int rx,int ry,int strength)
+        {
+            strength=std::clamp(strength,0,100);
+            if(!strength||width<=0||height<=0) return;
+            rx=std::clamp(rx,3,48); ry=std::clamp(ry,2,24);
+            dx=std::clamp(dx,-96,96); dy=std::clamp(dy,-48,48);
+            if(projectedShadow.empty()) projectedShadow.assign(tags.size(),0);
+            constexpr int steps=4;
+            for(int step=1;step<=steps;++step)
+            {
+                const int px=cx+dx*step/steps,py=cy+dy*step/steps;
+                const int a=(std::max)(3,rx-rx*step/(steps*3));
+                const int b=(std::max)(2,ry-ry*step/(steps*3));
+                const int opacity=24*strength*(steps+2-step)/(100*(steps+1));
+                const int norm=a*a*b*b;
+                for(int y=(std::max)(top,py-b);y<(std::min)(top+height,py+b+1);++y)
+                {
+                    const int oy=y-py,vertical=oy*oy*a*a;
+                    for(int x=(std::max)(left,px-a);x<(std::min)(left+width,px+a+1);++x)
+                    {
+                        const int ox=x-px,distance=ox*ox*b*b+vertical;
+                        if(distance>=norm) continue;
+                        const auto i=static_cast<std::size_t>(y-top)*width+x-left;
+                        if(!tags[i]||layers[i]!=PixelLayer::Ground) continue;
+                        const int amount=opacity*(norm-distance)/norm;
+                        projectedShadow[i]=(std::max)(projectedShadow[i],static_cast<std::uint8_t>(amount));
+                    }
+                }
+            }
+        }
+        void ApplyShadows()
+        {
+            if(projectedShadow.empty()) return;
+            for(std::size_t i=0;i<tags.size();++i)
+            {
+                const auto tag=tags[i];
+                if(tag&&projectedShadow[i])
+                    tags[i]=MakeTag(TagIndex(tag),TagShade(tag)-projectedShadow[i],TagMaterial(tag));
+            }
+            projectedShadow.clear();
+        }
         void Mark(const std::vector<std::uint8_t>& sprite,int rows,int yOffset,
                   int originX,int originY,const GroundLight* light,bool smooth,
                   Material material=Material::Earth,bool calculateShade=true,
-                  SurfaceCache* cache=nullptr)
+                  SurfaceCache* cache=nullptr,int lightingPercent=100)
         {
             static const ContactRows contactRows;
             const unsigned casterMask=light&&calculateShade?
@@ -422,7 +475,7 @@ namespace spellcross_enhanced
                                 detail=noiseRow[worldX-block];
                             }
                             else detail=SurfaceDetail(worldX,worldY,smooth);
-                            tag=MakeTag(index,relief+detail+ContactRows::At(shadowRow,lx),material);
+                            tag=MakeTag(index,ScaleShade(relief+detail+ContactRows::At(shadowRow,lx),lightingPercent),material);
                         }
                         dest[sx-left]=tag;
                         layers[static_cast<std::size_t>(sy-top)*width+sx-left]=PixelLayer::Ground;

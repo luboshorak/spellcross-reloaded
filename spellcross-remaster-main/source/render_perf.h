@@ -70,10 +70,12 @@ namespace spellcross_perf
         int lighting=0,materials=0,sprites=0;
         int activeLighting=0,activeMaterials=0,activeSprites=0,activeFilter=0;
         int normal=0,night=0,gpuRequested=0,gpuActive=0;
-        std::array<int,19> Key() const
+        int lightIntensity=100,directionalShadows=0,shadowStrength=60,activeShadows=0;
+        std::array<int,23> Key() const
         {
             return {width,height,zoom,dpi,smooth,filter,dedither,sharpen,lighting,materials,sprites,
-                activeLighting,activeMaterials,activeSprites,activeFilter,normal,night,gpuRequested,gpuActive};
+                activeLighting,activeMaterials,activeSprites,activeFilter,normal,night,gpuRequested,gpuActive,
+                lightIntensity,directionalShadows,shadowStrength,activeShadows};
         }
     };
     struct State
@@ -126,12 +128,14 @@ namespace spellcross_perf
                 "map_ms=%.2f rgb_ms=%.2f outside_ms=%.2f cpu_pct=%.2f ram_mib=%.1f cores=%u "
                 "size=%dx%d zoom=%d dpi=%d smooth=%d filter=%d dedither=%d sharpen=%d "
                 "lighting=%d materials=%d sprites=%d active_light=%d active_material=%d active_sprite=%d "
-                "active_filter=%d normal=%d night=%d gpu_requested=%d gpu_active=%d gpu_readback_ms=%.2f",
+                "active_filter=%d normal=%d night=%d gpu_requested=%d gpu_active=%d gpu_readback_ms=%.2f "
+                "light_intensity=%d directional_shadows=%d shadow_strength=%d active_shadows=%d",
                 fps,frames,elapsed/frames,avg,maxMs,mapMs,rgbMs,
                 (std::max)(0.0,elapsed/frames-avg),cpu,ram,cores,
                 c.width,c.height,c.zoom,c.dpi,c.smooth,c.filter,c.dedither,c.sharpen,
                 c.lighting,c.materials,c.sprites,c.activeLighting,c.activeMaterials,c.activeSprites,
-                c.activeFilter,c.normal,c.night,c.gpuRequested,c.gpuActive,readbackMs);
+                c.activeFilter,c.normal,c.night,c.gpuRequested,c.gpuActive,readbackMs,
+                c.lightIntensity,c.directionalShadows,c.shadowStrength,c.activeShadows);
             haveSample=true; window=end; frames=0; total=peak=mapTotal=rgbTotal=readbackTotal=0;
         }
     };

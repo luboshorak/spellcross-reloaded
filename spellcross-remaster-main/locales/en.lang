@@ -461,3 +461,7 @@ screen.advanced_rendering=Advanced lighting
 screen.procedural_materials=Procedural terrain materials
 
 screen.procedural_upscaling=Procedural sprite reconstruction
+
+screen.lighting_intensity=Lighting intensity (%)
+screen.shadow_strength=Directional shadow strength (%)
+screen.directional_shadows=Directional shadows (daylight)

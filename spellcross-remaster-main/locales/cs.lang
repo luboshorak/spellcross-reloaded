@@ -461,3 +461,7 @@ screen.advanced_rendering=Pokročilé osvětlení
 screen.procedural_materials=Procedurální materiály terénu
 
 screen.procedural_upscaling=Procedurální rekonstrukce spritů
+
+screen.lighting_intensity=Intenzita osvětlení (%)
+screen.shadow_strength=Síla směrových stínů (%)
+screen.directional_shadows=Směrové stíny (den)

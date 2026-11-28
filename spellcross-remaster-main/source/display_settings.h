@@ -11,6 +11,8 @@
 #include <wx/wx.h>
 #include <wx/odcombo.h>
 #include <wx/slider.h>
+#include <wx/scrolwin.h>
+#include <wx/display.h>
 #include "spell_ui_locale.h"
 #include "strategic_ui_theme.h"
 #include "tactical_filters.h"
@@ -33,6 +35,9 @@ namespace spellcross_display
         int tactical_filter = spellcross_filters::Legacy;
         bool tactical_dedither = false;
         int tactical_sharpen = 0;
+        int lighting_intensity = 100;
+        bool directional_shadows = false;
+        int shadow_strength = 60;
     };
 
     inline Settings Normalize(Settings s)
@@ -48,6 +53,8 @@ namespace spellcross_display
         if(!spellcross_filters::Available(s.tactical_filter))
             s.tactical_filter=spellcross_filters::Legacy;
         s.tactical_sharpen=std::clamp(s.tactical_sharpen,0,100);
+        s.lighting_intensity=std::clamp(s.lighting_intensity,0,100);
+        s.shadow_strength=std::clamp(s.shadow_strength,0,100);
         return s;
     }
 
@@ -80,7 +87,9 @@ namespace spellcross_display
             old.procedural_upscaling == s.procedural_upscaling &&
             old.gpu_acceleration == s.gpu_acceleration &&
             old.tactical_filter == s.tactical_filter && old.tactical_dedither == s.tactical_dedither &&
-            old.tactical_sharpen == s.tactical_sharpen)
+            old.tactical_sharpen == s.tactical_sharpen &&
+            old.lighting_intensity == s.lighting_intensity &&
+            old.directional_shadows == s.directional_shadows && old.shadow_strength == s.shadow_strength)
             return;
         old = s;
         ++MutableRevision();
@@ -440,12 +449,18 @@ namespace spellcross_display
             wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE);
         auto* root = new wxBoxSizer(wxVERTICAL);
         const int space = dialog.FromDIP(10);
+        auto* body = new wxScrolledWindow(&dialog,wxID_ANY,wxDefaultPosition,wxDefaultSize,
+            wxVSCROLL | wxHSCROLL | wxTAB_TRAVERSAL | wxBORDER_NONE);
+        body->SetScrollRate(dialog.FromDIP(12),dialog.FromDIP(12));
+        auto* bodySizer = new wxBoxSizer(wxVERTICAL);
+        body->SetSizer(bodySizer);
+        root->Add(body,1,wxEXPAND);
         auto* columns = new wxFlexGridSizer(2, space, space);
         columns->AddGrowableCol(0, 1);
         columns->AddGrowableCol(1, 1);
-        root->Add(columns, 0, wxEXPAND | wxALL, space);
+        bodySizer->Add(columns, 0, wxEXPAND | wxALL, space);
         const auto group = [&](const wxString& title) {
-            auto* section = new ScreenSection(&dialog, title);
+            auto* section = new ScreenSection(body, title);
             columns->Add(section, 1, wxEXPAND);
             return section;
         };
@@ -476,6 +491,14 @@ namespace spellcross_display
                 i == 2 ? 0 : dialog.FromDIP(4));
         }
         display->Add(scaleRow, 0, wxEXPAND | wxALL, space);
+        addLabel(display,spellcross_ui_locale::Tr("screen.lighting_intensity","Lighting intensity (%)"));
+        auto* lightIntensity = new spellcross_strategic_ui::Slider(display->GetStaticBox(),
+            wxID_ANY,original.lighting_intensity,0,100);
+        display->Add(lightIntensity,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+        addLabel(display,spellcross_ui_locale::Tr("screen.shadow_strength","Shadow strength (%)"));
+        auto* shadowStrength = new spellcross_strategic_ui::Slider(display->GetStaticBox(),
+            wxID_ANY,original.shadow_strength,0,100);
+        display->Add(shadowStrength,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
 
         addLabel(colour,spellcross_ui_locale::Tr("screen.brightness", "Brightness (%)"));
         auto* brightness = new spellcross_strategic_ui::Slider(colour->GetStaticBox(),
@@ -504,6 +527,10 @@ namespace spellcross_display
             spellcross_ui_locale::Tr("screen.advanced_rendering", "Advanced rendering (experimental)"));
         enhanced->SetValue(original.advanced_rendering);
         renderer->Add(enhanced, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, space);
+        auto* shadows = new ScreenCheck(renderer->GetStaticBox(),wxID_ANY,
+            spellcross_ui_locale::Tr("screen.directional_shadows","Directional shadows (daylight)"));
+        shadows->SetValue(original.directional_shadows);
+        renderer->Add(shadows,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,space);
         auto* materials = new ScreenCheck(renderer->GetStaticBox(), wxID_ANY,
             spellcross_ui_locale::Tr("screen.procedural_materials", "Procedural terrain materials (experimental)"));
         materials->SetValue(original.procedural_materials);
@@ -545,9 +572,9 @@ namespace spellcross_display
             wxID_ANY, original.tactical_sharpen, 0, 100);
         filterGroup->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
-        auto* diagnostics = new ScreenSection(&dialog,
+        auto* diagnostics = new ScreenSection(body,
             spellcross_ui_locale::Tr("screen.group.diagnostics","Diagnostics"));
-        root->Add(diagnostics,0,wxEXPAND|wxLEFT|wxRIGHT|wxBOTTOM,space);
+        bodySizer->Add(diagnostics,0,wxEXPAND|wxLEFT|wxRIGHT|wxBOTTOM,space);
         const bool originalProfiler=spellcross_perf::Current().enabled;
         auto* profiler=new ScreenCheck(diagnostics->GetStaticBox(),wxID_ANY,
             spellcross_ui_locale::Tr("screen.perf.toggle","Performance diagnostics + debug log (Ctrl+Shift+F10)"));
@@ -577,7 +604,14 @@ namespace spellcross_display
             columnWidth = (std::max)(columnWidth, section->GetSizer()->CalcMin().x);
         for (auto* section : {display, renderer, colour, filterGroup})
             section->SetMinSize(wxSize(columnWidth, -1));
+        const auto contentMin=bodySizer->CalcMin();
+        const int displayIndex=wxDisplay::GetFromWindow(parent?parent:&dialog);
+        const auto work=wxDisplay(displayIndex==wxNOT_FOUND?0:static_cast<unsigned>(displayIndex)).GetClientArea();
+        const int footer=buttons->CalcMin().y+dialog.FromDIP(28);
+        body->SetMinSize(wxSize((std::min)(contentMin.x+dialog.FromDIP(24),(std::max)(320,work.width-dialog.FromDIP(50))),
+            (std::min)(contentMin.y,(std::max)(150,work.height-footer-dialog.FromDIP(70)))));
         root->Fit(&dialog);
+        body->FitInside();
         dialog.SetEscapeId(wxID_CANCEL);
         ok->SetDefault();
         dialog.CentreOnParent();
@@ -604,6 +638,9 @@ namespace spellcross_display
             next.gamma = gamma->GetValue() / 100.0;
             next.temperature = temperature->GetValue();
             next.advanced_rendering = enhanced->GetValue();
+            next.lighting_intensity = lightIntensity->GetValue();
+            next.directional_shadows = shadows->GetValue();
+            next.shadow_strength = shadowStrength->GetValue();
             next.procedural_materials = materials->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
             next.gpu_acceleration = gpu->GetValue();
@@ -628,6 +665,9 @@ namespace spellcross_display
         gamma->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         temperature->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         enhanced->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        shadows->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        lightIntensity->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
+        shadowStrength->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         gpu->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });

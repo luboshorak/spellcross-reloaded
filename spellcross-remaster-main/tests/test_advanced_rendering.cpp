@@ -74,6 +74,31 @@ int main()
     const auto night=ShadeRGB(nightGreen,20,true);
     assert(night[0]==0 && night[2]==0 && night[1]>180);
     assert(MakeTag(245,10)==0 && MakeTag(0,0)==0);
+    assert(ScaleShade(-20,50)==-10 && ScaleShade(20,0)==0 && ScaleShade(20,100)==20);
+    const auto ungraded=ShadeRGB(sand,0,false,0);
+    assert(ungraded[0]==sand[0] && ungraded[1]==sand[1] && ungraded[2]==sand[2]);
+    assert(ShadeRGB(sand,-15,false,0)[0]<sand[0]);
+    assert(ShadeRGB(sand,0,false,100)==neutral);
+    {
+        GroundSurface surface;
+        surface.Reset(64,40,0,0);
+        for(int y=0;y<40;++y) for(int x=0;x<64;++x)
+            surface.Write(x,y,MakeTag(120,0,Material::Grass));
+        surface.Write(30,20,0); // fog / protected ground
+        surface.CastShadow(15,15,28,8,10,6,100);
+        surface.CastShadow(15,15,28,8,10,6,100); // overlap must not double opacity
+        surface.ApplyShadows();
+        assert(TagShade(surface.At(35,21))<0);
+        assert(TagShade(surface.At(35,21))>=-24);
+        assert(TagShade(surface.At(2,15))==0);
+        assert(!surface.At(30,20));
+        assert(TagMaterial(surface.At(35,21))==Material::Grass);
+        surface.Reset(64,40,0,0);
+        surface.Write(35,21,MakeTag(120,0));
+        surface.CastShadow(15,15,28,8,10,6,0);
+        surface.ApplyShadows();
+        assert(TagShade(surface.At(35,21))==0);
+    }
     for(int shade=-32;shade<=31;++shade)
     {
         const auto tag=MakeTag(120,shade);

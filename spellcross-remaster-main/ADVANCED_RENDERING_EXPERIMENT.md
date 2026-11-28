@@ -213,3 +213,19 @@ also invalidate ground tags at the actual write. Hidden unit sprites no longer
 cast the experimental contact shade. The CPU/GPU output still uses the shared
 ground tags; the new ownership classification is groundwork for layer-specific
 reconstruction and lighting, not a new independent colour compositor yet.
+
+### V8 adjustable lighting and directional shadows
+
+The existing lighting switch has a 0–100% intensity (100% retains the previous
+V2 look). An independent daylight directional-shadow switch and strength slider
+(0–100%, initial 60%) project bounded soft ground-plane shadows from visible
+static ground companies and scenery using sprite extents for approximate reach.
+They do not reconstruct silhouettes or raytrace elevation. Aircraft keep baked
+shadows, moving companies are omitted, and night/range/dimmed/editor modes retain
+the established exclusions. The receiving mask rejects fog, protected palette
+indices and foreground writes. Overlapping projections use maximum opacity.
+Shadow-only mode leaves unshadowed colours neutral. Both CPU and D3D11 consume
+the same packed tags and grade setting. All new choices persist in STATE and
+Cancel restores the complete prior settings. The screen dialog scrolls on small
+monitors while OK/Cancel remain visible. CPU, GPU and settings regressions cover
+the new math and defaults; actual game visuals and performance need acceptance.

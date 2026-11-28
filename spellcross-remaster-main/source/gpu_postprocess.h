@@ -28,7 +28,7 @@ namespace spellcross_gpu
     {
         int width=0,height=0,sw=0,sh=0,nw=0,nh=0,zoom=100,dpi=100;
         int smoothDpi=0,mode=0,dedither=0,sharpen=0,lighting=0,material=0,sprites=0,night=0;
-        int worldX=0,worldY=0,strength=0,padding=0;
+        int worldX=0,worldY=0,strength=0,gradePercent=100;
     };
     static_assert(sizeof(Frame)==80);
     inline constexpr char Shader[] = R"HLSL(
@@ -37,7 +37,7 @@ cbuffer Params : register(b0) {
  int nw,nh,zoom,dpi;
  int smoothDpi,mode,dedither,sharpen;
  int lighting,material,sprites,night;
- int worldX,worldY,strength,padding;
+ int worldX,worldY,strength,gradePercent;
 };
 Texture2D<uint> nativeIdx : register(t0);
 Texture2D<uint> logicalIdx : register(t1);
@@ -114,9 +114,10 @@ int3 Base(int2 p,bool lit)
  uint t=Tag(p); if(t==0) return c;
  int shade=int((t>>8)&63)-32;
  int l=(77*c.x+150*c.y+29*c.z)/256;
- int3 chroma=l+(c-l)*(night!=0?108:122)/100;
- int3 contrast=chroma+(l-112)*(night!=0?5:12)/100;
- int3 tint=night!=0?int3(0,0,0):int3(shade/3,0,-shade/3);
+ int grade=clamp(gradePercent,0,100);
+ int3 chroma=l+(c-l)*(100+(night!=0?8:22)*grade/100)/100;
+ int3 contrast=chroma+(l-112)*(night!=0?5:12)*grade/10000;
+ int3 tint=night!=0?int3(0,0,0):int3(shade/3,0,-shade/3)*grade/100;
  c=clamp(contrast*(100+shade*(night!=0?1:2))/100+tint,0,255);
  return night!=0?int3(0,c.y,0):c;
 }
