@@ -27,6 +27,7 @@ namespace spellcross_display
         bool advanced_rendering = false; // V2 tactical RGB lighting
         bool procedural_materials = false; // V3 independent material detail
         bool procedural_upscaling = false; // edge-aware tactical sprite reconstruction
+        bool ai_hummer = false; // opt-in Real-ESRGAN pilot
     };
 
     inline Settings Normalize(Settings s)
@@ -67,7 +68,7 @@ namespace spellcross_display
             old.gamma == s.gamma && old.temperature == s.temperature &&
             old.advanced_rendering == s.advanced_rendering &&
             old.procedural_materials == s.procedural_materials &&
-            old.procedural_upscaling == s.procedural_upscaling)
+            old.procedural_upscaling == s.procedural_upscaling && old.ai_hummer == s.ai_hummer)
             return;
         old = s;
         ++MutableRevision();
@@ -280,7 +281,11 @@ namespace spellcross_display
         auto* upscaling = new wxCheckBox(&dialog, wxID_ANY,
             spellcross_ui_locale::Tr("screen.procedural_upscaling", "Procedural sprite upscaling (experimental)"));
         upscaling->SetValue(original.procedural_upscaling);
-        root->Add(upscaling, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(8));
+        root->Add(upscaling, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(8));
+        auto* aiHummer = new wxCheckBox(&dialog, wxID_ANY,
+            spellcross_ui_locale::Tr("screen.ai_hummer", "AI graphics: Hummer (experimental)"));
+        aiHummer->SetValue(original.ai_hummer);
+        root->Add(aiHummer, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, dialog.FromDIP(8));
 
         auto* buttons = new wxBoxSizer(wxHORIZONTAL);
         buttons->AddStretchSpacer();
@@ -316,6 +321,7 @@ namespace spellcross_display
             next.advanced_rendering = enhanced->GetValue();
             next.procedural_materials = materials->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
+            next.ai_hummer = aiHummer->GetValue();
             Set(next);
             if (refresh) refresh();
         };
@@ -334,6 +340,7 @@ namespace spellcross_display
         enhanced->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         materials->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
         upscaling->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
+        aiHummer->Bind(wxEVT_CHECKBOX, [&](wxCommandEvent&) { apply(); });
 
         if (dialog.ShowModal() == wxID_OK)
         {

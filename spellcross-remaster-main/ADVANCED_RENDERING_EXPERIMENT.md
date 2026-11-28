@@ -88,3 +88,36 @@ delta. Native sprites, game coordinates and assets remain unchanged.
 Limitations: the composited native image is not a semantic sprite mask; some
 thin details may be softened, and no new authentic features can be recovered
 from the low-resolution source. Native 100% is intentionally not upscaled.
+
+## Version 5: real neural Hummer pilot
+
+Independent AI graphics: Hummer setting, off by default. Only retail unit
+type 29 enters the HD cache; the original renderer and its shadow pass stay
+authoritative. When a visible, unfiltered Hummer is rendered, all linked
+FSU resource frames are exported to a local ai_hummer_cache directory in
+the game's working directory (override with SPELLCROSS_AI_CACHE). No
+original graphics or model weights are distributed. Source and palette
+hashes isolate different editions/terrain palettes. Restart after generating.
+The final RGB compositor replaces only original opaque, still-visible Hummer
+pixels; later sprite and status bar draws clear ownership and final index
+comparison rejects changed pixels. The original silhouette, transparency,
+shadows, animation, anchors and game logic are unchanged. Cache is missing
+or invalid: original graphics. Range modes, hidden units, HUD and editor
+remain unmodified. Later direct pixel writers using the identical index
+can still be indistinguishable. Neural output may vary between frames.
+
+1. Enable AI graphics: Hummer. Enter a battle with a visible Hummer,
+   then exit. Find ai_hummer_cache (or set SPELLCROSS_AI_CACHE to an absolute
+   path before launching the game).
+2. Download official Real-ESRGAN ncnn Vulkan binaries and models:
+   https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases
+3. Install Pillow (python -m pip install Pillow). From repository root:
+   python spellcross-remaster-main/tools/build_hummer_hd.py --cache PATH_TO_CACHE --esrgan PATH_TO_EXE
+4. Restart the game, enable AI graphics and compare at 200-300% zoom.
+
+Default model is realesrgan-x4plus, no synthetic placeholder or interpolation
+fallback is written by the tool. A Vulkan-compatible GPU is required for
+the external tool only. The game loads generated RGB data with no inference
+dependency. Use --force to regenerate with an alternative supported model.
+Cache files are local data; do not commit them. No full game or actual neural
+inference is verified by the standalone C++ test.

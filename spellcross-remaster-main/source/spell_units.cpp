@@ -12,6 +12,7 @@
 
 #include "spell_units.h"
 #include "unit_health_display.h"
+#include "ai_hummer.h"
 #include "destructible_health.h"
 #include "spellcross.h"
 #include "spell_map_event.h"
@@ -655,6 +656,23 @@ vector<SpellUnitRec*> &SpellUnits::GetUnits()
 tuple<int,int> SpellUnitRec::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x_pos, int buf_y_pos, int buf_x_size,
 	uint8_t* filter, uint8_t* shadow_filter, ::Sprite *sprt, int man, int azim, int azim_turret, int frame, FSU_resource *fsu_anim, int flight_alt)
 {
+    auto* hdFrame = spellcross_ai::Active();
+    const bool hdHummer = hdFrame && type_id == 29 && !filter;
+    if(hdHummer)
+    {
+        auto& cache=spellcross_ai::SharedCache();
+        const auto* palette=hdFrame->Palette();
+        // Export every original frame, slope, direction and animation resource
+        // of this one unit, rather than only the current on-screen pose.
+        FSU_resource* resources[]={gr_base,gr_aux,gr_attack_light,gr_attack_armor,
+            gr_attack_air,gr_action,gr_die,fsu_anim};
+        for(auto* resource:resources)
+            if(resource && cache.WarmOnce(resource,palette))
+                for(auto* item:resource->list)
+                    if(item)
+                        cache.Get(spellcross_ai::Decode(item->data,item->data_size,
+                            item->y_size,item->x_min,item->x_max),palette);
+    }
 	// tile slope
 	char slope = sprt->name[2];
 	
@@ -872,6 +890,7 @@ tuple<int,int> SpellUnitRec::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x
 				y_pos -= flight_alt;
 			}
 
+            if(!spr) continue;
 			// store unit highest pixel offset
 			if(uid == 0)
 				x_status_bar = 40;
@@ -879,6 +898,19 @@ tuple<int,int> SpellUnitRec::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x
 
 			// render man of unit			
 			spr->Render(buffer, buf_end, x_pos, y_pos, buf_x_size, shadow_filter, filter);
+            if(hdFrame)
+            {
+                const int top=y_pos+spr->y_ofs-128;
+                // Later original sprite pixels erase previous HD ownership.
+                hdFrame->ClearRows(spr->data,spr->data_size,spr->y_size,x_pos,top);
+                if(hdHummer)
+                {
+                    auto* entry=spellcross_ai::SharedCache().Get(
+                        spellcross_ai::Decode(spr->data,spr->data_size,spr->y_size,
+                            spr->x_min,spr->x_max),hdFrame->Palette());
+                    hdFrame->Record(entry,x_pos+spr->x_min,top);
+                }
+            }
 
 			// this should prevent rendering turret when animating
 			if(was_anim)
@@ -1620,6 +1652,9 @@ int MapUnit::Render(Terrain* data,uint8_t* buffer,uint8_t* buf_end,int buf_x_pos
 	if(psb < buffer || psb_end >= buf_end)
 		return(0);
 
+    if(auto* hd=spellcross_ai::Active())
+        hd->EraseRect(buf_x_pos+x_status_bar-bar_w/2,
+            buf_y_pos+y_status_bar-bar_h/2,bar_w,bar_h);
 	// render shadow background
 	for(int y = 0; y < bar_h; y++)
 	{
