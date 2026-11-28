@@ -369,6 +369,28 @@ namespace spellcross_display
     class ScreenChoice final : public wxOwnerDrawnComboBox
     {
     protected:
+        // The native combo paints a light background around a centred bitmap.
+        // Cover the entire button area, not only the arrow's bitmap, on every
+        // paint (including hover, focus and a DPI/size change).
+        void DrawButton(wxDC& dc, const wxRect& rect, int) override
+        {
+            if (rect.IsEmpty()) return;
+            const bool enabled = IsEnabled();
+            const bool hover = enabled && rect.Contains(ScreenToClient(wxGetMousePosition()));
+            const auto background = hover || (enabled && IsPopupShown())
+                ? spellcross_menu::Highlight() : spellcross_menu::Background();
+            const auto ink = enabled ? spellcross_menu::Accent() : spellcross_strategic_ui::Inactive();
+            dc.SetPen(*wxTRANSPARENT_PEN);
+            dc.SetBrush(wxBrush(background));
+            dc.DrawRectangle(rect);
+            dc.SetPen(wxPen(spellcross_strategic_ui::Border()));
+            dc.DrawLine(rect.x, rect.y, rect.x, rect.y + rect.height);
+            dc.SetPen(wxPen(ink, FromDIP(2)));
+            const int x = rect.x + rect.width / 2;
+            const int y = rect.y + rect.height / 2;
+            dc.DrawLine(x - FromDIP(5), y - FromDIP(2), x, y + FromDIP(3));
+            dc.DrawLine(x, y + FromDIP(3), x + FromDIP(5), y - FromDIP(2));
+        }
         void OnDrawBackground(wxDC& dc, const wxRect& rect, int,
                               int flags) const override
         {
@@ -402,18 +424,9 @@ namespace spellcross_display
             SetFont(spellcross_menu::MenuFont());
             SetBackgroundColour(spellcross_menu::Background());
             SetForegroundColour(spellcross_menu::Text());
-            const int size = FromDIP(24);
-            wxBitmap arrow(size, size);
-            {
-                wxMemoryDC dc(arrow);
-                dc.SetBackground(wxBrush(spellcross_menu::Background()));
-                dc.Clear();
-                dc.SetPen(wxPen(spellcross_menu::Accent(), FromDIP(2)));
-                const int mid = size / 2;
-                dc.DrawLine(mid - FromDIP(5), mid - FromDIP(2), mid, mid + FromDIP(3));
-                dc.DrawLine(mid, mid + FromDIP(3), mid + FromDIP(5), mid - FromDIP(2));
-            }
-            SetButtonBitmaps(arrow, false);
+            // Explicit custom dimensions keep wxWidgets out of the native
+            // full-button drawing path; DrawButton handles the entire area.
+            SetButtonPosition(FromDIP(30), FromDIP(28), wxRIGHT, 0);
         }
     };
 
@@ -557,6 +570,14 @@ namespace spellcross_display
         root->Add(buttons, 0, wxEXPAND | wxALL, dialog.FromDIP(14));
         dialog.SetSizer(root);
         spellcross_strategic_ui::Apply(&dialog);
+        // Measure with the final themed font and reserve equal column widths
+        // so longer localized labels never compete with the adjacent column.
+        int columnWidth = dialog.FromDIP(400);
+        for (auto* section : {display, renderer, colour, filterGroup})
+            columnWidth = (std::max)(columnWidth, section->GetSizer()->CalcMin().x);
+        for (auto* section : {display, renderer, colour, filterGroup})
+            section->SetMinSize(wxSize(columnWidth, -1));
+        root->Fit(&dialog);
         dialog.SetEscapeId(wxID_CANCEL);
         ok->SetDefault();
         dialog.CentreOnParent();
