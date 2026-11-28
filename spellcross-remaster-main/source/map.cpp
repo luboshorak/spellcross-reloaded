@@ -5919,7 +5919,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     spellcross_ai::Frame hdFrame;
     if(aiHummer)
         hdFrame.Reset(surf_x,surf_y,surf_x_origin,surf_y_origin,
-            reinterpret_cast<const uint8_t*>(terrain->pal));
+            reinterpret_cast<const uint8_t*>(terrain->pal),pic);
     spellcross_ai::Scope hdScope(aiHummer?&hdFrame:nullptr);
     spellcross_enhanced::GroundSurface groundLight;
     // The projected world origin, not the scratch-buffer origin, anchors HD detail.

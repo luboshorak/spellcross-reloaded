@@ -657,6 +657,7 @@ tuple<int,int> SpellUnitRec::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x
 	uint8_t* filter, uint8_t* shadow_filter, ::Sprite *sprt, int man, int azim, int azim_turret, int frame, FSU_resource *fsu_anim, int flight_alt)
 {
     auto* hdFrame = spellcross_ai::Active();
+    if(hdFrame && !hdFrame->Matches(buffer)) hdFrame=nullptr;
     const bool hdHummer = hdFrame && type_id == 29 && !filter;
     if(hdHummer)
     {
@@ -1652,7 +1653,7 @@ int MapUnit::Render(Terrain* data,uint8_t* buffer,uint8_t* buf_end,int buf_x_pos
 	if(psb < buffer || psb_end >= buf_end)
 		return(0);
 
-    if(auto* hd=spellcross_ai::Active())
+    if(auto* hd=spellcross_ai::Active(); hd && hd->Matches(buffer))
         hd->EraseRect(buf_x_pos+x_status_bar-bar_w/2,
             buf_y_pos+y_status_bar-bar_h/2,bar_w,bar_h);
 	// render shadow background

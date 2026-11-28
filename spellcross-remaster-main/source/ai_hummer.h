@@ -9,6 +9,8 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <memory>
+#include <utility>
 #include <set>
 #include <sstream>
 #include <string>
@@ -98,7 +100,6 @@ namespace spellcross_ai
     {
         Source src;
         std::vector<std::uint8_t> rgb;
-        bool attempted=false;
         bool Load(const fs::path& path)
         {
             std::ifstream in(path,std::ios::binary);
@@ -171,20 +172,38 @@ namespace spellcross_ai
     {
         int w=0,h=0,left=0,top=0;
         const std::uint8_t* palette=nullptr;
-        std::vector<Mark> marks;
+        // Sparse 32x32 blocks: no full viewport-sized Mark array even on
+        // a 4K monitor at minimum zoom. An empty cache allocates no blocks.
+        static constexpr int blockSide=32;
+        using Block=std::array<Mark,blockSide*blockSide>;
+        int blocksX=0;
+        std::vector<std::unique_ptr<Block>> blocks;
         bool hasMarks=false;
-    public:
-        void Reset(int width,int height,int x,int y,const std::uint8_t* pal)
+        const std::uint8_t* target=nullptr;
+        Mark* At(int x,int y,bool create)
         {
-            w=width; h=height; left=x; top=y; palette=pal;
-            marks.assign(static_cast<std::size_t>(w)*h,{}); hasMarks=false;
+            if(x<0||y<0||x>=w||y>=h) return nullptr;
+            auto& block=blocks[static_cast<std::size_t>(y/blockSide)*blocksX+x/blockSide];
+            if(!block&&create) block=std::make_unique<Block>();
+            return block?&(*block)[(y%blockSide)*blockSide+x%blockSide]:nullptr;
+        }
+    public:
+        void Reset(int width,int height,int x,int y,const std::uint8_t* pal,
+                   const std::uint8_t* buffer=nullptr)
+        {
+            w=width; h=height; left=x; top=y; palette=pal; target=buffer;
+            blocksX=(w+blockSide-1)/blockSide;
+            blocks.clear();
+            blocks.resize(static_cast<std::size_t>(blocksX)*((h+blockSide-1)/blockSide));
+            hasMarks=false;
         }
         const std::uint8_t* Palette() const { return palette; }
+        bool Matches(const std::uint8_t* buffer) const { return target==buffer; }
         void Write(int x,int y,Mark mark)
         {
             x-=left; y-=top;
             if(x<0||y<0||x>=w||y>=h) return;
-            marks[static_cast<std::size_t>(y)*w+x]=mark;
+            if(auto* slot=At(x,y,mark.entry!=nullptr)) *slot=mark;
             if(mark.entry) hasMarks=true;
         }
         void EraseRect(int x,int y,int width,int height)
@@ -215,18 +234,27 @@ namespace spellcross_ai
         void Finalize(const std::uint8_t* frame,std::size_t len,int stride)
         {
             if(!hasMarks) return;
-            for(int y=0;y<h;++y) for(int x=0;x<w;++x)
+            for(std::size_t b=0;b<blocks.size();++b)
             {
-                auto& mark=marks[static_cast<std::size_t>(y)*w+x];
-                if(!mark.entry) continue;
-                const auto pos=static_cast<std::size_t>(top+y)*stride+left+x;
-                if(pos>=len||frame[pos]!=mark.index) mark={};
+                if(!blocks[b]) continue;
+                const int bx=static_cast<int>(b%blocksX)*blockSide;
+                const int by=static_cast<int>(b/blocksX)*blockSide;
+                for(int y=0;y<blockSide&&by+y<h;++y)
+                    for(int x=0;x<blockSide&&bx+x<w;++x)
+                    {
+                        auto& mark=(*blocks[b])[y*blockSide+x];
+                        if(!mark.entry) continue;
+                        const auto pos=static_cast<std::size_t>(top+by+y)*stride+left+bx+x;
+                        if(pos>=len||frame[pos]!=mark.index) mark={};
+                    }
             }
         }
         const std::uint8_t* Pixel(int x,int y,int fx,int fy) const
         {
             if(!hasMarks||x<0||y<0||x>=w||y>=h) return nullptr;
-            const auto& mark=marks[static_cast<std::size_t>(y)*w+x];
+            const auto& block=blocks[static_cast<std::size_t>(y/blockSide)*blocksX+x/blockSide];
+            if(!block) return nullptr;
+            const auto& mark=(*block)[(y%blockSide)*blockSide+x%blockSide];
             return mark.entry?mark.entry->Pixel(mark.x,mark.y,fx,fy):nullptr;
         }
         bool HasMarks() const { return hasMarks; }

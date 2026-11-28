@@ -295,7 +295,7 @@ void Sprite::Render(std::vector<uint8_t> &buf,int buf_x,int buf_y,int x_size,uin
 }
 void Sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x, int buf_y, int x_size, uint8_t *filter)
 {
-    if(auto* hd=spellcross_ai::Active())
+    if(auto* hd=spellcross_ai::Active(); hd && hd->Matches(buffer))
         hd->ClearRows(this->data.data(),this->data.size(),y_size,buf_x,buf_y+y_ofs);
 	// ###todo: optimize for no transparency mode?
 
