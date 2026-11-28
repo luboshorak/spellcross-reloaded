@@ -21,6 +21,7 @@
 #include "strategic_formation_bonus_rules.h"
 #include "display_settings.h"
 #include "advanced_rendering.h"
+#include "render_perf.h"
 #include "spellcross.h"
 #include "fs_archive.h"
 #include "fsu_archive.h"
@@ -5748,6 +5749,9 @@ double SpellMap::GetGamma()
 // render frame
 int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::function<void(void)> hud_buttons_cb, int zoom_percent, int display_scale_percent)
 {
+    auto& perf=spellcross_perf::Current();
+    const bool profiling=perf.enabled && !scroll;
+    const auto perfStart=profiling?spellcross_perf::Clock::now():spellcross_perf::Stamp{};
 	if (!bmp.IsOk() || bmp.GetWidth() <= 0 || bmp.GetHeight() <= 0)
 		return 1;
 	int i;
@@ -6882,6 +6886,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
 	// --- translate indexed image buffer to RGB bitmap scanline by scanline:
 
+    const auto perfRGB=profiling?spellcross_perf::Clock::now():spellcross_perf::Stamp{};
     // Rebuild the palette when gamma, brightness or color temperature changes.
     // This modifies only presentation RGB, never the original indexed assets.
     const auto& settings = spellcross_display::Current();
@@ -7163,6 +7168,12 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         }
     }
 
+
+    if(profiling)
+    {
+        perf.pendingMap=spellcross_perf::Millis(perfStart,perfRGB);
+        perf.pendingRGB=spellcross_perf::Millis(perfRGB,spellcross_perf::Clock::now());
+    }
 
 	// render surface changes processed
 	CommitRenderSurfModified();

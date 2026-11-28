@@ -80,6 +80,8 @@ namespace spellcross_help
                 "Click the HUD Info button, then a visible unit to inspect its statistics. Escape cancels inspection.");
 
             heading("help.keys", "Tactical map — keyboard");
+            row("help.key.performance", "Ctrl+Shift+F10", "help.action.performance",
+                "Toggle the experimental FPS, renderer timing, CPU and RAM overlay.");
             row("help.key.confine_cursor", "Ctrl+X", "help.action.confine_cursor",
                 "Toggle keeping the cursor inside the tactical game window.");
             row("help.key.tactical_info", "I / Shift+I", "help.action.tactical_info",

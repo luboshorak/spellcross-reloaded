@@ -441,3 +441,6 @@ tactical_info.move_steps=Move (base steps)
 tactical_info.attack_types=Attack L / H / A
 tactical_info.heal=Heal / repair (all AP)
 tactical_info.heal_unavailable=Heal: select unit with full AP
+
+help.key.performance=Ctrl+Shift+F10
+help.action.performance=Toggle the experimental FPS, renderer timing, CPU and RAM overlay.

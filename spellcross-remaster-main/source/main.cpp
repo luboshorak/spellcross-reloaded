@@ -69,6 +69,7 @@
 #include "spellcross.h"
 #include "spell_ui_locale.h"
 #include "display_settings.h"
+#include "render_perf.h"
 #include "map.h"
 #include "runtime_diagnostics.h"
 #include "strategic_generated_spawn_rules.h"
@@ -3354,6 +3355,16 @@ Bind(wxEVT_MENU, [this](wxCommandEvent&)
         // Fullscreen/menu controls can own focus instead of the canvas. Handle
         // the console before dispatching focus-dependent child key events.
         const int consoleKey = event.GetKeyCode();
+        if(consoleKey==WXK_F10 && event.ControlDown() && event.ShiftDown() && !event.AltDown() &&
+            spell_map && spell_map->IsLoaded() && spell_map->isGameMode() && !inSubForm())
+        {
+            if(!event.IsAutoRepeat())
+            {
+                spellcross_perf::Current().Toggle();
+                if(canvas) canvas->Refresh(false);
+            }
+            return;
+        }
         if (!inSubForm() && (consoleKey == '`' || consoleKey == '~' ||
             event.GetRawKeyCode() == 0xC0))
         {
@@ -6872,15 +6883,14 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
         canvas->ClearBackground();
     else
     {
-        /*int frames = 100;
-        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();        
-        for(int k = 0; k < frames; k++)*/
-            spell_map->Render(m_buffer, nullptr, nullptr,
-                bind(&MainFrame::CreateHUDbuttons, this), TacticalZoomPercent(),
-                spellcross_display::Current().scale_percent);
-        /*std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-        float time = 1e-6*std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-        SetStatusText(wxString::Format(wxT("%.0f fps"),frames/time),7);*/
+        auto& perf=spellcross_perf::Current();
+        const bool profiling=perf.enabled && spell_map->isGameMode();
+        const auto start=profiling?spellcross_perf::Clock::now():spellcross_perf::Stamp{};
+        if(profiling) perf.pendingMap=perf.pendingRGB=0;
+        const int renderResult=spell_map->Render(m_buffer, nullptr, nullptr,
+            bind(&MainFrame::CreateHUDbuttons, this), TacticalZoomPercent(),
+            spellcross_display::Current().scale_percent);
+        if(profiling && renderResult==0) perf.Record(start,spellcross_perf::Clock::now());
         pdc.DrawBitmap(m_buffer,wxPoint(0,0));
 		if (m_boxSelecting)
 		{
@@ -6894,6 +6904,8 @@ void MainFrame::OnPaintCanvas(wxPaintEvent& event)
             DrawTacticalInfoPanel(pdc);
         if (m_mission_result_visible)
             DrawMissionResultOverlay(pdc);
+        else if(profiling && !inSubForm())
+            spellcross_perf::Draw(pdc,canvas);
     }
        
 

@@ -126,3 +126,13 @@ mode avoids lighting and RGB surface work. Flat sprite areas exit the edge
 reconstruction early. Added six additional CPU kernels (IDs 10-15).
 The temporary Filter review dialog exports checked removal candidates by
 stable ID, never changing or deleting a filter itself.
+
+### Debug performance overlay
+
+Ctrl+Shift+F10 toggles a tactical canvas overlay. It counts successful map
+renders per elapsed second (not monitor refresh rate), shows last, average
+and maximum renderer milliseconds and map/RGB conversion phase averages.
+CPU is process usage normalized by logical CPU count, RAM is process
+working set/RSS on Windows/Linux. Samples update at roughly one-second
+intervals while painting; no additional redraw timer or polling thread.
+The overlay defaults off and is not saved. GPU counters are not measured.

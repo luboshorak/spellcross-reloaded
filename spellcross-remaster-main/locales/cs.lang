@@ -441,3 +441,6 @@ tactical_info.move_steps=Dojezd (zákl. kroky)
 tactical_info.attack_types=Útok L / T / V
 tactical_info.heal=Léčit / opravit (všechny AB)
 tactical_info.heal_unavailable=Léčení: vyber oddíl s plnými AB
+
+help.key.performance=Ctrl+Shift+F10
+help.action.performance=Zapnout nebo vypnout diagnostický panel FPS, časů vykreslení, CPU a RAM.
