@@ -9,6 +9,7 @@
 #define _HAS_STD_BYTE 0
 
 #include "spell_graphics.h"
+#include "advanced_rendering.h"
 #include "sprites.h"
 #include "other.h"
 
@@ -266,6 +267,7 @@ uint8_t* SpellGraphicItem::GetPixels(int y,int x)
 // render image to buffer position with range checking and transparency
 int SpellGraphicItem::Render(uint8_t* buf,uint8_t* buf_end,int buf_x_size,int x_pos,int y_pos,int in_black,int* y_buffer)
 {	
+	const auto* coverage = spellcross_enhanced::ObserveGround(buf, buf_x_size);
 	int *y_buf = NULL;
 	int y_buf_pos = -1;
 	for(int y = 0; y < y_size; y++)
@@ -295,6 +297,9 @@ int SpellGraphicItem::Render(uint8_t* buf,uint8_t* buf_end,int buf_x_size,int x_
 		
 		if(in_black)
 		{
+			if (coverage)
+				for (int x=0; x<x_sz; ++x)
+					if (src[x] && src[x]!=0xFE) coverage->Span(pic+x,1);
 			for(int x = 0; x < x_sz; x++)
 			{
 				if(*src && *src != 0xFE)
@@ -305,6 +310,7 @@ int SpellGraphicItem::Render(uint8_t* buf,uint8_t* buf_end,int buf_x_size,int x_
 		}
 		else
 		{
+			if (coverage) coverage->Span(pic,x_sz,src);
 			for(int x = 0; x < x_sz; x++)
 			{
 				if(*src)

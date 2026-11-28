@@ -6075,6 +6075,12 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 	}*/
 
 
+    // All subsequent opaque indexed writes remove ground ownership at the
+    // original rasterizer, even for an identical palette index. Keep the
+    // existing depth order, fog checks and original bitmap unchanged.
+    const spellcross_enhanced::GroundOcclusionScope groundCoverage(
+        enhancedGround ? &groundLight : nullptr, pic, pic_x_size);
+
 	// --- Render Layer 3 - ANM animations ---
 	if (wL3)
 	{

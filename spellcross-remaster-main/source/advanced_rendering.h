@@ -329,6 +329,24 @@ namespace spellcross_enhanced
             if(x>=0&&y>=0&&x<width&&y<height)
                 tags[static_cast<std::size_t>(y)*width+x]=tag;
         }
+        // Invalidate actual opaque writes even when their palette index
+        // happens to equal the ground underneath. Null source means solid.
+        void OccludeSpan(std::size_t offset,int stride,int count,
+                         const std::uint8_t* source=nullptr,int repeat=1)
+        {
+            if(stride<=0||count<=0||repeat<=0||width<=0||height<=0) return;
+            for(int i=0;i<count;++i)
+            {
+                if(source&&!source[i]) continue;
+                for(int z=0;z<repeat;++z)
+                {
+                    const auto pos=offset+static_cast<std::size_t>(i)*repeat+z;
+                    const auto y=pos/static_cast<std::size_t>(stride);
+                    if(y>static_cast<std::size_t>((std::max)(0,top+height))) continue;
+                    Write(static_cast<int>(pos%stride),static_cast<int>(y),0);
+                }
+            }
+        }
         void Mark(const std::vector<std::uint8_t>& sprite,int rows,int yOffset,
                   int originX,int originY,const GroundLight* light,bool smooth,
                   Material material=Material::Earth,bool calculateShade=true,
@@ -438,6 +456,41 @@ namespace spellcross_enhanced
             return At(x,y);
         }
     };
+
+    // Scoped write observer for the original indexed rasterizers. No second
+    // drawing pass, no change to palette bytes or game logic. Only the exact
+    // battlefield buffer is observed; other previews and HUDs are unaffected.
+    struct GroundOcclusion
+    {
+        GroundSurface* surface=nullptr;
+        const std::uint8_t* buffer=nullptr;
+        int stride=0;
+        void Span(const std::uint8_t* destination,int count,
+                  const std::uint8_t* source=nullptr,int repeat=1) const
+        {
+            surface->OccludeSpan(static_cast<std::size_t>(destination-buffer),
+                stride,count,source,repeat);
+        }
+    };
+    inline thread_local GroundOcclusion activeGroundOcclusion;
+    class GroundOcclusionScope
+    {
+        GroundOcclusion previous;
+    public:
+        GroundOcclusionScope(GroundSurface* surface,const std::uint8_t* buffer,int stride)
+            : previous(activeGroundOcclusion)
+        {
+            activeGroundOcclusion={surface,buffer,stride};
+        }
+        ~GroundOcclusionScope() { activeGroundOcclusion=previous; }
+        GroundOcclusionScope(const GroundOcclusionScope&)=delete;
+        GroundOcclusionScope& operator=(const GroundOcclusionScope&)=delete;
+    };
+    inline const GroundOcclusion* ObserveGround(const std::uint8_t* buffer,int stride)
+    {
+        return activeGroundOcclusion.surface&&activeGroundOcclusion.buffer==buffer&&
+            activeGroundOcclusion.stride==stride?&activeGroundOcclusion:nullptr;
+    }
 
     // V3: procedural materials sampled in the PHYSICAL framebuffer, at four
     // texels per native world pixel. Textures are generated once, not shipped

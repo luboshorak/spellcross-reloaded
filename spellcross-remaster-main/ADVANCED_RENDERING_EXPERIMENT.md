@@ -189,3 +189,17 @@ execution time alone). No claim of 60 FPS until measured on real hardware.
 All retained filter IDs now have D3D11 implementations; Scale2x, Soft EPX, directional triangle, edge-preserving bilinear and CRT soft scanlines complete coverage. CPU remains fallback. WARP smoke tests check all exposed IDs and compare mixed-color samples with CPU reference. Settings use grouped two-column controls; the temporary filter rejection/export dialog and its locale strings are removed. Diagnostics remain available. Sprite reconstruction is disabled in the UI when another filter is selected, preserving its stored preference.
 
 Contact shadow profiles are precomputed for the eight caster combinations, eliminating repeated ellipse divisions in the terrain loop. Exhaustive tests compare cached values to the original calculation. Grouped settings use native static-box ownership for correct platform layout and the existing game theme.
+
+### V7 first exact ground-ownership pass
+
+The existing indexed compositing order remains authoritative. While terrain
+lighting or materials are active, later opaque sprite/animation, FSU unit
+(including baked shadows), unit status-bar background and projectile glyph
+writes invalidate ground tags at the actual destination, even when the palette
+index is unchanged. Transparent source pixels leave ground tags intact. The
+observer is scoped to the tactical scratch buffer, with no second draw pass.
+The existing five-point comparison remains a conservative fallback for other
+writers such as debug fonts. Both CPU and D3D11 consume the resulting tags.
+This is the first ground/foreground separation step, not yet independent
+unit/object colour surfaces or sprite-only reconstruction. Real-mission visual
+and performance acceptance is still required.

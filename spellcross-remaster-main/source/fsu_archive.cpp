@@ -12,6 +12,7 @@
 #define _HAS_STD_BYTE 0
 
 #include "fsu_archive.h"
+#include "advanced_rendering.h"
 #include "sprites.h"
 #include "LZ_spell.h"
 #include "other.h"
@@ -777,6 +778,7 @@ FSU_sprite::~FSU_sprite()
 // render sprite to target buffer, buffer is sprite origin, x_size is buffer width
 void FSU_sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x_pos, int buf_y_pos, int buf_x_size,uint8_t* shadow_filter,uint8_t* filter,int zoom)
 {
+	const auto* coverage = spellcross_enhanced::ObserveGround(buffer, buf_x_size);
 	// source data
 	uint8_t* data = this->data;
 
@@ -803,6 +805,9 @@ void FSU_sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x_pos, int bu
 			// check safe range
 			if (scan + count*zoom > buf_end)
 				break;
+			// The filtered path writes one pixel per source pixel; the
+			// unfiltered path repeats horizontally by zoom. Shadows are writes too.
+			if (coverage) coverage->Span(scan, count, data, filter ? 1 : zoom);
 			// render line
 			if(filter)
 			{

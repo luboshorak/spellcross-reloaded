@@ -10,6 +10,7 @@
 #define _HAS_STD_BYTE 0
 
 #include "sprites.h"
+#include "advanced_rendering.h"
 #include "flat_tile_rotation.h"
 #include "other.h"
 #include "fs_archive.h"
@@ -294,6 +295,7 @@ void Sprite::Render(std::vector<uint8_t> &buf,int buf_x,int buf_y,int x_size,uin
 }
 void Sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x, int buf_y, int x_size, uint8_t *filter)
 {
+	const auto* coverage = spellcross_enhanced::ObserveGround(buffer, x_size);
 	// ###todo: optimize for no transparency mode?
 
 	// initial buffer write position
@@ -319,6 +321,7 @@ void Sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x, int buf_y, int
 			uint8_t* scan = &dest[offset];
 			if (scan + count > buf_end)
 				break;
+			if (coverage) coverage->Span(scan, count, data);
 			for (int x = 0; x < count; x++)
 			{
 				if (*data)
@@ -344,6 +347,7 @@ void Sprite::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x, int buf_y, int
 			uint8_t* scan = &dest[offset];
 			if(scan + count > buf_end)
 				break;
+			if (coverage) coverage->Span(scan, count, data);
 			for(int x = 0; x < count; x++)
 			{
 				if(*data)

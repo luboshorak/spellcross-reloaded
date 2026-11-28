@@ -94,6 +94,30 @@ int main()
     frame[2*5+3]=120;
     field.Write(3,2,0); // filtered tile overwrites metadata
     assert(!field.Match(frame.data(),frame.size(),5,2,2));
+    // A same-colour foreground pixel must no longer receive terrain detail.
+    field.Reset(5,5,0,0);
+    for(int y=0;y<5;++y) for(int x=0;x<5;++x) field.Write(x,y,MakeTag(120,3));
+    const std::uint8_t cover[]={0,120,0};
+    {
+        GroundOcclusionScope scope(&field,frame.data(),5);
+        const auto* observer=ObserveGround(frame.data(),5);
+        assert(observer && !ObserveGround(frame.data(),4));
+        std::array<std::uint8_t,25> other{};
+        assert(!ObserveGround(other.data(),5));
+        observer->Span(frame.data()+11,3,cover);
+        assert(field.At(1,2) && !field.At(2,2) && field.At(3,2));
+        assert(!field.Match(frame.data(),frame.size(),5,2,2));
+        field.Validate(frame.data(),frame.size(),5);
+        assert(!field.MatchedRow(2)[2]);
+        { GroundOcclusionScope disabled(nullptr,frame.data(),5);
+          assert(!ObserveGround(frame.data(),5)); }
+        assert(ObserveGround(frame.data(),5));
+        observer->Span(frame.data()+5,3);
+        assert(!field.At(0,1)&&!field.At(2,1)&&field.At(3,1));
+        observer->Span(frame.data()+15,1,cover+1,2);
+        assert(!field.At(0,3)&&!field.At(1,3)&&field.At(2,3));
+    }
+    assert(!ObserveGround(frame.data(),5));
     field.Reset(4,4,0,0);
     field.Mark(sprite,1,0,0,1,&light,false);
     assert(field.At(0,1)==0 && field.At(1,1)!=0 && field.At(2,1)==0);

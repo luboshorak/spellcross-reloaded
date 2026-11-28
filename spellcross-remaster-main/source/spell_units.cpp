@@ -11,6 +11,7 @@
 #define _HAS_STD_BYTE 0
 
 #include "spell_units.h"
+#include "advanced_rendering.h"
 #include "unit_health_display.h"
 #include "destructible_health.h"
 #include "spellcross.h"
@@ -1620,6 +1621,10 @@ int MapUnit::Render(Terrain* data,uint8_t* buffer,uint8_t* buf_end,int buf_x_pos
 	if(psb < buffer || psb_end >= buf_end)
 		return(0);
 
+	// The entire status-bar background is a palette write, including
+	// pixels whose shadow filter happens to leave the index unchanged.
+	if (const auto* coverage = spellcross_enhanced::ObserveGround(buffer, buf_x_size))
+		for(int y = 0; y < bar_h; ++y) coverage->Span(psb + y * buf_x_size, bar_w);
 	// render shadow background
 	for(int y = 0; y < bar_h; y++)
 	{
