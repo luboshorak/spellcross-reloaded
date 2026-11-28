@@ -2897,6 +2897,10 @@ bool MyApp::OnInit()
         settings.ambient_occlusion=ini.GetBoolValue("STATE","ambient_occlusion",false);
         settings.ambient_intensity=static_cast<int>(ini.GetLongValue("STATE","ambient_intensity",55));
         settings.ambient_radius=static_cast<int>(ini.GetLongValue("STATE","ambient_radius",8));
+        settings.post_bloom=static_cast<int>(ini.GetLongValue("STATE","post_bloom",0));
+        settings.post_contrast=static_cast<int>(ini.GetLongValue("STATE","post_contrast",0));
+        settings.post_vignette=static_cast<int>(ini.GetLongValue("STATE","post_vignette",0));
+        settings.post_grain=static_cast<int>(ini.GetLongValue("STATE","post_grain",0));
         settings.procedural_materials = ini.GetBoolValue("STATE", "procedural_materials", false);
         settings.material_v2=ini.GetBoolValue("STATE","material_v2",false);
         settings.material_intensity=static_cast<int>(ini.GetLongValue("STATE","material_intensity",100));
@@ -3126,6 +3130,10 @@ int MyApp::OnExit()
     ini.SetBoolValue("STATE","ambient_occlusion",screen.ambient_occlusion);
     ini.SetLongValue("STATE","ambient_intensity",screen.ambient_intensity);
     ini.SetLongValue("STATE","ambient_radius",screen.ambient_radius);
+    ini.SetLongValue("STATE","post_bloom",screen.post_bloom);
+    ini.SetLongValue("STATE","post_contrast",screen.post_contrast);
+    ini.SetLongValue("STATE","post_vignette",screen.post_vignette);
+    ini.SetLongValue("STATE","post_grain",screen.post_grain);
     ini.SetBoolValue("STATE", "procedural_materials", screen.procedural_materials);
     ini.SetBoolValue("STATE","material_v2",screen.material_v2);
     ini.SetLongValue("STATE","material_intensity",screen.material_intensity);

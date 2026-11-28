@@ -988,6 +988,37 @@ namespace spellcross_enhanced
         return ApplyAtmosphere(color,mode,mode>=3?intensity*80/100:intensity*35/100,
             x/2+137,y/2-83,phase*2/3+101,night);
     }
+    // Final battlefield-only effects. Bright-source bloom is a compact
+    // four-tap approximation, not an HDR exposure or a full blur pyramid.
+    inline RGB BloomSource(RGB color)
+    {
+        const int luma=(77*color[0]+150*color[1]+29*color[2]+128)/256;
+        const int excess=(std::max)(0,luma-160);
+        for(auto& c:color) c=static_cast<std::uint8_t>(c*excess/95);
+        return color;
+    }
+    inline RGB ApplyPostprocess(RGB color,const std::array<int,3>& glow,
+        int x,int y,int width,int height,int bloom,int contrast,int vignette,int grain,bool night)
+    {
+        if(!(bloom||contrast||vignette||grain)) return color;
+        // A bounded S curve retains black/white endpoints, unlike linear
+        // contrast which clips large portions of an indexed palette.
+        const int nx=(std::abs)(2*x+1-width)*256/(std::max)(1,width);
+        const int ny=(std::abs)(2*y+1-height)*256/(std::max)(1,height);
+        const int edge=(std::clamp)((nx*nx+ny*ny-32768)/384,0,256);
+        const int noise=grain?int(Hash(static_cast<std::uint32_t>(x),static_cast<std::uint32_t>(y))&31u)-15:0;
+        for(int c=0;c<3;++c)
+        {
+            if(night&&c!=1) continue;
+            int value=color[c];
+            value+=(255-value)*glow[c]*bloom/(255*400);
+            value+=(value-128)*value*(255-value)*contrast/(16384*200);
+            value=value*(25600-edge*vignette/3)/25600;
+            value+=noise*grain*(std::min)(value,255-value)/6400;
+            color[c]=static_cast<std::uint8_t>(std::clamp(value,0,255));
+        }
+        return color;
+    }
     inline RGB ApplyMicroDetail(RGB color,MicroDetail detail,Material material,int strength,bool night)
     {
         const int gain=100+detail.light*strength/(night?200:100);

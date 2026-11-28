@@ -306,3 +306,17 @@ Units/scenery can now receive weather; filtered hidden casters, overlays, fog
 and HUD do not. V1 ground-only mode and all defaults are retained. The modes
 share CPU and shader math, with new settings and parity regressions. Visual
 acceptance and performance testing remain necessary.
+
+### V12 postprocessing and graphics presets
+
+Four independent 0–100% sliders on a new Postprocessing page: highlight glow
+(local four-tap bright-neighbour bloom), bounded S-curve contrast, soft edge
+vignette and deterministic screen-space film grain. Zero disables each effect;
+all default to zero. The same visible ground/foreground ownership mask as
+V11 protects fog, HUD and overlays; bloom samples only eligible neighbours.
+CPU and D3D11 share integer math. This is SDR postprocessing, not real HDR or
+a multi-resolution bloom pyramid. Presets on Display offer Original graphics,
+Balanced, Maximum quality and Reset all defaults. The first three preserve
+DPI, calibration and backend preference, reset weather to Off and update every
+control in-place. Reset defaults restores the Settings defaults; Cancel still
+restores the original transaction. No window-transition or strategic changes.

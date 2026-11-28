@@ -54,6 +54,7 @@ namespace spellcross_display
         bool ambient_occlusion = false;
         int ambient_intensity = 55;
         int ambient_radius = 8;
+        int post_bloom=0,post_contrast=0,post_vignette=0,post_grain=0;
     };
 
     inline Settings Normalize(Settings s)
@@ -80,7 +81,40 @@ namespace spellcross_display
         s.atmosphere_intensity=std::clamp(s.atmosphere_intensity,0,100);
         s.ambient_intensity=std::clamp(s.ambient_intensity,0,100);
         s.ambient_radius=std::clamp(s.ambient_radius,2,12);
+        s.post_bloom=std::clamp(s.post_bloom,0,100);
+        s.post_contrast=std::clamp(s.post_contrast,0,100);
+        s.post_vignette=std::clamp(s.post_vignette,0,100);
+        s.post_grain=std::clamp(s.post_grain,0,100);
         return s;
+    }
+
+    enum class GraphicsPreset { Original, Balanced, Maximum, Defaults };
+    inline Settings Preset(GraphicsPreset preset,const Settings& current)
+    {
+        Settings s;
+        if(preset==GraphicsPreset::Defaults) return Normalize(s);
+        // Preserve user calibration, DPI and backend preference. Presets
+        // concern visual effects; selecting one never forces GPU hardware.
+        s.scale_percent=current.scale_percent;s.smooth_scaling=current.smooth_scaling;
+        s.brightness=current.brightness;s.gamma=current.gamma;s.temperature=current.temperature;
+        s.gpu_acceleration=current.gpu_acceleration;
+        if(preset!=GraphicsPreset::Original)
+        {
+            const bool maximum=preset==GraphicsPreset::Maximum;
+            s.advanced_rendering=true;s.lighting_intensity=maximum?100:75;
+            s.procedural_materials=true;s.material_v2=maximum;
+            s.material_intensity=maximum?100:55;
+            s.directional_shadows=true;s.shadow_strength=maximum?65:45;
+            s.shadow_softness=maximum?50:33;
+            s.ambient_occlusion=maximum;s.ambient_intensity=45;
+            s.animated_water=true;s.water_intensity=maximum?65:40;
+            s.tactical_filter=maximum?spellcross_filters::EdgeAdaptive:spellcross_filters::SharpBilinear;
+            s.tactical_dedither=maximum;s.tactical_sharpen=maximum?20:0;
+            s.post_bloom=maximum?35:0;s.post_contrast=maximum?30:10;
+            s.post_vignette=maximum?20:0;
+        }
+        // Weather is a manual creative choice, not a graphics quality level.
+        return Normalize(s);
     }
 
     inline Settings& MutableSettings()
@@ -122,7 +156,8 @@ namespace spellcross_display
             old.contact_shadows == s.contact_shadows && old.atmosphere == s.atmosphere &&
             old.atmosphere_intensity == s.atmosphere_intensity && old.atmosphere_v2 == s.atmosphere_v2 &&
             old.ambient_occlusion == s.ambient_occlusion && old.ambient_intensity == s.ambient_intensity &&
-            old.ambient_radius == s.ambient_radius)
+            old.ambient_radius == s.ambient_radius && old.post_bloom == s.post_bloom &&
+            old.post_contrast == s.post_contrast && old.post_vignette == s.post_vignette && old.post_grain == s.post_grain)
             return;
         old = s;
         ++MutableRevision();
@@ -490,17 +525,18 @@ namespace spellcross_display
         content->Add(navigation,0,wxEXPAND|wxRIGHT,space);
         content->Add(book,1,wxEXPAND);
         root->Add(content,1,wxEXPAND|wxALL,space);
-        std::array<wxScrolledWindow*,6> pages{};
-        std::array<spellcross_strategic_ui::Button*,6> tabs{};
-        const std::array<wxString,6> names={
+        std::array<wxScrolledWindow*,7> pages{};
+        std::array<spellcross_strategic_ui::Button*,7> tabs{};
+        const std::array<wxString,7> names={
             spellcross_ui_locale::Tr("screen.tab.display","Display"),
             spellcross_ui_locale::Tr("screen.tab.lighting","Lighting"),
             spellcross_ui_locale::Tr("screen.tab.terrain","Terrain"),
             spellcross_ui_locale::Tr("screen.tab.atmosphere","Atmosphere"),
             spellcross_ui_locale::Tr("screen.tab.filters","Filters"),
+            spellcross_ui_locale::Tr("screen.tab.post","Postprocessing"),
             spellcross_ui_locale::Tr("screen.tab.performance","Performance")
         };
-        for(int i=0;i<6;++i)
+        for(int i=0;i<static_cast<int>(pages.size());++i)
         {
             tabs[i]=new spellcross_strategic_ui::Button(&dialog,wxID_ANY,names[i]);
             tabs[i]->SetMinSize(wxSize(dialog.FromDIP(145),-1));
@@ -521,14 +557,45 @@ namespace spellcross_display
             label->SetFont(spellcross_menu::MenuFont());
             section->Add(label, 0, wxLEFT | wxRIGHT | wxTOP, space);
         };
+        auto* presets = group(0,spellcross_ui_locale::Tr("screen.group.presets","Graphics presets"));
         auto* display = group(0,spellcross_ui_locale::Tr("screen.group.display", "Display and scale"));
-        auto* renderer = group(5,spellcross_ui_locale::Tr("screen.group.backend", "Rendering backend"));
+        auto* renderer = group(6,spellcross_ui_locale::Tr("screen.group.backend", "Rendering backend"));
         auto* colour = group(0,spellcross_ui_locale::Tr("screen.group.colour", "Colour correction"));
         auto* filterGroup = group(4,spellcross_ui_locale::Tr("screen.group.filters", "Image filters"));
         auto* terrainGroup = group(2,spellcross_ui_locale::Tr("screen.group.terrain", "Terrain and water"));
         auto* shadowGroup = group(1,spellcross_ui_locale::Tr("screen.group.lighting", "Lighting and shadows"));
         auto* ambientGroup = group(1,spellcross_ui_locale::Tr("screen.group.ambient","Ambient occlusion"));
         auto* atmosphereGroup = group(3,spellcross_ui_locale::Tr("screen.group.atmosphere","Battlefield atmosphere"));
+        auto* postGroup = group(5,spellcross_ui_locale::Tr("screen.tab.post","Postprocessing"));
+        const std::array<wxString,4> presetLabels={
+            spellcross_ui_locale::Tr("screen.preset.original","Original graphics"),
+            spellcross_ui_locale::Tr("screen.preset.balanced","Balanced"),
+            spellcross_ui_locale::Tr("screen.preset.maximum","Maximum quality"),
+            spellcross_ui_locale::Tr("screen.preset.defaults","Reset all defaults")
+        };
+        std::array<spellcross_strategic_ui::Button*,4> presetButtons{};
+        auto* presetRow=new wxFlexGridSizer(2,space,space);
+        presetRow->AddGrowableCol(0,1);presetRow->AddGrowableCol(1,1);
+        for(int i=0;i<4;++i)
+        {
+            presetButtons[i]=new spellcross_strategic_ui::Button(presets,wxID_ANY,presetLabels[i]);
+            presetRow->Add(presetButtons[i],1,wxEXPAND);
+        }
+        presets->Add(presetRow,0,wxALL|wxEXPAND,space);
+        const auto postSlider=[&](const wxString& label,int value) {
+            addLabel(postGroup,label);
+            auto* slider=new spellcross_strategic_ui::Slider(postGroup,wxID_ANY,value,0,100);
+            postGroup->Add(slider,0,wxLEFT|wxRIGHT|wxBOTTOM|wxEXPAND,dialog.FromDIP(14));
+            return slider;
+        };
+        auto* bloom=postSlider(spellcross_ui_locale::Tr("screen.post.bloom","Highlight glow (bloom, %)"),original.post_bloom);
+        auto* contrast=postSlider(spellcross_ui_locale::Tr("screen.post.contrast","Contrast curve (%)"),original.post_contrast);
+        auto* vignette=postSlider(spellcross_ui_locale::Tr("screen.post.vignette","Vignette (%)"),original.post_vignette);
+        auto* grain=postSlider(spellcross_ui_locale::Tr("screen.post.grain","Film grain (%)"),original.post_grain);
+        auto* postHint=new wxStaticText(postGroup,wxID_ANY,
+            spellcross_ui_locale::Tr("screen.post.hint","0 disables an effect. Only visible battlefield pixels are processed."));
+        postHint->Wrap(dialog.FromDIP(390));
+        postGroup->Add(postHint,0,wxALL|wxEXPAND,space);
         addLabel(display,spellcross_ui_locale::Tr("screen.dpi", "Game scale (DPI)"));
         const wxString scales[] = {
             spellcross_ui_locale::Tr("screen.scale.original", "100% - original pixels"),
@@ -710,7 +777,7 @@ namespace spellcross_display
             wxID_ANY, original.tactical_sharpen, 0, 100);
         filterGroup->Add(sharpen, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
 
-        auto* diagnostics = group(5,spellcross_ui_locale::Tr("screen.group.diagnostics","Diagnostics"));
+        auto* diagnostics = group(6,spellcross_ui_locale::Tr("screen.group.diagnostics","Diagnostics"));
         const bool originalProfiler=spellcross_perf::Current().enabled;
         auto* profiler=new ScreenCheck(diagnostics->GetStaticBox(),wxID_ANY,
             spellcross_ui_locale::Tr("screen.perf.toggle","Performance diagnostics + debug log (Ctrl+Shift+F10)"));
@@ -750,7 +817,7 @@ namespace spellcross_display
         root->Fit(&dialog);
         const auto selectTab=[&](int selected) {
             book->SetSelection(selected);
-            for(int i=0;i<6;++i)
+            for(int i=0;i<static_cast<int>(pages.size());++i)
             {
                 auto font=tabs[i]->GetFont();
                 font.SetWeight(i==selected?wxFONTWEIGHT_BOLD:wxFONTWEIGHT_NORMAL);
@@ -760,7 +827,7 @@ namespace spellcross_display
             pages[selected]->Layout();
             pages[selected]->FitInside();
         };
-        for(int i=0;i<6;++i)
+        for(int i=0;i<static_cast<int>(pages.size());++i)
             tabs[i]->Bind(wxEVT_BUTTON,[&,i](wxCommandEvent&){selectTab(i);});
         selectTab(0);
         dialog.SetEscapeId(wxID_CANCEL);
@@ -821,6 +888,8 @@ namespace spellcross_display
             next.ambient_occlusion=ambient->GetValue();
             next.ambient_intensity=ambientIntensity->GetValue();
             next.ambient_radius=ambientRadius->GetValue();
+            next.post_bloom=bloom->GetValue();next.post_contrast=contrast->GetValue();
+            next.post_vignette=vignette->GetValue();next.post_grain=grain->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
             next.gpu_acceleration = gpu->GetValue();
             const int selected=filter->GetSelection();
@@ -839,6 +908,34 @@ namespace spellcross_display
                 apply();
             });
         }
+        const auto loadControls=[&](const Settings& s) {
+            selectedScale=s.scale_percent==100?0:s.smooth_scaling?2:1;
+            brightness->SetValue(s.brightness);gamma->SetValue(static_cast<int>(std::lround(s.gamma*100)));
+            temperature->SetValue(s.temperature);enhanced->SetValue(s.advanced_rendering);
+            lightIntensity->SetValue(s.lighting_intensity);shadows->SetValue(s.directional_shadows);
+            originalShadows->SetValue(s.original_shadows);shadowStrength->SetValue(s.shadow_strength);
+            shadowDirection->SetSelection(s.shadow_direction);shadowLength->SetValue(s.shadow_length);
+            shadowSoftness->SetValue(s.shadow_softness);contactShadows->SetValue(s.contact_shadows);
+            materials->SetValue(s.procedural_materials);materialV2->SetValue(s.material_v2);
+            materialIntensity->SetValue(s.material_intensity);water->SetValue(s.animated_water);
+            waterIntensity->SetValue(s.water_intensity);atmosphere->SetSelection(s.atmosphere);
+            atmosphereIntensity->SetValue(s.atmosphere_intensity);weatherV2->SetValue(s.atmosphere_v2);
+            ambient->SetValue(s.ambient_occlusion);ambientIntensity->SetValue(s.ambient_intensity);
+            ambientRadius->SetValue(s.ambient_radius);upscaling->SetValue(s.procedural_upscaling);
+            gpu->SetValue(s.gpu_acceleration);
+            const auto found=std::find(filterIds.begin(),filterIds.end(),s.tactical_filter);
+            filter->SetSelection(found==filterIds.end()?0:static_cast<int>(found-filterIds.begin()));
+            dedither->SetValue(s.tactical_dedither);sharpen->SetValue(s.tactical_sharpen);
+            bloom->SetValue(s.post_bloom);contrast->SetValue(s.post_contrast);
+            vignette->SetValue(s.post_vignette);grain->SetValue(s.post_grain);
+            updateSelection();apply();
+        };
+        for(int i=0;i<4;++i)
+            presetButtons[i]->Bind(wxEVT_BUTTON,[&,i](wxCommandEvent&){
+                loadControls(Preset(static_cast<GraphicsPreset>(i),Current()));
+            });
+        for(auto* slider:{bloom,contrast,vignette,grain})
+            slider->Bind(wxEVT_SLIDER,[&](wxCommandEvent&){apply();});
         updateSelection();
         brightness->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });
         gamma->Bind(wxEVT_SLIDER, [&](wxCommandEvent&) { apply(); });

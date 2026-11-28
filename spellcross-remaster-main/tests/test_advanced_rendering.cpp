@@ -78,6 +78,17 @@ int main()
     assert(MakeTag(250,0,Material::Water)==0);
     const RGB waterColour{32,88,152};
     {
+        const std::array<int,3> noGlow{0,0,0},glow{120,120,120};
+        assert(BloomSource(RGB{100,100,100})==RGB{});
+        assert(BloomSource(RGB{255,255,255})==(RGB{255,255,255}));
+        assert(ApplyPostprocess(waterColour,glow,0,0,100,100,0,0,0,0,false)==waterColour);
+        assert(ApplyPostprocess(waterColour,glow,50,50,100,100,100,0,0,0,false)[0]>waterColour[0]);
+        assert(ApplyPostprocess(waterColour,noGlow,0,0,100,100,0,0,100,0,false)[2]<
+            ApplyPostprocess(waterColour,noGlow,50,50,100,100,0,0,100,0,false)[2]);
+        assert(ApplyPostprocess(RGB{0,80,0},glow,1,1,10,10,100,100,100,100,true)[0]==0);
+        assert(ApplyPostprocess(RGB{},noGlow,1,1,10,10,0,100,100,100,false)==RGB{});
+    }
+    {
         GroundSurface surface;
         surface.Reset(64,48,0,0,true);
         for(int y=0;y<48;++y) for(int x=0;x<64;++x) surface.Write(x,y,MakeTag(120,0));

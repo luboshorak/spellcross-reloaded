@@ -508,3 +508,15 @@ screen.ambient.enable=Ambient occlusion (contact depth)
 screen.ambient.intensity=Occlusion intensity (%)
 screen.ambient.radius=Occlusion radius (pixels)
 screen.atmosphere.v2=Layered weather over units and objects
+
+screen.tab.post=Postprocessing
+screen.group.presets=Graphics presets
+screen.preset.original=Original graphics
+screen.preset.balanced=Balanced
+screen.preset.maximum=Maximum quality
+screen.preset.defaults=Reset all defaults
+screen.post.bloom=Highlight glow (bloom, %)
+screen.post.contrast=Contrast curve (%)
+screen.post.vignette=Vignette (%)
+screen.post.grain=Film grain (%)
+screen.post.hint=0 disables an effect. Only visible battlefield pixels are processed.

@@ -508,3 +508,15 @@ screen.ambient.enable=Ambient occlusion (prostorová hloubka)
 screen.ambient.intensity=Intenzita zastínění (%)
 screen.ambient.radius=Dosah zastínění (pixely)
 screen.atmosphere.v2=Vrstvené počasí přes jednotky a objekty
+
+screen.tab.post=Postprocessing
+screen.group.presets=Grafické předvolby
+screen.preset.original=Původní grafika
+screen.preset.balanced=Vyvážená
+screen.preset.maximum=Maximální kvalita
+screen.preset.defaults=Obnovit výchozí
+screen.post.bloom=Záře světlých míst (%)
+screen.post.contrast=Kontrastní křivka (%)
+screen.post.vignette=Vinětace (%)
+screen.post.grain=Filmové zrno (%)
+screen.post.hint=Hodnota 0 efekt vypne. Úpravy pouze na viditelném bojišti.

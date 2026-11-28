@@ -31,8 +31,9 @@ namespace spellcross_gpu
         int worldX=0,worldY=0,strength=0,gradePercent=100;
         int materialV2=0,waterStrength=0,waterPhase=0,padding=0;
         int atmosphere=0,atmosphereIntensity=0,atmospherePhase=0,weatherV2=0;
+        int bloom=0,contrastCurve=0,vignette=0,grain=0;
     };
-    static_assert(sizeof(Frame)==112);
+    static_assert(sizeof(Frame)==128);
     inline constexpr char Shader[] = R"HLSL(
 cbuffer Params : register(b0) {
  int width,height,sw,sh;
@@ -42,6 +43,7 @@ cbuffer Params : register(b0) {
  int worldX,worldY,strength,gradePercent;
  int materialV2,waterStrength,waterPhase,padding;
  int atmosphere,atmosphereIntensity,atmospherePhase,weatherV2;
+ int bloom,contrastCurve,vignette,grain;
 };
 Texture2D<uint> nativeIdx : register(t0);
 Texture2D<uint> logicalIdx : register(t1);
@@ -107,7 +109,7 @@ void Sharpen(uint3 id:SV_DispatchThreadID)
 }
 uint Tag(int2 p)
 {
- if(lighting==0&&material==0&&waterStrength==0&&atmosphere==0) return 0;
+ if(lighting==0&&material==0&&waterStrength==0&&atmosphere==0&&bloom==0&&contrastCurve==0&&vignette==0&&grain==0) return 0;
  uint t=tags.Load(int3(p,0))&0x1ffffu;
  return t!=0&&(t&255)==S(p)&&p.y<hud.Load(int3(p.x,0,0))?t:0;
 }
@@ -346,6 +348,43 @@ int3 WeatherDetail(int3 color,uint tag,int2 p,int2 logical)
  return WeatherLayer(color,uv/2+int2(137,-83),atmospherePhase*2/3+101,
     atmosphereIntensity*(atmosphere>=3?80:35)/100);
 }
+bool PostEligible(int2 q)
+{
+ if(any(q<0)||q.x>=sw||q.y>=sh) return false;
+ if(q.y>=hud.Load(int3(q.x,0,0))) return false;
+ return Tag(q)!=0||(tags.Load(int3(q,0))&0x80000000u)!=0;
+}
+int3 PostDetail(int3 color,int2 p,int2 logical)
+{
+ if(bloom==0&&contrastCurve==0&&vignette==0&&grain==0) return color;
+ if(!PostEligible(logical)) return color;
+ int3 glow=0;
+ if(bloom!=0)
+ {
+  [unroll] for(int i=0;i<4;++i)
+  {
+   int2 q=logical+(i==0?int2(-2,0):i==1?int2(2,0):i==2?int2(0,-2):int2(0,2));
+   if(PostEligible(q))
+   {
+    int3 bright=Base(q,true);
+    int excess=max(0,Luma(bright)-160);
+    glow+=bright*excess/95;
+   }
+  }
+  glow/=4;
+ }
+ int nx=abs(2*p.x+1-width)*256/max(1,width);
+ int ny=abs(2*p.y+1-height)*256/max(1,height);
+ int edge=clamp((nx*nx+ny*ny-32768)/384,0,256);
+ int noise=grain!=0?int(WeatherHash((uint)p.x,(uint)p.y)&31u)-15:0;
+ int3 result=color;
+ result+=(255-result)*glow*bloom/(255*400);
+ result+=(result-128)*result*(255-result)*contrastCurve/(16384*200);
+ result=result*(25600-edge*vignette/3)/25600;
+ result+=noise*grain*min(result,255-result)/6400;
+ result=clamp(result,0,255);
+ return night!=0?int3(color.x,result.y,color.z):result;
+}
 [numthreads(16,16,1)]
 void Render(uint3 id:SV_DispatchThreadID)
 {
@@ -373,7 +412,7 @@ void Render(uint3 id:SV_DispatchThreadID)
    color=mode!=0?clamp(filtered+color-raw,0,255):clamp(color+filtered-Pal(N(nearPos)),0,255);
   }
  }
- outputTex[p]=Pack(WeatherDetail(MaterialDetail(color,tag,p),tag,p,l));
+ outputTex[p]=Pack(PostDetail(WeatherDetail(MaterialDetail(color,tag,p),tag,p,l),p,l));
 }
 )HLSL";
     using Microsoft::WRL::ComPtr;
@@ -465,7 +504,7 @@ void Render(uint3 id:SV_DispatchThreadID)
             const bool filter=f.mode!=0||f.dedither||f.sharpen;
             if(filter&&(!pre.Ensure(d,f.nw,f.nh,DXGI_FORMAT_R32_UINT,both)||
                 (f.sharpen&&!post.Ensure(d,f.nw,f.nh,DXGI_FORMAT_R32_UINT,both)))) return Fail("GPU filter surface allocation failed");
-            if(f.lighting||f.material||f.waterStrength||f.atmosphere)
+            if(f.lighting||f.material||f.waterStrength||f.atmosphere||f.bloom||f.contrastCurve||f.vignette||f.grain)
             {
                 if(!tags||!tag.Ensure(d,f.sw,f.sh,DXGI_FORMAT_R32_UINT,srv)) return Fail("GPU tag allocation failed");
                 Upload(tag,tags,f.sw*4);

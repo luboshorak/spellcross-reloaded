@@ -122,7 +122,35 @@ int main()
         },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
         assert(match);
     }
-    frame.weatherV2=0;frame.atmosphere=0;frame.width=frame.height=8;frame.dpi=200;
+    frame.weatherV2=0;frame.atmosphere=0;
+    art.fill(100);art[2]=220;pal[220][0]=pal[220][1]=pal[220][2]=220;
+    tags.fill(spellcross_enhanced::MakeTag(100,0));tags[2]=spellcross_enhanced::MakeTag(220,0);
+    tags[0]=spellcross_enhanced::WeatherBit;tags[1]=0;
+    frame.bloom=80;frame.contrastCurve=40;frame.vignette=50;frame.grain=30;
+    bool postMatch=true;
+    if(!gpu.Run(frame,art.data(),art.data(),pal,tags.data(),hud.data(),[&](int y,const uint32_t* row){
+        for(int x=0;x<4;++x)
+        {
+            const int i=y*4+x;
+            const spellcross_enhanced::RGB raw{pal[art[i]][0],pal[art[i]][1],pal[art[i]][2]};
+            std::array<int,3> glow{};
+            constexpr int dx[]={-2,2,0,0},dy[]={0,0,-2,2};
+            for(int k=0;k<4;++k)
+            {
+                int sx=x+dx[k],sy=y+dy[k];
+                if(sx<0||sx>=4||sy<0||sy>=4||!tags[sy*4+sx]) continue;
+                const auto index=art[sy*4+sx];
+                const auto b=spellcross_enhanced::BloomSource({pal[index][0],pal[index][1],pal[index][2]});
+                for(int c=0;c<3;++c) glow[c]+=b[c];
+            }
+            for(auto& c:glow)c/=4;
+            const auto expected=tags[i]?spellcross_enhanced::ApplyPostprocess(raw,glow,x,y,4,4,80,40,50,30,false):raw;
+            for(int c=0;c<3;++c) postMatch &= int((row[x]>>(c*8))&255)==expected[c];
+        }
+    },true)) {std::cerr<<gpu.Error()<<'\n';return 1;}
+    assert(postMatch);
+    frame.bloom=frame.contrastCurve=frame.vignette=frame.grain=0;
+    frame.width=frame.height=8;frame.dpi=200;
     // A black fog/border index must remain black.
     art.fill(0);frame.mode=14;
     bool valid=true;

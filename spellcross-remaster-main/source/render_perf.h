@@ -76,13 +76,14 @@ namespace spellcross_perf
         int shadowDirection=0,shadowLength=100,shadowSoftness=33,contactShadows=1;
         int atmosphere=0,atmosphereIntensity=45;
         int ambientOcclusion=0,ambientIntensity=55,ambientRadius=8,weatherV2=0;
-        std::array<int,38> Key() const
+        int bloom=0,contrast=0,vignette=0,grain=0;
+        std::array<int,42> Key() const
         {
             return {width,height,zoom,dpi,smooth,filter,dedither,sharpen,lighting,materials,sprites,
                 activeLighting,activeMaterials,activeSprites,activeFilter,normal,night,gpuRequested,gpuActive,
                 lightIntensity,directionalShadows,shadowStrength,activeShadows,originalShadows,
                 materialV2,materialIntensity,animatedWater,waterIntensity,shadowDirection,shadowLength,shadowSoftness,contactShadows,atmosphere,atmosphereIntensity,
-                ambientOcclusion,ambientIntensity,ambientRadius,weatherV2};
+                ambientOcclusion,ambientIntensity,ambientRadius,weatherV2,bloom,contrast,vignette,grain};
         }
     };
     struct State
@@ -139,7 +140,7 @@ namespace spellcross_perf
                 "light_intensity=%d directional_shadows=%d shadow_strength=%d active_shadows=%d original_shadows=%d "
                 "material_v2=%d material_intensity=%d animated_water=%d water_intensity=%d "
                 "shadow_direction=%d shadow_length=%d shadow_softness=%d contact_shadows=%d atmosphere=%d atmosphere_intensity=%d "
-                "ambient_occlusion=%d ambient_intensity=%d ambient_radius=%d weather_v2=%d",
+                "ambient_occlusion=%d ambient_intensity=%d ambient_radius=%d weather_v2=%d bloom=%d contrast=%d vignette=%d grain=%d",
                 fps,frames,elapsed/frames,avg,maxMs,mapMs,rgbMs,
                 (std::max)(0.0,elapsed/frames-avg),cpu,ram,cores,
                 c.width,c.height,c.zoom,c.dpi,c.smooth,c.filter,c.dedither,c.sharpen,
@@ -147,7 +148,7 @@ namespace spellcross_perf
                 c.activeFilter,c.normal,c.night,c.gpuRequested,c.gpuActive,readbackMs,
                 c.lightIntensity,c.directionalShadows,c.shadowStrength,c.activeShadows,c.originalShadows,
                 c.materialV2,c.materialIntensity,c.animatedWater,c.waterIntensity,
-                c.shadowDirection,c.shadowLength,c.shadowSoftness,c.contactShadows,c.atmosphere,c.atmosphereIntensity,c.ambientOcclusion,c.ambientIntensity,c.ambientRadius,c.weatherV2);
+                c.shadowDirection,c.shadowLength,c.shadowSoftness,c.contactShadows,c.atmosphere,c.atmosphereIntensity,c.ambientOcclusion,c.ambientIntensity,c.ambientRadius,c.weatherV2,c.bloom,c.contrast,c.vignette,c.grain);
             haveSample=true; window=end; frames=0; total=peak=mapTotal=rgbTotal=readbackTotal=0;
         }
     };

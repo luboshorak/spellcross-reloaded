@@ -7,6 +7,23 @@ int main()
 {
     using namespace spellcross_display;
     const Settings defaults = Current();
+    assert(!(defaults.post_bloom||defaults.post_contrast||defaults.post_vignette||defaults.post_grain));
+    Settings custom=defaults;custom.brightness=125;custom.scale_percent=100;custom.gpu_acceleration=true;
+    const auto maximum=Preset(GraphicsPreset::Maximum,custom);
+    assert(maximum.ambient_occlusion&&maximum.advanced_rendering&&maximum.material_v2&&maximum.post_bloom>0);
+    assert(maximum.brightness==125&&maximum.scale_percent==100&&maximum.gpu_acceleration&&maximum.atmosphere==0);
+    const auto classic=Preset(GraphicsPreset::Original,maximum);
+    assert(!classic.advanced_rendering&&!classic.directional_shadows&&!classic.animated_water&&!classic.ambient_occlusion);
+    assert(!classic.post_bloom&&!classic.post_contrast&&!classic.post_vignette&&!classic.post_grain&&classic.original_shadows);
+    const auto balanced=Preset(GraphicsPreset::Balanced,custom);
+    assert(balanced.advanced_rendering&&balanced.directional_shadows&&!balanced.ambient_occlusion&&!balanced.material_v2);
+    assert(Preset(GraphicsPreset::Defaults,maximum).brightness==defaults.brightness);
+    Settings post=defaults;post.post_bloom=80;post.post_contrast=45;post.post_vignette=30;post.post_grain=15;
+    auto postRevision=Revision();Set(post);
+    assert(Revision()>postRevision&&Current().post_bloom==80&&Current().post_grain==15);
+    post.post_bloom=200;post.post_grain=-1;
+    assert(Normalize(post).post_bloom==100&&Normalize(post).post_grain==0);
+    Set(defaults);
     assert(defaults.atmosphere==0 && defaults.atmosphere_intensity==45);
     assert(!defaults.atmosphere_v2 && !defaults.ambient_occlusion && defaults.ambient_intensity==55 && defaults.ambient_radius==8);
     Settings weather=defaults;weather.atmosphere=4;weather.atmosphere_intensity=80;
