@@ -2646,6 +2646,13 @@ StrategicLevelFrame::StrategicLevelFrame(MainFrame* parent, const LevelData& lev
     // The reconstructed 640x480 strategic UI is now the default. The wx-based
     // implementation remains available from Strategic UI -> Current UI.
     SetOriginalStrategicUi(true);
+    // Reveal only the selected, fully constructed strategic hierarchy.
+    if (m_rootPanel)
+    {
+        m_rootPanel->Show();
+        Layout();
+        m_rootPanel->Layout();
+    }
 
     // Initialize timeout tracking so countdown markers are visible from turn 1
     CheckTimeouts();
@@ -3056,9 +3063,6 @@ void StrategicLevelFrame::SetOriginalStrategicUi(bool enabled)
     if (!m_rootPanel)
         return;
 
-    if (m_originalStrategicPanel)
-        m_originalStrategicPanel->Show(enabled);
-
     if (enabled)
     {
         // No legacy wx controls are layered over the restored framebuffer.
@@ -3067,14 +3071,15 @@ void StrategicLevelFrame::SetOriginalStrategicUi(bool enabled)
         if (m_unitsMainPanel) m_unitsMainPanel->Hide();
         m_originalStrategicDirty = true;
         RefreshOriginalStrategicView();
+        if (m_originalStrategicPanel) m_originalStrategicPanel->Show();
     }
     else
     {
+        if (m_originalStrategicPanel) m_originalStrategicPanel->Hide();
         // Return exactly to the old root mode that was active before switching.
         if (m_normalLayoutPanel) m_normalLayoutPanel->Show(!m_buyModeActive && !m_unitsModeActive);
         if (m_buyMainPanel) m_buyMainPanel->Show(m_buyModeActive);
         if (m_unitsMainPanel) m_unitsMainPanel->Show(m_unitsModeActive);
-        if (m_originalStrategicPanel) m_originalStrategicPanel->Hide();
     }
 
     m_rootPanel->Layout();
@@ -8467,6 +8472,8 @@ void StrategicLevelFrame::BuildUI()
 {
     m_rootPanel = new spellcross_strategic_ui::Panel(this);
     auto* root = m_rootPanel;
+    // Keep the native fallback hierarchy off-screen while constructing it.
+    root->Hide();
     // Share the menu palette and embedded font across the wx strategic pages.
     m_palette.text = spellcross_menu::Text();
     m_palette.heading = spellcross_strategic_ui::Heading();
@@ -8929,6 +8936,9 @@ void StrategicLevelFrame::BuildUI()
     rootSizer->Add(m_originalStrategicPanel, 1, wxEXPAND);
 
     root->SetSizer(rootSizer);
+    auto* frameSizer = new wxBoxSizer(wxVERTICAL);
+    frameSizer->Add(root, 1, wxEXPAND);
+    SetSizer(frameSizer);
     root->SetBackgroundColour(m_palette.background);
     SetBackgroundColour(m_palette.background);
     spellcross_strategic_ui::Apply(m_normalLayoutPanel);

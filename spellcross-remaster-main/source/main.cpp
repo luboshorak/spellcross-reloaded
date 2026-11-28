@@ -98,6 +98,52 @@
 namespace
 {
 
+    // Keep the already-painted fullscreen menu above the destination while
+    // Win32 creates/resizes its native child HWNDs. Merely keeping the menu
+    // alive is insufficient: Show()/Raise() expose the destination over it.
+    class ContinuePresentationCover
+    {
+#ifdef _WIN32
+        HWND window = nullptr;
+        bool promoted = false;
+#endif
+    public:
+        explicit ContinuePresentationCover(wxFrame* frame)
+        {
+#ifdef _WIN32
+            if (frame && frame->IsShown() && frame->IsFullScreen())
+            {
+                window = reinterpret_cast<HWND>(frame->GetHandle());
+                if (window && !(::GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOPMOST))
+                    promoted = ::SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER) != FALSE;
+            }
+#else
+            (void)frame;
+#endif
+        }
+        ~ContinuePresentationCover()
+        {
+#ifdef _WIN32
+            if (promoted && ::IsWindow(window))
+                ::SetWindowPos(window, HWND_NOTOPMOST, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+#endif
+        }
+        ContinuePresentationCover(const ContinuePresentationCover&) = delete;
+        ContinuePresentationCover& operator=(const ContinuePresentationCover&) = delete;
+    };
+
+    // Paint the final-size child surfaces, not just the top-level frame.
+    static void PaintContinueDestination(wxWindow* window)
+    {
+        if (!window || !window->IsShownOnScreen()) return;
+        window->Refresh(false);
+        window->Update();
+        for (auto* child : window->GetChildren())
+            PaintContinueDestination(child);
+    }
+
     struct TacticalCampaignContext
     {
         bool present = false;
@@ -4935,6 +4981,7 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 // the current turn/unit/event state.
                 if (!form_mmenu)
                     break; // an already queued second click must not reload the game
+                ContinuePresentationCover cover(form_mmenu->GetWindow());
                 const bool resumeInMemory = m_mainMenuReturnToTactical &&
                     spell_map && spell_map->IsLoaded() && spell_map->isGameMode();
                 bool loaded = false;
@@ -4961,16 +5008,19 @@ void MainFrame::OnMainMenuAction(FormMainMenuAction action)
                 if (destination)
                 {
                     spellcross_window::Apply(destination);
-                    destination->Refresh(false);
-                    destination->Update();
-                    if (destination == this && canvas)
-                    {
-                        canvas->Refresh(false);
-                        canvas->Update();
-                    }
+                    destination->Layout();
+                    PaintContinueDestination(destination);
+#ifdef _WIN32
+                    // Flush pending Win32 child paints before exposing the
+                    // destination; wxFrame::Update alone does not do this.
+                    ::RedrawWindow(reinterpret_cast<HWND>(destination->GetHandle()),
+                        nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+#endif
                 }
                 delete form_mmenu;
                 form_mmenu = nullptr;
+                if (destination && !destination->IsBeingDeleted())
+                    destination->Raise();
                 break;
             }
             case FormMainMenuAction::LoadGame:
