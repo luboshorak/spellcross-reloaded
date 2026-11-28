@@ -148,3 +148,15 @@ acquires bitmap row addresses and waits before unlocking the bitmap. The
 four-tap scanline-cache path remains serial. No worker calls wx APIs or
 simulation functions. In-game throughput and frame pacing are not yet
 verified, and 25 FPS is a target, not a guarantee.
+
+### Legacy fast path after reported FPS regression
+
+All inactive experimental modes now bypass the common RGB effect pipeline.
+The dedicated original palette converter uses cached coordinate tables and
+two horizontal scanlines for exact 125% bilinear interpolation; rounding
+is identical to the V4 formula. Nearest output uses direct palette lookup.
+No worker pool is invoked on this path. Tests compare output to reference
+on multiple frames and both display scales. The FPS overlay additionally
+shows wall-clock frame interval and approximate time outside map rendering,
+which includes event scheduling and drawing. The reported 18 FPS regression
+has not yet been reproduced or confirmed fixed on the player's machine.

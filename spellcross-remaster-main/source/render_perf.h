@@ -116,10 +116,14 @@ namespace spellcross_perf
             wxString::Format("Render %.1f ms",s.lastMs);
         const wxString phase=s.haveSample?
             wxString::Format("Map %.1f ms | RGB %.1f ms",s.mapMs,s.rgbMs):wxString("Map / RGB: sampling...");
+        const wxString pacing=s.haveSample && s.fps>0?
+            wxString::Format("Frame interval %.1f ms | outside render %.1f ms",
+                1000.0/s.fps,(std::max)(0.0,1000.0/s.fps-s.avg)):
+            wxString("Frame interval: sampling...");
         const wxString cpu=s.cpu>=0?wxString::Format("%.1f%%",s.cpu):wxString("N/A");
         const wxString ram=s.ram>=0?wxString::Format("%.0f MiB",s.ram):wxString("N/A");
         const wxString resources="CPU (process) "+cpu+" | RAM "+ram;
-        const wxString lines[]={fps,render,phase,resources};
+        const wxString lines[]={fps,render,phase,pacing,resources};
         const auto oldFont=dc.GetFont();
         const auto oldPen=dc.GetPen();
         const auto oldBrush=dc.GetBrush();
@@ -134,9 +138,9 @@ namespace spellcross_perf
         const int pad=window->FromDIP(6),x=window->FromDIP(8),y=x;
         dc.SetPen(*wxTRANSPARENT_PEN);
         dc.SetBrush(wxBrush(wxColour(15,24,17)));
-        dc.DrawRectangle(x,y,width+2*pad,4*height+2*pad);
+        dc.DrawRectangle(x,y,width+2*pad,5*height+2*pad);
         dc.SetTextForeground(wxColour(195,246,170));
-        for(int i=0;i<4;++i) dc.DrawText(lines[i],x+pad,y+pad+i*height);
+        for(int i=0;i<5;++i) dc.DrawText(lines[i],x+pad,y+pad+i*height);
         dc.SetFont(oldFont); dc.SetPen(oldPen); dc.SetBrush(oldBrush); dc.SetTextForeground(oldText);
     }
 }

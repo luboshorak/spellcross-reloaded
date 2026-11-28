@@ -1,6 +1,7 @@
 #include "../source/advanced_rendering.h"
 #include "../source/tactical_filters.h"
 #include "../source/render_rows.h"
+#include "../source/legacy_rgb.h"
 #include <cassert>
 #include <array>
 #include <vector>
@@ -163,6 +164,50 @@ int main()
                 for(int y=first;y<last;++y) ++rows[y];
             });
         for(auto v:rows) assert(v==3);
+    }
+    // Legacy scaler must produce the exact V4 indexed-to-BGR result.
+    {
+        namespace lr=spellcross_legacy_rgb;
+        lr::Scaler scaler;
+        std::uint8_t paletteRGB[256][3]{};
+        for(int i=0;i<256;++i) for(int c=0;c<3;++c)
+            paletteRGB[i][c]=static_cast<std::uint8_t>((i*(c+3)+c*29)&255);
+        for(int frame=0;frame<3;++frame)
+            for(int dpi : {100,125}) for(bool smooth : {false,true})
+            {
+                if(dpi==100&&smooth) continue;
+                constexpr int w=37,h=29;
+                const int sw=(w*100+dpi-1)/dpi,sh=(h*100+dpi-1)/dpi;
+                std::vector<std::uint8_t> pixels(static_cast<std::size_t>(sw)*sh);
+                for(std::size_t i=0;i<pixels.size();++i)
+                    pixels[i]=static_cast<std::uint8_t>((i*73+frame*17)&255);
+                scaler.Prepare(pixels.data(),paletteRGB,sw,sh,w,h,dpi,smooth);
+                std::array<std::uint8_t,w*3> output{};
+                for(int y=0;y<h;++y)
+                {
+                    scaler.Write(y,output.data());
+                    const auto v=lr::Sample(y,dpi,sh);
+                    for(int x=0;x<w;++x)
+                    {
+                        const auto a=lr::Sample(x,dpi,sw);
+                        for(int c=0;c<3;++c)
+                        {
+                            const int channel=2-c;
+                            const auto color=[&](int sx,int sy) {
+                                return int(paletteRGB[pixels[sy*sw+sx]][channel]);
+                            };
+                            int expected=color(x*100/dpi,y*100/dpi);
+                            if(smooth)
+                            {
+                                const int top=color(a.first,v.first)*(256-a.weight)+color(a.second,v.first)*a.weight;
+                                const int bottom=color(a.first,v.second)*(256-a.weight)+color(a.second,v.second)*a.weight;
+                                expected=(top*(256-v.weight)+bottom*v.weight+32768)/65536;
+                            }
+                            assert(output[x*3+c]==expected);
+                        }
+                    }
+                }
+            }
     }
     // Native mask and cached world noise must agree with the reference.
     {

@@ -23,6 +23,7 @@
 #include "advanced_rendering.h"
 #include "render_perf.h"
 #include "render_rows.h"
+#include "legacy_rgb.h"
 #include "spellcross.h"
 #include "fs_archive.h"
 #include "fsu_archive.h"
@@ -6909,6 +6910,34 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // NightMission affects the final indexed tactical surface, not shared assets.
     spellcross_night::Palette night_palette;
     const auto* output_pal = spellcross_night::SelectPalette(pal, night_palette, is_night);
+
+    // The normal renderer must not run through the experimental RGB path.
+    // In particular, do not prepare HUD guards, row workers, filter objects,
+    // texture maps or per-pixel feature checks when no effect is active.
+    if(!enhancedGround && !spriteUpscale && !newFilters)
+    {
+        {
+            wxNativePixelData data(bmp);
+            if(!data) return 1;
+            wxNativePixelData::Iterator pixel(data);
+            static thread_local spellcross_legacy_rgb::Scaler legacy;
+            legacy.Prepare(screen_pixels.data(),output_pal,screen_width,screen_height,
+                physical_width,physical_height,display_scale_percent,
+                display_scale_percent==125 && settings.smooth_scaling);
+            for(int y=0;y<physical_height;++y)
+            {
+                legacy.Write(y,pixel.m_ptr);
+                pixel.OffsetY(data,1);
+            }
+        }
+        if(profiling)
+        {
+            perf.pendingMap=spellcross_perf::Millis(perfStart,perfRGB);
+            perf.pendingRGB=spellcross_perf::Millis(perfRGB,spellcross_perf::Clock::now());
+        }
+        CommitRenderSurfModified();
+        return 0;
+    }
 
     // Use the full 24-bit RGB output for terrain material variation. The
     // original palette remains authoritative for all untagged pixels.
