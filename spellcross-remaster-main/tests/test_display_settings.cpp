@@ -109,13 +109,15 @@ int main()
     assert(Current().temperature == 3500);
     assert(Current().tactical_filter==spellcross_filters::Legacy && Current().tactical_sharpen==100);
     Settings filterSettings=defaults;
-    filterSettings.tactical_filter=spellcross_filters::CatmullRom;
+    for(int id : {3,4,5,6,7,8,12,15}) { Settings retired=defaults; retired.tactical_filter=id;
+        assert(Normalize(retired).tactical_filter==spellcross_filters::Legacy); }
+    filterSettings.tactical_filter=spellcross_filters::CubicSharp;
     filterSettings.tactical_dedither=true;
     filterSettings.tactical_sharpen=25;
     const auto before=Revision();
     Set(filterSettings);
     assert(Revision()>before && Current().tactical_dedither && Current().tactical_sharpen==25);
-    assert(Current().tactical_filter==spellcross_filters::CatmullRom);
+    assert(Current().tactical_filter==spellcross_filters::CubicSharp);
     assert(Current().scale_percent == 125);
 
     Set(defaults);

@@ -46,7 +46,7 @@ namespace spellcross_display
         s.brightness = std::clamp(s.brightness, 50, 150);
         s.gamma = std::isfinite(s.gamma) ? std::clamp(s.gamma, 0.5, 2.0) : 1.3;
         s.temperature = std::clamp(s.temperature, 3500, 9500);
-        if(s.tactical_filter<spellcross_filters::Legacy || s.tactical_filter>spellcross_filters::LastMode)
+        if(!spellcross_filters::Available(s.tactical_filter))
             s.tactical_filter=spellcross_filters::Legacy;
         s.tactical_sharpen=std::clamp(s.tactical_sharpen,0,100);
         return s;
@@ -247,6 +247,7 @@ namespace spellcross_display
         wxArrayString keys;
         for(int mode=1;mode<=spellcross_filters::LastMode;++mode)
         {
+            if(!spellcross_filters::Available(mode)) continue;
             list->Append(wxString::FromUTF8(spellcross_filters::ModeNames[mode]));
             keys.Add(wxString::Format("tactical_filter:%d",mode));
         }
@@ -351,9 +352,16 @@ namespace spellcross_display
         addLabel(spellcross_ui_locale::Tr("screen.tactical_filter", "Battlefield scaling filter (CPU)"));
         auto* filter = new wxChoice(&dialog, wxID_ANY);
         filter->Append(spellcross_ui_locale::Tr("screen.filter.legacy", "Existing renderer (default)"));
+        std::vector<int> filterIds{spellcross_filters::Legacy};
+        int selectedFilter=0;
         for(int mode=1;mode<=spellcross_filters::LastMode;++mode)
+        {
+            if(!spellcross_filters::Available(mode)) continue;
+            if(mode==original.tactical_filter) selectedFilter=static_cast<int>(filterIds.size());
+            filterIds.push_back(mode);
             filter->Append(wxString::FromUTF8(spellcross_filters::ModeNames[mode]));
-        filter->SetSelection(original.tactical_filter);
+        }
+        filter->SetSelection(selectedFilter);
         root->Add(filter, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, dialog.FromDIP(14));
         auto* dedither = new wxCheckBox(&dialog, wxID_ANY,
             spellcross_ui_locale::Tr("screen.tactical_dedither", "Reduce palette dithering"));
@@ -403,7 +411,9 @@ namespace spellcross_display
             next.advanced_rendering = enhanced->GetValue();
             next.procedural_materials = materials->GetValue();
             next.procedural_upscaling = upscaling->GetValue();
-            next.tactical_filter = filter->GetSelection();
+            const int selected=filter->GetSelection();
+            next.tactical_filter = selected>=0 && selected<static_cast<int>(filterIds.size())?
+                filterIds[selected]:spellcross_filters::Legacy;
             next.tactical_dedither = dedither->GetValue();
             next.tactical_sharpen = sharpen->GetValue();
             Set(next);

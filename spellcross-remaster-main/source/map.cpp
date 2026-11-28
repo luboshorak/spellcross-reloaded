@@ -22,6 +22,7 @@
 #include "display_settings.h"
 #include "advanced_rendering.h"
 #include "render_perf.h"
+#include "render_rows.h"
 #include "spellcross.h"
 #include "fs_archive.h"
 #include "fsu_archive.h"
@@ -6819,7 +6820,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 	screen_pixels.resize(static_cast<size_t>(screen_width) * hud_buffer_height);
     // Snapshot the composited native battlefield before the HUD and before
     // releasing the map lock. Upscale original sprites, not zoom-repeated pixels.
-    std::vector<uint8_t> nativeArt;
+    static thread_local std::vector<uint8_t> nativeArtStorage;
+    auto& nativeArt=nativeArtStorage;
+    nativeArt.clear();
     if (spriteUpscale || newFilters)
     {
         nativeArt.resize(static_cast<size_t>(surf_x)*surf_y);
@@ -6828,7 +6831,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 pic+static_cast<size_t>(surf_y_origin+y)*pic_x_size+surf_x_origin,surf_x);
     }
     const int nativeWidth=surf_x, nativeHeight=surf_y;
-    static thread_local std::vector<spellcross_enhanced::Tag> screenLight;
+    static thread_local std::vector<spellcross_enhanced::Tag> screenLightStorage;
+    auto& screenLight=screenLightStorage;
     screenLight.clear();
     const bool validateNative=enhancedGround && zoom_percent>=100;
     if (enhancedGround)
@@ -6908,20 +6912,25 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 
     // Use the full 24-bit RGB output for terrain material variation. The
     // original palette remains authoritative for all untagged pixels.
-    static thread_local std::vector<spellcross_enhanced::RGB> enhancedRGB;
+    static thread_local std::vector<spellcross_enhanced::RGB> enhancedRGBStorage;
+    auto& enhancedRGB=enhancedRGBStorage;
     enhancedRGB.clear();
-    static thread_local std::vector<int> hudTops;
+    static thread_local std::vector<int> hudTopsStorage;
+    auto& hudTops=hudTopsStorage;
     hudTops.resize(screen_width);
     for(int x=0;x<screen_width;++x) hudTops[x]=GetHUDtop(x);
     if (enhancedGround)
     {
-        static thread_local spellcross_enhanced::RGBTable rgbTable;
+        static thread_local spellcross_enhanced::RGBTable rgbTableStorage;
+        auto& rgbTable=rgbTableStorage;
         if(rgbLighting)
         {
             rgbTable.Prepare(output_pal, is_night);
             enhancedRGB.resize(screenLight.size());
         }
-        for (int y=0;y<screen_height;++y)
+        spellcross_render_rows::Run(screen_height,static_cast<size_t>(screen_width)*screen_height>=262144,
+            [&](int first,int last) {
+        for (int y=first;y<last;++y)
             for(int x=0;x<screen_width;++x)
             {
                 const auto i=static_cast<size_t>(y)*screen_width+x;
@@ -6934,6 +6943,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                 if (!valid) screenLight[i]=0; // also excludes the HUD from HD sampling
                 if(rgbLighting) std::copy_n(color,3,enhancedRGB[i].begin());
             }
+        });
     }
     const auto rgbAt = [&](int x,int y) -> const uint8_t* {
         const auto i=static_cast<size_t>(y)*screen_width+x;
@@ -6981,7 +6991,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     };
 
     // Original artwork reconstruction is independent of both terrain effects.
-    static thread_local EdgePalette edgePalette;
+    static thread_local EdgePalette edgePaletteStorage;
+    auto& edgePalette=edgePaletteStorage;
     std::vector<Subpixel> nativeX,nativeY;
     if(spriteUpscale && nativeWidth>0 && nativeHeight>0)
     {
@@ -7014,9 +7025,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // Shader-style CPU filters operate on the native indexed battlefield
     // converted to RGB, not on the already enlarged HUD/bitmap. The
     // existing lighting contribution is preserved as an independent delta.
-    static thread_local spellcross_filters::Image filteredArt;
+    static thread_local spellcross_filters::Image filteredArtStorage;
+    auto& filteredArt=filteredArtStorage;
     static thread_local spellcross_filters::AxisCache axes;
-    static thread_local spellcross_filters::Scanline filteredRows;
+    static thread_local spellcross_filters::Scanline filteredRowsStorage;
+    auto& filteredRows=filteredRowsStorage;
     const auto& filterX=axes.x;
     const auto& filterY=axes.y;
     std::vector<int> hudGuard;
@@ -7046,9 +7059,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         if(spellcross_filters::Protected(screen_pixels[i])) return color;
         const auto& ax=filterX[x]; const auto& ay=filterY[y];
         if(!filteredArt.Filterable(ax.nearest,ay.nearest)) return color;
+        const bool enlarged=zoom_percent*display_scale_percent>10000;
         const auto result=useRowCache ? filteredRows.Sample(x,ay) :
-            settings.tactical_filter==spellcross_filters::Scale2x &&
-                zoom_percent*display_scale_percent>10000 ? filteredArt.SampleScale2x(ax,ay) :
+            settings.tactical_filter==spellcross_filters::Scale2x && enlarged ? filteredArt.SampleScale2x(ax,ay) :
+            settings.tactical_filter==spellcross_filters::Scale3x && enlarged ? filteredArt.SampleScale3x(ax,ay) :
+            settings.tactical_filter==spellcross_filters::EdgeAdaptive ? filteredArt.SampleEdgeAdaptive(ax,ay) :
             filteredArt.Sample(ax,ay);
         if(explicitFilter)
             return PreserveLighting(result,color,original);
@@ -7063,6 +7078,16 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     if (!data)
         return 1;
     wxNativePixelData::Iterator p(data);
+    // Acquire all row addresses on the GUI thread. Workers only write
+    // disjoint raw bitmap rows while the bitmap lock remains held.
+    std::vector<uint8_t*> outputRows(physical_height);
+    for(int y=0;y<physical_height;++y)
+    {
+        outputRows[y]=p.m_ptr;
+        p.OffsetY(data,1);
+    }
+    const bool parallelRGB=(enhancedGround||spriteUpscale||filtersReady) && !useRowCache &&
+        static_cast<size_t>(physical_width)*physical_height>=262144;
     if (display_scale_percent == 125 && spellcross_display::UseSmoothScaling())
     {
         // Interpolate palette-corrected RGB, not indexed palette IDs. Keep
@@ -7073,9 +7098,10 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
         for (int x = 0; x < physical_width; ++x)
             horizontal.push_back(spellcross_display::BilinearSample(x, 125, screen_width));
 
-        for (int y = 0; y < physical_height; ++y)
+        spellcross_render_rows::Run(physical_height,parallelRGB,[&](int first,int last) {
+        for (int y = first; y < last; ++y)
         {
-            uint8_t* scan = p.m_ptr;
+            uint8_t* scan = outputRows[y];
             const auto vertical = spellcross_display::BilinearSample(y, 125, screen_height);
             if(useRowCache) filteredRows.Begin(filterY[y]);
             for (int x = 0; x < physical_width; ++x)
@@ -7129,15 +7155,16 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     *scan++=color[2]; *scan++=color[1]; *scan++=color[0];
                 }
             }
-            p.OffsetY(data, 1);
         }
+        });
     }
     else
     {
         // Original 100% and sharp 125% output stay byte-for-byte unchanged.
-        for (int y = 0; y < physical_height; ++y)
+        spellcross_render_rows::Run(physical_height,parallelRGB,[&](int first,int last) {
+        for (int y = first; y < last; ++y)
         {
-            uint8_t* scan = p.m_ptr;
+            uint8_t* scan = outputRows[y];
             const int sourceY = (y * 100) / display_scale_percent;
             if(useRowCache) filteredRows.Begin(filterY[y]);
             for (int x = 0; x < physical_width; ++x)
@@ -7164,8 +7191,8 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                     *scan++ = rgb[0];
                 }
             }
-            p.OffsetY(data, 1);
         }
+        });
     }
 
 

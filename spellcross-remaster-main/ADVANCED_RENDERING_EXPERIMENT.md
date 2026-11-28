@@ -136,3 +136,15 @@ CPU is process usage normalized by logical CPU count, RAM is process
 working set/RSS on Windows/Linux. Samples update at roughly one-second
 intervals while painting; no additional redraw timer or polling thread.
 The overlay defaults off and is not saved. GPU counters are not measured.
+
+### Filter review and parallel CPU pass
+
+Removed IDs 3, 4, 5, 6, 7, 8, 12 and 15 following the review export;
+retired saved IDs resolve to Legacy without renumbering retained entries.
+Added Scale3x and edge-preserving bilinear. Native lighting now reads cached
+noise in contiguous spans. A bounded reusable pool (up to 8 logical workers,
+including the UI thread) processes independent RGB rows; the GUI thread
+acquires bitmap row addresses and waits before unlocking the bitmap. The
+four-tap scanline-cache path remains serial. No worker calls wx APIs or
+simulation functions. In-game throughput and frame pacing are not yet
+verified, and 25 FPS is a target, not a guarantee.

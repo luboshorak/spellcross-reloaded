@@ -1,5 +1,6 @@
 #include "../source/advanced_rendering.h"
 #include "../source/tactical_filters.h"
+#include "../source/render_rows.h"
 #include <cassert>
 #include <array>
 #include <vector>
@@ -155,6 +156,14 @@ int main()
     const RGB reconstructed={100,110,120}, lit={110,100,90}, raw={100,100,100};
     const RGB expected={110,110,110};
     assert(PreserveLighting(reconstructed,lit,raw)==expected);
+    {
+        std::array<int,257> rows{};
+        for(int pass=0;pass<3;++pass)
+            spellcross_render_rows::Run(static_cast<int>(rows.size()),true,[&](int first,int last){
+                for(int y=first;y<last;++y) ++rows[y];
+            });
+        for(auto v:rows) assert(v==3);
+    }
     // Native mask and cached world noise must agree with the reference.
     {
         SurfaceCache cache;
@@ -178,7 +187,7 @@ int main()
         sf::Image image;
         image.Prepare(flat.data(),5,5,paletteRGB,true,100);
         for(int mode=sf::Nearest;mode<=sf::LastMode;++mode)
-            for(int pixel=0;pixel<15;++pixel)
+            if(sf::Available(mode)) for(int pixel=0;pixel<15;++pixel)
             {
                 const auto a=sf::MakeAxis(pixel,5,200,125,mode);
                 int sum=0;
@@ -221,6 +230,14 @@ int main()
         assert(image.SampleScale2x(cornerX,cornerY)[0]==140);
         cornerY.side=1;
         assert(image.SampleScale2x(cornerX,cornerY)[0]==90);
+        cornerX.third=2; cornerY.third=0;
+        assert(image.SampleScale3x(cornerX,cornerY)[0]==140);
+        cornerY.third=2;
+        assert(image.SampleScale3x(cornerX,cornerY)[0]==90);
+        const auto ex=sf::MakeAxis(3,3,200,100,sf::EdgeAdaptive);
+        const auto ey=sf::MakeAxis(2,3,200,100,sf::EdgeAdaptive);
+        const auto edgeSample=image.SampleEdgeAdaptive(ex,ey);
+        assert(edgeSample[0]>=90 && edgeSample[0]<=140);
         for(int y=0;y<5;++y) for(int x=0;x<5;++x) checker[y*5+x]=(x+y)%2?100:80;
         checker[12]=230;
         image.Prepare(checker.data(),5,5,paletteRGB,true,100);
@@ -228,14 +245,14 @@ int main()
         flat.fill(100); flat[12]=120;
         image.Prepare(flat.data(),5,5,paletteRGB,false,100);
         assert(image.At(2,2)[0]>120 && image.At(2,2)[0]<=124);
-        const auto native=sf::MakeAxis(2,5,100,100,sf::CatmullRom);
+        const auto native=sf::MakeAxis(2,5,100,100,sf::CubicSharp);
         assert(native.nearest==2 && image.Sample(native,native)==image.At(2,2));
-        const auto a=sf::MakeAxis(1000,1,300,125,sf::Lanczos2);
+        const auto a=sf::MakeAxis(1000,1,300,125,sf::RobidouxSharp);
         assert(a.index[0]==0&&a.weight[0]==sf::weightScale);
         for(int i=0;i<256;++i) { paletteRGB[i][0]=0; paletteRGB[i][2]=0; }
         image.Prepare(flat.data(),5,5,paletteRGB,true,100);
-        const auto nightSample=image.Sample(sf::MakeAxis(3,5,175,125,sf::Lanczos2),
-                                           sf::MakeAxis(4,5,175,125,sf::Lanczos2));
+        const auto nightSample=image.Sample(sf::MakeAxis(3,5,175,125,sf::RobidouxSharp),
+                                           sf::MakeAxis(4,5,175,125,sf::RobidouxSharp));
         assert(nightSample[0]==0&&nightSample[2]==0);
     }
     sprite.pop_back();

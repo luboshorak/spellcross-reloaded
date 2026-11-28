@@ -11,19 +11,22 @@
 namespace spellcross_filters
 {
     using RGB=std::array<std::uint8_t,3>;
-    enum Mode : int { Legacy=0, Nearest=1, SharpBilinear=2, CatmullRom=3, Lanczos2=4,
-        Bilinear=5, Hermite=6, Mitchell=7, BSpline=8, Scale2x=9,
-        Cosine=10, Smootherstep=11, Robidoux=12, RobidouxSharp=13,
-        CubicSharp=14, Gaussian=15, LastMode=Gaussian };
+    // Never renumber persisted filter IDs. Retired IDs deliberately remain holes.
+    enum Mode : int { Legacy=0, Nearest=1, SharpBilinear=2, Scale2x=9,
+        Cosine=10, Smootherstep=11, RobidouxSharp=13, CubicSharp=14,
+        Scale3x=16, EdgeAdaptive=17, LastMode=EdgeAdaptive };
     inline constexpr const char* ModeNames[]={
-        "Legacy", "Nearest", "Sharp Bilinear", "Catmull-Rom", "Lanczos 2",
-        "Bilinear", "Hermite", "Mitchell-Netravali", "Cubic B-spline", "Scale2x / EPX",
-        "Cosine", "Smootherstep", "Robidoux", "Robidoux Sharp", "Sharp Bicubic", "Gaussian"};
+        "Legacy", "Nearest", "Sharp Bilinear", nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, "Scale2x / EPX", "Cosine", "Smootherstep", nullptr, "Robidoux Sharp",
+        "Sharp Bicubic", nullptr, "Scale3x", "Edge-preserving bilinear"};
     static_assert(sizeof(ModeNames)/sizeof(*ModeNames)==LastMode+1);
+    inline bool Available(int mode)
+    {
+        return mode>=0 && mode<=LastMode && ModeNames[mode]!=nullptr;
+    }
     inline bool FourTap(int mode)
     {
-        return mode==CatmullRom || mode==Lanczos2 || mode==Mitchell || mode==BSpline ||
-            mode==Robidoux || mode==RobidouxSharp || mode==CubicSharp || mode==Gaussian;
+        return mode==RobidouxSharp || mode==CubicSharp;
     }
     constexpr int weightScale=4096;
     inline bool Protected(std::uint8_t i)
@@ -50,25 +53,7 @@ namespace spellcross_filters
         for(int c=0;c<3;++c) a[c]=static_cast<std::uint8_t>((int(a[c])+b[c]+1)/2);
         return a;
     }
-    inline double Cubic(double x)
-    {
-        x=std::abs(x);
-        if(x<1.0) return ((1.5*x-2.5)*x)*x+1.0;
-        if(x<2.0) return ((-0.5*x+2.5)*x-4.0)*x+2.0;
-        return 0.0;
-    }
-    inline double Sinc(double x)
-    {
-        if(std::abs(x)<1e-8) return 1.0;
-        constexpr double pi=3.14159265358979323846;
-        return std::sin(pi*x)/(pi*x);
-    }
-    inline double Lanczos(double x)
-    {
-        return std::abs(x)<2.0 ? Sinc(x)*Sinc(x/2.0) : 0.0;
-    }
-    // Mitchell-Netravali family: B=C=1/3 balances blur and ringing;
-    // B=1,C=0 is the smoother cubic B-spline.
+    // Cubic reconstruction for the two retained sharp kernels.
     inline double CubicBC(double x,double b,double c)
     {
         x=std::abs(x);
@@ -81,7 +66,7 @@ namespace spellcross_filters
     {
         std::array<int,4> index{};
         std::array<int,4> weight{};
-        int count=1, nearest=0, side=0;
+        int count=1, nearest=0, side=0, third=1;
     };
     inline Axis MakeAxis(int target,int extent,int zoom,int display,int mode)
     {
@@ -97,20 +82,20 @@ namespace spellcross_filters
         const double fraction=pos-base;
         out.nearest=std::clamp(static_cast<int>(std::floor(pos+0.5)),0,extent-1);
         out.side=pos<out.nearest?-1:1;
-        if(mode==Nearest||mode==Legacy||mode==Scale2x)
+        out.third=std::clamp(static_cast<int>((pos-out.nearest+0.5)*3),0,2);
+        if(!Available(mode)||mode==Nearest||mode==Legacy||mode==Scale2x||mode==Scale3x)
         {
             out.index[0]=out.nearest;
             out.weight[0]=weightScale;
             return out;
         }
-        if(mode==SharpBilinear||mode==Bilinear||mode==Hermite||mode==Cosine||mode==Smootherstep)
+        if(mode==SharpBilinear||mode==EdgeAdaptive||mode==Cosine||mode==Smootherstep)
         {
             out.count=2;
             out.index[0]=base; out.index[1]=(std::min)(base+1,extent-1);
             // Preserve a sharp pixel interior and blend only around its edge.
             const double f=mode==SharpBilinear ?
                 std::clamp((fraction-0.5)*(std::max)(1.0,scale)+0.5,0.0,1.0) :
-                mode==Hermite ? fraction*fraction*(3-2*fraction) :
                 mode==Cosine ? (1-std::cos(3.14159265358979323846*fraction))*0.5 :
                 mode==Smootherstep ? fraction*fraction*fraction*(fraction*(6*fraction-15)+10) : fraction;
             out.weight[1]=static_cast<int>(std::lround(f*weightScale));
@@ -124,13 +109,8 @@ namespace spellcross_filters
         {
             const int raw=base+i-1;
             out.index[i]=std::clamp(raw,0,extent-1);
-            weights[i]=mode==Lanczos2 ? Lanczos(pos-raw) :
-                mode==Mitchell ? CubicBC(pos-raw,1.0/3,1.0/3) :
-                mode==BSpline ? CubicBC(pos-raw,1.0,0.0) :
-                mode==Robidoux ? CubicBC(pos-raw,0.378215755,0.3108921225) :
-                mode==RobidouxSharp ? CubicBC(pos-raw,0.262014512,0.368992744) :
-                mode==CubicSharp ? CubicBC(pos-raw,0.0,0.75) :
-                mode==Gaussian ? std::exp(-2.0*(pos-raw)*(pos-raw)) : Cubic(pos-raw);
+            weights[i]=mode==RobidouxSharp ?
+                CubicBC(pos-raw,0.262014512,0.368992744) : CubicBC(pos-raw,0.0,0.75);
             sum+=weights[i];
         }
         int total=0;
@@ -226,6 +206,54 @@ namespace spellcross_filters
             if(a==b && a!=oppositeA && b!=oppositeB && !Protected(a))
                 return At(x+dx,y);
             return center;
+        }
+        RGB SampleScale3x(const Axis& ax,const Axis& ay) const
+        {
+            const int x=ax.nearest,y=ay.nearest;
+            const auto center=At(x,y);
+            if(!Safe(x,y)||x<=0||y<=0||x>=width-1||y>=height-1) return center;
+            const auto* p=indices+Index(x,y);
+            const auto A=p[-width-1],B=p[-width],C=p[-width+1],D=p[-1],
+                E=p[0],F=p[1],G=p[width-1],H=p[width],I=p[width+1];
+            if(B==H||D==F) return center;
+            // Scale3x's 3x3 neighbourhood rules. Select an existing colour;
+            // never synthesize or copy a protected palette entry.
+            int dx=0,dy=0;
+            switch(ay.third*3+ax.third)
+            {
+            case 0: if(D==B) dx=-1; break;
+            case 1: if((D==B&&E!=C)||(B==F&&E!=A)) dy=-1; break;
+            case 2: if(B==F) dx=1; break;
+            case 3: if((D==B&&E!=G)||(D==H&&E!=A)) dx=-1; break;
+            case 5: if((B==F&&E!=I)||(H==F&&E!=C)) dx=1; break;
+            case 6: if(D==H) dx=-1; break;
+            case 7: if((D==H&&E!=I)||(H==F&&E!=G)) dy=1; break;
+            case 8: if(H==F) dx=1; break;
+            default: break;
+            }
+            return Safe(x+dx,y+dy)?At(x+dx,y+dy):center;
+        }
+        RGB SampleEdgeAdaptive(const Axis& ax,const Axis& ay) const
+        {
+            const auto center=At(ax.nearest,ay.nearest);
+            if(!Safe(ax.nearest,ay.nearest)) return center;
+            int sum[3]={},total=0;
+            for(int j=0;j<ay.count;++j) for(int i=0;i<ax.count;++i)
+            {
+                const int x=ax.index[i],y=ay.index[j];
+                if(!Safe(x,y)) continue;
+                const auto& c=At(x,y);
+                // Suppress cross-silhouette mixing but interpolate compatible
+                // colours in gradients; integer arithmetic on hot path.
+                const int similarity=(std::max)(0,96-Distance(center,c));
+                const int w=((ax.weight[i]*ay.weight[j])>>12)*similarity;
+                total+=w;
+                for(int k=0;k<3;++k) sum[k]+=w*c[k];
+            }
+            if(!total) return center;
+            return {static_cast<std::uint8_t>((sum[0]+total/2)/total),
+                    static_cast<std::uint8_t>((sum[1]+total/2)/total),
+                    static_cast<std::uint8_t>((sum[2]+total/2)/total)};
         }
         RGB Sample(const Axis& ax,const Axis& ay) const
         {

@@ -197,7 +197,8 @@ namespace spellcross_enhanced
         };
         std::vector<Block> blocks;
     public:
-        int At(int x,int y,bool smooth)
+        static constexpr int Side=side;
+        const std::int8_t* Row(int x,int y,bool smooth)
         {
             if(blocks.empty()) blocks.resize(slots);
             const int bx=x/side-(x%side<0),by=y/side-(y%side<0);
@@ -208,10 +209,15 @@ namespace spellcross_enhanced
                 block.x=bx; block.y=by; block.valid=true;
                 block.rough.fill(127); block.smooth.fill(127);
             }
-            const auto i=(y-by*side)*side+x-bx*side;
-            auto& value=smooth?block.smooth[i]:block.rough[i];
-            if(value==127) value=static_cast<std::int8_t>(SurfaceDetail(x,y,smooth));
-            return value;
+            auto* values=(smooth?block.smooth.data():block.rough.data())+(y-by*side)*side;
+            if(values[0]==127)
+                for(int i=0;i<side;++i)
+                    values[i]=static_cast<std::int8_t>(SurfaceDetail(bx*side+i,y,smooth));
+            return values;
+        }
+        int At(int x,int y,bool smooth)
+        {
+            return Row(x,y,smooth)[static_cast<unsigned>(x)&(side-1)];
         }
     };
     inline Tag MakeTag(std::uint8_t index, int shade, Material material=Material::Earth)
@@ -315,6 +321,8 @@ namespace spellcross_enhanced
                     const int end=(std::min)(count,left+width-originX-offset);
                     auto* dest=tags.data()+static_cast<std::size_t>(sy-top)*width;
                     const int worldY=light?light->worldY+yOffset+y:0;
+                    const std::int8_t* noiseRow=nullptr;
+                    int noiseBlock=0;
                     for(int x=start;x<end;++x)
                     {
                         const auto index=sprite[cursor+x];
@@ -326,8 +334,19 @@ namespace spellcross_enhanced
                         else if(light&&!Reserved(index))
                         {
                             const int worldX=light->worldX+lx;
-                            int shade=light->relief*3+(cache?cache->At(worldX,worldY,smooth):
-                                SurfaceDetail(worldX,worldY,smooth));
+                            int detail;
+                            if(cache)
+                            {
+                                const int block=worldX-static_cast<int>(static_cast<unsigned>(worldX)&(SurfaceCache::Side-1));
+                                if(!noiseRow||noiseBlock!=block)
+                                {
+                                    noiseRow=cache->Row(worldX,worldY,smooth);
+                                    noiseBlock=block;
+                                }
+                                detail=noiseRow[worldX-block];
+                            }
+                            else detail=SurfaceDetail(worldX,worldY,smooth);
+                            int shade=light->relief*3+detail;
                             const int cy=rows/2;
                             int shadow=0;
                             if(light->object)
