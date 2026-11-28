@@ -31,8 +31,14 @@ namespace spellcross_ai
     }
     inline fs::path CacheRoot()
     {
+        // Use the native environment encoding, including Unicode on Windows.
+#ifdef _WIN32
+        if(const auto* env=_wgetenv(L"SPELLCROSS_AI_CACHE"))
+            if(*env) return fs::path(env);
+#else
         if(const auto* env=std::getenv("SPELLCROSS_AI_CACHE"))
-            if(*env) return fs::u8path(env);
+            if(*env) return fs::path(env);
+#endif
         return fs::path("ai_hummer_cache");
     }
     inline void Put32(std::ostream& out,std::uint32_t n)
