@@ -380,38 +380,57 @@ namespace spellcross_enhanced
                 }
             }
         }
-        // Soft directional projection. A bounded sequence of overlapping
-        // ellipses follows the ground plane. Overlaps use max opacity, never
-        // stack into black. Only already-tagged visible ground receives shade.
-        void CastShadow(int cx,int cy,int dx,int dy,int rx,int ry,int strength)
+        // Project opaque sprite scanline runs onto a ground plane. The
+        // anchor is the caster's ground contact, not its bounding-box centre.
+        // Screen-space height is approximate (the assets have no depth map).
+        // Each run preserves source width, transparent gaps and animation.
+        void ProjectShadowSpan(std::size_t offset,int stride,int count,
+                               const std::uint8_t* source,int repeat,
+                               int groundY,int strength,int skipIndex=-1)
         {
             strength=std::clamp(strength,0,100);
-            if(!strength||width<=0||height<=0) return;
-            rx=std::clamp(rx,3,48); ry=std::clamp(ry,2,24);
-            dx=std::clamp(dx,-96,96); dy=std::clamp(dy,-48,48);
+            if(!strength||!source||stride<=0||count<=0||repeat<=0||width<=0||height<=0) return;
+            const auto firstY=offset/static_cast<std::size_t>(stride);
+            // Bound off-screen writes before converting to signed coordinates.
+            if(firstY>static_cast<std::size_t>((std::max)(0,top+height+256))) return;
             if(projectedShadow.empty()) projectedShadow.assign(tags.size(),0);
-            constexpr int steps=4;
-            for(int step=1;step<=steps;++step)
+            const int opacity=24*strength/100;
+            const auto run=[&](int x,int y,int length) {
+                const int elevation=std::clamp(groundY-y,0,256);
+                // Sun from upper-left: tall parts project farther down/right.
+                const int px=x+elevation,py=y+elevation+elevation/2;
+                const auto stamp=[&](int row,int begin,int finish,int amount) {
+                    if(!amount||row<top||row>=top+height) return;
+                    begin=(std::max)(begin,left);finish=(std::min)(finish,left+width);
+                    auto* dest=projectedShadow.data()+static_cast<std::size_t>(row-top)*width;
+                    for(int sx=begin;sx<finish;++sx)
+                        dest[sx-left]=(std::max)(dest[sx-left],static_cast<std::uint8_t>(amount));
+                };
+                stamp(py,px,px+length,opacity);
+                stamp(py-1,px-1,px+length+1,opacity/3);
+                stamp(py+1,px-1,px+length+1,opacity/3);
+                stamp(py,px-1,px,opacity/3);
+                stamp(py,px+length,px+length+1,opacity/3);
+            };
+            // Source runs may cross a scratch-buffer scanline (legacy raster
+            // semantics); split them at its boundary before projecting.
+            int y=static_cast<int>(firstY),x=static_cast<int>(offset%stride);
+            int runStart=-1;
+            for(int i=0;i<count;++i)
             {
-                const int px=cx+dx*step/steps,py=cy+dy*step/steps;
-                const int a=(std::max)(3,rx-rx*step/(steps*3));
-                const int b=(std::max)(2,ry-ry*step/(steps*3));
-                const int opacity=24*strength*(steps+2-step)/(100*(steps+1));
-                const int norm=a*a*b*b;
-                for(int y=(std::max)(top,py-b);y<(std::min)(top+height,py+b+1);++y)
+                const bool opaque=source[i]!=0&&source[i]!=skipIndex;
+                for(int z=0;z<repeat;++z)
                 {
-                    const int oy=y-py,vertical=oy*oy*a*a;
-                    for(int x=(std::max)(left,px-a);x<(std::min)(left+width,px+a+1);++x)
+                    if(opaque&&runStart<0) runStart=x;
+                    if(!opaque&&runStart>=0) { run(runStart,y,x-runStart);runStart=-1; }
+                    if(++x==stride)
                     {
-                        const int ox=x-px,distance=ox*ox*b*b+vertical;
-                        if(distance>=norm) continue;
-                        const auto i=static_cast<std::size_t>(y-top)*width+x-left;
-                        if(!tags[i]||layers[i]!=PixelLayer::Ground) continue;
-                        const int amount=opacity*(norm-distance)/norm;
-                        projectedShadow[i]=(std::max)(projectedShadow[i],static_cast<std::uint8_t>(amount));
+                        if(runStart>=0) run(runStart,y,x-runStart);
+                        runStart=-1;x=0;++y;
                     }
                 }
             }
+            if(runStart>=0) run(runStart,y,x-runStart);
         }
         void ApplyShadows()
         {
@@ -419,7 +438,7 @@ namespace spellcross_enhanced
             for(std::size_t i=0;i<tags.size();++i)
             {
                 const auto tag=tags[i];
-                if(tag&&projectedShadow[i])
+                if(tag&&layers[i]==PixelLayer::Ground&&projectedShadow[i])
                     tags[i]=MakeTag(TagIndex(tag),TagShade(tag)-projectedShadow[i],TagMaterial(tag));
             }
             projectedShadow.clear();
@@ -545,6 +564,9 @@ namespace spellcross_enhanced
         int stride=0;
         PixelLayer layer=PixelLayer::Effect;
         bool originalShadows=true;
+        int shadowStrength=0;
+        bool castingShadow=false;
+        int groundY=0;
         void Span(const std::uint8_t* destination,int count,
                   const std::uint8_t* source=nullptr,int repeat=1,
                   PixelLayer kind=PixelLayer::Empty,int shadowIndex=-1,int skipIndex=-1) const
@@ -552,8 +574,13 @@ namespace spellcross_enhanced
             const auto start=reinterpret_cast<std::uintptr_t>(buffer);
             const auto write=reinterpret_cast<std::uintptr_t>(destination);
             if(write<start) return;
-            surface->OccludeSpan(static_cast<std::size_t>(write-start),
-                stride,count,source,repeat,kind==PixelLayer::Empty?layer:kind,shadowIndex,skipIndex);
+            const auto offset=static_cast<std::size_t>(write-start);
+            const auto effectiveKind=kind==PixelLayer::Empty?layer:kind;
+            if(castingShadow&&shadowStrength>0&&
+                (effectiveKind==PixelLayer::Scenery||effectiveKind==PixelLayer::Unit))
+                surface->ProjectShadowSpan(offset,stride,count,source,repeat,groundY,
+                    shadowStrength,shadowIndex);
+            surface->OccludeSpan(offset,stride,count,source,repeat,effectiveKind,shadowIndex,skipIndex);
         }
     };
     inline thread_local GroundOcclusion activeGroundOcclusion;
@@ -561,10 +588,10 @@ namespace spellcross_enhanced
     {
         GroundOcclusion previous;
     public:
-        GroundOcclusionScope(GroundSurface* surface,const std::uint8_t* buffer,int stride,bool originalShadows=true)
+        GroundOcclusionScope(GroundSurface* surface,const std::uint8_t* buffer,int stride,bool originalShadows=true,int shadowStrength=0)
             : previous(activeGroundOcclusion)
         {
-            activeGroundOcclusion={surface,buffer,stride,PixelLayer::Effect,originalShadows};
+            activeGroundOcclusion={surface,buffer,stride,PixelLayer::Effect,originalShadows,shadowStrength,false,0};
         }
         ~GroundOcclusionScope() { activeGroundOcclusion=previous; }
         GroundOcclusionScope(const GroundOcclusionScope&)=delete;
@@ -581,6 +608,26 @@ namespace spellcross_enhanced
         ~ForegroundLayerScope() { activeGroundOcclusion.layer=previous; }
         ForegroundLayerScope(const ForegroundLayerScope&)=delete;
         ForegroundLayerScope& operator=(const ForegroundLayerScope&)=delete;
+    };
+    class ShadowCasterScope
+    {
+        bool previous;
+        int previousGround;
+    public:
+        ShadowCasterScope(int groundY,bool enabled)
+            : previous(activeGroundOcclusion.castingShadow),
+              previousGround(activeGroundOcclusion.groundY)
+        {
+            activeGroundOcclusion.castingShadow=enabled&&activeGroundOcclusion.shadowStrength>0;
+            activeGroundOcclusion.groundY=groundY;
+        }
+        ~ShadowCasterScope()
+        {
+            activeGroundOcclusion.castingShadow=previous;
+            activeGroundOcclusion.groundY=previousGround;
+        }
+        ShadowCasterScope(const ShadowCasterScope&)=delete;
+        ShadowCasterScope& operator=(const ShadowCasterScope&)=delete;
     };
     // FSU palette index FD is a shadow operation only when the caller
     // supplies a shadow filter. Never reinterpret that index in other assets.

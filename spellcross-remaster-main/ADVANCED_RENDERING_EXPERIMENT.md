@@ -238,3 +238,16 @@ HUD background or the separate advanced-lighting contact shade. If original
 shadows are disabled, aircraft and moving companies currently lose their baked
 shadows without a projected replacement. Other previews and the editor retain
 original rendering. Settings and mask tests cover the independent toggle.
+
+### V8.1 silhouette-based directional shadows
+
+Replaces V8's generic ellipses with projected opaque scanline runs from the
+actual visible sprites. L2 scenery (buildings, trees, obstacles) and FSU units
+(infantry members, hulls, turrets, animation frames and aircraft) participate
+through the existing foreground raster observer. Each caster uses its ground
+anchor, and height shifts the silhouette down/right. Transparent gaps and FSU
+shadow-marker pixels do not cast; overlapping contributions use maximum opacity
+with a one-pixel soft fringe. Shadows are applied to the final tagged ground,
+not foreground or fog. No extra rendering pass or gameplay-state changes.
+This remains an approximate planar projection of 2D assets, not a 3D terrain
+raytrace; actual art, terrain slopes and performance require in-game checks.

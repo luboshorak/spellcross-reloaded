@@ -5955,9 +5955,6 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     const auto [textureWorldX, textureWorldY] = scroll->GetScroll();
     if (enhancedGround)
         groundLight.Reset(surf_x, surf_y, surf_x_origin, surf_y_origin);
-    struct ShadowCaster { int x,y,dx,dy,rx,ry; };
-    static thread_local std::vector<ShadowCaster> shadowCasters;
-    shadowCasters.clear();
     const auto litTile = [&](int index) {
         if (deployment_mode) return !deployment_tile_hidden(index);
         return !use_view_mask || unit_view->view[index] >= 2;
@@ -6018,7 +6015,7 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
             {
                 const int tx = n + xs_ofs, ty = m + ys_ofs * 2;
                 spellcross_enhanced::GroundLight light;
-                if(baseLighting || directionalShadows)
+                if(baseLighting)
                 {
                 light.relief = spellcross_enhanced::Relief(
                     visibleElevation(tx - 1, ty, sof), visibleElevation(tx + 1, ty, sof),
@@ -6036,20 +6033,6 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
                         if (visible->unit->isAir()) light.air = true;
                         else light.company = true;
                     }
-                }
-                if(directionalShadows)
-                {
-                    const int cx=mxx+40,cy=myy+sid->y_ofs+sid->y_size/2;
-                    if(light.object)
-                    {
-                        const auto* object=tiles[mxy].L2;
-                        const int reach=std::clamp(object->y_size,20,96);
-                        shadowCasters.push_back({cx,cy,reach,reach/3,
-                            std::clamp(object->x_size/3,9,38),12});
-                    }
-                    if(light.company)
-                        shadowCasters.push_back({cx,cy,34,11,14,7});
-                    // Aircraft retain their original altitude-dependent baked shadows.
                 }
                 const auto flags = sid->GetFlags();
                 using Material = spellcross_enhanced::Material;
@@ -6101,18 +6084,11 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     // All subsequent opaque indexed writes remove ground ownership at the
     // original rasterizer, even for an identical palette index. Keep the
     // existing depth order, fog checks and original bitmap unchanged.
-    // Project only from visible casters, onto tagged visible receiving ground,
-    // before foreground sprites/markers overwrite those tags.
-    if(directionalShadows)
-    {
-        for(const auto& caster:shadowCasters)
-            groundLight.CastShadow(caster.x,caster.y,caster.dx,caster.dy,
-                caster.rx,caster.ry,renderSettings.shadow_strength);
-        groundLight.ApplyShadows();
-    }
+    // Collect projected silhouettes during the same visible foreground draws.
     const spellcross_enhanced::GroundOcclusionScope groundCoverage(
         enhancedGround ? &groundLight : nullptr, pic, pic_x_size,
-        editorPreview || renderSettings.original_shadows);
+        editorPreview || renderSettings.original_shadows,
+        directionalShadows?renderSettings.shadow_strength:0);
 
 	// --- Render Layer 3 - ANM animations ---
 	if (wL3)
@@ -6398,7 +6374,13 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 						uint8_t* filter_unit = render_filter;
 						if (cursor_unit == unit && !use_view_mask)
 							filter_unit = terrain->filter.goldpal;
-						int top_y_ofs = unit->Render(terrain, pic, pic_end, mxx, myy, pic_x_size, filter_unit, filter, sid, w_unit_hud);
+                        int top_y_ofs;
+                        {
+                            const spellcross_enhanced::ShadowCasterScope caster(
+                                myy+sid->y_ofs+sid->y_size/2,
+                                directionalShadows&&litTile(mxy)&&!filter&&!filter_unit);
+                            top_y_ofs = unit->Render(terrain, pic, pic_end, mxx, myy, pic_x_size, filter_unit, filter, sid, w_unit_hud);
+                        }
 
 						// store attack-target positions in buffer (for projectile trajectory calculation)
 						if (unit->isAttacker())
@@ -6453,6 +6435,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
 					if (!use_view_mask && cursor == pos && wHighlight_obj)
 						filt = terrain->filter.goldpal;
 					const spellcross_enhanced::ForegroundLayerScope scenery(spellcross_enhanced::PixelLayer::Scenery);
+                    const spellcross_enhanced::ShadowCasterScope caster(
+                        myy+sid->y_ofs+sid->y_size/2,
+                        directionalShadows&&litTile(mxy)&&!filt);
 					sid2->Render(pic, pic_end, mxx, myy + sid->y_ofs, pic_x_size, filt);
 				}
 
@@ -6898,6 +6883,9 @@ int SpellMap::Render(wxBitmap& bmp, TScroll* scroll, SpellTool* tool, std::funct
     static thread_local std::vector<spellcross_enhanced::Tag> screenLightStorage;
     auto& screenLight=screenLightStorage;
     screenLight.clear();
+    // Only the final visible ground receives the projected shade. Foreground
+    // sprites, overlays, fog and protected palette indices have no tags.
+    if(directionalShadows) groundLight.ApplyShadows();
     const bool validateNative=enhancedGround && zoom_percent>=100;
     if (enhancedGround)
     {

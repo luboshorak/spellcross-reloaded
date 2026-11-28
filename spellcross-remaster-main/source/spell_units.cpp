@@ -879,6 +879,12 @@ tuple<int,int> SpellUnitRec::Render(uint8_t* buffer, uint8_t* buf_end, int buf_x
 			y_status_bar = (std::min)(y_pos + (spr->y_ofs - 128) - buf_y_pos,y_status_bar);
 
 			// render man of unit			
+            // Use each soldier's projected ground position and the actual
+            // animated body/turret frame. Flight altitude changes the projection.
+            const int groundY=y_pos+(isAir()?flight_alt:0)+sprt->y_size/2+
+                (isWalk()?sprt->y_ofs:0);
+            const spellcross_enhanced::ShadowCasterScope caster(groundY,
+                spellcross_enhanced::activeGroundOcclusion.castingShadow);
 			spr->Render(buffer, buf_end, x_pos, y_pos, buf_x_size, shadow_filter, filter);
 
 			// this should prevent rendering turret when animating

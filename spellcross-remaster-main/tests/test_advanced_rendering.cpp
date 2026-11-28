@@ -81,23 +81,53 @@ int main()
     assert(ShadeRGB(sand,0,false,100)==neutral);
     {
         GroundSurface surface;
-        surface.Reset(64,40,0,0);
-        for(int y=0;y<40;++y) for(int x=0;x<64;++x)
+        surface.Reset(80,60,0,0);
+        for(int y=0;y<60;++y) for(int x=0;x<80;++x)
             surface.Write(x,y,MakeTag(120,0,Material::Grass));
-        surface.Write(30,20,0); // fog / protected ground
-        surface.CastShadow(15,15,28,8,10,6,100);
-        surface.CastShadow(15,15,28,8,10,6,100); // overlap must not double opacity
+        const std::uint8_t silhouette[]={120,120,0,0,0,0,120,0xFD};
+        // source y=10, ground contact y=30 => projection y=40, x+20
+        surface.Write(30,40,0); // fog / protected ground
+        surface.ProjectShadowSpan(10*80+10,80,8,silhouette,1,30,100,0xFD);
+        surface.ProjectShadowSpan(10*80+10,80,8,silhouette,1,30,100,0xFD);
+        // Foreground coverage after projection must still win.
+        surface.OccludeSpan(40*80+36,80,1,nullptr,1,PixelLayer::Scenery);
         surface.ApplyShadows();
-        assert(TagShade(surface.At(35,21))<0);
-        assert(TagShade(surface.At(35,21))>=-24);
-        assert(TagShade(surface.At(2,15))==0);
-        assert(!surface.At(30,20));
-        assert(TagMaterial(surface.At(35,21))==Material::Grass);
-        surface.Reset(64,40,0,0);
-        surface.Write(35,21,MakeTag(120,0));
-        surface.CastShadow(15,15,28,8,10,6,0);
+        assert(!surface.At(30,40));
+        assert(TagShade(surface.At(31,40))==-24);
+        assert(TagShade(surface.At(34,40))==0); // transparent gap
+        assert(!surface.At(36,40));
+        assert(TagShade(surface.At(37,40))==-8); // only fringe, not baked FD
+        assert(TagShade(surface.At(5,15))==0);
+        assert(TagMaterial(surface.At(31,40))==Material::Grass);
+        // Identical silhouette at a lower height projects closer.
+        surface.Reset(80,60,0,0);
+        for(int y=0;y<60;++y) for(int x=0;x<80;++x) surface.Write(x,y,MakeTag(120,0));
+        surface.ProjectShadowSpan(24*80+10,80,8,silhouette,1,30,100,0xFD);
         surface.ApplyShadows();
-        assert(TagShade(surface.At(35,21))==0);
+        assert(TagShade(surface.At(16,33))==-24 && TagShade(surface.At(31,40))==0);
+        // Scope limits projection to actual unit/scenery writes.
+        std::vector<std::uint8_t> pixels(80*60,120);
+        surface.Reset(80,60,0,0);
+        for(int y=0;y<60;++y) for(int x=0;x<80;++x) surface.Write(x,y,MakeTag(120,0));
+        {
+            GroundOcclusionScope scope(&surface,pixels.data(),80,false,100);
+            const auto* observer=ObserveGround(pixels.data(),80);
+            {
+                ShadowCasterScope caster(30,true);
+                observer->Span(pixels.data()+10*80+10,8,silhouette,1,PixelLayer::Unit,0xFD,0xFD);
+                observer->Span(pixels.data()+10*80+50,8,silhouette,1,PixelLayer::Overlay);
+            }
+            observer->Span(pixels.data()+10*80+40,8,silhouette,1,PixelLayer::Scenery);
+        }
+        surface.ApplyShadows();
+        assert(TagShade(surface.At(30,40))==-24);
+        assert(TagShade(surface.At(60,40))==0 && TagShade(surface.At(70,40))==0);
+        // Disabled strength keeps all receiving pixels unchanged.
+        surface.Reset(80,60,0,0);
+        surface.Write(30,40,MakeTag(120,0));
+        surface.ProjectShadowSpan(10*80+10,80,8,silhouette,1,30,0,0xFD);
+        surface.ApplyShadows();
+        assert(TagShade(surface.At(30,40))==0);
     }
     for(int shade=-32;shade<=31;++shade)
     {
